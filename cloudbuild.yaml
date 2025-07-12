@@ -1,6 +1,3 @@
-options:
-  logging: CLOUD_LOGGING_ONLY
-
 steps:
   # 1. Установить зависимости
   - name: 'node:20'
@@ -12,14 +9,19 @@ steps:
     entrypoint: 'npm'
     args: ['run', 'build']
 
-  # 3. Загрузить содержимое dist/ в Cloud Storage bucket
+    # 3. Загрузить содержимое dist/ в Cloud Storage bucket и очистить лишнее
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     args:
       [
         'gsutil',
         '-m',
-        'cp',
+        'rsync',
         '-r',
-        'dist/*',
-        'gs://frontend-parts-site',
+        '-d',
+        'dist',
+        'gs://frontend-parts-site'
       ]
+
+
+options:
+  logging: CLOUD_LOGGING_ONLY
