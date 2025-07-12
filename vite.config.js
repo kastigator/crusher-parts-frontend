@@ -4,7 +4,7 @@ import path from 'path'
 
 export default defineConfig({
   // Это ключевое: путь к ассетам должен быть абсолютным для GCS
-  base: '/frontend-parts-site/', // ✅ ВАЖНО!
+  base: './',
   plugins: [react()],
   server: {
     port: 5173
