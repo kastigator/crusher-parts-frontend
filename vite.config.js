@@ -4,7 +4,7 @@ import path from 'path'
 
 export default defineConfig({
   // Это ключевое: путь к ассетам должен быть абсолютным для GCS
-  base: './',
+  base: './', // ✅ ВАЖНО: относительные пути!
   plugins: [react()],
   server: {
     port: 5173
