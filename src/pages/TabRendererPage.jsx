@@ -3,17 +3,10 @@ import { useLocation } from 'react-router-dom'
 import { Box, Typography, CircularProgress } from '@mui/material'
 import { useTabs } from '../context/TabsContext'
 import EditableTable from '../components/common/EditableTable'
-import MarkdownViewer from '../components/common/MarkdownViewer'
-import IframeView from '../components/common/IframeView'
-import ChartView from '../components/common/ChartView'
 
 const componentMap = {
   UsersPage: React.lazy(() => import('./UsersPage.jsx')),
-  ClientsPage: React.lazy(() => import('./ClientsPage.jsx')),
-  OriginalPartsPage: React.lazy(() => import('./OriginalPartsPage.jsx')),
-  SuppliersPage: React.lazy(() => import('./SuppliersPage.jsx')),
-  SupplierPartsPage: React.lazy(() => import('./SupplierPartsPage.jsx')),
-  TnvedCodesPage: React.lazy(() => import('./TnvedCodesPage.jsx')), // можно удалить позже
+  TnvedCodesPage: React.lazy(() => import('./TnvedCodesPage.jsx')),
 }
 
 const TabRendererPage = () => {
@@ -37,21 +30,7 @@ const TabRendererPage = () => {
   }
 
   if (tab.type === 'table') {
-    return (
-      <EditableTable type={tab.config} />
-    )
-  }
-
-  if (tab.type === 'markdown') {
-    return <MarkdownViewer src={tab.config} />
-  }
-
-  if (tab.type === 'iframe') {
-    return <IframeView url={tab.config} />
-  }
-
-  if (tab.type === 'chart') {
-    return <ChartView endpoint={tab.config} />
+    return <EditableTable type={tab.config} />
   }
 
   if (tab.type === 'component') {
