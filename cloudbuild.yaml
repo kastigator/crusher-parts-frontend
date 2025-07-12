@@ -18,5 +18,5 @@ steps:
         'cp',
         '-r',
         'dist/*',
-        'gs://crusher-parts-frontend-site',
+        'gs://frontend-parts-site',
       ]
