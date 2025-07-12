@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
-  base: './',
+  // Это ключевое: путь к ассетам должен быть абсолютным для GCS
+  base: '/frontend-parts-site/', // ✅ ВАЖНО!
   plugins: [react()],
   server: {
     port: 5173
@@ -14,4 +15,3 @@ export default defineConfig({
     }
   }
 })
-
