@@ -1,45 +1,46 @@
 // src/context/TabsContext.jsx
-
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import axios from '../api/axiosInstance'
-import { useAuth } from '../auth/AuthContext'
+import axios from '@/api/axiosInstance'
 
-const TabsContext = createContext()
+export const TabsContext = createContext()
 
 export const TabsProvider = ({ children }) => {
-  const { user } = useAuth()
   const [tabs, setTabs] = useState([])
   const [permissions, setPermissions] = useState([])
   const [loading, setLoading] = useState(true)
 
-  const reloadTabs = () => {
-    setLoading(true)
-    axios.get('/tabs')
-      .then(res => setTabs(res.data))
-      .catch(err => console.error('Ошибка загрузки вкладок:', err))
-      .finally(() => setLoading(false))
+  const fetchTabs = async () => {
+    try {
+      const tabsRes = await axios.get('/tabs')
+      setTabs(tabsRes.data)
+
+      const storedUser = localStorage.getItem('userData')
+      let role = ''
+      let perms = []
+      if (storedUser) {
+        const parsed = JSON.parse(storedUser)
+        role = parsed.role?.toLowerCase?.() || ''
+        perms = parsed.permissions || []
+      }
+
+      if (role === 'admin') {
+        setPermissions(tabsRes.data.map(t => t.id))
+      } else {
+        setPermissions(perms)
+      }
+    } catch (err) {
+      console.error('❌ Ошибка загрузки вкладок:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
-    reloadTabs()
+    fetchTabs()
   }, [])
 
-  useEffect(() => {
-    if (!user?.role_id) return
-
-    if (user.role?.toLowerCase() === 'admin') {
-      // Админ видит всё
-      if (tabs.length > 0) {
-        setPermissions(tabs.map(t => t.id))
-      }
-    } else {
-      // Остальные — по полученным правам
-      setPermissions(user.permissions || [])
-    }
-  }, [user?.role_id, tabs])
-
   return (
-    <TabsContext.Provider value={{ tabs, permissions, reloadTabs, loading }}>
+    <TabsContext.Provider value={{ tabs, permissions, loading, reloadTabs: fetchTabs }}>
       {children}
     </TabsContext.Provider>
   )

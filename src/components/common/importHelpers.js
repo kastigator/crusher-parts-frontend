@@ -1,50 +1,51 @@
-import axios from '../../api/axiosInstance'
-import { importConfigs } from './importConfigs'
+export function validateRowAgainstSchema(row, columns) {
+  for (const col of columns) {
+    const value = row[col.field]
 
-export async function validateRows(rows, type) {
-  const config = importConfigs[type]
-  const errors = []
-  const validRows = []
-
-  const uniqueField = config?.uniqueFields?.[0] // например, "Код"
-
-  let existingValues = []
-  if (uniqueField) {
-    try {
-      const res = await axios.get(config.endpoint.replace('/import', ''))
-      existingValues = res.data.map(item => String(item.code).trim().toLowerCase())
-    } catch (e) {
-      console.warn('Не удалось получить существующие записи для проверки уникальности')
+    // Проверка на обязательность
+    if (col.required && (value === undefined || value === null || value === '')) {
+      return `Поле "${col.title}" обязательно`
     }
-  }
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]
-    const rowErrors = []
+    if (!value) continue // не проверяем пустое, если не required
 
-    // Проверка обязательных полей
-    if (config.requiredFields) {
-      for (const field of config.requiredFields) {
-        if (!row[field] || row[field].toString().trim() === '') {
-          rowErrors.push(`Строка ${i + 2}: поле "${field}" обязательно`)
+    // Валидация по типу
+    switch (col.editorType) {
+      case 'number':
+      case 'percent':
+      case 'currency':
+        if (isNaN(Number(value))) {
+          return `Поле "${col.title}" должно быть числом`
         }
-      }
-    }
+        break
 
-    // Проверка уникальности
-    if (uniqueField && row[uniqueField]) {
-      const value = String(row[uniqueField]).trim().toLowerCase()
-      if (existingValues.includes(value)) {
-        rowErrors.push(`Строка ${i + 2}: значение "${row[uniqueField]}" уже существует`)
-      }
-    }
+      case 'boolean':
+        if (!['0', '1', 0, 1, true, false, 'true', 'false'].includes(value)) {
+          return `Поле "${col.title}" должно быть 0 или 1`
+        }
+        break
 
-    if (rowErrors.length > 0) {
-      errors.push(...rowErrors)
-    } else {
-      validRows.push(row)
+      case 'enum':
+      case 'select':
+      case 'autocomplete':
+        const options = col.editorProps?.options || []
+        if (options.length && !options.includes(value)) {
+          return `Поле "${col.title}" содержит недопустимое значение: ${value}`
+        }
+        break
+
+      case 'date':
+      case 'datetime':
+        if (isNaN(Date.parse(value))) {
+          return `Поле "${col.title}" должно быть датой`
+        }
+        break
+
+      default:
+        // text, link, array и т.п. — пока без проверки
+        break
     }
   }
 
-  return { rows: validRows, errors }
+  return null // если всё прошло
 }

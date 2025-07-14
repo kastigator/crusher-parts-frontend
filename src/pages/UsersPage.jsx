@@ -1,27 +1,28 @@
 import React, { useEffect, useState } from 'react'
-import UsersTable from '../components/users/UsersTable'
-import RolePermissionsTable from '../components/users/RolePermissionsTable'
-import TabsTable from '../components/users/TabsTable'
-import axios from '../api/axiosInstance'
-import { Snackbar, Alert, LinearProgress, Box } from '@mui/material'
-import PageWrapper from '../components/common/PageWrapper'
+import { Box } from '@mui/material'
+import axios from '@/api/axiosInstance'
+import UsersTable from '@/components/users/UsersTable'
+import RolePermissionsTable from '@/components/users/RolePermissionsTable'
+import TabsTable from '@/components/users/TabsTable'
 
-const UsersPage = () => {
+export default function UsersPage() {
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
-  const [newUser, setNewUser] = useState(getEmptyUser())
-  const [loading, setLoading] = useState(false)
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' })
+  const [newUser, setNewUser] = useState({
+    username: '', password: '', full_name: '',
+    email: '', phone: '', position: '', role_id: null
+  })
 
-  function getEmptyUser() {
-    return {
-      username: '',
-      password: '',
-      full_name: '',
-      email: '',
-      phone: '',
-      position: '',
-      role_id: null,
+  const loadData = async () => {
+    try {
+      const [usersRes, rolesRes] = await Promise.all([
+        axios.get('/users'),
+        axios.get('/roles')
+      ])
+      setUsers(usersRes.data)
+      setRoles(rolesRes.data)
+    } catch (err) {
+      console.error('Ошибка загрузки пользователей или ролей:', err)
     }
   }
 
@@ -29,101 +30,62 @@ const UsersPage = () => {
     loadData()
   }, [])
 
-  const loadData = async () => {
-    setLoading(true)
-    try {
-      const [usersRes, rolesRes] = await Promise.all([
-        axios.get('/users'),
-        axios.get('/roles'),
-      ])
-      setUsers(usersRes.data)
-      setRoles(rolesRes.data)
-    } catch {
-      showSnackbar('Ошибка при загрузке пользователей или ролей', 'error')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const showSnackbar = (message, severity = 'info') => {
-    setSnackbar({ open: true, message, severity })
-  }
-
   const handleAdd = async () => {
+    if (!newUser.username || !newUser.password) return
     try {
       await axios.post('/users', newUser)
-      showSnackbar('Пользователь добавлен', 'success')
-      setNewUser(getEmptyUser())
+      setNewUser({
+        username: '', password: '', full_name: '',
+        email: '', phone: '', position: '', role_id: null
+      })
       loadData()
-    } catch {
-      showSnackbar('Ошибка при добавлении пользователя', 'error')
+    } catch (err) {
+      console.error('Ошибка при добавлении пользователя:', err)
     }
   }
 
-  const handleSave = async (user) => {
+  const handleSave = async (updatedUser) => {
     try {
-      await axios.put(`/users/${user.id}`, user)
-      showSnackbar('Пользователь обновлён', 'success')
+      await axios.put(`/users/${updatedUser.id}`, updatedUser)
       loadData()
-    } catch {
-      showSnackbar('Ошибка при обновлении пользователя', 'error')
+    } catch (err) {
+      console.error('Ошибка при сохранении пользователя:', err)
     }
   }
 
   const handleDelete = async (user) => {
     try {
       await axios.delete(`/users/${user.id}`)
-      showSnackbar('Пользователь удалён', 'success')
       loadData()
-    } catch {
-      showSnackbar('Ошибка при удалении пользователя', 'error')
+    } catch (err) {
+      console.error('Ошибка при удалении пользователя:', err)
     }
   }
 
   const handleResetPassword = async (user) => {
     try {
-      const res = await axios.post(`/users/${user.id}/reset-password`)
-      showSnackbar(`Новый пароль: ${res.data.newPassword}`, 'info')
-    } catch {
-      showSnackbar('Ошибка при сбросе пароля', 'error')
+      await axios.post(`/users/${user.id}/reset-password`)
+      console.log(`Пароль пользователя ${user.username} сброшен`)
+    } catch (err) {
+      console.error('Ошибка при сбросе пароля:', err)
     }
   }
 
   return (
-    <PageWrapper>
-      {loading && <LinearProgress />}
+    <Box sx={{ display: 'inline-block', minWidth: 1200 }}>
+      <UsersTable
+        users={users}
+        roles={roles}
+        newUser={newUser}
+        setNewUser={setNewUser}
+        onAdd={handleAdd}
+        onSave={handleSave}
+        onDelete={handleDelete}
+        onResetPassword={handleResetPassword}
+      />
 
-      <Box sx={{ display: 'inline-block', minWidth: 1200 }}>
-        <UsersTable
-          users={users}
-          roles={roles}
-          newUser={newUser}
-          setNewUser={setNewUser}
-          onAdd={handleAdd}
-          onSave={handleSave}
-          onDelete={handleDelete}
-          onResetPassword={handleResetPassword}
-        />
-
-        <RolePermissionsTable sx={{ mt: 5 }} />
-        <TabsTable sx={{ mt: 5 }} />
-      </Box>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={5000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert
-          severity={snackbar.severity}
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </PageWrapper>
+      <RolePermissionsTable />
+      <TabsTable />
+    </Box>
   )
 }
-
-export default UsersPage

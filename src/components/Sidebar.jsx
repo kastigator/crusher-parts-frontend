@@ -2,58 +2,65 @@ import React from 'react'
 import { Box, List, ListItem, IconButton, Tooltip } from '@mui/material'
 import * as MuiIcons from '@mui/icons-material'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { useTabs } from '../context/TabsContext'
+import { useTabs } from '@/context/TabsContext'
 
 const Sidebar = () => {
-  const { tabs = [], permissions = [] } = useTabs()
   const navigate = useNavigate()
   const location = useLocation()
+  const { tabs = [], permissions = [], loading } = useTabs()
 
-  const visibleTabs = tabs
-    .filter(tab => tab.is_active && permissions.includes(tab.id))
-    .sort((a, b) => a.order - b.order)
+  // Не рендерим пока всё не загрузилось
+  if (loading) return null
+
+  const visibleTabs = tabs.filter(tab => permissions.includes(tab.id))
 
   return (
-    <Box sx={{
-      width: 60,
-      bgcolor: '#f4f4f4',
-      borderRight: '1px solid #ddd',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      py: 1
-    }}>
-      <List sx={{ width: '100%', p: 0 }}>
+    <Box
+      sx={{
+        width: 64,
+        height: '100%',
+        backgroundColor: '#f5f5f5',
+        borderRight: '1px solid #ddd',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        pt: 1
+      }}
+    >
+      <List sx={{ width: '100%' }}>
         {visibleTabs.map(tab => {
-          const iconName = tab.icon?.trim()
-          const IconComponent = MuiIcons[iconName] || MuiIcons.HelpOutline
-
-          if (!MuiIcons[iconName]) {
-            console.warn(`⚠️ Иконка "${iconName}" не найдена в @mui/icons-material`)
-          }
-
-          const path = tab.path.startsWith('/') ? tab.path : `/${tab.path}`
-          const isActive = location.pathname.startsWith(path)
+          const IconComponent = MuiIcons[tab.icon] || MuiIcons.List
+          const selected = location.pathname === tab.path || location.pathname === `/${tab.path}`
 
           return (
-            <ListItem key={tab.id} disablePadding sx={{ justifyContent: 'center', mb: 1 }}>
-              <Tooltip title={tab.name} placement="right">
+            <ListItem
+              key={tab.id}
+              disablePadding
+              sx={{
+                justifyContent: 'center',
+                backgroundColor: selected ? '#e0e0e0' : 'transparent'
+              }}
+            >
+              <Tooltip title={tab.name || 'Вкладка'} placement="right">
                 <IconButton
-                  onClick={() => navigate(path)}
-                  color={isActive ? 'primary' : 'default'}
-                  sx={{
-                    width: 40,
-                    height: 40,
-                    bgcolor: isActive ? 'primary.light' : 'transparent',
-                    '&:hover': { bgcolor: '#e0e0e0' },
-                  }}
+                  onClick={() => navigate(tab.path.startsWith('/') ? tab.path : `/${tab.path}`)}
+                  color={selected ? 'primary' : 'default'}
                 >
-                  <IconComponent fontSize="medium" />
+                  <IconComponent />
                 </IconButton>
               </Tooltip>
             </ListItem>
           )
         })}
+        {visibleTabs.length === 0 && (
+          <ListItem>
+            <Tooltip title="Нет доступных вкладок" placement="right">
+              <Box sx={{ fontSize: 10, color: '#999', textAlign: 'center', px: 1 }}>
+                Нет вкладок
+              </Box>
+            </Tooltip>
+          </ListItem>
+        )}
       </List>
     </Box>
   )

@@ -1,3 +1,5 @@
+// components/users/TabsTable.jsx
+
 import React, { useEffect, useState } from 'react'
 import {
   Paper, Table, TableHead, TableBody, TableRow, TableCell,
@@ -8,8 +10,8 @@ import {
   Cancel as CancelIcon, Add as AddIcon, DragIndicator as DragHandleIcon
 } from '@mui/icons-material'
 import * as MuiIcons from '@mui/icons-material'
-import axios from '../../api/axiosInstance'
-import { useTabs } from '../../context/TabsContext'
+import axios from '@/api/axiosInstance'
+import { useTabs } from '@/context/TabsContext'
 import { slugify } from 'transliteration'
 import {
   DndContext,
@@ -24,10 +26,9 @@ import {
   verticalListSortingStrategy
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { confirmAction } from '../../utils/confirmAction'
+import { confirmAction } from '@/utils/confirmAction'
 
 const iconOptions = Object.keys(MuiIcons).filter(k => /^[A-Z]/.test(k)).sort()
-const typeOptions = ['component', 'table', 'markdown', 'iframe']
 
 function DragHandleCell({ id }) {
   const {
@@ -54,7 +55,7 @@ function DragHandleCell({ id }) {
 export default function TabsTable() {
   const [tabs, setTabs] = useState([])
   const [editingId, setEditingId] = useState(null)
-  const [newTab, setNewTab] = useState({ name: '', tab_name: '', path: '', icon: '', type: 'component', config: '' })
+  const [newTab, setNewTab] = useState({ name: '', tab_name: '', path: '', icon: '' })
   const { reloadTabs } = useTabs()
   const sensors = useSensors(useSensor(PointerSensor))
 
@@ -113,13 +114,12 @@ export default function TabsTable() {
     const slug = slugify(name).replace(/-/g, '_')
     const auto = {
       tab_name: slug,
-      path: '/' + slug.replace(/_/g, '-'),
-      config: slug
+      path: '/' + slug.replace(/_/g, '-')
     }
     const tab = { ...newTab, ...auto }
     try {
       await axios.post('/tabs', tab)
-      setNewTab({ name: '', tab_name: '', path: '', icon: '', type: 'component', config: '' })
+      setNewTab({ name: '', tab_name: '', path: '', icon: '' })
       fetchTabs()
       reloadTabs()
     } catch (err) {
@@ -159,7 +159,7 @@ export default function TabsTable() {
             <TableHead>
               <TableRow>
                 <TableCell />
-                {['Название', 'tab_name', 'path', 'Иконка', 'Тип', 'Конфиг', 'Действия'].map((h) => (
+                {['Название', 'tab_name', 'path', 'Иконка', 'Действия'].map((h) => (
                   <TableCell key={h} sx={{ fontWeight: 600 }}>{h}</TableCell>
                 ))}
               </TableRow>
@@ -190,15 +190,6 @@ export default function TabsTable() {
                     isOptionEqualToValue={(opt, val) => opt === val}
                   />
                 </TableCell>
-                <TableCell>
-                  <Autocomplete
-                    options={typeOptions}
-                    value={newTab.type}
-                    onChange={(_, val) => setNewTab({ ...newTab, type: val })}
-                    renderInput={(params) => <TextField {...params} size="small" />}
-                  />
-                </TableCell>
-                <TableCell sx={{ minWidth: 160 }}>{previewSlug}</TableCell>
                 <TableCell>
                   <Tooltip title="Добавить">
                     <IconButton onClick={addTab}><AddIcon /></IconButton>
@@ -244,21 +235,6 @@ export default function TabsTable() {
                           </span>
                         </Tooltip>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      {isEditing ? (
-                        <Autocomplete
-                          options={typeOptions}
-                          value={tab.type}
-                          onChange={(_, val) => handleChange(tab.id, 'type', val)}
-                          renderInput={(params) => <TextField {...params} size="small" />}
-                        />
-                      ) : tab.type}
-                    </TableCell>
-                    <TableCell>
-                      {isEditing
-                        ? <TextField size="small" value={tab.config} onChange={e => handleChange(tab.id, 'config', e.target.value)} />
-                        : tab.config}
                     </TableCell>
                     <TableCell>
                       {isEditing ? (

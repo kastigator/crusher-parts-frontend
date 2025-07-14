@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import {
   Paper, Table, TableHead, TableBody, TableRow, TableCell,
-  Checkbox, Typography, TableContainer, Button, Snackbar, Alert, Tooltip
+  Checkbox, Typography, TableContainer, Button, Snackbar,
+  Alert, Tooltip, TextField, IconButton
 } from '@mui/material'
 import axios from '../../api/axiosInstance'
+import AddIcon from '@mui/icons-material/Add'
 
 export default function RolePermissionsTable() {
   const [roles, setRoles] = useState([])
@@ -11,6 +13,9 @@ export default function RolePermissionsTable() {
   const [permissions, setPermissions] = useState([])
   const [originalPermissions, setOriginalPermissions] = useState([])
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' })
+
+  const [newRoleName, setNewRoleName] = useState('')
+  const [adding, setAdding] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -23,7 +28,7 @@ export default function RolePermissionsTable() {
         axios.get('/tabs'),
         axios.get('/role-permissions')
       ])
-      const visibleRoles = rolesRes.data.filter(r => r.name.toLowerCase() !== 'admin') // исключаем админа
+      const visibleRoles = rolesRes.data.filter(r => r.slug !== 'admin')
       setRoles(visibleRoles)
       setTabs(tabsRes.data)
       setPermissions(permsRes.data)
@@ -77,11 +82,27 @@ export default function RolePermissionsTable() {
 
     try {
       await axios.put('/role-permissions', changes)
-      setSnackbar({ open: true, message: 'Права сохранены. Обновление интерфейса...', severity: 'success' })
-      setTimeout(() => window.location.reload(), 1000)
+      setOriginalPermissions([...permissions]) // ✅ локально обновляем оригинальные значения
+      setSnackbar({ open: true, message: 'Права сохранены', severity: 'success' })
     } catch (err) {
       console.error('Ошибка при сохранении прав:', err)
       setSnackbar({ open: true, message: 'Ошибка при сохранении прав', severity: 'error' })
+    }
+  }
+
+  const handleAddRole = async () => {
+    const name = newRoleName.trim()
+    if (!name) return
+
+    try {
+      const res = await axios.post('/roles', { name })
+      setRoles([...roles, res.data])
+      setNewRoleName('')
+      setAdding(false)
+      setSnackbar({ open: true, message: 'Роль добавлена', severity: 'success' })
+    } catch (err) {
+      console.error('Ошибка при добавлении роли:', err)
+      setSnackbar({ open: true, message: err.response?.data?.message || 'Ошибка сервера', severity: 'error' })
     }
   }
 
@@ -92,10 +113,10 @@ export default function RolePermissionsTable() {
       </Typography>
 
       <TableContainer sx={{ maxHeight: 500, overflowX: 'auto' }}>
-        <Table stickyHeader size="small">
+        <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', minWidth: 600 }}>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ bgcolor: '#fafafa', fontWeight: 600 }}>Вкладка</TableCell>
+              <TableCell sx={{ bgcolor: '#fafafa', fontWeight: 600, width: 240 }}>Вкладка</TableCell>
               {roles.map((role) => (
                 <TableCell key={role.id} align="center" sx={{ bgcolor: '#fafafa', fontWeight: 600 }}>
                   <Tooltip title={role.name}>
@@ -103,14 +124,35 @@ export default function RolePermissionsTable() {
                   </Tooltip>
                 </TableCell>
               ))}
+              <TableCell align="center" sx={{ bgcolor: '#fafafa', width: 60 }}>
+                {adding ? (
+                  <TextField
+                    size="small"
+                    value={newRoleName}
+                    onChange={e => setNewRoleName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAddRole()
+                      if (e.key === 'Escape') {
+                        setAdding(false)
+                        setNewRoleName('')
+                      }
+                    }}
+                    autoFocus
+                    placeholder="Новая роль"
+                  />
+                ) : (
+                  <Tooltip title="Добавить роль">
+                    <IconButton onClick={() => setAdding(true)} size="small">
+                      <AddIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {tabs.map((tab) => (
-              <TableRow
-                key={tab.id}
-                sx={{ '&:nth-of-type(odd)': { backgroundColor: '#f9f9f9' } }}
-              >
+              <TableRow key={tab.id} sx={{ '&:nth-of-type(odd)': { backgroundColor: '#f9f9f9' } }}>
                 <TableCell>{tab.name}</TableCell>
                 {roles.map((role) => (
                   <TableCell key={role.id} align="center">
@@ -120,6 +162,7 @@ export default function RolePermissionsTable() {
                     />
                   </TableCell>
                 ))}
+                <TableCell />
               </TableRow>
             ))}
           </TableBody>

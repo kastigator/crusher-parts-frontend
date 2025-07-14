@@ -72,15 +72,9 @@ export default function UsersTable({ users, roles, newUser, setNewUser, onAdd, o
         </TableHead>
 
         <TableBody>
+          {/* Строка добавления нового пользователя */}
           <TableRow sx={{ backgroundColor: '#eef4ff' }}>
-            {[
-              { field: 'username', label: 'Логин' },
-              { field: 'password', label: 'Пароль' },
-              { field: 'full_name', label: 'ФИО' },
-              { field: 'email', label: 'Email' },
-              { field: 'phone', label: 'Телефон' },
-              { field: 'position', label: 'Должность' },
-            ].map(({ field, label }) => (
+            {['username', 'password', 'full_name', 'email', 'phone', 'position'].map((field) => (
               <TableCell key={field}>
                 {field === 'phone' ? (
                   <PhoneField value={newUser[field]} onChange={(val) => setNewUser({ ...newUser, [field]: val })} />
@@ -90,7 +84,7 @@ export default function UsersTable({ users, roles, newUser, setNewUser, onAdd, o
                   <TextField
                     fullWidth
                     size="small"
-                    placeholder={label}
+                    placeholder={field}
                     value={newUser[field] || ''}
                     onChange={(e) => setNewUser({ ...newUser, [field]: e.target.value })}
                   />
@@ -103,17 +97,7 @@ export default function UsersTable({ users, roles, newUser, setNewUser, onAdd, o
                 getOptionLabel={(r) => r.name}
                 value={roles.find(r => r.id === newUser.role_id) || null}
                 onChange={(_, newRole) => setNewUser({ ...newUser, role_id: newRole?.id })}
-                renderInput={(params) => {
-                  const { disableUnderline, ...safeInputProps } = params.InputProps || {}
-                  return (
-                    <TextField
-                      {...params}
-                      InputProps={safeInputProps}
-                      size="small"
-                      placeholder="Роль"
-                    />
-                  )
-                }}
+                renderInput={(params) => <TextField {...params} size="small" placeholder="Роль" />}
                 disableClearable
                 fullWidth
               />
@@ -125,6 +109,7 @@ export default function UsersTable({ users, roles, newUser, setNewUser, onAdd, o
             </TableCell>
           </TableRow>
 
+          {/* Список пользователей */}
           {users.map(user => {
             const isEditing = editingId === user.id
             const current = isEditing ? editedUsers[user.id] : user
@@ -188,17 +173,7 @@ export default function UsersTable({ users, roles, newUser, setNewUser, onAdd, o
                       getOptionLabel={(r) => r.name}
                       value={roles.find(r => r.id === current.role_id) || null}
                       onChange={(_, newRole) => handleChange(user.id, 'role_id', newRole?.id)}
-                      renderInput={(params) => {
-                        const { disableUnderline, ...safeInputProps } = params.InputProps || {}
-                        return (
-                          <TextField
-                            {...params}
-                            InputProps={safeInputProps}
-                            size="small"
-                            placeholder="Роль"
-                          />
-                        )
-                      }}
+                      renderInput={(params) => <TextField {...params} size="small" placeholder="Роль" />}
                       disableClearable
                       fullWidth
                     />

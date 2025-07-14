@@ -1,4 +1,3 @@
-
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
@@ -7,6 +6,7 @@ import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import theme from './theme/theme'
 import { AuthProvider } from './auth/AuthContext'
+import { TabsProvider } from './context/TabsContext'
 import { Toaster } from 'react-hot-toast'
 
 import '@fontsource/inter/300.css'
@@ -21,8 +21,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <AuthProvider>
-          <App />
-          <Toaster position="bottom-center" />
+          <TabsProvider>
+            <App />
+            <Toaster position="bottom-center" />
+          </TabsProvider>
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>

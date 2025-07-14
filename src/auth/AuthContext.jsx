@@ -15,6 +15,7 @@ export function AuthProvider({ children }) {
     }
   })
 
+  // Поддержка изменения token через useEffect (опционально, если хочешь реактивность)
   useEffect(() => {
     if (token) {
       localStorage.setItem('token', token)
@@ -31,12 +32,17 @@ export function AuthProvider({ children }) {
     }
   }, [user])
 
+  // ✅ Ключевая часть — сохраняем token и userData немедленно при логине
   const login = (newToken, userData) => {
+    localStorage.setItem('token', newToken)
+    localStorage.setItem('userData', JSON.stringify(userData))
     setToken(newToken)
     setUser(userData)
   }
 
   const logout = () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('userData')
     setToken(null)
     setUser(null)
   }

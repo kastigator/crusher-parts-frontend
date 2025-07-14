@@ -3,8 +3,9 @@ import { Routes, Route } from 'react-router-dom'
 import PrivateRoute from '../auth/PrivateRoute'
 import LoginPage from '../pages/LoginPage'
 import MainLayout from '../layout/MainLayout'
-import TabRendererPage from '../pages/TabRendererPage'
-import HomePage from '../pages/HomePage' // 👈 добавляем импорт
+import HomePage from '../pages/HomePage'
+import UsersPage from '../pages/UsersPage'
+// ❌ Удалён TabRendererPage
 
 const AppRouter = () => (
   <Suspense fallback={<div>Загрузка...</div>}>
@@ -18,8 +19,10 @@ const AppRouter = () => (
           </PrivateRoute>
         }
       >
-        <Route index element={<HomePage />} />           {/* 👈 новый index */}
-        <Route path="*" element={<TabRendererPage />} />
+        <Route index element={<HomePage />} />
+        <Route path="users" element={<UsersPage />} />
+        {/* Здесь будут добавляться другие страницы вручную */}
+        <Route path="*" element={<div style={{ padding: 32 }}>Страница не найдена</div>} />
       </Route>
     </Routes>
   </Suspense>

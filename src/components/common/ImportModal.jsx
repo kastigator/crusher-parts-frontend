@@ -5,14 +5,19 @@ import {
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import readXlsxFile from 'read-excel-file'
-import { validateRows } from './importHelpers'
-import { importConfigs } from './importConfigs'
+import entitySchemas from './entitySchemas'
 
-const ImportModal = ({ open, onClose, type, onImportComplete, columns, templateUrl }) => {
+const ImportModal = ({ open, onClose, type, onImportComplete }) => {
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState([])
   const [rows, setRows] = useState([])
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' })
+
+  const config = entitySchemas[type]
+  const importFields = config?.import?.fields || []
+  const requiredFields = config?.import?.requiredFields || []
+  const templateUrl = config?.import?.templateUrl
+  const validateRow = config?.validateImportRow
 
   useEffect(() => {
     if (!open) {
@@ -38,18 +43,20 @@ const ImportModal = ({ open, onClose, type, onImportComplete, columns, templateU
         return obj
       })
 
-      const config = importConfigs[type]
-      const mapped = parsed.map(row => {
-        const result = {}
-        config.fields.forEach(({ label, field }) => {
-          result[field] = row[label]
-        })
-        return result
+      const validationErrors = []
+      const validRows = []
+
+      parsed.forEach((row, index) => {
+        const err = validateRow?.(row)
+        if (err) {
+          validationErrors.push(`Строка ${index + 2}: ${err}`)
+        } else {
+          validRows.push(row)
+        }
       })
 
-      const validated = await validateRows(mapped, type)
-      setRows(validated.rows)
-      setErrors(validated.errors)
+      setRows(validRows)
+      setErrors(validationErrors)
     } catch (err) {
       console.error('Ошибка чтения файла:', err)
       setErrors(['Ошибка чтения файла'])
@@ -61,14 +68,12 @@ const ImportModal = ({ open, onClose, type, onImportComplete, columns, templateU
   const handleUpload = async () => {
     setLoading(true)
     try {
-      const config = importConfigs[type]
-      if (!config || !config.endpoint) {
-        throw new Error('Неверный тип импорта или не указан endpoint')
-      }
-
       const token = localStorage.getItem('token')
+      const endpoint = config?.endpoint
 
-      const res = await fetch(config.endpoint, {
+      if (!endpoint) throw new Error('Не указан endpoint в entitySchemas')
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -78,11 +83,6 @@ const ImportModal = ({ open, onClose, type, onImportComplete, columns, templateU
       })
 
       const result = await res.json()
-
-      if (!res.ok && !result.errors?.length) {
-        throw new Error(result.message || 'Ошибка при импорте')
-      }
-
       const added = result.inserted?.length || 0
       const failed = result.errors?.length || 0
 
@@ -103,7 +103,7 @@ const ImportModal = ({ open, onClose, type, onImportComplete, columns, templateU
       }
 
       setRows([])
-      onImportComplete && onImportComplete()
+      onImportComplete?.()
     } catch (err) {
       console.error('❌ Ошибка при импорте:', err)
       setErrors([err.message || 'Ошибка при импорте'])
@@ -129,7 +129,7 @@ const ImportModal = ({ open, onClose, type, onImportComplete, columns, templateU
 
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2 }}>
-            Загрузите Excel-файл. Ожидаются колонки: {columns.join(', ')}.<br />
+            Загрузите Excel-файл. Ожидаются колонки: {importFields.join(', ')}.<br />
             Используйте шаблон, чтобы избежать ошибок.
           </Typography>
 

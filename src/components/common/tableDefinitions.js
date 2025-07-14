@@ -1,84 +1,50 @@
-const tableDefinitions = {
-  tnved_codes: {
-    title: 'Коды ТН ВЭД',
-    endpoint: 'tnved-codes',
-    idField: 'id',
-    rowTemplate: { code: '', description: '', duty_rate: '', notes: '' },
+export const usersTable = [
+  { field: 'username', title: 'Логин', editorType: 'text', required: true },
+  { field: 'password', title: 'Пароль', editorType: 'text', inputType: 'password', required: true },
+  { field: 'full_name', title: 'ФИО', editorType: 'text' },
+  { field: 'email', title: 'Email', editorType: 'text', inputType: 'email' },
+  { field: 'phone', title: 'Телефон', editorType: 'text' },
+  { field: 'position', title: 'Должность', editorType: 'text' },
+  {
+    field: 'role_id',
+    title: 'Роль',
+    editorType: 'enum',
+    editorProps: {
+      options: [], // передаётся извне
+      getOptionLabel: (r) => r.name,
+      getOptionValue: (r) => r.id
+    }
+  }
+]
 
-    columns: [
-      { field: 'code', label: 'Код', required: true, width: 120, tooltip: 'Код ТН ВЭД (10 знаков)' },
-      { field: 'description', label: 'Описание', width: 300 },
-      { field: 'duty_rate', label: 'Пошлина (%)', type: 'number', width: 120 },
-      { field: 'notes', label: 'Примечания', width: 200 },
-    ],
-
-    filters: [
-      { field: 'search', label: 'Поиск по коду или описанию', type: 'text' },
-      { field: 'duty_rate_min', label: 'Пошлина от (%)', type: 'number' },
-      { field: 'duty_rate_max', label: 'до (%)', type: 'number' },
-    ],
-
-    import: {
-      templateUrl: '/static/tnved_codes_template.xlsx',
-      fields: ['Код', 'Описание', 'Ставка пошлины (%)', 'Примечания'],
-    },
-
-    features: {
-      enableAdd: true,
-      enableDelete: true,
-      enableHistory: true,
+export const tabsTable = [
+  { field: 'name', title: 'Название', editorType: 'text' },
+  { field: 'tab_name', title: 'tab_name', editorType: 'text' },
+  { field: 'path', title: 'Путь', editorType: 'text' },
+  {
+    field: 'icon',
+    title: 'Иконка',
+    editorType: 'autocomplete',
+    editorProps: {
+      options: [], // подставляются MuiIcons
     }
   },
-
-  users: {
-    title: 'Пользователи',
-    endpoint: 'users',
-    idField: 'id',
-    rowTemplate: {
-      username: '', password: '', full_name: '', email: '',
-      phone: '', position: '', role_id: ''
-    },
-
-    columns: [
-      { field: 'username', label: 'Логин', required: true },
-      { field: 'password', label: 'Пароль', type: 'password' },
-      { field: 'full_name', label: 'ФИО' },
-      { field: 'email', label: 'Email' },
-      { field: 'phone', label: 'Телефон' },
-      { field: 'position', label: 'Должность' },
-      { field: 'role_id', label: 'Роль' }, // пока строкой, можно улучшить
-    ],
-
-    features: {
-      enableAdd: true,
-      enableDelete: true,
-      enableHistory: false,
+  {
+    field: 'type',
+    title: 'Тип',
+    editorType: 'autocomplete',
+    editorProps: {
+      options: ['component', 'table', 'markdown', 'iframe']
     }
   },
+  { field: 'config', title: 'Конфиг', editorType: 'text' }
+]
 
-  clients: {
-    title: 'Клиенты',
-    endpoint: 'clients/with-addresses', // готовим этот endpoint
-    idField: 'id',
-    rowTemplate: { name: '', email: '', delivery_address: '', billing_address: '' },
-
-    columns: [
-      { field: 'name', label: 'Название', required: true, width: 250 },
-      { field: 'email', label: 'Email', width: 200 },
-      { field: 'delivery_address', label: 'Адрес доставки', width: 300 },
-      { field: 'billing_address', label: 'Адрес оплаты', width: 300 },
-    ],
-
-    filters: [
-      { field: 'search', label: 'Поиск по названию или email', type: 'text' },
-    ],
-
-    features: {
-      enableAdd: false, // пока нельзя добавлять клиентов тут
-      enableDelete: false,
-      enableHistory: false,
-    }
-  },
+// Матрица разрешений: роли × вкладки — нет стандартных колонок
+// Но если понадобится рендерить в колонках, можно описать
+export const rolePermissionsMatrix = {
+  rows: { label: 'Вкладки', field: 'tab.name' },
+  columns: { label: 'Роли', field: 'role.name' },
+  valueField: 'can_view',
+  editorType: 'checkbox'
 }
-
-export default tableDefinitions
