@@ -1,0 +1,71 @@
+Структура папок
+Серийный номер тома: CC77-E7FA
+C:\USERS\AUROX\DOCUMENTS\GITHUB\CRUSHER-PARTS-FRONTEND\SRC
+|   App.jsx
+|   main.jsx
+|   
++---api
+|       axiosInstance.js
+|       
++---assets
+|       logo.svg
+|       welcome.png
+|       
++---auth
+|       AuthContext.jsx
+|       authService.js
+|       PrivateRoute.jsx
+|       
++---components
+|   |   Sidebar.jsx
+|   |   
+|   +---common
+|   |       ActionIcons.jsx
+|   |       EditableCell.jsx
+|   |       EmailField.jsx
+|   |       entitySchemas.js
+|   |       fieldRenderers.js
+|   |       importHelpers.js
+|   |       ImportModal.jsx
+|   |       PageWrapper.jsx
+|   |       PhoneField.jsx
+|   |       tableDefinitions.js
+|   |       TableFooter.jsx
+|   |       TableSkeleton.jsx
+|   |       TableToolbar.jsx
+|   |       TableWrapper.jsx
+|   |       ValueDisplay.jsx
+|   |       
+|   +---tnved
+|   |       TnvedHistoryDialog.jsx
+|   |       
+|   \---users
+|           RolePermissionsTable.jsx
+|           TabsTable.jsx
+|           UsersTable.jsx
+|           
++---context
+|       TabsContext.jsx
+|       
++---layout
+|       Header.jsx
+|       LayoutBody.jsx
+|       MainLayout.jsx
+|       
++---pages
+|       HomePage.jsx
+|       LoginPage.jsx
+|       UsersPage.jsx
+|       
++---router
+|       AppRouter.jsx
+|       
++---styles
+|       global.css
+|       
++---theme
+|       theme.js
+|       
+\---utils
+        confirmAction.js
+        

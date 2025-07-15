@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import { Box } from '@mui/material'
+import { Box, Stack, Typography } from '@mui/material'
 import axios from '@/api/axiosInstance'
 import UsersTable from '@/components/users/UsersTable'
 import RolePermissionsTable from '@/components/users/RolePermissionsTable'
 import TabsTable from '@/components/users/TabsTable'
+import TabRendererPage from '@/components/common/TabRendererPage' // 👈 добавлено
 
 export default function UsersPage() {
   const [users, setUsers] = useState([])
@@ -72,20 +73,32 @@ export default function UsersPage() {
   }
 
   return (
-    <Box sx={{ display: 'inline-block', minWidth: 1200 }}>
-      <UsersTable
-        users={users}
-        roles={roles}
-        newUser={newUser}
-        setNewUser={setNewUser}
-        onAdd={handleAdd}
-        onSave={handleSave}
-        onDelete={handleDelete}
-        onResetPassword={handleResetPassword}
-      />
+    <TabRendererPage tabKey="users">
+      <Stack spacing={4} sx={{ minWidth: 1200 }}>
+        <Box>
+          <Typography variant="h6" gutterBottom>Пользователи</Typography>
+          <UsersTable
+            users={users}
+            roles={roles}
+            newUser={newUser}
+            setNewUser={setNewUser}
+            onAdd={handleAdd}
+            onSave={handleSave}
+            onDelete={handleDelete}
+            onResetPassword={handleResetPassword}
+          />
+        </Box>
 
-      <RolePermissionsTable />
-      <TabsTable />
-    </Box>
+        <Box>
+          <Typography variant="h6" gutterBottom>Роли и доступы</Typography>
+          <RolePermissionsTable />
+        </Box>
+
+        <Box>
+          <Typography variant="h6" gutterBottom>Вкладки</Typography>
+          <TabsTable />
+        </Box>
+      </Stack>
+    </TabRendererPage>
   )
 }

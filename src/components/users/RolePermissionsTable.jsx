@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import {
   Paper, Table, TableHead, TableBody, TableRow, TableCell,
-  Checkbox, Typography, TableContainer, Button, Snackbar,
-  Alert, Tooltip, TextField, IconButton
+  Checkbox, TableContainer, Button, Snackbar,
+  Alert, Tooltip, TextField, IconButton, Box, CircularProgress
 } from '@mui/material'
 import axios from '../../api/axiosInstance'
 import AddIcon from '@mui/icons-material/Add'
@@ -16,12 +16,14 @@ export default function RolePermissionsTable() {
 
   const [newRoleName, setNewRoleName] = useState('')
   const [adding, setAdding] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadData()
   }, [])
 
   const loadData = async () => {
+    setLoading(true)
     try {
       const [rolesRes, tabsRes, permsRes] = await Promise.all([
         axios.get('/roles'),
@@ -35,6 +37,9 @@ export default function RolePermissionsTable() {
       setOriginalPermissions(permsRes.data)
     } catch (err) {
       console.error('Ошибка при загрузке данных:', err)
+      setSnackbar({ open: true, message: 'Ошибка при загрузке данных', severity: 'error' })
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -82,11 +87,12 @@ export default function RolePermissionsTable() {
 
     try {
       await axios.put('/role-permissions', changes)
-      setOriginalPermissions([...permissions]) // ✅ локально обновляем оригинальные значения
+      setOriginalPermissions([...permissions])
       setSnackbar({ open: true, message: 'Права сохранены', severity: 'success' })
     } catch (err) {
       console.error('Ошибка при сохранении прав:', err)
       setSnackbar({ open: true, message: 'Ошибка при сохранении прав', severity: 'error' })
+      setPermissions(originalPermissions)
     }
   }
 
@@ -107,67 +113,90 @@ export default function RolePermissionsTable() {
   }
 
   return (
-    <Paper elevation={3} sx={{ p: 2, mt: 4, maxWidth: '100%', overflowX: 'clip' }}>
-      <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-        Доступ к вкладкам по ролям
-      </Typography>
+    <Paper elevation={3} sx={{ p: 2, mt: 4, maxWidth: '100%', overflowX: 'auto' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', mb: 2 }}>
+        {adding ? (
+          <TextField
+            size="small"
+            value={newRoleName}
+            onChange={e => setNewRoleName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleAddRole()
+              if (e.key === 'Escape') {
+                setAdding(false)
+                setNewRoleName('')
+              }
+            }}
+            autoFocus
+            placeholder="Новая роль"
+            sx={{ width: 180 }}
+          />
+        ) : (
+          <Tooltip title="Добавить роль">
+            <IconButton onClick={() => setAdding(true)} size="small">
+              <AddIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+      </Box>
 
-      <TableContainer sx={{ maxHeight: 500, overflowX: 'auto' }}>
-        <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', minWidth: 600 }}>
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ bgcolor: '#fafafa', fontWeight: 600, width: 240 }}>Вкладка</TableCell>
-              {roles.map((role) => (
-                <TableCell key={role.id} align="center" sx={{ bgcolor: '#fafafa', fontWeight: 600 }}>
-                  <Tooltip title={role.name}>
-                    <span>{role.name}</span>
-                  </Tooltip>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+          <CircularProgress size={32} />
+        </Box>
+      ) : (
+        <TableContainer sx={{ maxHeight: 500 }}>
+          <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', minWidth: 600 }}>
+            <TableHead>
+              <TableRow>
+                <TableCell
+                  sx={{
+                    bgcolor: '#fafafa',
+                    fontWeight: 600,
+                    width: 240,
+                    position: 'sticky',
+                    left: 0,
+                    zIndex: 2
+                  }}
+                >
+                  Вкладка
                 </TableCell>
-              ))}
-              <TableCell align="center" sx={{ bgcolor: '#fafafa', width: 60 }}>
-                {adding ? (
-                  <TextField
-                    size="small"
-                    value={newRoleName}
-                    onChange={e => setNewRoleName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleAddRole()
-                      if (e.key === 'Escape') {
-                        setAdding(false)
-                        setNewRoleName('')
-                      }
-                    }}
-                    autoFocus
-                    placeholder="Новая роль"
-                  />
-                ) : (
-                  <Tooltip title="Добавить роль">
-                    <IconButton onClick={() => setAdding(true)} size="small">
-                      <AddIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                )}
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {tabs.map((tab) => (
-              <TableRow key={tab.id} sx={{ '&:nth-of-type(odd)': { backgroundColor: '#f9f9f9' } }}>
-                <TableCell>{tab.name}</TableCell>
                 {roles.map((role) => (
-                  <TableCell key={role.id} align="center">
-                    <Checkbox
-                      checked={hasPermission(role.id, tab.id)}
-                      onChange={() => togglePermission(role.id, tab.id)}
-                    />
+                  <TableCell key={role.id} align="center" sx={{ bgcolor: '#fafafa', fontWeight: 600 }}>
+                    <Tooltip title={role.name}>
+                      <span>{role.name}</span>
+                    </Tooltip>
                   </TableCell>
                 ))}
-                <TableCell />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </TableHead>
+            <TableBody>
+              {tabs.map((tab) => (
+                <TableRow key={tab.id} sx={{ '&:nth-of-type(odd)': { backgroundColor: '#f9f9f9' } }}>
+                  <TableCell
+                    sx={{
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 1,
+                      backgroundColor: '#fff'
+                    }}
+                  >
+                    {tab.name}
+                  </TableCell>
+                  {roles.map((role) => (
+                    <TableCell key={role.id} align="center">
+                      <Checkbox
+                        checked={hasPermission(role.id, tab.id)}
+                        onChange={() => togglePermission(role.id, tab.id)}
+                      />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
 
       <Button
         variant="contained"

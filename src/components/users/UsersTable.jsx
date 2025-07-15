@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import {
   Paper, Table, TableHead, TableBody, TableRow, TableCell,
   IconButton, TextField, Tooltip, Typography, Autocomplete, Box
@@ -20,11 +20,6 @@ export default function UsersTable({ users, roles, newUser, setNewUser, onAdd, o
   const [editingId, setEditingId] = useState(null)
   const [editedUsers, setEditedUsers] = useState({})
 
-  useEffect(() => {
-    setEditedUsers({})
-    setEditingId(null)
-  }, [users])
-
   const handleChange = (id, field, value) => {
     setEditedUsers(prev => ({
       ...prev,
@@ -41,6 +36,11 @@ export default function UsersTable({ users, roles, newUser, setNewUser, onAdd, o
     if (!editedUsers[id]) return
     await onSave(editedUsers[id])
     toast.success('Пользователь сохранён')
+    setEditingId(null)
+    setEditedUsers({})
+  }
+
+  const cancelEdit = () => {
     setEditingId(null)
     setEditedUsers({})
   }
@@ -189,7 +189,7 @@ export default function UsersTable({ users, roles, newUser, setNewUser, onAdd, o
                           <IconButton onClick={() => saveEdit(user.id)}><SaveIcon /></IconButton>
                         </Tooltip>
                         <Tooltip title="Отмена">
-                          <IconButton onClick={() => setEditingId(null)}><CancelIcon /></IconButton>
+                          <IconButton onClick={cancelEdit}><CancelIcon /></IconButton>
                         </Tooltip>
                       </>
                     ) : (

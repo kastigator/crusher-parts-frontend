@@ -1,9 +1,7 @@
-// components/users/TabsTable.jsx
-
 import React, { useEffect, useState } from 'react'
 import {
   Paper, Table, TableHead, TableBody, TableRow, TableCell,
-  IconButton, TextField, Tooltip, Typography, Autocomplete
+  IconButton, TextField, Tooltip, Autocomplete, Box, CircularProgress
 } from '@mui/material'
 import {
   Save as SaveIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -56,6 +54,7 @@ export default function TabsTable() {
   const [tabs, setTabs] = useState([])
   const [editingId, setEditingId] = useState(null)
   const [newTab, setNewTab] = useState({ name: '', tab_name: '', path: '', icon: '' })
+  const [loading, setLoading] = useState(true)
   const { reloadTabs } = useTabs()
   const sensors = useSensors(useSensor(PointerSensor))
 
@@ -64,11 +63,14 @@ export default function TabsTable() {
   }, [])
 
   const fetchTabs = async () => {
+    setLoading(true)
     try {
       const { data } = await axios.get('/tabs')
       setTabs(data)
     } catch (err) {
       console.error('Ошибка загрузки вкладок:', err)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -148,114 +150,119 @@ export default function TabsTable() {
   const previewSlug = slugify(newTab.name || '').replace(/-/g, '_')
 
   return (
-    <Paper elevation={3} sx={{ p: 2, mt: 4, maxWidth: '100%', overflowX: 'clip' }}>
-      <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-        Вкладки меню
-      </Typography>
+    <Paper elevation={3} sx={{ p: 2, mt: 4, maxWidth: '100%', overflowX: 'auto' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Tooltip title="Добавить вкладку">
+          <IconButton onClick={addTab}><AddIcon /></IconButton>
+        </Tooltip>
+      </Box>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={tabs.map(t => t.id)} strategy={verticalListSortingStrategy}>
-          <Table size="small" sx={{ width: '100%', tableLayout: 'auto' }}>
-            <TableHead>
-              <TableRow>
-                <TableCell />
-                {['Название', 'tab_name', 'path', 'Иконка', 'Действия'].map((h) => (
-                  <TableCell key={h} sx={{ fontWeight: 600 }}>{h}</TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              <TableRow>
-                <TableCell />
-                <TableCell>
-                  <TextField size="small" value={newTab.name} onChange={e => setNewTab({ ...newTab, name: e.target.value })} />
-                </TableCell>
-                <TableCell sx={{ minWidth: 160 }}>{previewSlug}</TableCell>
-                <TableCell sx={{ minWidth: 160 }}>{'/' + previewSlug.replace(/_/g, '-')}</TableCell>
-                <TableCell>
-                  <Autocomplete
-                    options={iconOptions}
-                    value={newTab.icon || null}
-                    onChange={(_, val) => setNewTab({ ...newTab, icon: val || '' })}
-                    renderOption={(props, option) => {
-                      const { key, ...rest } = props
-                      return (
-                        <li key={key} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          {MuiIcons[option] && React.createElement(MuiIcons[option], { fontSize: 'small' })}
-                          {option}
-                        </li>
-                      )
-                    }}
-                    renderInput={(params) => <TextField {...params} size="small" />}
-                    isOptionEqualToValue={(opt, val) => opt === val}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Tooltip title="Добавить">
-                    <IconButton onClick={addTab}><AddIcon /></IconButton>
-                  </Tooltip>
-                </TableCell>
-              </TableRow>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+          <CircularProgress size={32} />
+        </Box>
+      ) : (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={tabs.map(t => t.id)} strategy={verticalListSortingStrategy}>
+            <Table size="small" sx={{ width: '100%', tableLayout: 'auto' }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell />
+                  {['Название', 'tab_name', 'path', 'Иконка', 'Действия'].map((h) => (
+                    <TableCell key={h} sx={{ fontWeight: 600 }}>{h}</TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell />
+                  <TableCell>
+                    <TextField size="small" value={newTab.name} onChange={e => setNewTab({ ...newTab, name: e.target.value })} />
+                  </TableCell>
+                  <TableCell sx={{ minWidth: 160 }}>{previewSlug}</TableCell>
+                  <TableCell sx={{ minWidth: 160 }}>{'/' + previewSlug.replace(/_/g, '-')}</TableCell>
+                  <TableCell>
+                    <Autocomplete
+                      options={iconOptions}
+                      value={newTab.icon || null}
+                      onChange={(_, val) => setNewTab({ ...newTab, icon: val || '' })}
+                      renderOption={(props, option) => {
+                        const Icon = MuiIcons[option]
+                        return (
+                          <li {...props} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {Icon && <Icon fontSize="small" />}
+                            {option}
+                          </li>
+                        )
+                      }}
+                      renderInput={(params) => <TextField {...params} size="small" />}
+                      isOptionEqualToValue={(opt, val) => opt === val}
+                    />
+                  </TableCell>
+                  <TableCell />
+                </TableRow>
 
-              {tabs.map(tab => {
-                const isEditing = editingId === tab.id
-                return (
-                  <TableRow key={tab.id}>
-                    <DragHandleCell id={tab.id} />
-                    {['name', 'tab_name', 'path'].map(field => (
-                      <TableCell key={field}>
-                        {isEditing
-                          ? <TextField size="small" value={tab[field]} onChange={e => handleChange(tab.id, field, e.target.value)} />
-                          : tab[field]}
+                {tabs.map(tab => {
+                  const isEditing = editingId === tab.id
+                  const Icon = MuiIcons[tab.icon]
+                  return (
+                    <TableRow key={tab.id}>
+                      <DragHandleCell id={tab.id} />
+                      {['name', 'tab_name', 'path'].map(field => (
+                        <TableCell key={field}>
+                          {isEditing
+                            ? <TextField size="small" value={tab[field]} onChange={e => handleChange(tab.id, field, e.target.value)} />
+                            : tab[field]}
+                        </TableCell>
+                      ))}
+                      <TableCell>
+                        {isEditing ? (
+                          <Autocomplete
+                            options={iconOptions}
+                            value={tab.icon || null}
+                            onChange={(_, val) => handleChange(tab.id, 'icon', val || '')}
+                            renderOption={(props, option) => {
+                              const Icon = MuiIcons[option]
+                              return (
+                                <li {...props} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  {Icon && <Icon fontSize="small" />}
+                                  {option}
+                                </li>
+                              )
+                            }}
+                            renderInput={(params) => <TextField {...params} size="small" />}
+                            isOptionEqualToValue={(opt, val) => opt === val}
+                          />
+                        ) : (
+                          <Tooltip title={tab.icon || 'Нет иконки'}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {Icon && <Icon fontSize="small" />}
+                              <span style={{ fontSize: 13, opacity: 0.7 }}>{tab.icon}</span>
+                            </span>
+                          </Tooltip>
+                        )}
                       </TableCell>
-                    ))}
-                    <TableCell>
-                      {isEditing ? (
-                        <Autocomplete
-                          options={iconOptions}
-                          value={tab.icon || null}
-                          onChange={(_, val) => handleChange(tab.id, 'icon', val || '')}
-                          renderOption={(props, option) => {
-                            const { key, ...rest } = props
-                            return (
-                              <li key={key} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                {MuiIcons[option] && React.createElement(MuiIcons[option], { fontSize: 'small' })}
-                                {option}
-                              </li>
-                            )
-                          }}
-                          renderInput={(params) => <TextField {...params} size="small" />}
-                          isOptionEqualToValue={(opt, val) => opt === val}
-                        />
-                      ) : (
-                        <Tooltip title={tab.icon || 'Нет иконки'}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {MuiIcons[tab.icon] && React.createElement(MuiIcons[tab.icon], { fontSize: 'small' })}
-                            <span style={{ fontSize: 13, opacity: 0.7 }}>{tab.icon}</span>
-                          </span>
-                        </Tooltip>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {isEditing ? (
-                        <>
-                          <IconButton onClick={() => saveEdit(tab.id)} color="success"><SaveIcon /></IconButton>
-                          <IconButton onClick={() => setEditingId(null)} color="error"><CancelIcon /></IconButton>
-                        </>
-                      ) : (
-                        <>
-                          <IconButton onClick={() => setEditingId(tab.id)}><EditIcon /></IconButton>
-                          <IconButton onClick={() => handleDelete(tab.id, tab.name)}><DeleteIcon /></IconButton>
-                        </>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </SortableContext>
-      </DndContext>
+                      <TableCell>
+                        {isEditing ? (
+                          <>
+                            <IconButton onClick={() => saveEdit(tab.id)} color="success"><SaveIcon /></IconButton>
+                            <IconButton onClick={() => setEditingId(null)} color="error"><CancelIcon /></IconButton>
+                          </>
+                        ) : (
+                          <>
+                            <IconButton onClick={() => setEditingId(tab.id)}><EditIcon /></IconButton>
+                            <IconButton onClick={() => handleDelete(tab.id, tab.name)}><DeleteIcon /></IconButton>
+                          </>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </SortableContext>
+        </DndContext>
+      )}
     </Paper>
   )
 }

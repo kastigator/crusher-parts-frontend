@@ -1,21 +1,21 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
+import { setLogoutHandler } from './authService'
 
 const AuthContext = createContext()
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem('token'))
   const [user, setUser] = useState(() => {
-    const data = localStorage.getItem('userData')
-    if (!data) return null
     try {
-      return JSON.parse(data)
+      const data = localStorage.getItem('userData')
+      return data ? JSON.parse(data) : null
     } catch {
       localStorage.removeItem('userData')
       return null
     }
   })
 
-  // Поддержка изменения token через useEffect (опционально, если хочешь реактивность)
+  // ✅ Храним токен в localStorage, когда он обновляется
   useEffect(() => {
     if (token) {
       localStorage.setItem('token', token)
@@ -24,28 +24,33 @@ export function AuthProvider({ children }) {
     }
   }, [token])
 
+  // ✅ Храним пользователя в localStorage, когда он обновляется
   useEffect(() => {
     if (user) {
-      localStorage.setItem('userData', JSON.stringify(user))
+      try {
+        localStorage.setItem('userData', JSON.stringify(user))
+      } catch {
+        localStorage.removeItem('userData')
+      }
     } else {
       localStorage.removeItem('userData')
     }
   }, [user])
 
-  // ✅ Ключевая часть — сохраняем token и userData немедленно при логине
+  // ✅ Только меняем state — не пишем вручную в localStorage
   const login = (newToken, userData) => {
-    localStorage.setItem('token', newToken)
-    localStorage.setItem('userData', JSON.stringify(userData))
     setToken(newToken)
     setUser(userData)
   }
 
   const logout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('userData')
     setToken(null)
     setUser(null)
   }
+
+  useEffect(() => {
+    setLogoutHandler(logout)
+  }, [])
 
   return (
     <AuthContext.Provider value={{ token, user, login, logout }}>

@@ -1,13 +1,14 @@
 // src/api/axiosInstance.js
 
 import axios from 'axios'
+import { logout } from '../auth/authService' // ✅ добавлено
 
-// Используем переменную окружения для базового URL
 const API_BASE = `${import.meta.env.VITE_API_URL}/api`
+console.log('🔧 API_BASE =', API_BASE)
 
 const instance = axios.create({
   baseURL: API_BASE,
-  withCredentials: true, // нужно для отправки refresh-токена в cookie
+  withCredentials: true,
 })
 
 // ✅ Добавляем access-token в каждый запрос
@@ -65,17 +66,15 @@ instance.interceptors.response.use(
         const newToken = data.token
         localStorage.setItem('token', newToken)
 
-        // ✅ Устанавливаем заголовок по умолчанию
         instance.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
         processQueue(null, newToken)
 
-        // 🔁 Повторяем оригинальный запрос
         originalRequest.headers.Authorization = `Bearer ${newToken}`
         return instance(originalRequest)
       } catch (err) {
         processQueue(err, null)
         localStorage.removeItem('token')
-        window.location.href = '/login'
+        logout() // ✅ корректный сброс без перезагрузки
         return Promise.reject(err)
       } finally {
         isRefreshing = false
