@@ -1,5 +1,9 @@
+// src/components/common/EditableRow.jsx
+
 import React from 'react'
-import { TableRow, TableCell, IconButton, Tooltip, Box } from '@mui/material'
+import {
+  TableRow, TableCell, IconButton, Tooltip, Box
+} from '@mui/material'
 import SaveIcon from '@mui/icons-material/SaveRounded'
 import CancelIcon from '@mui/icons-material/CancelRounded'
 import DeleteIcon from '@mui/icons-material/DeleteRounded'
@@ -21,10 +25,24 @@ export default function EditableRow({
   onResetPassword,
   columns
 }) {
+  const handleKeyDown = (e) => {
+    if (isEditing || isNewRow) {
+      if (e.key === 'Enter') {
+        isNewRow ? onAdd?.() : onSave?.()
+      }
+      if (e.key === 'Escape') {
+        isNewRow
+          ? onChange && onChange(null, '')
+          : onCancel?.()
+      }
+    }
+  }
+
   return (
     <TableRow
-      sx={isEditing ? { backgroundColor: '#eef4ff' } : {}}
       onDoubleClick={() => !isEditing && !isNewRow && onEdit?.(row)}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
     >
       {columns.map(col => (
         <TableCell key={col.field}>
@@ -33,6 +51,7 @@ export default function EditableRow({
               column={col}
               value={row[col.field]}
               onChange={(val) => onChange(col.field, val)}
+              isEditing
             />
           ) : (
             col.display
@@ -67,7 +86,9 @@ export default function EditableRow({
               </Tooltip>
               {onResetPassword && (
                 <Tooltip title="Сбросить пароль">
-                  <IconButton onClick={() => onResetPassword(row)}><VpnKeyIcon fontSize="small" /></IconButton>
+                  <IconButton onClick={() => onResetPassword(row)}>
+                    <VpnKeyIcon fontSize="small" />
+                  </IconButton>
                 </Tooltip>
               )}
             </>
