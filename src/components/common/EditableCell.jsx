@@ -1,96 +1,93 @@
+// src/components/common/EditableCell.jsx
+
 import React from 'react'
 import {
   TextField,
   Checkbox,
-  Select,
   MenuItem,
-  Autocomplete,
-  FormControlLabel
+  Autocomplete
 } from '@mui/material'
-import { fieldRenderers } from './fieldRenderers'
-
-// словарь компонентов по имени
-const EDITOR_COMPONENTS = {
-  TextField,
-  Checkbox,
-  Autocomplete,
-  Select,
-  DatePicker: () => <div>🗓 DatePicker не реализован</div>,
-  DateTimePicker: () => <div>🕓 DateTimePicker не реализован</div>
-}
 
 export default function EditableCell({
+  column,
   value,
-  isEditing = false,
   onChange,
-  editorType = 'text',     // можно не передавать — будет text
-  editorProps = {}
+  isEditing
 }) {
-  const config = fieldRenderers[editorType] || fieldRenderers.text
-  const Editor = EDITOR_COMPONENTS[config.editor] || TextField
-  const mergedProps = { ...config.editorProps, ...editorProps }
+  const { type = 'text', inputType = 'text', editorProps = {} } = column
 
   if (!isEditing) {
-    // Простое отображение без ValueDisplay (или можно вставить)
-    if (editorType === 'boolean' || editorType === 'checkbox') {
-      return value ? '✔️' : '—'
+    // Отображение значения в режиме просмотра
+    if (type === 'enum') {
+      const option = editorProps.options?.find(opt =>
+        editorProps.getOptionValue?.(opt) === value
+      )
+      return <>{editorProps.getOptionLabel?.(option) || value}</>
     }
-    return value ?? '—'
+
+    if (type === 'checkbox') {
+      return <Checkbox checked={!!value} disabled />
+    }
+
+    return <>{value}</>
   }
 
-  // Обработка специальных компонентов
-  if (config.editor === 'Checkbox') {
-    return (
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={!!value}
-            onChange={(e) => onChange(e.target.checked)}
-            {...mergedProps}
-          />
-        }
-        label=""
-      />
-    )
-  }
+  // Режим редактирования
+  switch (type) {
+    case 'text':
+      return (
+        <TextField
+          value={value || ''}
+          onChange={e => onChange(e.target.value)}
+          type={inputType || 'text'}
+          fullWidth
+          size="small"
+        />
+      )
 
-  if (config.editor === 'Select') {
-    return (
-      <Select
-        size="small"
-        value={value ?? ''}
-        onChange={(e) => onChange(e.target.value)}
-        {...mergedProps}
-      >
-        {(mergedProps.options || []).map((opt) => (
-          <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-        ))}
-      </Select>
-    )
-  }
+    case 'enum':
+      return (
+        <Autocomplete
+          value={editorProps.options?.find(opt =>
+            editorProps.getOptionValue(opt) === value
+          ) || null}
+          options={editorProps.options || []}
+          getOptionLabel={editorProps.getOptionLabel || (opt => opt?.label || '')}
+          onChange={(e, newValue) =>
+            onChange(editorProps.getOptionValue?.(newValue))
+          }
+          renderInput={(params) => (
+            <TextField {...params} variant="outlined" size="small" />
+          )}
+        />
+      )
 
-  if (config.editor === 'Autocomplete') {
-    return (
-      <Autocomplete
-        options={mergedProps.options || []}
-        value={value || null}
-        onChange={(_, newVal) => onChange(newVal)}
-        renderInput={(params) => (
-          <TextField {...params} size="small" />
-        )}
-        isOptionEqualToValue={(a, b) => a === b}
-        {...mergedProps}
-      />
-    )
-  }
+    case 'checkbox':
+      return (
+        <Checkbox
+          checked={!!value}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+      )
 
-  // По умолчанию — текстовое поле
-  return (
-    <Editor
-      size="small"
-      value={value ?? ''}
-      onChange={(e) => onChange(e.target.value)}
-      {...mergedProps}
-    />
-  )
+    case 'autocomplete':
+      return (
+        <TextField
+          select
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          fullWidth
+          size="small"
+        >
+          {(editorProps.options || []).map((option, idx) => (
+            <MenuItem key={idx} value={option}>
+              {option}
+            </MenuItem>
+          ))}
+        </TextField>
+      )
+
+    default:
+      return <>{value}</>
+  }
 }
