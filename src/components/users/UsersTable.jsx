@@ -1,7 +1,9 @@
+// src/components/users/UsersTable.jsx
+
 import React, { useEffect, useState } from 'react'
 import axios from '@/api/axiosInstance'
 import BaseTable from '@/components/common/BaseTable'
-import { usersTableColumns } from '@/components/common/tableDefinitions'
+import { usersTableColumns } from "@/components/common/tableDefinitions"
 import PhoneField from '@/components/common/PhoneField'
 import EmailField from '@/components/common/EmailField'
 

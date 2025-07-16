@@ -1,4 +1,5 @@
 // src/context/TabsContext.jsx
+
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import axios from '@/api/axiosInstance'
 import { useAuth } from '../auth/AuthContext'
@@ -9,7 +10,6 @@ export const TabsProvider = ({ children }) => {
   const [tabs, setTabs] = useState([])
   const [permissions, setPermissions] = useState([])
   const [loading, setLoading] = useState(false)
-  const [hasFetched, setHasFetched] = useState(false)
 
   const { token, user } = useAuth()
 
@@ -39,20 +39,13 @@ export const TabsProvider = ({ children }) => {
   }
 
   useEffect(() => {
-    const canFetch = token && user?.id
-
-    if (canFetch && !hasFetched) {
+    if (token && user?.id) {
       fetchTabs()
-      setHasFetched(true)
-    }
-
-    // 👇 Только если user/token обнулились — сброс
-    if (!canFetch && hasFetched) {
+    } else {
       setTabs([])
       setPermissions([])
-      setHasFetched(false)
     }
-  }, [token, user?.id, hasFetched])
+  }, [token, user?.id])
 
   return (
     <TabsContext.Provider value={{ tabs, permissions, loading, reloadTabs: fetchTabs }}>

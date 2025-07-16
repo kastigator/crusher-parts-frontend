@@ -1,5 +1,3 @@
-// src/components/common/BaseTable.jsx
-
 import React, { useState } from 'react'
 import {
   Table, TableHead, TableBody, TableRow, TableCell, Paper
@@ -16,7 +14,8 @@ export default function BaseTable({
   onSave,
   onDelete,
   onResetPassword,
-  title
+  title,
+  RowWrapper
 }) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState({})
@@ -51,7 +50,11 @@ export default function BaseTable({
   const updateNewValue = (field, value) => {
     setEditingId(null)
     setEditedRow({})
-    setNewRow(prev => ({ ...prev, [field]: value }))
+    if (typeof setNewRow === 'function' && setNewRow.length === 2) {
+      setNewRow(field, value)
+    } else {
+      setNewRow(prev => ({ ...prev, [field]: value }))
+    }
   }
 
   const clearNewRow = () => {
@@ -70,9 +73,9 @@ export default function BaseTable({
         mt: 2,
         backgroundColor: '#fff',
         borderRadius: 2,
-        overflow: 'visible', // 👈 убираем внутренний скролл
-        width: 'fit-content', // 👈 таблица шириной по содержимому
-        maxWidth: '100%'      // 👈 но не ломает layout
+        overflow: 'visible',
+        width: 'fit-content',
+        maxWidth: '100%'
       }}
     >
       {title && <TableToolbar title={title} />}
@@ -80,8 +83,8 @@ export default function BaseTable({
       <Table
         size="small"
         sx={{
-          tableLayout: 'auto', // 👈 колонки растягиваются естественно
-          minWidth: 800        // 👈 разумный минимум
+          tableLayout: 'auto',
+          minWidth: 800
         }}
       >
         <TableHead>
@@ -99,30 +102,51 @@ export default function BaseTable({
         </TableHead>
 
         <TableBody>
-          <EditableRow
-            row={newRow}
-            isNewRow
-            isEditing={false}
-            onChange={updateNewValue}
-            onAdd={onAdd}
-            onCancel={clearNewRow}
-            columns={columns}
-          />
-
-          {data.map(row => (
+          {/* строка добавления */}
+          <TableRow>
             <EditableRow
-              key={row.id}
-              row={editingId === row.id ? editedRow : row}
-              isEditing={editingId === row.id}
-              onEdit={startEdit}
-              onCancel={cancelEdit}
-              onChange={updateEditedValue}
-              onSave={saveEdit}
-              onDelete={onDelete}
-              onResetPassword={onResetPassword}
+              row={newRow}
+              isNewRow
+              isEditing={false}
+              onChange={updateNewValue}
+              onAdd={onAdd}
+              onCancel={clearNewRow}
               columns={columns}
             />
-          ))}
+          </TableRow>
+
+          {/* строки данных */}
+          {data.map(row =>
+            RowWrapper ? (
+              <RowWrapper key={row.id} id={row.id}>
+                <EditableRow
+                  row={editingId === row.id ? editedRow : row}
+                  isEditing={editingId === row.id}
+                  onEdit={startEdit}
+                  onCancel={cancelEdit}
+                  onChange={updateEditedValue}
+                  onSave={saveEdit}
+                  onDelete={onDelete}
+                  onResetPassword={onResetPassword}
+                  columns={columns}
+                />
+              </RowWrapper>
+            ) : (
+              <TableRow key={row.id}>
+                <EditableRow
+                  row={editingId === row.id ? editedRow : row}
+                  isEditing={editingId === row.id}
+                  onEdit={startEdit}
+                  onCancel={cancelEdit}
+                  onChange={updateEditedValue}
+                  onSave={saveEdit}
+                  onDelete={onDelete}
+                  onResetPassword={onResetPassword}
+                  columns={columns}
+                />
+              </TableRow>
+            )
+          )}
 
           {data.length === 0 && (
             <TableRow>

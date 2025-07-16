@@ -1,66 +1,26 @@
-// src/components/users/TabsTable.jsx
-
 import React, { useEffect, useState } from 'react'
 import axios from '@/api/axiosInstance'
-import { useTabs } from '@/context/TabsContext'
 import BaseTable from '@/components/common/BaseTable'
-import * as MuiIcons from '@mui/icons-material'
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors
-} from '@dnd-kit/core'
-import {
-  arrayMove,
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { useTabs } from '@/context/TabsContext'
+import { tabsTableColumns } from '@/components/common/tableDefinitions'
+import { DndContext, useSensor, useSensors, PointerSensor, closestCenter } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { slugify } from 'transliteration'
+import SortableRow from '@/components/common/SortableRow'
 
 const emptyTab = {
-  name: '', tab_name: '', path: '', icon: '', order: 0
-}
-
-function SortableItem({ id, children }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition
-  }
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      {children}
-    </div>
-  )
+  name: '',
+  tab_name: '',
+  path: '',
+  icon: '',
+  order: 0,
+  _auto: true
 }
 
 export default function TabsTable() {
   const [tabs, setTabs] = useState([])
   const [newTab, setNewTab] = useState(emptyTab)
   const { reloadTabs } = useTabs()
-
-  const iconOptions = Object.keys(MuiIcons)
-
-  const columns = [
-    { field: 'name', title: 'Название', type: 'text', required: true },
-    { field: 'tab_name', title: 'Кодовое имя', type: 'text', required: true },
-    { field: 'path', title: 'Путь (URL)', type: 'text', required: true },
-    {
-      field: 'icon',
-      title: 'Иконка',
-      type: 'autocomplete',
-      editorProps: {
-        options: iconOptions,
-        freeSolo: true
-      }
-    },
-    { field: 'order', title: 'Порядок', type: 'number' }
-  ]
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -69,22 +29,6 @@ export default function TabsTable() {
   useEffect(() => {
     loadTabs()
   }, [])
-
-  useEffect(() => {
-    if (newTab.name && (!newTab.tab_name || !newTab.path)) {
-      const slug = newTab.name
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, '_')
-        .replace(/[^\w_]/g, '')
-
-      setNewTab(prev => ({
-        ...prev,
-        tab_name: prev.tab_name || slug,
-        path: prev.path || `/${slug}`
-      }))
-    }
-  }, [newTab.name])
 
   const loadTabs = async () => {
     try {
@@ -96,9 +40,33 @@ export default function TabsTable() {
     }
   }
 
+  const handleNewTabChange = (field, value) => {
+    setNewTab(prev => {
+      const updated = { ...prev, [field]: value }
+
+      if (field === 'name') {
+        const slug = slugify(value, { lowercase: true, separator: '_' })
+        return {
+          ...updated,
+          tab_name: prev._auto ? slug : prev.tab_name,
+          path: prev._auto ? `/${slug}` : prev.path,
+          _auto: true
+        }
+      }
+
+      if (['tab_name', 'path'].includes(field)) {
+        updated._auto = false
+      }
+
+      return updated
+    })
+  }
+
   const handleAdd = async () => {
     try {
-      await axios.post('/tabs', newTab)
+      const payload = { ...newTab }
+      delete payload._auto
+      await axios.post('/tabs', payload)
       setNewTab(emptyTab)
       await loadTabs()
       reloadTabs()
@@ -109,7 +77,9 @@ export default function TabsTable() {
 
   const handleSave = async (tab) => {
     try {
-      await axios.put(`/tabs/${tab.id}`, tab)
+      const payload = { ...tab }
+      delete payload._auto
+      await axios.put(`/tabs/${tab.id}`, payload)
       await loadTabs()
       reloadTabs()
     } catch (err) {
@@ -141,58 +111,35 @@ export default function TabsTable() {
 
   const handleDragEnd = (event) => {
     const { active, over } = event
-    if (active.id !== over.id) {
-      const oldIndex = tabs.findIndex(item => item.id === active.id)
-      const newIndex = tabs.findIndex(item => item.id === over.id)
+    if (!over || active.id === over.id) return
 
-      const newData = arrayMove(tabs, oldIndex, newIndex)
-        .map((item, index) => ({ ...item, order: index + 1 }))
+    const oldIndex = tabs.findIndex(item => item.id === active.id)
+    const newIndex = tabs.findIndex(item => item.id === over.id)
 
-      setTabs(newData)
-      handleOrderChange(newData)
-    }
+    const newData = arrayMove(tabs, oldIndex, newIndex)
+      .map((item, index) => ({ ...item, order: index + 1 }))
+
+    setTabs(newData)
+    handleOrderChange(newData)
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={handleDragEnd}
-    >
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext
-        items={tabs.map(item => item.id)}
+        items={tabs.map(tab => tab.id).filter(Boolean)}
         strategy={verticalListSortingStrategy}
       >
-        {tabs.map((item) => {
-          const Icon = MuiIcons[item.icon] || MuiIcons.HelpOutline
-          return (
-            <SortableItem key={item.id} id={item.id}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Icon fontSize="small" />
-                <BaseTable
-                  data={[item]}
-                  columns={columns}
-                  newRow={null}
-                  setNewRow={() => {}}
-                  onAdd={handleAdd}
-                  onSave={handleSave}
-                  onDelete={handleDelete}
-                  disableToolbar
-                />
-              </div>
-            </SortableItem>
-          )
-        })}
+        <BaseTable
+          data={tabs}
+          columns={tabsTableColumns}
+          newRow={newTab}
+          setNewRow={handleNewTabChange}
+          onAdd={handleAdd}
+          onSave={handleSave}
+          onDelete={handleDelete}
+          RowWrapper={SortableRow}
+        />
       </SortableContext>
-
-      <BaseTable
-        data={[]}
-        columns={columns}
-        newRow={newTab}
-        setNewRow={setNewTab}
-        onAdd={handleAdd}
-        disableToolbar
-      />
     </DndContext>
   )
 }

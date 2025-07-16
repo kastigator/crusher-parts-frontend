@@ -1,10 +1,7 @@
-// src/components/common/EditableCell.jsx
-
 import React from 'react'
 import {
   TextField,
   Checkbox,
-  MenuItem,
   Autocomplete
 } from '@mui/material'
 
@@ -36,15 +33,14 @@ export default function EditableCell({
       return (
         <TextField
           value={value || ''}
-          onChange={e => onChange(e.target.value)}
-          type={inputType || 'text'}
-          fullWidth
-          size="small"
-          sx={{
-            backgroundColor: '#fffde7',
-            width: column.width,
-            '& .MuiOutlinedInput-root.Mui-focused': {
-              boxShadow: '0 0 0 2px #fbc02d',
+          type={inputType}
+          onChange={e => {
+            const val = e.target.value
+            onChange(column.field, val)
+
+            // Автоотключение автозаполнения tab_name и path
+            if (['tab_name', 'path'].includes(column.field)) {
+              onChange('_auto', false)
             }
           }}
         />
@@ -54,12 +50,12 @@ export default function EditableCell({
       return (
         <Autocomplete
           value={editorProps.options?.find(opt =>
-            editorProps.getOptionValue(opt) === value
+            editorProps.getOptionValue?.(opt) === value
           ) || null}
           options={editorProps.options || []}
           getOptionLabel={editorProps.getOptionLabel || (opt => opt?.label || '')}
           onChange={(e, newValue) =>
-            onChange(editorProps.getOptionValue?.(newValue))
+            onChange(column.field, editorProps.getOptionValue?.(newValue))
           }
           renderInput={(params) => (
             <TextField
@@ -68,7 +64,7 @@ export default function EditableCell({
               size="small"
               sx={{
                 backgroundColor: '#fffde7',
-                width: column.width,
+                width,
                 '& .MuiOutlinedInput-root.Mui-focused': {
                   boxShadow: '0 0 0 2px #fbc02d',
                 }
@@ -80,27 +76,37 @@ export default function EditableCell({
 
     case 'autocomplete':
       return (
-        <TextField
-          select
+        <Autocomplete
           value={value || ''}
-          onChange={(e) => onChange(e.target.value)}
-          fullWidth
-          size="small"
-          sx={{ width: column.width }}
-        >
-          {(editorProps.options || []).map((option, idx) => (
-            <MenuItem key={idx} value={option}>
-              {option}
-            </MenuItem>
-          ))}
-        </TextField>
+          onChange={(e, newValue) => onChange(column.field, newValue)}
+          options={editorProps.options || []}
+          freeSolo={editorProps.freeSolo || false}
+          getOptionLabel={editorProps.getOptionLabel || (opt =>
+            typeof opt === 'string' ? opt : opt?.label || ''
+          )}
+          renderOption={editorProps.renderOption}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              variant="outlined"
+              size="small"
+              sx={{
+                backgroundColor: '#fffde7',
+                width,
+                '& .MuiOutlinedInput-root.Mui-focused': {
+                  boxShadow: '0 0 0 2px #fbc02d',
+                }
+              }}
+            />
+          )}
+        />
       )
 
     case 'checkbox':
       return (
         <Checkbox
           checked={!!value}
-          onChange={(e) => onChange(e.target.checked)}
+          onChange={(e) => onChange(column.field, e.target.checked)}
         />
       )
 

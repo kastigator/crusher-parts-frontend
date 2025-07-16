@@ -1,8 +1,6 @@
-// src/components/common/EditableRow.jsx
-
 import React from 'react'
 import {
-  TableRow, TableCell, IconButton, Tooltip, Box
+  TableCell, IconButton, Tooltip, Box
 } from '@mui/material'
 import SaveIcon from '@mui/icons-material/SaveRounded'
 import CancelIcon from '@mui/icons-material/CancelRounded'
@@ -51,11 +49,7 @@ export default function EditableRow({
   }
 
   return (
-    <TableRow
-      onDoubleClick={() => !isEditing && !isNewRow && onEdit?.(row)}
-      onKeyDown={handleKeyDown}
-      tabIndex={0}
-    >
+    <>
       {columns.map(col => (
         <TableCell
           key={col.field}
@@ -64,13 +58,13 @@ export default function EditableRow({
           {isEditing || isNewRow ? (
             <EditableCell
               column={col}
-              value={row?.[col.field]} // ✅ безопасно
-              onChange={(val) => onChange(col.field, val)}
+              value={row?.[col.field]}
+              onChange={onChange}
               isEditing
             />
           ) : (
             col.display
-              ? col.display?.(row?.[col.field], row) || '' // ✅ безопасно
+              ? col.display?.(row?.[col.field], row) || ''
               : (row?.[col.field] ?? '')
           )}
         </TableCell>
@@ -114,6 +108,6 @@ export default function EditableRow({
           )}
         </Box>
       </TableCell>
-    </TableRow>
+    </>
   )
 }
