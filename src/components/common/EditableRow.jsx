@@ -38,18 +38,17 @@ export default function EditableRow({
   }
 
   const handleConfirmDelete = async () => {
-  const confirmed = await confirmAction({
-    title: 'Удаление записи',
-    text: `Вы действительно хотите удалить "${row?.username || row?.name || 'эту запись'}"?`,
-    confirmButtonText: 'Удалить',
-    cancelButtonText: 'Отмена'
-  })
+    const confirmed = await confirmAction({
+      title: 'Удаление записи',
+      text: `Вы действительно хотите удалить "${row?.username || row?.name || 'эту запись'}"?`,
+      confirmButtonText: 'Удалить',
+      cancelButtonText: 'Отмена'
+    })
 
-  if (confirmed) {
-    onDelete?.(row)
+    if (confirmed) {
+      onDelete?.(row)
+    }
   }
-}
-
 
   return (
     <TableRow
@@ -65,14 +64,14 @@ export default function EditableRow({
           {isEditing || isNewRow ? (
             <EditableCell
               column={col}
-              value={row[col.field]}
+              value={row?.[col.field]} // ✅ безопасно
               onChange={(val) => onChange(col.field, val)}
               isEditing
             />
           ) : (
             col.display
-              ? col.display(row[col.field], row)
-              : (row[col.field] ?? '')
+              ? col.display?.(row?.[col.field], row) || '' // ✅ безопасно
+              : (row?.[col.field] ?? '')
           )}
         </TableCell>
       ))}
