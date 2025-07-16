@@ -8,20 +8,22 @@ export async function confirmAction({
   text = '',
   confirmButtonText = 'Удалить',
   cancelButtonText = 'Отмена',
-  icon = 'warning'
+  icon = 'question' // 🎯 более нейтрально, чем 'warning'
 } = {}) {
   const result = await MySwal.fire({
     title,
-    html: `<p style="margin-top: 0.4em; font-size: 14px; color: #444;">${text}</p>`,
+    html: text
+      ? `<p style="margin-top: 0.6em; font-size: 14px; color: #444;">${text}</p>`
+      : '',
     icon,
-    width: 400,
-    padding: '1.4em',
+    width: 420,
+    padding: '1.6em',
     background: '#fff',
     showCancelButton: true,
     confirmButtonText,
     cancelButtonText,
-    confirmButtonColor: '#e53935',
-    cancelButtonColor: '#e0e0e0',
+    confirmButtonColor: '#2563eb',  // primary
+    cancelButtonColor: '#e0e0e0',    // neutral
     customClass: {
       popup: 'sweet-dialog',
       title: 'sweet-title',

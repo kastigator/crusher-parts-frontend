@@ -2,10 +2,17 @@ import React, { useEffect, useState } from 'react'
 import axios from '@/api/axiosInstance'
 import BaseTable from '@/components/common/BaseTable'
 import { usersTableColumns } from '@/components/common/tableDefinitions'
+import PhoneField from '@/components/common/PhoneField'
+import EmailField from '@/components/common/EmailField'
 
 const emptyUser = {
-  username: '', password: '', full_name: '',
-  email: '', phone: '', position: '', role_id: null
+  username: '',
+  password: '',
+  full_name: '',
+  email: '',
+  phone: '',
+  position: '',
+  role_id: null
 }
 
 export default function UsersTable() {
@@ -59,8 +66,6 @@ export default function UsersTable() {
     }
   }
 
-  const roleMap = Object.fromEntries(roles.map(r => [r.id, r.name]))
-
   const columns = usersTableColumns.map(col => {
     if (col.field === 'role_id') {
       return {
@@ -69,9 +74,33 @@ export default function UsersTable() {
           ...col.editorProps,
           options: roles
         },
-        valueGetter: (row) => roleMap[row.role_id] || '—'
+        display: (value, row) => {
+          const role = roles.find(r => r.id === value)
+          return role?.name || value
+        }
       }
     }
+
+    if (col.field === 'phone') {
+      return {
+        ...col,
+        display: (value) => <PhoneField value={value} readOnly />,
+        editor: (value, onChange) => (
+          <PhoneField value={value} onChange={onChange} />
+        )
+      }
+    }
+
+    if (col.field === 'email') {
+      return {
+        ...col,
+        display: (value) => <EmailField value={value} readOnly />,
+        editor: (value, onChange) => (
+          <EmailField value={value} onChange={onChange} />
+        )
+      }
+    }
+
     return col
   })
 

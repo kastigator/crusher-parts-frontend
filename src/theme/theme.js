@@ -1,3 +1,4 @@
+// src/theme/theme.js
 import { createTheme } from '@mui/material/styles';
 
 const theme = createTheme({
@@ -23,7 +24,6 @@ const theme = createTheme({
     MuiTextField: {
       defaultProps: {
         variant: 'standard',
-        // ⛔ disableUnderline удалено, чтобы не было warning
       },
     },
     MuiAutocomplete: {
@@ -42,8 +42,12 @@ const theme = createTheme({
     MuiTableRow: {
       styleOverrides: {
         root: {
+          height: 42,
           transition: 'background-color 0.2s ease',
           '&:hover': { backgroundColor: '#f9fbff' },
+          '&:nth-of-type(odd)': {
+            backgroundColor: '#fcfcfc',
+          },
         },
       },
     },
@@ -53,9 +57,15 @@ const theme = createTheme({
           fontWeight: 600,
           fontSize: '0.85rem',
           color: '#444',
+          backgroundColor: '#f3f6fa',
+          padding: '6px 12px',
+          position: 'sticky',
+          top: 0,
+          zIndex: 1,
         },
         body: {
           fontSize: '0.85rem',
+          padding: '6px 12px',
         },
       },
     },

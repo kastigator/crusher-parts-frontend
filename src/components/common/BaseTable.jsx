@@ -1,3 +1,5 @@
+// src/components/common/BaseTable.jsx
+
 import React, { useState } from 'react'
 import {
   Table, TableHead, TableBody, TableRow, TableCell, Paper
@@ -20,6 +22,11 @@ export default function BaseTable({
   const [editedRow, setEditedRow] = useState({})
 
   const startEdit = (row) => {
+    const empty = {}
+    columns.forEach(col => {
+      empty[col.field] = col.type === 'checkbox' ? false : ''
+    })
+    setNewRow(empty)
     setEditingId(row.id)
     setEditedRow({ ...row })
   }
@@ -42,34 +49,66 @@ export default function BaseTable({
   }
 
   const updateNewValue = (field, value) => {
+    setEditingId(null)
+    setEditedRow({})
     setNewRow(prev => ({ ...prev, [field]: value }))
   }
 
+  const clearNewRow = () => {
+    const empty = {}
+    columns.forEach(col => {
+      empty[col.field] = col.type === 'checkbox' ? false : ''
+    })
+    setNewRow(empty)
+  }
+
   return (
-    <Paper elevation={3} sx={{ p: 2, mt: 2, overflowX: 'auto' }}>
+    <Paper
+      elevation={3}
+      sx={{
+        p: 2,
+        mt: 2,
+        backgroundColor: '#fff',
+        borderRadius: 2,
+        overflow: 'visible', // 👈 убираем внутренний скролл
+        width: 'fit-content', // 👈 таблица шириной по содержимому
+        maxWidth: '100%'      // 👈 но не ломает layout
+      }}
+    >
       {title && <TableToolbar title={title} />}
-      <Table size="small" sx={{ minWidth: 960 }}>
+
+      <Table
+        size="small"
+        sx={{
+          tableLayout: 'auto', // 👈 колонки растягиваются естественно
+          minWidth: 800        // 👈 разумный минимум
+        }}
+      >
         <TableHead>
           <TableRow sx={{ backgroundColor: '#f3f6fa' }}>
             {columns.map(col => (
-              <TableCell key={col.field}>{col.title}</TableCell>
+              <TableCell
+                key={col.field}
+                sx={col.width ? { width: col.width, maxWidth: col.width } : {}}
+              >
+                {col.title}
+              </TableCell>
             ))}
             <TableCell sx={{ width: 140, minWidth: 140 }}>Действия</TableCell>
           </TableRow>
         </TableHead>
 
         <TableBody>
-          {/* Строка добавления */}
           <EditableRow
             row={newRow}
             isNewRow
             isEditing={false}
             onChange={updateNewValue}
             onAdd={onAdd}
+            onCancel={clearNewRow}
             columns={columns}
           />
 
-          {/* Строки таблицы */}
           {data.map(row => (
             <EditableRow
               key={row.id}
@@ -84,9 +123,16 @@ export default function BaseTable({
               columns={columns}
             />
           ))}
+
+          {data.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={columns.length + 1} align="center" sx={{ color: '#888', fontStyle: 'italic' }}>
+                Нет записей
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
     </Paper>
   )
 }
-

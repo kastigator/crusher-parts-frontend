@@ -1,3 +1,5 @@
+// src/components/common/LayoutBody.jsx
+
 import React from 'react'
 import { Outlet } from 'react-router-dom'
 import { Box, CircularProgress } from '@mui/material'
@@ -18,7 +20,8 @@ const LayoutBody = () => {
           display: 'flex',
           flexDirection: 'column',
           minHeight: 0,
-          overflowX: 'auto' // ✅ добавлена горизонтальная прокрутка
+          width: '100vw',      // 👈 расширяем до ширины окна
+          overflowX: 'auto'    // 👈 scroll появляется здесь
         }}
       >
         <Header />

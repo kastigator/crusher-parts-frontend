@@ -14,10 +14,9 @@ export default function EditableCell({
   onChange,
   isEditing
 }) {
-  const { type = 'text', inputType = 'text', editorProps = {} } = column
+  const { type = 'text', inputType = 'text', editorProps = {}, width } = column
 
   if (!isEditing) {
-    // Отображение значения в режиме просмотра
     if (type === 'enum') {
       const option = editorProps.options?.find(opt =>
         editorProps.getOptionValue?.(opt) === value
@@ -32,7 +31,6 @@ export default function EditableCell({
     return <>{value}</>
   }
 
-  // Режим редактирования
   switch (type) {
     case 'text':
       return (
@@ -42,6 +40,13 @@ export default function EditableCell({
           type={inputType || 'text'}
           fullWidth
           size="small"
+          sx={{
+            backgroundColor: '#fffde7',
+            width: column.width,
+            '& .MuiOutlinedInput-root.Mui-focused': {
+              boxShadow: '0 0 0 2px #fbc02d',
+            }
+          }}
         />
       )
 
@@ -57,16 +62,19 @@ export default function EditableCell({
             onChange(editorProps.getOptionValue?.(newValue))
           }
           renderInput={(params) => (
-            <TextField {...params} variant="outlined" size="small" />
+            <TextField
+              {...params}
+              variant="outlined"
+              size="small"
+              sx={{
+                backgroundColor: '#fffde7',
+                width: column.width,
+                '& .MuiOutlinedInput-root.Mui-focused': {
+                  boxShadow: '0 0 0 2px #fbc02d',
+                }
+              }}
+            />
           )}
-        />
-      )
-
-    case 'checkbox':
-      return (
-        <Checkbox
-          checked={!!value}
-          onChange={(e) => onChange(e.target.checked)}
         />
       )
 
@@ -78,6 +86,7 @@ export default function EditableCell({
           onChange={(e) => onChange(e.target.value)}
           fullWidth
           size="small"
+          sx={{ width: column.width }}
         >
           {(editorProps.options || []).map((option, idx) => (
             <MenuItem key={idx} value={option}>
@@ -85,6 +94,14 @@ export default function EditableCell({
             </MenuItem>
           ))}
         </TextField>
+      )
+
+    case 'checkbox':
+      return (
+        <Checkbox
+          checked={!!value}
+          onChange={(e) => onChange(e.target.checked)}
+        />
       )
 
     default:

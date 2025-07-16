@@ -11,6 +11,7 @@ import EditIcon from '@mui/icons-material/EditRounded'
 import AddIcon from '@mui/icons-material/AddRounded'
 import VpnKeyIcon from '@mui/icons-material/VpnKeyRounded'
 import EditableCell from './EditableCell'
+import { confirmAction } from '@/utils/confirmAction'
 
 export default function EditableRow({
   row,
@@ -31,12 +32,24 @@ export default function EditableRow({
         isNewRow ? onAdd?.() : onSave?.()
       }
       if (e.key === 'Escape') {
-        isNewRow
-          ? onChange && onChange(null, '')
-          : onCancel?.()
+        onCancel?.()
       }
     }
   }
+
+  const handleConfirmDelete = async () => {
+  const confirmed = await confirmAction({
+    title: 'Удаление записи',
+    text: `Вы действительно хотите удалить "${row?.username || row?.name || 'эту запись'}"?`,
+    confirmButtonText: 'Удалить',
+    cancelButtonText: 'Отмена'
+  })
+
+  if (confirmed) {
+    onDelete?.(row)
+  }
+}
+
 
   return (
     <TableRow
@@ -45,7 +58,10 @@ export default function EditableRow({
       tabIndex={0}
     >
       {columns.map(col => (
-        <TableCell key={col.field}>
+        <TableCell
+          key={col.field}
+          sx={col.width ? { width: col.width, maxWidth: col.width } : {}}
+        >
           {isEditing || isNewRow ? (
             <EditableCell
               column={col}
@@ -74,7 +90,9 @@ export default function EditableRow({
             </>
           ) : isNewRow ? (
             <Tooltip title="Добавить">
-              <IconButton onClick={onAdd}><AddIcon /></IconButton>
+              <IconButton onClick={onAdd} color="primary">
+                <AddIcon />
+              </IconButton>
             </Tooltip>
           ) : (
             <>
@@ -82,7 +100,9 @@ export default function EditableRow({
                 <IconButton onClick={() => onEdit(row)}><EditIcon /></IconButton>
               </Tooltip>
               <Tooltip title="Удалить">
-                <IconButton onClick={() => onDelete(row)}><DeleteIcon /></IconButton>
+                <IconButton onClick={handleConfirmDelete}>
+                  <DeleteIcon />
+                </IconButton>
               </Tooltip>
               {onResetPassword && (
                 <Tooltip title="Сбросить пароль">

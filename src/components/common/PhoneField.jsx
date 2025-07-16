@@ -1,4 +1,5 @@
 // components/common/PhoneField.jsx
+
 import React from 'react'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import PhoneIcon from '@mui/icons-material/Phone'
@@ -23,10 +24,20 @@ export default function PhoneField({ value, onChange, readOnly = false, emptyTex
     const copyToClipboard = () => navigator.clipboard.writeText(value)
 
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          minWidth: 0
+        }}
+      >
         <PhoneIcon fontSize="small" color="action" />
         <a href={`tel:${value}`} style={{ color: '#1976d2', textDecoration: 'none' }}>
-          <Typography variant="body2">{formatted}</Typography>
+          <Typography variant="body2" noWrap>{formatted}</Typography>
         </a>
         <Tooltip title="Скопировать номер">
           <IconButton size="small" onClick={copyToClipboard}>
