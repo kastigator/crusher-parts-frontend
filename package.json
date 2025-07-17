@@ -42,6 +42,7 @@
     "react-input-mask": "^2.0.4",
     "react-markdown": "^10.1.0",
     "react-places-autocomplete": "^7.3.0",
+    "react-resize-detector": "^12.1.0",
     "react-router-dom": "^7.6.3",
     "read-excel-file": "^5.8.8",
     "recharts": "^3.0.2",

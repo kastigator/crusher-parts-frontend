@@ -1,12 +1,17 @@
-import React, { useEffect, useState } from 'react'
+// src/components/users/TabsTable.jsx
+
+import React, { useEffect, useMemo, useState } from 'react'
+import * as MuiIcons from '@mui/icons-material'
+import { TextField, Autocomplete } from '@mui/material'
 import axios from '@/api/axiosInstance'
-import BaseTable from '@/components/common/BaseTable'
 import { useTabs } from '@/context/TabsContext'
-import { tabsTableColumns } from '@/components/common/tableDefinitions'
-import { DndContext, useSensor, useSensors, PointerSensor, closestCenter } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
-import { slugify } from 'transliteration'
+import { generateTabName } from '@/utils/textUtils'
 import SortableRow from '@/components/common/SortableRow'
+import BaseTable from '@/components/common/BaseTable'
+import { arrayMove } from '@dnd-kit/sortable'
+import Swal from 'sweetalert2'
+
+const iconOptions = Object.keys(MuiIcons)
 
 const emptyTab = {
   name: '',
@@ -14,132 +19,206 @@ const emptyTab = {
   path: '',
   icon: '',
   order: 0,
-  _auto: true
+  enabled: true
 }
 
 export default function TabsTable() {
+  const { reloadTabs } = useTabs()
   const [tabs, setTabs] = useState([])
   const [newTab, setNewTab] = useState(emptyTab)
-  const { reloadTabs } = useTabs()
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
-  )
-
-  useEffect(() => {
-    loadTabs()
-  }, [])
+  const [manualEdit, setManualEdit] = useState({})
 
   const loadTabs = async () => {
     try {
       const res = await axios.get('/tabs')
-      const sorted = [...res.data].sort((a, b) => a.order - b.order)
+      const sorted = res.data.sort((a, b) => a.order - b.order)
       setTabs(sorted)
     } catch (err) {
       console.error('Ошибка загрузки вкладок:', err)
     }
   }
 
-  const handleNewTabChange = (field, value) => {
-    setNewTab(prev => {
-      const updated = { ...prev, [field]: value }
-
-      if (field === 'name') {
-        const slug = slugify(value, { lowercase: true, separator: '_' })
-        return {
-          ...updated,
-          tab_name: prev._auto ? slug : prev.tab_name,
-          path: prev._auto ? `/${slug}` : prev.path,
-          _auto: true
-        }
-      }
-
-      if (['tab_name', 'path'].includes(field)) {
-        updated._auto = false
-      }
-
-      return updated
-    })
-  }
+  useEffect(() => {
+    loadTabs()
+  }, [])
 
   const handleAdd = async () => {
     try {
-      const payload = { ...newTab }
-      delete payload._auto
-      await axios.post('/tabs', payload)
+      await axios.post('/tabs', newTab)
       setNewTab(emptyTab)
       await loadTabs()
       reloadTabs()
     } catch (err) {
-      console.error('Ошибка при добавлении вкладки:', err)
+      console.error('Ошибка добавления вкладки:', err)
     }
   }
 
-  const handleSave = async (tab) => {
+  const handleSave = async (row) => {
     try {
-      const payload = { ...tab }
-      delete payload._auto
-      await axios.put(`/tabs/${tab.id}`, payload)
+      await axios.put(`/tabs/${row.id}`, row)
       await loadTabs()
       reloadTabs()
     } catch (err) {
-      console.error('Ошибка при сохранении вкладки:', err)
+      console.error('Ошибка сохранения вкладки:', err)
     }
   }
 
-  const handleDelete = async (tab) => {
+  const handleDelete = async (row) => {
+    const confirm = await Swal.fire({
+      title: 'Удалить вкладку?',
+      text: `Вы действительно хотите удалить "${row.name}"?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Удалить',
+      cancelButtonText: 'Отмена'
+    })
+
+    if (!confirm.isConfirmed) return
+
     try {
-      await axios.delete(`/tabs/${tab.id}`)
+      await axios.delete(`/tabs/${row.id}`)
       await loadTabs()
       reloadTabs()
     } catch (err) {
-      console.error('Ошибка при удалении вкладки:', err)
+      console.error('Ошибка удаления вкладки:', err)
     }
   }
 
-  const handleOrderChange = async (updatedTabs) => {
+  const handleDragEnd = async ({ active, over }) => {
+    if (!active || !over || active.id === over.id) return
+
+    const oldIndex = tabs.findIndex(t => t.id === active.id)
+    const newIndex = tabs.findIndex(t => t.id === over.id)
+    const newTabs = arrayMove(tabs, oldIndex, newIndex).map((tab, index) => ({
+      ...tab,
+      order: index
+    }))
+
+    setTabs(newTabs)
+
     try {
-      for (const tab of updatedTabs) {
-        await axios.put(`/tabs/${tab.id}`, { order: tab.order })
+      await axios.patch('/tabs/reorder', newTabs.map(t => ({ id: t.id, order: t.order })))
+      reloadTabs()
+    } catch (err) {
+      console.error('Ошибка сортировки вкладок:', err)
+    }
+  }
+
+  const columns = useMemo(() => [
+    {
+      field: 'drag',
+      title: '',
+      width: 36,
+      display: () => (
+        <MuiIcons.DragIndicator sx={{ color: '#ccc', cursor: 'grab' }} />
+      ),
+      disableSort: true,
+      disableEdit: true
+    },
+    {
+      field: 'name',
+      title: 'Название',
+      minWidth: 160
+    },
+    {
+      field: 'tab_name',
+      title: 'Ключ',
+      minWidth: 140
+    },
+    {
+      field: 'path',
+      title: 'Путь',
+      minWidth: 140
+    },
+    {
+      field: 'icon',
+      title: 'Иконка',
+      minWidth: 200,
+      editor: (value, onChange) => {
+        const [inputValue, setInputValue] = useState(value || '')
+
+        return (
+          <Autocomplete
+            options={iconOptions}
+            value={iconOptions.includes(value) ? value : null}
+            inputValue={inputValue}
+            onInputChange={(e, newInput) => setInputValue(newInput)}
+            onChange={(e, val) => {
+              onChange('icon', val)
+              setInputValue(val || '')
+            }}
+            getOptionLabel={(option) => option}
+            isOptionEqualToValue={(option, val) => option === val}
+            openOnFocus
+            disableClearable
+            fullWidth
+            renderInput={(params) => (
+              <TextField {...params} variant="standard" placeholder="Выберите иконку" />
+            )}
+            renderOption={(props, option) => {
+              const IconComponent = MuiIcons[option]
+              return (
+                <li {...props}>
+                  <IconComponent style={{ marginRight: 8 }} />
+                  {option}
+                </li>
+              )
+            }}
+          />
+        )
+      },
+      display: (value) => {
+        const Icon = MuiIcons[value]
+        return Icon ? (
+          <>
+            <Icon style={{ verticalAlign: 'middle', marginRight: 6 }} />
+            {value}
+          </>
+        ) : value
       }
-      await loadTabs()
-      reloadTabs()
-    } catch (err) {
-      console.error('Ошибка при обновлении порядка вкладок:', err)
+    },
+    {
+      field: 'enabled',
+      title: 'Активна',
+      minWidth: 100,
+      type: 'boolean'
     }
-  }
+  ], [])
 
-  const handleDragEnd = (event) => {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
+  const handleFieldChange = (field, value) => {
+    if (typeof field === 'object') {
+      // Вызов от BaseTable: setNewRow({...}) при Escape
+      setNewTab(field)
+      return
+    }
 
-    const oldIndex = tabs.findIndex(item => item.id === active.id)
-    const newIndex = tabs.findIndex(item => item.id === over.id)
+    const updated = { ...newTab, [field]: value }
 
-    const newData = arrayMove(tabs, oldIndex, newIndex)
-      .map((item, index) => ({ ...item, order: index + 1 }))
+    if (field === 'name' && !manualEdit.tab_name && !manualEdit.path) {
+      const base = generateTabName(value)
+      updated.tab_name = base
+      updated.path = `/${base}`
+    } else if (field === 'tab_name') {
+      setManualEdit(prev => ({ ...prev, tab_name: true }))
+    } else if (field === 'path') {
+      setManualEdit(prev => ({ ...prev, path: true }))
+    }
 
-    setTabs(newData)
-    handleOrderChange(newData)
+    setNewTab(updated)
   }
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext
-        items={tabs.map(tab => tab.id).filter(Boolean)}
-        strategy={verticalListSortingStrategy}
-      >
-        <BaseTable
-          data={tabs}
-          columns={tabsTableColumns}
-          newRow={newTab}
-          setNewRow={handleNewTabChange}
-          onAdd={handleAdd}
-          onSave={handleSave}
-          onDelete={handleDelete}
-          RowWrapper={SortableRow}
-        />
-      </SortableContext>
-    </DndContext>
+    <BaseTable
+      data={tabs}
+      columns={columns}
+      newRow={newTab}
+      setNewRow={handleFieldChange}
+      onAdd={handleAdd}
+      onSave={handleSave}
+      onDelete={handleDelete}
+      onCancelAdd={() => setNewTab(emptyTab)}
+      SortableRow={SortableRow}
+      onDragEnd={handleDragEnd}
+    />
   )
 }

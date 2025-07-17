@@ -2,7 +2,8 @@ import React from 'react'
 import {
   TextField,
   Checkbox,
-  Autocomplete
+  Autocomplete,
+  Tooltip
 } from '@mui/material'
 
 export default function EditableCell({
@@ -14,35 +15,52 @@ export default function EditableCell({
   const { type = 'text', inputType = 'text', editorProps = {}, width } = column
 
   if (!isEditing) {
-    if (type === 'enum') {
-      const option = editorProps.options?.find(opt =>
-        editorProps.getOptionValue?.(opt) === value
-      )
-      return <>{editorProps.getOptionLabel?.(option) || value}</>
-    }
+    // 👇 Вывод через display() если задан
+    const displayValue = column.display
+      ? column.display(value)
+      : value
 
-    if (type === 'checkbox') {
-      return <Checkbox checked={!!value} disabled />
-    }
+    const isString = typeof displayValue === 'string' || typeof displayValue === 'number'
 
-    return <>{value}</>
+    return isString ? (
+      <Tooltip title={String(displayValue)}>
+        <span
+          style={{
+            display: 'inline-block',
+            maxWidth: width || 150,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            verticalAlign: 'middle'
+          }}
+        >
+          {displayValue}
+        </span>
+      </Tooltip>
+    ) : (
+      displayValue
+    )
   }
 
+  // ✅ Поддержка пользовательского редактора
+  if (typeof column.editor === 'function') {
+    return column.editor(value, onChange)
+  }
+
+  // ▼ Стандартные типы редакторов
   switch (type) {
     case 'text':
       return (
         <TextField
           value={value || ''}
           type={inputType}
+          required={column.required}
+          error={column.required && !value}
           onChange={e => {
             const val = e.target.value
             onChange(column.field, val)
-
-            // Автоотключение автозаполнения tab_name и path
-            if (['tab_name', 'path'].includes(column.field)) {
-              onChange('_auto', false)
-            }
           }}
+          sx={{ width }}
         />
       )
 
@@ -60,6 +78,8 @@ export default function EditableCell({
           renderInput={(params) => (
             <TextField
               {...params}
+              required={column.required}
+              error={column.required && !value}
               variant="outlined"
               size="small"
               sx={{
@@ -81,13 +101,12 @@ export default function EditableCell({
           onChange={(e, newValue) => onChange(column.field, newValue)}
           options={editorProps.options || []}
           freeSolo={editorProps.freeSolo || false}
-          getOptionLabel={editorProps.getOptionLabel || (opt =>
-            typeof opt === 'string' ? opt : opt?.label || ''
-          )}
           renderOption={editorProps.renderOption}
           renderInput={(params) => (
             <TextField
               {...params}
+              required={column.required}
+              error={column.required && !value}
               variant="outlined"
               size="small"
               sx={{

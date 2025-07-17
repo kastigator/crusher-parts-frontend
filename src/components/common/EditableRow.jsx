@@ -1,13 +1,11 @@
 import React from 'react'
 import {
-  TableCell, IconButton, Tooltip, Box
+  TableRow, TableCell, IconButton, Tooltip, Box
 } from '@mui/material'
 import SaveIcon from '@mui/icons-material/SaveRounded'
 import CancelIcon from '@mui/icons-material/CancelRounded'
 import DeleteIcon from '@mui/icons-material/DeleteRounded'
-import EditIcon from '@mui/icons-material/EditRounded'
 import AddIcon from '@mui/icons-material/AddRounded'
-import VpnKeyIcon from '@mui/icons-material/VpnKeyRounded'
 import EditableCell from './EditableCell'
 import { confirmAction } from '@/utils/confirmAction'
 
@@ -21,17 +19,16 @@ export default function EditableRow({
   onSave,
   onDelete,
   onAdd,
-  onResetPassword,
-  columns
+  columns,
+  RowWrapper
 }) {
   const handleKeyDown = (e) => {
-    if (isEditing || isNewRow) {
-      if (e.key === 'Enter') {
-        isNewRow ? onAdd?.() : onSave?.()
-      }
-      if (e.key === 'Escape') {
-        onCancel?.()
-      }
+    if (e.key === 'Enter') {
+      if (isNewRow) onAdd?.()
+      if (isEditing) onSave?.()
+    }
+    if (e.key === 'Escape') {
+      onCancel?.()
     }
   }
 
@@ -42,31 +39,33 @@ export default function EditableRow({
       confirmButtonText: 'Удалить',
       cancelButtonText: 'Отмена'
     })
-
-    if (confirmed) {
-      onDelete?.(row)
-    }
+    if (confirmed) onDelete?.(row)
   }
 
-  return (
-    <>
+  const rowContent = (
+    <TableRow
+      onDoubleClick={() => !isEditing && !isNewRow && onEdit?.(row)}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      sx={isEditing || isNewRow ? { backgroundColor: '#fffde7' } : {}}
+    >
       {columns.map(col => (
         <TableCell
           key={col.field}
-          sx={col.width ? { width: col.width, maxWidth: col.width } : {}}
+          sx={{
+            width: col.width || 'auto',
+            minWidth: col.minWidth || col.width || 100,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
+          }}
         >
-          {isEditing || isNewRow ? (
-            <EditableCell
-              column={col}
-              value={row?.[col.field]}
-              onChange={onChange}
-              isEditing
-            />
-          ) : (
-            col.display
-              ? col.display?.(row?.[col.field], row) || ''
-              : (row?.[col.field] ?? '')
-          )}
+          <EditableCell
+            column={col}
+            value={row?.[col.field]}
+            onChange={(field, value) => onChange?.(field, value)}
+            isEditing={isEditing || isNewRow}
+          />
         </TableCell>
       ))}
 
@@ -89,25 +88,19 @@ export default function EditableRow({
             </Tooltip>
           ) : (
             <>
-              <Tooltip title="Редактировать">
-                <IconButton onClick={() => onEdit(row)}><EditIcon /></IconButton>
-              </Tooltip>
               <Tooltip title="Удалить">
                 <IconButton onClick={handleConfirmDelete}>
                   <DeleteIcon />
                 </IconButton>
               </Tooltip>
-              {onResetPassword && (
-                <Tooltip title="Сбросить пароль">
-                  <IconButton onClick={() => onResetPassword(row)}>
-                    <VpnKeyIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              )}
             </>
           )}
         </Box>
       </TableCell>
-    </>
+    </TableRow>
   )
+
+  return RowWrapper ? (
+    <RowWrapper id={row?.id}>{rowContent}</RowWrapper>
+  ) : rowContent
 }
