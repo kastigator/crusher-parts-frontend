@@ -4,8 +4,6 @@ import {
 } from '@mui/material'
 import EditableRow from './EditableRow'
 import TableToolbar from './TableToolbar'
-import { DndContext, closestCenter } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 
 export default function BaseTable({
   data,
@@ -17,15 +15,20 @@ export default function BaseTable({
   onDelete,
   onResetPassword,
   title,
-  SortableRow,           // ✅ опционально
-  onDragEnd              // ✅ опционально
+  editingId: externalEditingId,
+  setEditingId: setExternalEditingId,
+  onEdit
 }) {
-  const [editingId, setEditingId] = useState(null)
+  const [internalEditingId, setInternalEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState({})
+
+  const editingId = externalEditingId ?? internalEditingId
+  const setEditingId = setExternalEditingId ?? setInternalEditingId
 
   const startEdit = (row) => {
     setEditingId(row.id)
     setEditedRow({ ...row })
+    onEdit?.(row)
   }
 
   const cancelEdit = () => {
@@ -83,100 +86,71 @@ export default function BaseTable({
     }
   }
 
-  const renderRow = (row) => (
-    <EditableRow
-      key={row.id}
-      row={editingId === row.id ? editedRow : row}
-      isEditing={editingId === row.id}
-      onEdit={startEdit}
-      onCancel={cancelEdit}
-      onChange={updateEditedValue}
-      onSave={saveEdit}
-      onDelete={onDelete}
-      onResetPassword={onResetPassword}
-      columns={columns}
-    />
-  )
-
-  const content = (
-    <>
-      <EditableRow
-        row={newRow}
-        isNewRow
-        isEditing={false}
-        onChange={updateNewValue}
-        onAdd={handleAdd}
-        onCancel={clearNewRow}
-        columns={columns}
-      />
-
-      {data.length === 0 && (
-        <TableRow>
-          <TableCell colSpan={columns.length + 1} align="center" sx={{ color: '#888', fontStyle: 'italic' }}>
-            Нет записей
-          </TableCell>
-        </TableRow>
-      )}
-
-      {data.map(row => {
-        const base = renderRow(row)
-        return SortableRow ? (
-          <SortableRow key={row.id} id={row.id}>
-            {base}
-          </SortableRow>
-        ) : base
-      })}
-    </>
-  )
-
-  const table = (
-    <Table
-      size="small"
-      sx={{
-        tableLayout: 'auto',
-        minWidth: columns.reduce((acc, col) => acc + (col.minWidth || col.width || 100), 0)
-      }}
-    >
-      <TableHead>
-        <TableRow sx={{ backgroundColor: '#f3f6fa' }}>
-          {columns.map(col => (
-            <TableCell
-              key={col.field}
-              sx={{
-                width: col.width || 'auto',
-                minWidth: col.minWidth || col.width || 100,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}
-            >
-              {col.title}
-            </TableCell>
-          ))}
-          <TableCell sx={{ width: 140 }}>Действия</TableCell>
-        </TableRow>
-      </TableHead>
-
-      {SortableRow ? (
-        <SortableContext items={data.map(r => r.id)} strategy={verticalListSortingStrategy}>
-          <TableBody>{content}</TableBody>
-        </SortableContext>
-      ) : (
-        <TableBody>{content}</TableBody>
-      )}
-    </Table>
-  )
-
   return (
     <Paper elevation={3} sx={{ p: 2, mt: 2, borderRadius: 2 }}>
       {title && <TableToolbar title={title} />}
-      {SortableRow && onDragEnd ? (
-        <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          {table}
-        </DndContext>
-      ) : (
-        table
-      )}
+      <Table
+        size="small"
+        sx={{
+          tableLayout: 'auto',
+          minWidth: columns.reduce((acc, col) => acc + (col.minWidth || col.width || 100), 0)
+        }}
+      >
+        <TableHead>
+          <TableRow sx={{ backgroundColor: '#f3f6fa' }}>
+            {columns.map(col => (
+              <TableCell
+                key={col.field}
+                sx={{
+                  width: col.width || 'auto',
+                  minWidth: col.minWidth || col.width || 100,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}
+              >
+                {col.title}
+              </TableCell>
+            ))}
+            <TableCell sx={{ width: 140 }}>Действия</TableCell>
+          </TableRow>
+        </TableHead>
+
+        <TableBody>
+          <EditableRow
+            row={newRow}
+            isNewRow
+            isEditing={false}
+            onChange={updateNewValue}
+            onAdd={handleAdd}
+            onCancel={clearNewRow}
+            columns={columns}
+          />
+
+          {data.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={columns.length + 1} align="center" sx={{ color: '#888', fontStyle: 'italic' }}>
+                Нет записей
+              </TableCell>
+            </TableRow>
+          )}
+
+          {data.map(row => (
+            <EditableRow
+              key={row.id}
+              row={editingId === row.id ? editedRow : row}
+              isEditing={editingId === row.id}
+              onEdit={startEdit}
+              onCancel={cancelEdit}
+              onChange={updateEditedValue}
+              onSave={saveEdit}
+              onDelete={onDelete}
+              onResetPassword={onResetPassword}
+              columns={columns}
+            />
+          ))}
+        </TableBody>
+      </Table>
     </Paper>
   )
 }

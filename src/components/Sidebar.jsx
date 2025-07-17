@@ -9,10 +9,11 @@ const Sidebar = () => {
   const location = useLocation()
   const { tabs = [], permissions = [], loading } = useTabs()
 
-  // Не рендерим пока всё не загрузилось
   if (loading) return null
 
-  const visibleTabs = tabs.filter(tab => permissions.includes(tab.id))
+  const visibleTabs = tabs
+    .filter(tab => permissions.includes(tab.id))
+    .sort((a, b) => a.order - b.order) // ✅ всегда сортируем явно
 
   return (
     <Box
@@ -52,6 +53,7 @@ const Sidebar = () => {
             </ListItem>
           )
         })}
+
         {visibleTabs.length === 0 && (
           <ListItem>
             <Tooltip title="Нет доступных вкладок" placement="right">

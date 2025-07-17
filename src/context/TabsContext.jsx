@@ -19,13 +19,15 @@ export const TabsProvider = ({ children }) => {
     try {
       console.log('📡 fetchTabs: запрашиваем /tabs')
       const tabsRes = await axios.get('/tabs')
-      setTabs(tabsRes.data)
+
+      const sortedTabs = [...tabsRes.data].sort((a, b) => a.sort_order - b.sort_order)
+      setTabs(sortedTabs)
 
       const role = user?.role?.toLowerCase?.() || ''
       const perms = user?.permissions || []
 
       if (role === 'admin') {
-        setPermissions(tabsRes.data.map(t => t.id))
+        setPermissions(sortedTabs.map(t => t.id)) // ✅ сортированный список
       } else {
         setPermissions(perms)
       }

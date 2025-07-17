@@ -1,6 +1,9 @@
+// src/components/common/SortableRow.jsx
+
 import React from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { TableRow } from '@mui/material'
 
 export default function SortableRow({ id, children }) {
   const {
@@ -16,15 +19,14 @@ export default function SortableRow({ id, children }) {
     transition
   }
 
-  // Ищем вложенный <tr> и модифицируем его
-  if (React.isValidElement(children)) {
-    return React.cloneElement(children, {
-      innerRef: setNodeRef, // для TableRow
-      style,
-      ...attributes,
-      ...listeners
-    })
-  }
-
-  return <>{children}</>
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+    >
+      {children}
+    </TableRow>
+  )
 }

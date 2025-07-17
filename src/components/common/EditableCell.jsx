@@ -15,7 +15,6 @@ export default function EditableCell({
   const { type = 'text', inputType = 'text', editorProps = {}, width } = column
 
   if (!isEditing) {
-    // 👇 Вывод через display() если задан
     const displayValue = column.display
       ? column.display(value)
       : value
@@ -42,12 +41,11 @@ export default function EditableCell({
     )
   }
 
-  // ✅ Поддержка пользовательского редактора
+  // ✅ Кастомный редактор с передачей поля
   if (typeof column.editor === 'function') {
-    return column.editor(value, onChange)
+    return column.editor(value, (field, val) => onChange(field, val))
   }
 
-  // ▼ Стандартные типы редакторов
   switch (type) {
     case 'text':
       return (

@@ -19,8 +19,7 @@ export default function EditableRow({
   onSave,
   onDelete,
   onAdd,
-  columns,
-  RowWrapper
+  columns
 }) {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
@@ -42,7 +41,7 @@ export default function EditableRow({
     if (confirmed) onDelete?.(row)
   }
 
-  const rowContent = (
+  return (
     <TableRow
       onDoubleClick={() => !isEditing && !isNewRow && onEdit?.(row)}
       onKeyDown={handleKeyDown}
@@ -99,8 +98,4 @@ export default function EditableRow({
       </TableCell>
     </TableRow>
   )
-
-  return RowWrapper ? (
-    <RowWrapper id={row?.id}>{rowContent}</RowWrapper>
-  ) : rowContent
 }
