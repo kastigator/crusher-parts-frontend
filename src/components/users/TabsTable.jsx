@@ -1,49 +1,47 @@
-import React, { useEffect, useState } from 'react'
+// src/components/users/TabsTable.jsx
+
+import React, { useEffect, useMemo, useState } from 'react'
 import {
-  Table, TableHead, TableRow, TableCell, TableBody,
-  Paper, TextField, IconButton, Tooltip, Autocomplete
+  Box, Table, TableHead, TableRow, TableCell, TableBody,
+  IconButton, TextField, Autocomplete, Typography, Tooltip
 } from '@mui/material'
+import {
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Save as SaveIcon,
+  Close as CancelIcon,
+  DragIndicator as DragHandleIcon
+} from '@mui/icons-material'
 import * as MuiIcons from '@mui/icons-material'
-import AddIcon from '@mui/icons-material/AddRounded'
-import SaveIcon from '@mui/icons-material/SaveRounded'
-import CancelIcon from '@mui/icons-material/CancelRounded'
-import DeleteIcon from '@mui/icons-material/DeleteRounded'
-import EditIcon from '@mui/icons-material/EditRounded'
-import { useTabs } from '@/context/TabsContext'
 import { generateTabName } from '@/utils/textUtils'
+import { useTabs } from '@/context/TabsContext'
 import axios from '@/api/axiosInstance'
-import Swal from 'sweetalert2'
+import { arrayMoveImmutable } from 'array-move'
 import { DndContext, closestCenter } from '@dnd-kit/core'
-import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { confirmAction } from '@/utils/confirmAction'
 
-const iconOptions = Object.keys(MuiIcons)
-
-const emptyTab = {
-  name: '',
-  tab_name: '',
-  path: '',
-  icon: '',
-  sort_order: 0
-}
-
-function SortableRow({ id, children, onDoubleClick }) {
-  const { setNodeRef, attributes, listeners, transform, transition } = useSortable({ id })
+function SortableRow({ id, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition
   }
-
   return (
-    <TableRow
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      onDoubleClick={onDoubleClick}
-      sx={{ cursor: 'pointer' }}
-    >
-      {children}
+    <TableRow ref={setNodeRef} style={style} {...attributes}>
+      {children.map((cell, index) =>
+        index === 0 ? (
+          <TableCell key={index} {...listeners} style={{ cursor: 'grab' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <DragHandleIcon fontSize="small" />
+              {cell}
+            </Box>
+          </TableCell>
+        ) : (
+          <TableCell key={index}>{cell}</TableCell>
+        )
+      )}
     </TableRow>
   )
 }
@@ -51,249 +49,115 @@ function SortableRow({ id, children, onDoubleClick }) {
 export default function TabsTable() {
   const { reloadTabs } = useTabs()
   const [tabs, setTabs] = useState([])
-  const [editingId, setEditingId] = useState(null)
-  const [newTab, setNewTab] = useState(emptyTab)
-  const [manualEdit, setManualEdit] = useState({})
-  const [editedRow, setEditedRow] = useState({})
+  const [editId, setEditId] = useState(null)
+  const [editRow, setEditRow] = useState({})
+  const [newRow, setNewRow] = useState({})
 
-  useEffect(() => {
-    loadTabs()
-  }, [])
+  const iconOptions = useMemo(() =>
+    Object.keys(MuiIcons).map(name => ({
+      label: name,
+      value: name,
+      icon: MuiIcons[name]
+    }))
+  , [])
 
-  const loadTabs = async () => {
-    try {
-      const res = await axios.get('/tabs')
-      const sorted = res.data.sort((a, b) => a.sort_order - b.sort_order)
-      setTabs(sorted)
-    } catch (err) {
-      console.error('Ошибка загрузки вкладок:', err)
-    }
+  const fetchTabs = async () => {
+    const res = await axios.get('/tabs')
+    setTabs(res.data)
   }
 
-  const handleEdit = (row) => {
-    setEditingId(row.id)
-    setEditedRow(row)
-    setManualEdit({})
-  }
+  useEffect(() => { fetchTabs() }, [])
 
-  const handleCancel = () => {
-    setEditingId(null)
-    setEditedRow({})
-  }
-
-  const handleChange = (field, value) => {
-    const updated = { ...editedRow, [field]: value }
-
-    if (field === 'name' && !manualEdit.tab_name && !manualEdit.path) {
-      const base = generateTabName(value)
-      updated.tab_name = base
-      updated.path = `/${base}`
-    }
-
-    if (field === 'tab_name') setManualEdit(prev => ({ ...prev, tab_name: true }))
-    if (field === 'path') setManualEdit(prev => ({ ...prev, path: true }))
-
-    setEditedRow(updated)
+  const handleAdd = async () => {
+    await axios.post('/tabs', newRow)
+    setNewRow({})
+    await fetchTabs()
+    reloadTabs()
   }
 
   const handleSave = async () => {
-    try {
-      await axios.put(`/tabs/${editedRow.id}`, editedRow)
-      setEditingId(null)
-      await loadTabs()
-      reloadTabs()
-    } catch (err) {
-      console.error('Ошибка сохранения вкладки:', err)
-    }
+    await axios.put(`/tabs/${editId}`, editRow)
+    setEditId(null)
+    await fetchTabs()
+    reloadTabs()
   }
 
-  const handleDelete = async (row) => {
-    const confirm = await Swal.fire({
-      title: 'Удалить вкладку?',
-      text: `Вы действительно хотите удалить "${row.name}"?`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Удалить',
-      cancelButtonText: 'Отмена'
+  const handleDelete = async (tab) => {
+    const confirmed = await confirmAction({
+      title: `Удалить вкладку «${tab.name}»?`,
+      text: 'Это действие также удалит связанные права доступа.'
     })
-    if (!confirm.isConfirmed) return
-
-    try {
-      await axios.delete(`/tabs/${row.id}`)
-      await loadTabs()
-      reloadTabs()
-    } catch (err) {
-      console.error('Ошибка удаления вкладки:', err)
-    }
+    if (!confirmed) return
+    await axios.delete(`/tabs/${tab.id}`)
+    await fetchTabs()
+    reloadTabs()
   }
 
-  const handleNewChange = (field, value) => {
-    const updated = { ...newTab, [field]: value }
+  const handleDragEnd = async (event) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
 
-    if (field === 'name' && !manualEdit.tab_name && !manualEdit.path) {
-      const base = generateTabName(value)
-      updated.tab_name = base
-      updated.path = `/${base}`
-    }
-
-    if (field === 'tab_name') setManualEdit(prev => ({ ...prev, tab_name: true }))
-    if (field === 'path') setManualEdit(prev => ({ ...prev, path: true }))
-
-    setNewTab(updated)
-  }
-
-  const handleAdd = async () => {
-    try {
-      await axios.post('/tabs', newTab)
-      setNewTab(emptyTab)
-      await loadTabs()
-      reloadTabs()
-    } catch (err) {
-      console.error('Ошибка добавления вкладки:', err)
-    }
-  }
-
-  const handleDragEnd = async ({ active, over }) => {
-    if (!active || !over || active.id === over.id) return
-
-    const oldIndex = tabs.findIndex(t => t.id === active.id)
-    const newIndex = tabs.findIndex(t => t.id === over.id)
-
-    const newTabs = arrayMove(tabs, oldIndex, newIndex).map((tab, index) => ({
-      ...tab,
-      id: Number(tab.id),
-      sort_order: index
-    }))
-
+    const oldIndex = tabs.findIndex(tab => tab.id === active.id)
+    const newIndex = tabs.findIndex(tab => tab.id === over.id)
+    const newTabs = arrayMoveImmutable(tabs, oldIndex, newIndex)
     setTabs(newTabs)
 
-    const payload = newTabs.map(t => ({
-      id: Number(t.id),
-      sort_order: Number(t.sort_order)
+    const payload = newTabs.map((tab, i) => ({
+      id: Number(tab.id),
+      sort_order: i + 1
     }))
 
-    try {
-      await axios.put('/tabs/order', payload)
-      await loadTabs()
-      reloadTabs()
-    } catch (err) {
-      console.error('Ошибка сортировки вкладок:', err)
+    await axios.put('/tabs/order', payload)
+    reloadTabs()
+  }
+
+  const renderIconField = (value, onChange) => (
+    <Autocomplete
+      options={iconOptions}
+      value={iconOptions.find(o => o.value === value) || null}
+      onChange={(_, newVal) => onChange(newVal?.value || '')}
+      getOptionLabel={o => o.label}
+      renderOption={(props, option) => (
+        <li {...props} key={option.value}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {React.createElement(option.icon, { fontSize: 'small' })}
+            {option.label}
+          </Box>
+        </li>
+      )}
+      renderInput={(params) => <TextField {...params} size="small" />}
+      isOptionEqualToValue={(opt, val) => opt.value === val.value}
+      disableClearable
+    />
+  )
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleSave()
+    if (e.key === 'Escape') {
+      setEditId(null)
+      setEditRow({})
     }
   }
 
-  const cellSx = {
-    minWidth: 100,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis'
-  }
-
-  const renderRow = (row, isEdit, isNew = false) => {
-    const data = isEdit ? editedRow : row
-    const onChange = isNew ? handleNewChange : handleChange
-
-    return (
-      <>
-        <TableCell sx={{ width: 36, textAlign: 'center' }}>
-          <MuiIcons.DragIndicator sx={{ color: '#ccc' }} />
-        </TableCell>
-
-        <TableCell sx={cellSx}>
-          <TextField
-            value={data.name || ''}
-            onChange={e => onChange('name', e.target.value)}
-            size="small"
-            fullWidth
-            variant="standard"
-          />
-        </TableCell>
-
-        <TableCell sx={cellSx}>
-          <TextField
-            value={data.tab_name || ''}
-            onChange={e => onChange('tab_name', e.target.value)}
-            size="small"
-            fullWidth
-            variant="standard"
-          />
-        </TableCell>
-
-        <TableCell sx={cellSx}>
-          <TextField
-            value={data.path || ''}
-            onChange={e => onChange('path', e.target.value)}
-            size="small"
-            fullWidth
-            variant="standard"
-          />
-        </TableCell>
-
-        <TableCell sx={cellSx}>
-          <Autocomplete
-            value={iconOptions.find(i => i === data.icon) || ''}
-            onChange={(e, val) => onChange('icon', val)}
-            options={iconOptions}
-            getOptionLabel={(option) => option}
-            isOptionEqualToValue={(option, value) => option === value}
-            freeSolo
-            fullWidth
-            renderOption={(props, option) => {
-              const Icon = MuiIcons[option]
-              return (
-                <li {...props} key={option}>
-                  {Icon ? <Icon style={{ marginRight: 8 }} /> : null}
-                  {option}
-                </li>
-              )
-            }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                size="small"
-                variant="standard"
-              />
-            )}
-          />
-        </TableCell>
-
-        <TableCell sx={{ width: 140 }}>
-          {isNew ? (
-            <Tooltip title="Добавить">
-              <IconButton onClick={handleAdd}><AddIcon /></IconButton>
-            </Tooltip>
-          ) : isEdit ? (
-            <>
-              <Tooltip title="Сохранить">
-                <IconButton onClick={handleSave}><SaveIcon /></IconButton>
-              </Tooltip>
-              <Tooltip title="Отмена">
-                <IconButton onClick={handleCancel}><CancelIcon /></IconButton>
-              </Tooltip>
-            </>
-          ) : (
-            <>
-              <Tooltip title="Редактировать">
-                <IconButton onClick={() => handleEdit(row)}><EditIcon /></IconButton>
-              </Tooltip>
-              <Tooltip title="Удалить">
-                <IconButton onClick={() => handleDelete(row)}><DeleteIcon /></IconButton>
-              </Tooltip>
-            </>
-          )}
-        </TableCell>
-      </>
-    )
+  const autoUpdateSlug = (currentRow, newName) => {
+    const generated = generateTabName(newName)
+    const wasAuto = currentRow.tab_name === generateTabName(currentRow.name) &&
+                    currentRow.path === `/${generateTabName(currentRow.name)}`
+    return wasAuto
+      ? { ...currentRow, name: newName, tab_name: generated, path: `/${generated}` }
+      : { ...currentRow, name: newName }
   }
 
   return (
-    <Paper sx={{ p: 2, mt: 2, borderRadius: 2 }}>
-      <Table size="small">
+    <Box>
+      <Typography variant="h6" gutterBottom>Управление вкладками</Typography>
+
+      <Table size="small" onKeyDown={handleKeyDown}>
         <TableHead>
-          <TableRow sx={{ backgroundColor: '#f3f6fa' }}>
-            <TableCell />
-            <TableCell>Название</TableCell>
-            <TableCell>Ключ</TableCell>
-            <TableCell>Путь</TableCell>
+          <TableRow>
+            <TableCell>Название (RU)</TableCell>
+            <TableCell>tab_name</TableCell>
+            <TableCell>path</TableCell>
             <TableCell>Иконка</TableCell>
             <TableCell />
           </TableRow>
@@ -302,20 +166,90 @@ export default function TabsTable() {
         <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={tabs.map(t => t.id)} strategy={verticalListSortingStrategy}>
             <TableBody>
-              <TableRow>{renderRow(newTab, false, true)}</TableRow>
-              {tabs.map(row => (
-                <SortableRow
-                  key={row.id}
-                  id={row.id}
-                  onDoubleClick={() => handleEdit(row)}
-                >
-                  {renderRow(row, editingId === row.id)}
-                </SortableRow>
-              ))}
+              {/* строка добавления новой вкладки — СВЕРХУ */}
+              <TableRow>
+                <TableCell>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <DragHandleIcon fontSize="small" sx={{ visibility: 'hidden' }} />
+                    <TextField
+                      value={newRow.name || ''}
+                      onChange={e => {
+                        const name = e.target.value
+                        const slug = generateTabName(name)
+                        setNewRow({ ...newRow, name, tab_name: slug, path: `/${slug}` })
+                      }}
+                      size="small"
+                    />
+                  </Box>
+                </TableCell>
+                <TableCell>
+                  <TextField
+                    value={newRow.tab_name || ''}
+                    onChange={e => setNewRow({ ...newRow, tab_name: e.target.value })}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell>
+                  <TextField
+                    value={newRow.path || ''}
+                    onChange={e => setNewRow({ ...newRow, path: e.target.value })}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell>
+                  {renderIconField(newRow.icon, icon => setNewRow({ ...newRow, icon }))}
+                </TableCell>
+                <TableCell>
+                  <IconButton onClick={handleAdd}><SaveIcon /></IconButton>
+                </TableCell>
+              </TableRow>
+
+              {tabs.map(tab => {
+                const isEditing = editId === tab.id
+                const cells = isEditing ? [
+                  <TextField
+                    key="name"
+                    value={editRow.name || ''}
+                    onChange={e => setEditRow(autoUpdateSlug(editRow, e.target.value))}
+                    size="small"
+                    autoFocus
+                  />,
+                  <TextField
+                    key="tab_name"
+                    value={editRow.tab_name || ''}
+                    onChange={e => setEditRow({ ...editRow, tab_name: e.target.value })}
+                    size="small"
+                  />,
+                  <TextField
+                    key="path"
+                    value={editRow.path || ''}
+                    onChange={e => setEditRow({ ...editRow, path: e.target.value })}
+                    size="small"
+                  />,
+                  renderIconField(editRow.icon, icon => setEditRow({ ...editRow, icon })),
+                  <Box key="actions" sx={{ display: 'flex', gap: 1 }}>
+                    <IconButton onClick={handleSave}><SaveIcon /></IconButton>
+                    <IconButton onClick={() => setEditId(null)}><CancelIcon /></IconButton>
+                  </Box>
+                ] : [
+                  tab.name,
+                  tab.tab_name,
+                  tab.path,
+                  <Tooltip key="icon" title={tab.icon}>
+                    {tab.icon && React.createElement(MuiIcons[tab.icon] || MuiIcons.Help)}
+                  </Tooltip>,
+                  <Box key="actions" sx={{ display: 'flex', gap: 1 }}>
+                    <IconButton onClick={() => { setEditId(tab.id); setEditRow(tab) }}><EditIcon /></IconButton>
+                    <IconButton onClick={() => handleDelete(tab)}><DeleteIcon /></IconButton>
+                  </Box>
+                ]
+
+                return <SortableRow key={tab.id} id={tab.id}>{cells}</SortableRow>
+              })}
             </TableBody>
           </SortableContext>
         </DndContext>
       </Table>
-    </Paper>
+    </Box>
   )
 }

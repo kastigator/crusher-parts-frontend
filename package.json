@@ -22,6 +22,7 @@
     "@mui/x-data-grid": "^8.7.0",
     "@mui/x-data-grid-pro": "^8.7.0",
     "@mui/x-date-pickers": "^8.7.0",
+    "array-move": "^4.0.0",
     "axios": "^1.10.0",
     "chart.js": "^4.5.0",
     "clsx": "^2.1.1",
