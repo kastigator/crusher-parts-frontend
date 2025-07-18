@@ -1,14 +1,14 @@
 import { validateRowAgainstSchema } from './importHelpers'
-import { tnvedCodesTable } from './tableDefinitions'
+import { tnvedTableColumns } from './tableDefinitions'
 
 export const entitySchemas = {
   tnved_codes: {
     import: {
-      fields: tnvedCodesTable.map((col) => col.field),
-      requiredFields: tnvedCodesTable.filter((col) => col.required).map((col) => col.field),
+      fields: tnvedTableColumns.map((col) => col.field),
+      requiredFields: tnvedTableColumns.filter((col) => col.required).map((col) => col.field),
       templateUrl: '/static/tnved_codes_template.xlsx'
     },
-    validateImportRow: (row) => validateRowAgainstSchema(row, tnvedCodesTable),
+    validateImportRow: (row) => validateRowAgainstSchema(row, tnvedTableColumns),
     endpoint: '/tnved-codes/import'
   }
 }

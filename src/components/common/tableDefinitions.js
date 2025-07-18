@@ -56,3 +56,35 @@ export const usersTableColumns = [
     minWidth: 150
   }
 ]
+
+export const tnvedTableColumns = [
+  {
+    field: 'code',
+    title: 'Код',
+    type: 'text',
+    required: true,
+    width: 160,
+    minWidth: 120
+  },
+  {
+    field: 'description',
+    title: 'Описание',
+    type: 'text',
+    width: 300,
+    minWidth: 200
+  },
+  {
+    field: 'duty_rate',
+    title: 'Пошлина (%)',
+    type: 'text',
+    width: 160,
+    minWidth: 120
+  },
+  {
+    field: 'notes',
+    title: 'Примечания',
+    type: 'text',
+    width: 300,
+    minWidth: 200
+  }
+]

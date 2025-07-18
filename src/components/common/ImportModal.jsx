@@ -5,7 +5,7 @@ import {
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import readXlsxFile from 'read-excel-file'
-import entitySchemas from './entitySchemas'
+import { entitySchemas } from './entitySchemas'
 
 const ImportModal = ({ open, onClose, type, onImportComplete }) => {
   const [loading, setLoading] = useState(false)
@@ -198,6 +198,118 @@ const ImportModal = ({ open, onClose, type, onImportComplete }) => {
       </Snackbar>
     </>
   )
+}
+
+
+const handleFile = async (e) => {
+  const file = e.target.files[0]
+  if (!file) return
+
+  setLoading(true)
+  try {
+    const data = await readXlsxFile(file)
+    const [header, ...body] = data
+
+    const parsed = body.map((row) => {
+      const obj = {}
+      header.forEach((col, i) => {
+        obj[col] = row[i]
+      })
+      return obj
+    })
+
+    const seen = new Set()
+    const validationErrors = []
+    const validRows = []
+
+    parsed.forEach((row, index) => {
+      const rowNumber = index + 2
+      const code = row.code?.toString().trim()
+
+      if (!code) {
+        validationErrors.push(`Строка ${rowNumber}: поле "code" обязательно`)
+        return
+      }
+
+      if (seen.has(code)) {
+        validationErrors.push(`Строка ${rowNumber}: дубликат кода "${code}" в файле`)
+        return
+      }
+
+      seen.add(code)
+
+      const err = validateRow?.(row)
+      if (err) {
+        validationErrors.push(`Строка ${rowNumber}: ${err}`)
+      } else {
+        validRows.push(row)
+      }
+    })
+
+    setRows(validRows)
+    setErrors(validationErrors)
+  } catch (err) {
+    console.error('Ошибка чтения файла:', err)
+    setErrors(['Ошибка чтения файла'])
+  } finally {
+    setLoading(false)
+  }
+}
+
+const handleUpload = async () => {
+  setLoading(true)
+  try {
+    const token = localStorage.getItem('token')
+    const endpoint = config?.endpoint
+
+    if (!endpoint) throw new Error('Не указан endpoint в entitySchemas')
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(rows)
+    })
+
+    const result = await res.json()
+    const added = result.inserted?.length || 0
+    const failed = result.errors?.length || 0
+
+    const hasDuplicates = result.errors?.some(err =>
+      typeof err === 'string' && err.toLowerCase().includes('уже существует')
+    )
+
+    if (failed > 0) {
+      setErrors(result.errors)
+      setSnackbar({
+        open: true,
+        severity: added > 0 ? 'warning' : 'error',
+        message: `Импорт частично завершён. Добавлено: ${added}, ошибок: ${failed}${hasDuplicates ? ' (возможно, из-за повторов)' : ''}`
+      })
+    } else {
+      setSnackbar({
+        open: true,
+        severity: 'success',
+        message: `Импорт успешно завершён. Добавлено: ${added}`
+      })
+      onClose()
+    }
+
+    setRows([])
+    onImportComplete?.()
+  } catch (err) {
+    console.error('❌ Ошибка при импорте:', err)
+    setErrors([err.message || 'Ошибка при импорте'])
+    setSnackbar({
+      open: true,
+      severity: 'error',
+      message: 'Ошибка при импорте: ' + err.message
+    })
+  } finally {
+    setLoading(false)
+  }
 }
 
 export default ImportModal

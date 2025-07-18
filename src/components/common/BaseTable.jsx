@@ -25,6 +25,8 @@ export default function BaseTable({
   const editingId = externalEditingId ?? internalEditingId
   const setEditingId = setExternalEditingId ?? setInternalEditingId
 
+  const safeData = Array.isArray(data) ? data : []
+
   const startEdit = (row) => {
     setEditingId(row.id)
     setEditedRow({ ...row })
@@ -127,7 +129,7 @@ export default function BaseTable({
             columns={columns}
           />
 
-          {data.length === 0 && (
+          {safeData.length === 0 && (
             <TableRow>
               <TableCell colSpan={columns.length + 1} align="center" sx={{ color: '#888', fontStyle: 'italic' }}>
                 Нет записей
@@ -135,7 +137,7 @@ export default function BaseTable({
             </TableRow>
           )}
 
-          {data.map(row => (
+          {safeData.map(row => (
             <EditableRow
               key={row.id}
               row={editingId === row.id ? editedRow : row}
