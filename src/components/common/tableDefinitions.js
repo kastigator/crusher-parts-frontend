@@ -74,11 +74,15 @@ export const tnvedTableColumns = [
     minWidth: 200
   },
   {
-    field: 'duty_rate',
-    title: 'Пошлина (%)',
-    type: 'text',
-    width: 160,
-    minWidth: 120
+  field: 'duty_rate',
+  title: 'Пошлина (%)',
+  type: 'autocomplete',
+  editorProps: {
+    options: [], // будет передано позже из TnvedCodesTable
+    freeSolo: true
+  },
+  width: 160,
+  minWidth: 120
   },
   {
     field: 'notes',

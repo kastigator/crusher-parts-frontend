@@ -1,75 +1,77 @@
 import React from 'react'
 import {
-  TableRow, TableCell, IconButton, Tooltip, Box
+  TableRow,
+  TableCell,
+  IconButton,
+  Tooltip,
+  Box
 } from '@mui/material'
-import SaveIcon from '@mui/icons-material/SaveRounded'
-import CancelIcon from '@mui/icons-material/CancelRounded'
-import DeleteIcon from '@mui/icons-material/DeleteRounded'
-import AddIcon from '@mui/icons-material/AddRounded'
+import SaveIcon from '@mui/icons-material/Save'
+import CancelIcon from '@mui/icons-material/Cancel'
+import DeleteIcon from '@mui/icons-material/Delete'
+import AddIcon from '@mui/icons-material/Add'
+import HistoryIcon from '@mui/icons-material/History'
 import EditableCell from './EditableCell'
 import { confirmAction } from '@/utils/confirmAction'
 
 export default function EditableRow({
   row,
+  columns,
   isEditing,
   isNewRow,
   onChange,
-  onEdit,
-  onCancel,
   onSave,
-  onDelete,
+  onCancel,
   onAdd,
-  columns
+  onDelete,
+  onShowLogs
 }) {
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      if (isNewRow) onAdd?.()
-      if (isEditing) onSave?.()
-    }
-    if (e.key === 'Escape') {
-      onCancel?.()
-    }
-  }
-
   const handleConfirmDelete = async () => {
-    const confirmed = await confirmAction({
-      title: 'Удаление записи',
-      text: `Вы действительно хотите удалить "${row?.username || row?.name || 'эту запись'}"?`,
-      confirmButtonText: 'Удалить',
-      cancelButtonText: 'Отмена'
-    })
+    const confirmed = await confirmAction('Удалить эту запись?')
     if (confirmed) onDelete?.(row)
   }
 
   return (
     <TableRow
-      onDoubleClick={() => !isEditing && !isNewRow && onEdit?.(row)}
-      onKeyDown={handleKeyDown}
-      tabIndex={0}
-      sx={isEditing || isNewRow ? { backgroundColor: '#fffde7' } : {}}
+      hover
+      sx={{
+        backgroundColor: isEditing || isNewRow ? '#fffde7' : 'inherit'
+      }}
     >
-      {columns.map(col => (
+      {columns.map((col) => (
         <TableCell
           key={col.field}
-          sx={{
-            width: col.width || 'auto',
-            minWidth: col.minWidth || col.width || 100,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis'
+          style={{
+            minWidth: col.minWidth || 100,
+            maxWidth: col.maxWidth,
+            width: col.width,
+            whiteSpace: 'nowrap'
           }}
         >
-          <EditableCell
-            column={col}
-            value={row?.[col.field]}
-            onChange={(field, value) => onChange?.(field, value)}
-            isEditing={isEditing || isNewRow}
-          />
+          {col.renderCell ? (
+            col.renderCell(row, onDelete, onShowLogs)
+          ) : (
+            <EditableCell
+              column={col}
+              value={row[col.field]}
+              onChange={onChange}
+              isEditing={isEditing || isNewRow}
+            />
+          )}
         </TableCell>
       ))}
 
-      <TableCell sx={{ width: 140, minWidth: 140, whiteSpace: 'nowrap' }}>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+      {!columns.some(c => c.field === 'actions') && (
+        <TableCell
+          sx={{
+            width: 140,
+            minWidth: 140,
+            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1
+          }}
+        >
           {isEditing ? (
             <>
               <Tooltip title="Сохранить">
@@ -87,6 +89,13 @@ export default function EditableRow({
             </Tooltip>
           ) : (
             <>
+              {onShowLogs && (
+                <Tooltip title="История изменений">
+                  <IconButton onClick={() => onShowLogs(row)}>
+                    <HistoryIcon />
+                  </IconButton>
+                </Tooltip>
+              )}
               <Tooltip title="Удалить">
                 <IconButton onClick={handleConfirmDelete}>
                   <DeleteIcon />
@@ -94,8 +103,8 @@ export default function EditableRow({
               </Tooltip>
             </>
           )}
-        </Box>
-      </TableCell>
+        </TableCell>
+      )}
     </TableRow>
   )
 }

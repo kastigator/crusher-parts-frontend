@@ -19,10 +19,7 @@ export default function UsersPage() {
         </Box>
 
         <Box>
-          <Typography variant="h6" gutterBottom>
-            Вкладки
-          </Typography>
-          <TabsTable />
+                  <TabsTable />
         </Box>
 
         <Box>

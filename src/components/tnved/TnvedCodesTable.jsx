@@ -6,8 +6,10 @@ import TableToolbar from '@/components/common/TableToolbar'
 import ImportModal from '@/components/common/ImportModal'
 import { tnvedTableColumns } from '@/components/common/tableDefinitions'
 import TnvedHistoryDialog from './TnvedHistoryDialog'
-import { Button } from '@mui/material'
-
+import { Button, IconButton, Tooltip, Box } from '@mui/material'
+import DeleteIcon from '@mui/icons-material/Delete'
+import HistoryIcon from '@mui/icons-material/History'
+import { confirmAction } from '@/utils/confirmAction'
 
 export default function TnvedCodesTable() {
   const [data, setData] = useState([])
@@ -15,11 +17,10 @@ export default function TnvedCodesTable() {
   const [newRow, setNewRow] = useState({})
   const [logs, setLogs] = useState([])
   const [logOpen, setLogOpen] = useState(false)
-
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(25)
-
   const [importOpen, setImportOpen] = useState(false)
+  const [uniqueDutyRates, setUniqueDutyRates] = useState([])
 
   useEffect(() => {
     loadData()
@@ -29,6 +30,11 @@ export default function TnvedCodesTable() {
     try {
       const res = await axios.get('/tnved-codes')
       setData(res.data)
+
+      const uniqueRates = [...new Set(
+        res.data.map(item => item.duty_rate).filter(r => r !== null && r !== '')
+      )]
+      setUniqueDutyRates(uniqueRates)
     } catch (err) {
       console.error('Ошибка при загрузке кодов ТН ВЭД:', err)
     }
@@ -93,24 +99,92 @@ export default function TnvedCodesTable() {
     page * rowsPerPage + rowsPerPage
   )
 
+  const finalColumns = [
+    ...tnvedTableColumns.map(col => {
+      if (col.field === 'duty_rate') {
+        return {
+          ...col,
+          type: 'autocomplete',
+          editorProps: {
+            options: uniqueDutyRates,
+            freeSolo: true,
+            getOptionLabel: (opt) => String(opt ?? ''),
+            renderOption: (props, option) => (
+              <li {...props} key={option}>
+                {option}
+              </li>
+            )
+          }
+        }
+      }
+      return col
+    }),
+    {
+      field: 'actions',
+      title: 'Действия',
+      width: 120,
+      renderCell: (row, onDelete, onShowLogs) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Tooltip title="История изменений">
+            <IconButton size="small" onClick={() => onShowLogs?.(row)}>
+              <HistoryIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Удалить">
+            <IconButton
+              size="small"
+              onClick={async () => {
+                const confirmed = await confirmAction({
+                  text: `Удалить код <b>${row.code}</b>${row.description ? ` – ${row.description}` : ''}?`
+                })
+                if (confirmed) onDelete?.(row)
+              }}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )
+    }
+  ]
+
   return (
     <>
       <div style={{ marginBottom: 16 }}>
         <TableToolbar
           filterValue={search}
           onFilterChange={setSearch}
-          importTemplateUrl="/public/tnved_codes_template.xlsx"
           actionsRight={
-            <Button variant="outlined" onClick={() => setImportOpen(true)}>
-              Импорт
-            </Button>
+            <>
+              <Button
+                variant="contained"
+                color="primary"
+                href="https://www.alta.ru/tnved/"
+                target="_blank"
+                sx={{ mr: 1 }}
+              >
+                ТН ВЭД (РОССИЯ)
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                href="https://ec.europa.eu/taxation_customs/dds2/taric/taric_consultation.jsp"
+                target="_blank"
+                sx={{ mr: 1 }}
+              >
+                TARIC (ЕС)
+              </Button>
+              <Button variant="outlined" onClick={() => setImportOpen(true)}>
+                Импорт
+              </Button>
+            </>
           }
         />
       </div>
 
       <BaseTable
         data={paginatedData}
-        columns={tnvedTableColumns}
+        columns={finalColumns}
         newRow={newRow}
         setNewRow={setNewRow}
         onAdd={handleAdd}
@@ -132,7 +206,6 @@ export default function TnvedCodesTable() {
         onImportComplete={loadData}
       />
 
-      {/* Пагинация */}
       <div style={{ marginTop: 16, textAlign: 'right' }}>
         <label style={{ marginRight: 8 }}>Строк на странице:</label>
         <select

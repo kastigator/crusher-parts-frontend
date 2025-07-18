@@ -63,42 +63,20 @@ export default function EditableCell({
       )
 
     case 'enum':
-      return (
-        <Autocomplete
-          value={editorProps.options?.find(opt =>
-            editorProps.getOptionValue?.(opt) === value
-          ) || null}
-          options={editorProps.options || []}
-          getOptionLabel={editorProps.getOptionLabel || (opt => opt?.label || '')}
-          onChange={(e, newValue) =>
-            onChange(column.field, editorProps.getOptionValue?.(newValue))
-          }
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              required={column.required}
-              error={column.required && !value}
-              variant="outlined"
-              size="small"
-              sx={{
-                backgroundColor: '#fffde7',
-                width,
-                '& .MuiOutlinedInput-root.Mui-focused': {
-                  boxShadow: '0 0 0 2px #fbc02d',
-                }
-              }}
-            />
-          )}
-        />
-      )
-
     case 'autocomplete':
       return (
         <Autocomplete
           value={value || ''}
-          onChange={(e, newValue) => onChange(column.field, newValue)}
+          inputValue={value || ''}
+          onInputChange={(e, newInput) => {
+            onChange(column.field, newInput)
+          }}
+          onChange={(e, newValue) => {
+            onChange(column.field, newValue ?? '')
+          }}
           options={editorProps.options || []}
           freeSolo={editorProps.freeSolo || false}
+          getOptionLabel={editorProps.getOptionLabel || (opt => opt?.label || String(opt || ''))}
           renderOption={editorProps.renderOption}
           renderInput={(params) => (
             <TextField

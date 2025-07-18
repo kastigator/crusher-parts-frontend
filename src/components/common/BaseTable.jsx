@@ -14,6 +14,7 @@ export default function BaseTable({
   onSave,
   onDelete,
   onResetPassword,
+  onShowLogs,
   title,
   editingId: externalEditingId,
   setEditingId: setExternalEditingId,
@@ -88,6 +89,8 @@ export default function BaseTable({
     }
   }
 
+  const hasCustomActions = columns.some(col => col.field === 'actions')
+
   return (
     <Paper elevation={3} sx={{ p: 2, mt: 2, borderRadius: 2 }}>
       {title && <TableToolbar title={title} />}
@@ -114,7 +117,9 @@ export default function BaseTable({
                 {col.title}
               </TableCell>
             ))}
-            <TableCell sx={{ width: 140 }}>Действия</TableCell>
+            {!hasCustomActions && (
+              <TableCell sx={{ width: 100, whiteSpace: 'nowrap' }}>Действия</TableCell>
+            )}
           </TableRow>
         </TableHead>
 
@@ -131,7 +136,7 @@ export default function BaseTable({
 
           {safeData.length === 0 && (
             <TableRow>
-              <TableCell colSpan={columns.length + 1} align="center" sx={{ color: '#888', fontStyle: 'italic' }}>
+              <TableCell colSpan={columns.length + (hasCustomActions ? 0 : 1)} align="center" sx={{ color: '#888', fontStyle: 'italic' }}>
                 Нет записей
               </TableCell>
             </TableRow>
@@ -148,6 +153,7 @@ export default function BaseTable({
               onSave={saveEdit}
               onDelete={onDelete}
               onResetPassword={onResetPassword}
+              onShowLogs={onShowLogs}
               columns={columns}
             />
           ))}
