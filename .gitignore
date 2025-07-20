@@ -1,4 +1,4 @@
-# Logs
+# ✅ Логи
 logs
 *.log
 npm-debug.log*
@@ -7,26 +7,26 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Environment variables
+# ✅ Переменные окружения (не включать ключи и секреты)
 .env
 .env.*
 *.env
 *.local
 
-# Build output
+# ✅ Сборка Vite
 dist
 dist-ssr
 
-# Node.js dependencies
+# ✅ Node.js зависимости
 node_modules
 
-# Editor settings
+# ✅ Настройки редакторов
 .vscode/*
-!.vscode/extensions.json
+!.vscode/extensions.json  # Разрешаем рекомендованные расширения
 .idea
 .DS_Store
 
-# Visual Studio
+# ✅ Visual Studio (если используешь)
 *.suo
 *.ntvs*
 *.njsproj
