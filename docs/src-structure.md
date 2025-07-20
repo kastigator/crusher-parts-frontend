@@ -11,7 +11,7 @@
 - `pages/` — роутируемые компоненты (страницы)
 - `layout/` — `MainLayout`, `Header`, `Sidebar` и структура страниц
 - `router/` — маршруты через `AppRouter.jsx`
-- `tableDefinitions.js` / `entitySchemas.js` — описание колонок и импорт-схем (см. `project_guidelines.md`)
+- `tableDefinitions` / `entitySchemas.js` — описание колонок и импорт-схем (см. `project_guidelines.md`)
 
 ---
 

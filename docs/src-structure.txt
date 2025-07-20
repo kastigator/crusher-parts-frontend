@@ -1,5 +1,5 @@
-Структура папок
-Серийный номер тома: CC77-E7FA
+пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
+пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ: CC77-E7FA
 C:\USERS\AUROX\DOCUMENTS\GITHUB\CRUSHER-PARTS-FRONTEND\SRC
 |   App.jsx
 |   main.jsx
@@ -29,7 +29,7 @@ C:\USERS\AUROX\DOCUMENTS\GITHUB\CRUSHER-PARTS-FRONTEND\SRC
 |   |       ImportModal.jsx
 |   |       PageWrapper.jsx
 |   |       PhoneField.jsx
-|   |       tableDefinitions.js
+|   |       tableDefinitions
 |   |       TableFooter.jsx
 |   |       TableSkeleton.jsx
 |   |       TableToolbar.jsx

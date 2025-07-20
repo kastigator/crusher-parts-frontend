@@ -3,13 +3,18 @@ import withReactContent from 'sweetalert2-react-content'
 
 const MySwal = withReactContent(Swal)
 
-export async function confirmAction({
-  title = 'Вы уверены?',
-  text = '',
-  confirmButtonText = 'Удалить',
-  cancelButtonText = 'Отмена',
-  icon = 'question' // 🎯 более нейтрально, чем 'warning'
-} = {}) {
+export async function confirmAction(input = {}) {
+  // ✅ Поддержка и строки, и объекта
+  const options = typeof input === 'string' ? { title: input } : input
+
+  const {
+    title = 'Вы уверены?',
+    text = '',
+    confirmButtonText = 'Удалить',
+    cancelButtonText = 'Отмена',
+    icon = 'question'
+  } = options
+
   const result = await MySwal.fire({
     title,
     html: text
@@ -22,8 +27,8 @@ export async function confirmAction({
     showCancelButton: true,
     confirmButtonText,
     cancelButtonText,
-    confirmButtonColor: '#2563eb',  // primary
-    cancelButtonColor: '#e0e0e0',    // neutral
+    confirmButtonColor: '#2563eb',
+    cancelButtonColor: '#e0e0e0',
     customClass: {
       popup: 'sweet-dialog',
       title: 'sweet-title',

@@ -30,7 +30,7 @@
 * `context/` — `TabsContext`, `AuthContext`
 * `pages/` — отображение страниц вкладок (например, `UsersPage.jsx`)
 * `api/` — все запросы вынесены в отдельные функции (`getUsers`, `getTabs`, ...)
-* `tableDefinitions.js` — колонка + `editorType` для каждой таблицы
+* `tableDefinitions` — колонка + `editorType` для каждой таблицы
 * `entitySchemas.js` — схема импорта (если используется)
 * `layout/` — обёртки, шапка, сайдбар (`PageWrapper`, `Sidebar`, `Header`)
 * `auth/` — хранение токена, логин, `useAuth`

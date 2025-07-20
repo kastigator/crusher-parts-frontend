@@ -14,14 +14,14 @@ components/common/PhoneField.jsx	Поле телефона с tel: и форма
 
 📄 Метаданные таблиц
 Файл	Назначение
-components/common/tableDefinitions.js	Конфигурация колонок таблиц: users, tabs, rolePermissions
+components/common/tableDefinitions	Конфигурация колонок таблиц: users, tabs, rolePermissions
 components/common/fieldRenderers.js	Описание типов редакторов: text, enum, boolean, percent, date и др.
 components/common/entitySchemas.js	Импорт-схемы для таблиц: поля, шаблон, required, endpoint
 components/common/importHelpers.js	Валидация строк при импорте по схеме (validateRowAgainstSchema)
 components/common/ImportModal.jsx	Диалог импорта: загрузка Excel, валидация, отправка
 
 🔁 Общая логика работы
-Таблица строится на основе tableDefinitions.js
+Таблица строится на основе tableDefinitions
 
 Каждое поле:
 
@@ -45,7 +45,7 @@ TableWrapper оборачивает, TableToolbar и TableFooter добавля�
 Шаблоны Excel подгружаются через templateUrl
 
 🛠 Если создаётся новая таблица
-Опиши колонки в tableDefinitions.js
+Опиши колонки в tableDefinitions
 
 Добавь схему импорта в entitySchemas.js (если нужно)
 

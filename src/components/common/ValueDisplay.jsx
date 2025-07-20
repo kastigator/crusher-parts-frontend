@@ -80,8 +80,11 @@ export default function ValueDisplay({
     case 'percent':
       return `${parseFloat(value)}%`
 
-    case 'currency':
-      return formatCurrency(value, currency || 'RUB')
+    case 'currency': {
+      const known = ['RUB', 'USD', 'EUR', 'CNY']
+      const cur = known.includes(currency) ? currency : 'RUB'
+      return formatCurrency(value, cur)
+    }
 
     case 'array':
       return Array.isArray(value) && value.length > 0 ? value.join(', ') : emptySymbol
@@ -100,6 +103,17 @@ export default function ValueDisplay({
           {value}
         </Link>
       )
+
+    case 'tnved':
+      return String(value).replace(/\s+/g, '') // удаляем пробелы
+
+    case 'bankAccount': {
+      if (typeof value === 'object') {
+        const { bank_name, bic, account_number } = value
+        return `${bank_name || ''} (${bic || ''}) / ${account_number || ''}`
+      }
+      return String(value)
+    }
 
     case 'text':
     default:

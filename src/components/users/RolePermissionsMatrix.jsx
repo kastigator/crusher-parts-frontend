@@ -43,13 +43,13 @@ export default function RolePermissionsMatrix() {
       setPermissions(permsRes.data)
     } catch (err) {
       console.error('Ошибка загрузки данных:', err)
+      Swal.fire('Ошибка', 'Не удалось загрузить данные', 'error')
     }
   }
 
   const isChecked = (roleId, tabId) => {
-    return Boolean(
-      permissions.find(p => p.role_id === roleId && p.tab_id === tabId && p.can_view)
-    )
+    const p = permissions.find(p => p.role_id === roleId && p.tab_id === tabId)
+    return Boolean(p?.can_view)
   }
 
   const togglePermission = async (roleId, tabId) => {
@@ -59,14 +59,19 @@ export default function RolePermissionsMatrix() {
       if (existing) {
         const updated = { ...existing, can_view: existing.can_view ? 0 : 1 }
         await axios.put(`/role-permissions/${existing.id}`, updated)
+        setPermissions(prev =>
+          prev.map(p =>
+            p.id === existing.id ? { ...p, can_view: updated.can_view } : p
+          )
+        )
       } else {
-        await axios.post('/role-permissions', {
+        const res = await axios.post('/role-permissions', {
           role_id: roleId,
           tab_id: tabId,
           can_view: 1
         })
+        setPermissions(prev => [...prev, res.data])
       }
-      await loadData()
     } catch (err) {
       console.error('Ошибка при обновлении прав:', err)
       Swal.fire('Ошибка', 'Не удалось обновить права', 'error')
@@ -90,40 +95,60 @@ export default function RolePermissionsMatrix() {
   }
 
   const handleDeleteRole = async (role) => {
-    try {
-      const usersRes = await axios.get(`/users?role_id=${role.id}`)
-      const usersWithRole = usersRes.data || []
+  try {
+    // ✅ Получаем всех пользователей (без фильтрации)
+    const usersRes = await axios.get('/users')
+    const allUsers = usersRes.data || []
 
-      if (usersWithRole.length > 0) {
-        const list = usersWithRole.map(u => `• ${u.full_name || u.username}`).join('\n')
+    // ✅ Оставляем только тех, у кого role_id соответствует текущей роли, и кто не админ
+    const usersWithRole = allUsers.filter(
+      u => u.role_id === role.id && u.role_id !== 1
+    )
 
-        await Swal.fire({
-          title: `Роль «${role.name}» используется у ${usersWithRole.length} пользователя(ей)`,
-          html: `<pre style="text-align: left; font-size: 14px;">${list}</pre><p>Переназначьте этим пользователям другую роль перед удалением.</p>`,
-          icon: 'warning',
-          confirmButtonText: 'Понятно'
-        })
-        return
-      }
+    console.log('Проверка удаления роли:', role)
+    console.log('Найдено пользователей с этой ролью:', usersWithRole)
 
-      const confirm = await Swal.fire({
-        title: `Удалить роль «${role.name}»?`,
-        text: 'Эту операцию нельзя отменить',
+    if (usersWithRole.length > 0) {
+      const list = usersWithRole
+        .map(u => `• ${u.full_name || u.username}`)
+        .join('\n')
+
+      await Swal.fire({
+        title: `Роль «${role.name}» используется у ${usersWithRole.length} пользователь(ей)`,
+        html: `<pre style="text-align: left; font-size: 14px;">${list}</pre><p>Переназначьте этим пользователям другую роль перед удалением.</p>`,
         icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Удалить',
-        cancelButtonText: 'Отмена'
+        confirmButtonText: 'Понятно'
       })
-
-      if (!confirm.isConfirmed) return
-
-      await axios.delete(`/roles/${role.id}`)
-      await loadData()
-    } catch (err) {
-      console.error('Ошибка удаления роли:', err)
-      Swal.fire('Ошибка', 'Не удалось удалить роль', 'error')
+      return
     }
+
+    const confirm = await Swal.fire({
+      title: `Удалить роль «${role.name}»?`,
+      text: 'Эту операцию нельзя отменить.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Удалить',
+      cancelButtonText: 'Отмена'
+    })
+
+    if (!confirm.isConfirmed) return
+
+    await axios.delete(`/roles/${role.id}`)
+    await loadData()
+
+    Swal.fire({
+      title: 'Роль удалена',
+      icon: 'success',
+      timer: 1000,
+      showConfirmButton: false
+    })
+  } catch (err) {
+    console.error('Ошибка удаления роли:', err)
+    Swal.fire('Ошибка', 'Не удалось удалить роль', 'error')
   }
+}
+
+
 
   return (
     <Box sx={{ mt: 4 }}>
@@ -160,7 +185,11 @@ export default function RolePermissionsMatrix() {
               </TableCell>
 
               {tabs.map(tab => (
-                <TableCell key={tab.id} align="center">
+                <TableCell
+                  key={tab.id}
+                  align="left"
+                  sx={{ minWidth: 120, maxWidth: 180, whiteSpace: 'nowrap' }}
+                >
                   {tab.name}
                 </TableCell>
               ))}
@@ -177,7 +206,7 @@ export default function RolePermissionsMatrix() {
               >
                 <TableCell>{role.name}</TableCell>
                 {tabs.map(tab => (
-                  <TableCell key={tab.id} align="center" sx={{ width: 60 }}>
+                  <TableCell key={tab.id} align="left" sx={{ width: 60 }}>
                     <Checkbox
                       checked={isChecked(role.id, tab.id)}
                       onChange={() => togglePermission(role.id, tab.id)}

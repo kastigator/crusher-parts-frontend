@@ -1,9 +1,12 @@
+// src/components/common/BaseTable.jsx
+
 import React, { useState } from 'react'
 import {
   Table, TableHead, TableBody, TableRow, TableCell, Paper
 } from '@mui/material'
 import EditableRow from './EditableRow'
 import TableToolbar from './TableToolbar'
+import TableFooter from './TableFooter'
 
 export default function BaseTable({
   data,
@@ -18,20 +21,26 @@ export default function BaseTable({
   title,
   editingId: externalEditingId,
   setEditingId: setExternalEditingId,
-  onEdit
+  onEdit,
+  sx,
+  pagination,
+  search // ✅ добавлен проп
 }) {
   const [internalEditingId, setInternalEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState({})
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(25)
 
   const editingId = externalEditingId ?? internalEditingId
   const setEditingId = setExternalEditingId ?? setInternalEditingId
 
   const safeData = Array.isArray(data) ? data : []
+  const hasCustomActions = columns.some(col => col.field === 'actions')
 
   const startEdit = (row) => {
+    onEdit?.(row)
     setEditingId(row.id)
     setEditedRow({ ...row })
-    onEdit?.(row)
   }
 
   const cancelEdit = () => {
@@ -89,11 +98,20 @@ export default function BaseTable({
     }
   }
 
-  const hasCustomActions = columns.some(col => col.field === 'actions')
+  const paginatedData = pagination
+    ? safeData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+    : safeData
 
   return (
-    <Paper elevation={3} sx={{ p: 2, mt: 2, borderRadius: 2 }}>
-      {title && <TableToolbar title={title} />}
+    <Paper elevation={3} sx={{ p: 2, mt: 2, borderRadius: 2, ...sx }}>
+      {title && (
+        <TableToolbar
+          title={title}
+          filterValue={search?.filterValue}
+          onFilterChange={search?.onFilterChange}
+        />
+      )}
+
       <Table
         size="small"
         sx={{
@@ -134,15 +152,19 @@ export default function BaseTable({
             columns={columns}
           />
 
-          {safeData.length === 0 && (
+          {paginatedData.length === 0 && (
             <TableRow>
-              <TableCell colSpan={columns.length + (hasCustomActions ? 0 : 1)} align="center" sx={{ color: '#888', fontStyle: 'italic' }}>
+              <TableCell
+                colSpan={columns.length + (hasCustomActions ? 0 : 1)}
+                align="center"
+                sx={{ color: '#888', fontStyle: 'italic' }}
+              >
                 Нет записей
               </TableCell>
             </TableRow>
           )}
 
-          {safeData.map(row => (
+          {paginatedData.map(row => (
             <EditableRow
               key={row.id}
               row={editingId === row.id ? editedRow : row}
@@ -158,6 +180,19 @@ export default function BaseTable({
             />
           ))}
         </TableBody>
+
+        {pagination && (
+          <TableFooter
+            page={page}
+            rowsPerPage={rowsPerPage}
+            total={safeData.length}
+            onPageChange={setPage}
+            onRowsPerPageChange={(val) => {
+              setPage(0)
+              setRowsPerPage(val)
+            }}
+          />
+        )}
       </Table>
     </Paper>
   )

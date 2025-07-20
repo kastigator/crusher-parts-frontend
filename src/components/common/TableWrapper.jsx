@@ -1,26 +1,17 @@
-import React from 'react'
-import { Paper, Typography, Box } from '@mui/material'
+// src/components/common/TableWrapper.jsx
 
-export default function TableWrapper({ title, children }) {
+import React from 'react'
+import { Paper, Typography } from '@mui/material'
+
+export default function TableWrapper({ title, children, sx = {} }) {
   return (
-    <Paper
-      elevation={3}
-      sx={{
-        p: 2,
-        mt: 4,
-        minWidth: 1200,
-        overflowX: 'clip',
-        backgroundColor: '#fff'
-      }}
-    >
+    <Paper sx={{ p: 2, mt: 2, overflowX: 'auto', ...sx }}>
       {title && (
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+        <Typography variant="h6" gutterBottom>
           {title}
         </Typography>
       )}
-      <Box>
-        {children}
-      </Box>
+      {children}
     </Paper>
   )
 }

@@ -1,3 +1,5 @@
+// src/components/common/EditableCell.jsx
+
 import React from 'react'
 import {
   TextField,
@@ -5,19 +7,26 @@ import {
   Autocomplete,
   Tooltip
 } from '@mui/material'
+import { fieldRenderers } from './fieldRenderers'
 
 export default function EditableCell({
   column,
   value,
   onChange,
-  isEditing
+  isEditing,
+  row
 }) {
   const { type = 'text', inputType = 'text', editorProps = {}, width } = column
 
+  const renderer = fieldRenderers[column.type] || {}
+  const displayFn = column.display || renderer.display
+  const editorFn = column.editor || renderer.editor
+
   if (!isEditing) {
-    const displayValue = column.display
-      ? column.display(value)
-      : value
+    const safeValue = value ?? ''
+    const displayValue = displayFn
+      ? displayFn(safeValue, row, column)
+      : safeValue
 
     const isString = typeof displayValue === 'string' || typeof displayValue === 'number'
 
@@ -41,9 +50,8 @@ export default function EditableCell({
     )
   }
 
-  // ✅ Кастомный редактор с передачей поля
-  if (typeof column.editor === 'function') {
-    return column.editor(value, (field, val) => onChange(field, val))
+  if (typeof editorFn === 'function') {
+    return editorFn(value, (field, val) => onChange(field, val), column.required, column.required, column)
   }
 
   switch (type) {

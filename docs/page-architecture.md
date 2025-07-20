@@ -22,7 +22,7 @@ TableSkeleton.jsx	Скелет при загрузке
 ImportModal.jsx	Диалог импорта Excel-файлов
 
 📄 Логика таблиц
-Все таблицы подключаются на основе описания в tableDefinitions.js
+Все таблицы подключаются на основе описания в tableDefinitions
 
 Если нужен импорт — используется схема из entitySchemas.js
 
@@ -71,7 +71,7 @@ CustomToolbarRight	Если нужны кастомные действия сп�
 components/common/	Все переиспользуемые части
 components/[module]/	Таблицы для конкретной вкладки
 pages/	Сами страницы
-tableDefinitions.js	Колонки
+tableDefinitions	Колонки
 entitySchemas.js	Импорт схемы
 
 Документ создан 2025-07-15. Используется при проектировании и расширении системы вкладок.

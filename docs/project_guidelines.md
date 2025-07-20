@@ -16,7 +16,7 @@
 | `TableFooter.jsx`     | Пагинация (страницы, строки на странице, счётчик)         |
 | `TableSkeleton.jsx`   | Скелетон-заглушка при загрузке                            |
 | `fieldRenderers.js`   | Правила рендера и редакторов по типу                      |
-| `tableDefinitions.js` | Описание колонок таблиц (users, tabs и др.)               |
+| `tableDefinitions` | Описание колонок таблиц (users, tabs и др.)               |
 | `importHelpers.js`    | Валидация строк при импорте по типу                       |
 | `entitySchemas.js`    | Настройки импорта: поля, шаблон, валидация, endpoint      |
 
@@ -25,7 +25,7 @@
 ## 📦 Где хранятся описания таблиц
 
 ```bash
-src/components/common/tableDefinitions.js       // Колонки (field, title, editorType)
+src/components/common/tableDefinitions       // Колонки (field, title, editorType)
 src/components/common/entitySchemas.js          // Импорт для конкретных таблиц
 ```
 

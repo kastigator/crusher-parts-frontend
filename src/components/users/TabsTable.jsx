@@ -29,19 +29,20 @@ function SortableRow({ id, children }) {
     transition
   }
   return (
-    <TableRow ref={setNodeRef} style={style} {...attributes}>
-      {children.map((cell, index) =>
-        index === 0 ? (
-          <TableCell key={index} {...listeners} style={{ cursor: 'grab' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <DragHandleIcon fontSize="small" />
-              {cell}
-            </Box>
-          </TableCell>
-        ) : (
-          <TableCell key={index}>{cell}</TableCell>
-        )
-      )}
+    <TableRow ref={setNodeRef} style={style}>
+      {children.map((cell, index) => {
+        if (index === 0) {
+          return (
+            <TableCell key={index} {...attributes} {...listeners} sx={{ cursor: 'grab' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <DragHandleIcon fontSize="small" />
+                {cell}
+              </Box>
+            </TableCell>
+          )
+        }
+        return <TableCell key={index}>{cell}</TableCell>
+      })}
     </TableRow>
   )
 }
@@ -58,8 +59,8 @@ export default function TabsTable() {
       label: name,
       value: name,
       icon: MuiIcons[name]
-    }))
-  , [])
+    })), []
+  )
 
   const fetchTabs = async () => {
     const res = await axios.get('/tabs')
@@ -118,11 +119,9 @@ export default function TabsTable() {
       onChange={(_, newVal) => onChange(newVal?.value || '')}
       getOptionLabel={o => o.label}
       renderOption={(props, option) => (
-        <li {...props} key={option.value}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {React.createElement(option.icon, { fontSize: 'small' })}
-            {option.label}
-          </Box>
+        <li {...props} key={option.value} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {React.createElement(option.icon, { fontSize: 'small' })}
+          {option.label}
         </li>
       )}
       renderInput={(params) => <TextField {...params} size="small" />}
@@ -152,21 +151,19 @@ export default function TabsTable() {
     <Box>
       <Typography variant="h6" gutterBottom>Управление вкладками</Typography>
 
-      <Table size="small" onKeyDown={handleKeyDown}>
-        <TableHead>
-          <TableRow>
-            <TableCell>Название (RU)</TableCell>
-            <TableCell>tab_name</TableCell>
-            <TableCell>path</TableCell>
-            <TableCell>Иконка</TableCell>
-            <TableCell />
-          </TableRow>
-        </TableHead>
-
-        <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={tabs.map(t => t.id)} strategy={verticalListSortingStrategy}>
+      <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
+        <SortableContext items={tabs.map(t => t.id)} strategy={verticalListSortingStrategy}>
+          <Table size="small" onKeyDown={handleKeyDown}>
+            <TableHead>
+              <TableRow>
+                <TableCell>Название (RU)</TableCell>
+                <TableCell>tab_name</TableCell>
+                <TableCell>path</TableCell>
+                <TableCell>Иконка</TableCell>
+                <TableCell />
+              </TableRow>
+            </TableHead>
             <TableBody>
-              {/* строка добавления новой вкладки — СВЕРХУ */}
               <TableRow>
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -205,7 +202,7 @@ export default function TabsTable() {
               </TableRow>
 
               {tabs.map(tab => {
-                const isEditing = editId === tab.id
+                const isEditing = Number(editId) === Number(tab.id)
                 const cells = isEditing ? [
                   <TextField
                     key="name"
@@ -239,7 +236,10 @@ export default function TabsTable() {
                     {tab.icon && React.createElement(MuiIcons[tab.icon] || MuiIcons.Help)}
                   </Tooltip>,
                   <Box key="actions" sx={{ display: 'flex', gap: 1 }}>
-                    <IconButton onClick={() => { setEditId(tab.id); setEditRow(tab) }}><EditIcon /></IconButton>
+                    <IconButton onClick={() => {
+                      setEditId(Number(tab.id))
+                      setEditRow({ ...tab })
+                    }}><EditIcon /></IconButton>
                     <IconButton onClick={() => handleDelete(tab)}><DeleteIcon /></IconButton>
                   </Box>
                 ]
@@ -247,9 +247,9 @@ export default function TabsTable() {
                 return <SortableRow key={tab.id} id={tab.id}>{cells}</SortableRow>
               })}
             </TableBody>
-          </SortableContext>
-        </DndContext>
-      </Table>
+          </Table>
+        </SortableContext>
+      </DndContext>
     </Box>
   )
 }

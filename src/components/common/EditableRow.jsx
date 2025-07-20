@@ -1,17 +1,9 @@
+// src/components/common/EditableRow.jsx
+
 import React from 'react'
-import {
-  TableRow,
-  TableCell,
-  IconButton,
-  Tooltip,
-  Box
-} from '@mui/material'
-import SaveIcon from '@mui/icons-material/Save'
-import CancelIcon from '@mui/icons-material/Cancel'
-import DeleteIcon from '@mui/icons-material/Delete'
-import AddIcon from '@mui/icons-material/Add'
-import HistoryIcon from '@mui/icons-material/History'
+import { TableRow, TableCell } from '@mui/material'
 import EditableCell from './EditableCell'
+import ActionIcons from './ActionIcons'
 import { confirmAction } from '@/utils/confirmAction'
 
 export default function EditableRow({
@@ -24,19 +16,41 @@ export default function EditableRow({
   onCancel,
   onAdd,
   onDelete,
-  onShowLogs
+  onShowLogs,
+  onEdit,
+  onResetPassword
 }) {
+  if (!row || typeof row !== 'object') return null
+
   const handleConfirmDelete = async () => {
     const confirmed = await confirmAction('Удалить эту запись?')
     if (confirmed) onDelete?.(row)
   }
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      isNewRow ? onAdd?.() : onSave?.()
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      onCancel?.()
+    }
+  }
+
+  const hasCustomActions = columns.some(c => c.field === 'actions')
+
   return (
     <TableRow
       hover
-      sx={{
-        backgroundColor: isEditing || isNewRow ? '#fffde7' : 'inherit'
+      onDoubleClick={() => {
+        if (!isEditing && !isNewRow && onEdit) {
+          onEdit(row)
+        }
       }}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      sx={{ backgroundColor: isEditing || isNewRow ? '#fffde7' : 'inherit' }}
     >
       {columns.map((col) => (
         <TableCell
@@ -49,19 +63,20 @@ export default function EditableRow({
           }}
         >
           {col.renderCell ? (
-            col.renderCell(row, onDelete, onShowLogs)
+            col.renderCell({ row, onDelete, onShowLogs }) // ✅ ВАЖНО: передаём объект
           ) : (
             <EditableCell
               column={col}
               value={row[col.field]}
               onChange={onChange}
               isEditing={isEditing || isNewRow}
+              row={row}
             />
           )}
         </TableCell>
       ))}
 
-      {!columns.some(c => c.field === 'actions') && (
+      {!hasCustomActions && (
         <TableCell
           sx={{
             width: 140,
@@ -72,37 +87,17 @@ export default function EditableRow({
             gap: 1
           }}
         >
-          {isEditing ? (
-            <>
-              <Tooltip title="Сохранить">
-                <IconButton onClick={onSave}><SaveIcon /></IconButton>
-              </Tooltip>
-              <Tooltip title="Отмена">
-                <IconButton onClick={onCancel}><CancelIcon /></IconButton>
-              </Tooltip>
-            </>
-          ) : isNewRow ? (
-            <Tooltip title="Добавить">
-              <IconButton onClick={onAdd} color="primary">
-                <AddIcon />
-              </IconButton>
-            </Tooltip>
-          ) : (
-            <>
-              {onShowLogs && (
-                <Tooltip title="История изменений">
-                  <IconButton onClick={() => onShowLogs(row)}>
-                    <HistoryIcon />
-                  </IconButton>
-                </Tooltip>
-              )}
-              <Tooltip title="Удалить">
-                <IconButton onClick={handleConfirmDelete}>
-                  <DeleteIcon />
-                </IconButton>
-              </Tooltip>
-            </>
-          )}
+          <ActionIcons
+            row={row}
+            isEditing={isEditing}
+            isNewRow={isNewRow}
+            onSave={onSave}
+            onCancel={onCancel}
+            onAdd={onAdd}
+            onDelete={handleConfirmDelete}
+            onShowLogs={onShowLogs}
+            onResetPassword={onResetPassword}
+          />
         </TableCell>
       )}
     </TableRow>

@@ -1,3 +1,5 @@
+// src/pages/LoginPage.jsx
+
 import React, { useState } from 'react'
 import {
   Container,
@@ -13,8 +15,7 @@ import axios from '../api/axiosInstance'
 import { useAuth } from '../auth/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import logo from '../assets/logo.svg'
-import PhoneField from '../components/common/PhoneField'
-import EmailField from '../components/common/EmailField'
+import { fieldRenderers } from '../components/common/fieldRenderers'
 
 const LoginPage = () => {
   const [username, setUsername] = useState('')
@@ -53,7 +54,15 @@ const LoginPage = () => {
   }
 
   return (
-    <Box sx={{ backgroundColor: '#f5f5f5', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <Box
+      sx={{
+        backgroundColor: '#f5f5f5',
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}
+    >
       <Container maxWidth="xs">
         <Fade in timeout={700}>
           <Paper elevation={4} sx={{ p: 4, borderRadius: 3 }}>
@@ -112,8 +121,8 @@ const LoginPage = () => {
                     {admins.map((user, index) => (
                       <li key={index} style={{ marginBottom: '0.5rem' }}>
                         <strong>{user.full_name || user.username}</strong><br />
-                        <PhoneField value={user.phone} readOnly emptyText="нет телефона" /><br />
-                        <EmailField value={user.email} readOnly emptyText="нет email" />
+                        {fieldRenderers.phone.display(user.phone)}<br />
+                        {fieldRenderers.email.display(user.email)}
                       </li>
                     ))}
                   </ul>
