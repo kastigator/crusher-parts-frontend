@@ -7,8 +7,10 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Environment
+# Environment variables
 .env
+.env.*
+*.env
 *.local
 
 # Build output
