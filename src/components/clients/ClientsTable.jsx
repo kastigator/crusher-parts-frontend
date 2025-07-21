@@ -69,7 +69,7 @@ export default function ClientsTable({
         onFilterChange: setSearch
       }}
       pagination
-      minWidth={1000}
+      minWidth={1000} // <-- пробрасывается дальше
     />
   )
 }

@@ -24,7 +24,8 @@ export default function BaseTable({
   onEdit,
   sx,
   pagination,
-  search // ✅ добавлен проп
+  search,
+  minWidth // 👈 добавлено
 }) {
   const [internalEditingId, setInternalEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState({})
@@ -36,6 +37,7 @@ export default function BaseTable({
 
   const safeData = Array.isArray(data) ? data : []
   const hasCustomActions = columns.some(col => col.field === 'actions')
+  const totalCols = columns.length + (hasCustomActions ? 0 : 1)
 
   const startEdit = (row) => {
     onEdit?.(row)
@@ -116,7 +118,7 @@ export default function BaseTable({
         size="small"
         sx={{
           tableLayout: 'auto',
-          minWidth: columns.reduce((acc, col) => acc + (col.minWidth || col.width || 100), 0)
+          minWidth: minWidth || columns.reduce((acc, col) => acc + (col.minWidth || col.width || 100), 0)
         }}
       >
         <TableHead>
@@ -136,7 +138,9 @@ export default function BaseTable({
               </TableCell>
             ))}
             {!hasCustomActions && (
-              <TableCell sx={{ width: 100, whiteSpace: 'nowrap' }}>Действия</TableCell>
+              <TableCell sx={{ width: 140, minWidth: 140, whiteSpace: 'nowrap' }}>
+                Действия
+              </TableCell>
             )}
           </TableRow>
         </TableHead>
@@ -155,7 +159,7 @@ export default function BaseTable({
           {paginatedData.length === 0 && (
             <TableRow>
               <TableCell
-                colSpan={columns.length + (hasCustomActions ? 0 : 1)}
+                colSpan={totalCols}
                 align="center"
                 sx={{ color: '#888', fontStyle: 'italic' }}
               >

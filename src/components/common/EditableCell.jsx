@@ -22,6 +22,8 @@ export default function EditableCell({
   const displayFn = column.display || renderer.display
   const editorFn = column.editor || renderer.editor
 
+  const effectiveWidth = width || column.minWidth || 150
+
   if (!isEditing) {
     const safeValue = value ?? ''
     const displayValue = displayFn
@@ -35,7 +37,7 @@ export default function EditableCell({
         <span
           style={{
             display: 'inline-block',
-            maxWidth: width || 150,
+            maxWidth: effectiveWidth,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -66,7 +68,7 @@ export default function EditableCell({
             const val = e.target.value
             onChange(column.field, val)
           }}
-          sx={{ width }}
+          sx={{ width: effectiveWidth }}
         />
       )
 
@@ -95,7 +97,7 @@ export default function EditableCell({
               size="small"
               sx={{
                 backgroundColor: '#fffde7',
-                width,
+                width: effectiveWidth,
                 '& .MuiOutlinedInput-root.Mui-focused': {
                   boxShadow: '0 0 0 2px #fbc02d',
                 }

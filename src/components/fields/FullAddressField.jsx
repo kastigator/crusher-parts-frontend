@@ -1,3 +1,5 @@
+// src/components/fields/FullAddressField.jsx
+
 import React from "react"
 import { Typography, Box } from "@mui/material"
 import LocationOnIcon from "@mui/icons-material/LocationOn"
@@ -12,20 +14,21 @@ export default function FullAddressField({ address = "", comment = "" }) {
       flexDirection="column"
       gap={0.5}
       sx={{
-        paddingY: 0.5,
+        py: 0.5,
         whiteSpace: "normal",
-        wordBreak: "break-word"
+        wordBreak: "break-word",
+        maxWidth: 500
       }}
     >
       {hasAddress ? (
         <Box display="flex" alignItems="flex-start" gap={1}>
-          <LocationOnIcon fontSize="small" color="action" sx={{ marginTop: "2px" }} />
+          <LocationOnIcon fontSize="small" color="action" sx={{ mt: "2px" }} />
           <Typography variant="body2" sx={{ lineHeight: 1.4 }}>
             {address}
           </Typography>
         </Box>
       ) : (
-        <Typography variant="body2" color="text.disabled">
+        <Typography variant="body2" sx={{ color: "text.disabled", fontStyle: "italic" }}>
           — адрес не указан —
         </Typography>
       )}
@@ -34,7 +37,7 @@ export default function FullAddressField({ address = "", comment = "" }) {
         <Typography
           variant="body2"
           color="text.secondary"
-          sx={{ marginLeft: "24px", lineHeight: 1.3 }}
+          sx={{ ml: "24px", lineHeight: 1.3 }}
         >
           {comment}
         </Typography>

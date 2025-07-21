@@ -52,29 +52,46 @@ export default function EditableRow({
       tabIndex={0}
       sx={{ backgroundColor: isEditing || isNewRow ? '#fffde7' : 'inherit' }}
     >
-      {columns.map((col) => (
-        <TableCell
-          key={col.field}
-          style={{
-            minWidth: col.minWidth || 100,
-            maxWidth: col.maxWidth,
-            width: col.width,
-            whiteSpace: 'nowrap'
-          }}
-        >
-          {col.renderCell ? (
-            col.renderCell({ row, onDelete, onShowLogs }) // ✅ ВАЖНО: передаём объект
-          ) : (
-            <EditableCell
-              column={col}
-              value={row[col.field]}
-              onChange={onChange}
-              isEditing={isEditing || isNewRow}
-              row={row}
-            />
-          )}
-        </TableCell>
-      ))}
+      {columns.map((col) => {
+        const isRenderCell = typeof col.renderCell === 'function'
+
+        return (
+          <TableCell
+            key={col.field}
+            sx={{
+              minWidth: col.minWidth || 100,
+              maxWidth: col.maxWidth,
+              width: col.width,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}
+          >
+            {isRenderCell
+              ? (
+                isNewRow && col.field === 'expand'
+                  ? (
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        width: col.width || col.minWidth || 48
+                      }}
+                    />
+                  )
+                  : col.renderCell({ row, onDelete, onShowLogs })
+              )
+              : (
+                <EditableCell
+                  column={col}
+                  value={row[col.field]}
+                  onChange={onChange}
+                  isEditing={isEditing || isNewRow}
+                  row={row}
+                />
+              )}
+          </TableCell>
+        )
+      })}
 
       {!hasCustomActions && (
         <TableCell

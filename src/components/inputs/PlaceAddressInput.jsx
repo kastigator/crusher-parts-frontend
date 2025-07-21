@@ -6,9 +6,9 @@ export default function PlaceAddressInput({ value = "", onChange, error, require
   const autocompleteRef = useRef(null)
 
   useEffect(() => {
-    if (!window.google || !window.google.maps) return
+    if (!window.google || !window.google.maps || !inputRef.current) return
 
-    if (!autocompleteRef.current && inputRef.current) {
+    if (!autocompleteRef.current) {
       autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
         fields: ["formatted_address", "address_components"],
         types: ["address"],
@@ -18,7 +18,7 @@ export default function PlaceAddressInput({ value = "", onChange, error, require
       autocompleteRef.current.addListener("place_changed", () => {
         const place = autocompleteRef.current.getPlace()
 
-        if (place.formatted_address) {
+        if (place?.formatted_address) {
           onChange("formatted_address", place.formatted_address)
         }
 
@@ -38,11 +38,18 @@ export default function PlaceAddressInput({ value = "", onChange, error, require
         inputRef={inputRef}
         value={value}
         onChange={(e) => onChange("formatted_address", e.target.value)}
+        onBlur={(e) => {
+          // Вручную вызвать изменение, если не выбрано из подсказки
+          if (!e.target.value) {
+            onChange("formatted_address", "")
+          }
+        }}
         error={!!error}
         required={required}
         fullWidth
         placeholder="Введите адрес"
         size="small"
+        sx={{ width: 300 }}
       />
       {error && required && (
         <FormHelperText error>Введите или выберите адрес</FormHelperText>

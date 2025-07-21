@@ -1,8 +1,7 @@
-// src/components/common/tableDefinitions.jsx
-
 import fetchBankByBic from "@/utils/fetchBankByBic"
 import { TextField, MenuItem } from "@mui/material"
 import { fieldRenderers } from "./fieldRenderers"
+import ActionIcons from "./ActionIcons"
 
 export const usersTableColumns = [
   { field: 'username', title: 'Логин', type: 'text', required: true, width: 160, minWidth: 120 },
@@ -86,6 +85,7 @@ export const clientsTableColumns = [
     type: "custom",
     display: fieldRenderers.phone.display,
     editor: fieldRenderers.phone.editor,
+    width: 160,
     minWidth: 160
   },
   {
@@ -94,11 +94,35 @@ export const clientsTableColumns = [
     type: "custom",
     display: fieldRenderers.email.display,
     editor: fieldRenderers.email.editor,
+    width: 220,
     minWidth: 220
   },
   { field: "website", title: "Сайт", type: "text", minWidth: 180 },
-  { field: "notes", title: "Заметки", type: "text", minWidth: 220 }
+  { field: "notes", title: "Заметки", type: "text", minWidth: 220 },
+
+  // 👇 Кастомная колонка действий
+  {
+    field: 'actions',
+    title: '',
+    width: 140,
+    minWidth: 140,
+    renderCell: ({ row, isEditing, isNewRow, onSave, onCancel, onAdd, onDelete, onEdit, onShowLogs, onResetPassword }) => (
+      <ActionIcons
+        row={row}
+        isEditing={isEditing}
+        isNewRow={isNewRow}
+        onSave={onSave}
+        onCancel={onCancel}
+        onAdd={onAdd}
+        onDelete={onDelete}
+        onEdit={onEdit}
+        onShowLogs={onShowLogs}
+        onResetPassword={onResetPassword}
+      />
+    )
+  }
 ]
+
 
 export const clientBillingAddressesColumns = [
   { field: "label", title: "Метка", type: "text", minWidth: 160 },
@@ -109,6 +133,7 @@ export const clientBillingAddressesColumns = [
     required: true,
     display: fieldRenderers.address.display,
     editor: fieldRenderers.address.editor,
+    width: 400,
     minWidth: 400
   },
   { field: "postal_code", title: "Индекс", type: "text", minWidth: 100 },
@@ -124,6 +149,7 @@ export const clientShippingAddressesColumns = [
     required: true,
     display: fieldRenderers.address.display,
     editor: fieldRenderers.address.editor,
+    width: 400,
     minWidth: 400
   },
   { field: "postal_code", title: "Индекс", type: "text", minWidth: 100 },
@@ -139,6 +165,7 @@ export const clientBankDetailsColumns = [
     title: "БИК",
     type: "text",
     required: true,
+    width: 120,
     minWidth: 120,
     editor: (value = "", onChange) => (
       <TextField

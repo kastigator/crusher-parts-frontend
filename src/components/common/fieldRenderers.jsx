@@ -32,7 +32,7 @@ export const fieldRenderers = {
     editor: (value = "", onChange, error, required) => (
       <PlaceAddressInput
         value={value}
-        onChange={onChange}
+        onChange={(val) => onChange('formatted_address', val)}
         error={error}
         required={required}
       />
@@ -66,7 +66,8 @@ export const fieldRenderers = {
         size="small"
         placeholder="Email"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange('email', e.target.value)}
+        sx={{ width: 200 }}
       />
     )
   },
@@ -105,7 +106,8 @@ export const fieldRenderers = {
           size="small"
           placeholder="Телефон"
           value={value}
-          onChange={(e) => onChange(normalize(e.target.value))}
+          onChange={(e) => onChange('phone', normalize(e.target.value))}
+          sx={{ width: 200 }}
         />
       )
     }
@@ -120,7 +122,8 @@ export const fieldRenderers = {
         size="small"
         type="number"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange('currency', e.target.value)}
+        sx={{ width: 120 }}
       />
     )
   },
@@ -130,12 +133,12 @@ export const fieldRenderers = {
     display: (value) => <ValueDisplay type="datetime" value={value} />
   },
 
-  // ✅ Статус (Chip)
+  // ✅ Статус
   status: {
     display: (value) => <ValueDisplay type="status" value={value} />
   },
 
-  // 📊 Boolean (✔️ / —)
+  // 📊 Boolean
   boolean: {
     display: (value) => <ValueDisplay type="boolean" value={value} />
   },

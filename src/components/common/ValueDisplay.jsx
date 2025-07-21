@@ -1,7 +1,8 @@
+// src/components/common/ValueDisplay.jsx
+
 import React from 'react'
 import { Chip, Link } from '@mui/material'
 
-// Карта статусов → подпись и цвет
 const STATUS_MAP = {
   new:       { label: 'Новая',        color: 'info' },
   pending:   { label: 'Ожидает',      color: 'warning' },
@@ -11,7 +12,6 @@ const STATUS_MAP = {
   draft:     { label: 'Черновик',     color: 'default' }
 }
 
-// Формат даты
 const formatDate = (val) => {
   try {
     return new Date(val).toLocaleDateString('ru-RU')
@@ -20,7 +20,6 @@ const formatDate = (val) => {
   }
 }
 
-// Формат времени
 const formatTime = (val) => {
   try {
     const date = new Date(val)
@@ -30,7 +29,6 @@ const formatTime = (val) => {
   }
 }
 
-// Формат дата+время
 const formatDateTime = (val) => {
   try {
     const date = new Date(val)
@@ -43,7 +41,6 @@ const formatDateTime = (val) => {
   }
 }
 
-// Формат валюты
 const formatCurrency = (val, currency = 'RUB') => {
   try {
     return new Intl.NumberFormat('ru-RU', {
@@ -78,7 +75,7 @@ export default function ValueDisplay({
       return value ? '✔️' : emptySymbol
 
     case 'percent':
-      return `${parseFloat(value)}%`
+      return `${parseFloat(value).toFixed(2)}%`
 
     case 'currency': {
       const known = ['RUB', 'USD', 'EUR', 'CNY']
@@ -93,7 +90,8 @@ export default function ValueDisplay({
       return isNaN(Number(value)) ? emptySymbol : value
 
     case 'status': {
-      const status = STATUS_MAP[value] || { label: String(value), color: 'default' }
+      const key = String(value).toLowerCase()
+      const status = STATUS_MAP[key] || { label: String(value), color: 'default' }
       return <Chip label={status.label} size="small" color={status.color} />
     }
 
@@ -105,14 +103,12 @@ export default function ValueDisplay({
       )
 
     case 'tnved':
-      return String(value).replace(/\s+/g, '') // удаляем пробелы
+      return String(value).replace(/\s+/g, '')
 
     case 'bankAccount': {
-      if (typeof value === 'object') {
-        const { bank_name, bic, account_number } = value
-        return `${bank_name || ''} (${bic || ''}) / ${account_number || ''}`
-      }
-      return String(value)
+      if (!value || typeof value !== 'object') return emptySymbol
+      const { bank_name, bic, account_number } = value
+      return `${bank_name || ''} (${bic || ''}) / ${account_number || ''}`
     }
 
     case 'text':
