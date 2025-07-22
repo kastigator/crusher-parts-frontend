@@ -6,13 +6,28 @@ import ClientsTable from "./ClientsTable"
 import BillingAddressesTable from "./BillingAddressesTable"
 import ShippingAddressesTable from "./ShippingAddressesTable"
 import BankDetailsTable from "./BankDetailsTable"
+import FullHistoryDialog from "./FullHistoryDialog"
+import axios from "@/api/axiosInstance"
 
 export default function ClientsMain() {
   const [expandedClientId, setExpandedClientId] = useState(null)
   const [tabIndex, setTabIndex] = useState(0)
   const [allClients, setAllClients] = useState([])
 
+  const [logs, setLogs] = useState([])
+  const [logOpen, setLogOpen] = useState(false)
+
   const selectedClient = allClients.find(c => c.id === expandedClientId)
+
+  const handleShowLogs = async (row) => {
+    try {
+      const res = await axios.get(`/clients/${row.id}/logs`)
+      setLogs(res.data)
+      setLogOpen(true)
+    } catch (err) {
+      console.error("Ошибка при загрузке логов:", err)
+    }
+  }
 
   return (
     <Grid container spacing={2}>
@@ -21,6 +36,7 @@ export default function ClientsMain() {
           expandedClientId={expandedClientId}
           setExpandedClientId={setExpandedClientId}
           setAllClients={setAllClients}
+          onShowLogs={handleShowLogs}
         />
       </Grid>
 
@@ -43,18 +59,33 @@ export default function ClientsMain() {
               </Tabs>
 
               {tabIndex === 0 && (
-                <BillingAddressesTable clientId={selectedClient.id} />
+                <BillingAddressesTable
+                  key={`billing-${selectedClient.id}`}
+                  clientId={selectedClient.id}
+                />
               )}
               {tabIndex === 1 && (
-                <ShippingAddressesTable clientId={selectedClient.id} />
+                <ShippingAddressesTable
+                  key={`shipping-${selectedClient.id}`}
+                  clientId={selectedClient.id}
+                />
               )}
               {tabIndex === 2 && (
-                <BankDetailsTable clientId={selectedClient.id} />
+                <BankDetailsTable
+                  key={`bank-${selectedClient.id}`}
+                  clientId={selectedClient.id}
+                />
               )}
             </>
           )}
         </Collapse>
       </Grid>
+
+      <FullHistoryDialog
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+        logs={logs}
+      />
     </Grid>
   )
 }

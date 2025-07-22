@@ -9,7 +9,8 @@ import CollapseCell from "@/components/common/CollapseCell"
 export default function ClientsTable({
   expandedClientId,
   setExpandedClientId,
-  setAllClients
+  setAllClients,
+  onShowLogs // ✅ добавили пропс
 }) {
   const {
     data,
@@ -63,13 +64,14 @@ export default function ClientsTable({
       }}
       onSave={onSave}
       onDelete={onDelete}
+      onShowLogs={onShowLogs} // ✅ передаём дальше
       columns={columnsWithCollapse}
       search={{
         filterValue: search,
         onFilterChange: setSearch
       }}
       pagination
-      minWidth={1000} // <-- пробрасывается дальше
+      minWidth={1000}
     />
   )
 }

@@ -19,22 +19,22 @@ export default function UsersTable() {
 
   const roleOptions = useRoles()
 
-  // Вставляем роли как options в колонку role_id
-  const columnsWithRoles = usersTableColumns.map(col =>
-    col.field === "role_id"
-      ? {
-          ...col,
-          editorProps: {
-            ...(col.editorProps || {}),
-            options: roleOptions
-          }
+  // Подставляем options только в колонку role_id, остальные не трогаем
+  const columnsWithRoles = usersTableColumns.map(col => {
+    if (col.field === "role_id") {
+      return {
+        ...col,
+        editorProps: {
+          ...(col.editorProps || {}),
+          options: roleOptions
         }
-      : col
-  )
+      }
+    }
+    return col
+  })
 
   return (
     <BaseTable
-      
       data={data}
       setData={setData}
       newRow={newRow}

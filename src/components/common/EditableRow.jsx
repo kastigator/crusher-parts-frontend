@@ -69,16 +69,21 @@ export default function EditableRow({
           >
             {isRenderCell
               ? (
+                // не рендерим expand в новой строке
                 isNewRow && col.field === 'expand'
-                  ? (
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        width: col.width || col.minWidth || 48
-                      }}
-                    />
-                  )
-                  : col.renderCell({ row, onDelete, onShowLogs })
+                  ? <span style={{ display: 'inline-block', width: col.width || col.minWidth || 48 }} />
+                  : col.renderCell({
+                      row,
+                      isEditing,
+                      isNewRow,
+                      onSave,
+                      onCancel,
+                      onAdd,
+                      onDelete: handleConfirmDelete,
+                      onEdit,
+                      onShowLogs,
+                      onResetPassword
+                    })
               )
               : (
                 <EditableCell

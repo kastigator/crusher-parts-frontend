@@ -25,7 +25,7 @@ export default function BaseTable({
   sx,
   pagination,
   search,
-  minWidth // 👈 добавлено
+  minWidth
 }) {
   const [internalEditingId, setInternalEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState({})
@@ -122,7 +122,7 @@ export default function BaseTable({
         }}
       >
         <TableHead>
-          <TableRow sx={{ backgroundColor: '#f3f6fa' }}>
+          <TableRow>
             {columns.map(col => (
               <TableCell
                 key={col.field}
@@ -154,6 +154,10 @@ export default function BaseTable({
             onAdd={handleAdd}
             onCancel={clearNewRow}
             columns={columns}
+            onDelete={onDelete}
+            onShowLogs={onShowLogs}
+            onResetPassword={onResetPassword}
+            onSave={saveEdit}
           />
 
           {paginatedData.length === 0 && (

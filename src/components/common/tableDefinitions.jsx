@@ -1,7 +1,9 @@
 import fetchBankByBic from "@/utils/fetchBankByBic"
 import { TextField, MenuItem } from "@mui/material"
-import { fieldRenderers } from "./fieldRenderers"
+import fieldRenderers from "./fieldRenderers"
 import ActionIcons from "./ActionIcons"
+
+// ------------------ USERS ------------------
 
 export const usersTableColumns = [
   { field: 'username', title: 'Логин', type: 'text', required: true, width: 160, minWidth: 120 },
@@ -57,8 +59,17 @@ export const usersTableColumns = [
     editorProps: { options: [] },
     width: 180,
     minWidth: 150
+  },
+  {
+    field: 'actions',
+    title: '',
+    width: 140,
+    minWidth: 140,
+    renderCell: ActionIcons
   }
 ]
+
+// ------------------ TNVED ------------------
 
 export const tnvedTableColumns = [
   { field: 'code', title: 'Код', type: 'custom', required: true, width: 160, minWidth: 120, display: fieldRenderers.tnved.display },
@@ -73,6 +84,8 @@ export const tnvedTableColumns = [
   },
   { field: 'notes', title: 'Примечания', type: 'text', width: 300, minWidth: 200 }
 ]
+
+// ------------------ CLIENTS ------------------
 
 export const clientsTableColumns = [
   { field: "company_name", title: "Компания", type: "text", required: true, minWidth: 200 },
@@ -99,30 +112,16 @@ export const clientsTableColumns = [
   },
   { field: "website", title: "Сайт", type: "text", minWidth: 180 },
   { field: "notes", title: "Заметки", type: "text", minWidth: 220 },
-
-  // 👇 Кастомная колонка действий
   {
     field: 'actions',
     title: '',
     width: 140,
     minWidth: 140,
-    renderCell: ({ row, isEditing, isNewRow, onSave, onCancel, onAdd, onDelete, onEdit, onShowLogs, onResetPassword }) => (
-      <ActionIcons
-        row={row}
-        isEditing={isEditing}
-        isNewRow={isNewRow}
-        onSave={onSave}
-        onCancel={onCancel}
-        onAdd={onAdd}
-        onDelete={onDelete}
-        onEdit={onEdit}
-        onShowLogs={onShowLogs}
-        onResetPassword={onResetPassword}
-      />
-    )
+    renderCell: ActionIcons
   }
 ]
 
+// ------------------ BILLING ADDRESSES ------------------
 
 export const clientBillingAddressesColumns = [
   { field: "label", title: "Метка", type: "text", minWidth: 160 },
@@ -137,8 +136,17 @@ export const clientBillingAddressesColumns = [
     minWidth: 400
   },
   { field: "postal_code", title: "Индекс", type: "text", minWidth: 100 },
-  { field: "comment", title: "Комментарий", type: "text", minWidth: 200 }
+  { field: "comment", title: "Комментарий", type: "text", minWidth: 200 },
+  {
+    field: 'actions',
+    title: '',
+    width: 140,
+    minWidth: 140,
+    renderCell: ActionIcons
+  }
 ]
+
+// ------------------ SHIPPING ADDRESSES ------------------
 
 export const clientShippingAddressesColumns = [
   { field: "label", title: "Метка", type: "text", minWidth: 160 },
@@ -153,8 +161,17 @@ export const clientShippingAddressesColumns = [
     minWidth: 400
   },
   { field: "postal_code", title: "Индекс", type: "text", minWidth: 100 },
-  { field: "comment", title: "Комментарий", type: "text", minWidth: 200 }
+  { field: "comment", title: "Комментарий", type: "text", minWidth: 200 },
+  {
+    field: 'actions',
+    title: '',
+    width: 140,
+    minWidth: 140,
+    renderCell: ActionIcons
+  }
 ]
+
+// ------------------ BANK DETAILS ------------------
 
 export const clientBankDetailsColumns = [
   { field: "bank_name", title: "Банк", type: "text", required: true, minWidth: 200 },
@@ -173,7 +190,6 @@ export const clientBankDetailsColumns = [
         onChange={async (e) => {
           const bic = e.target.value
           onChange("bic", bic)
-
           if (bic.length >= 6) {
             const data = await fetchBankByBic(bic)
             if (data) {
@@ -199,5 +215,12 @@ export const clientBankDetailsColumns = [
   },
   { field: "correspondent_account", title: "Корр. счёт", type: "text", minWidth: 200 },
   { field: "bank_address", title: "Адрес банка", type: "text", minWidth: 240 },
-  { field: "additional_info", title: "Дополнительно", type: "text", minWidth: 240 }
+  { field: "additional_info", title: "Дополнительно", type: "text", minWidth: 240 },
+  {
+    field: 'actions',
+    title: '',
+    width: 140,
+    minWidth: 140,
+    renderCell: ActionIcons
+  }
 ]
