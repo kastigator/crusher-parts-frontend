@@ -1,127 +1,79 @@
-// src/components/common/EditableRow.jsx
-
-import React from 'react'
-import { TableRow, TableCell } from '@mui/material'
-import EditableCell from './EditableCell'
-import ActionIcons from './ActionIcons'
-import { confirmAction } from '@/utils/confirmAction'
+import React from "react"
+import { TableRow, TableCell } from "@mui/material"
+import EditableCell from "./EditableCell"
+import ActionIcons from "./ActionIcons"
 
 export default function EditableRow({
   row,
   columns,
-  isEditing,
-  isNewRow,
   onChange,
   onSave,
   onCancel,
-  onAdd,
   onDelete,
+  onAdd,
+  onResetPassword,
   onShowLogs,
+  isNewRow,
+  isEditing,
   onEdit,
-  onResetPassword
+  readonlyRow = false, // 👈 блокировка редактирования всей строки
+  sx = {}              // 👈 кастомные стили строки (например, для подсветки)
 }) {
-  if (!row || typeof row !== 'object') return null
-
-  const handleConfirmDelete = async () => {
-    const confirmed = await confirmAction('Удалить эту запись?')
-    if (confirmed) onDelete?.(row)
+  const handleCellChange = (field, value) => {
+    if (!readonlyRow) {
+      onChange?.(field, value)
+    }
   }
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      isNewRow ? onAdd?.() : onSave?.()
+    if (readonlyRow) return
+    if (e.key === "Enter") {
+      isNewRow ? onAdd?.() : onSave?.(row)
     }
-    if (e.key === 'Escape') {
-      e.preventDefault()
+    if (e.key === "Escape") {
       onCancel?.()
     }
   }
 
-  const hasCustomActions = columns.some(c => c.field === 'actions')
-
   return (
     <TableRow
       hover
-      onDoubleClick={() => {
-        if (!isEditing && !isNewRow && onEdit) {
-          onEdit(row)
-        }
-      }}
       onKeyDown={handleKeyDown}
-      tabIndex={0}
-      sx={{ backgroundColor: isEditing || isNewRow ? '#fffde7' : 'inherit' }}
+      sx={{
+        backgroundColor: isNewRow ? "#fffde7" : undefined,
+        ...sx
+      }}
     >
-      {columns.map((col) => {
-        const isRenderCell = typeof col.renderCell === 'function'
-
-        return (
-          <TableCell
-            key={col.field}
-            sx={{
-              minWidth: col.minWidth || 100,
-              maxWidth: col.maxWidth,
-              width: col.width,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis'
-            }}
-          >
-            {isRenderCell
-              ? (
-                // не рендерим expand в новой строке
-                isNewRow && col.field === 'expand'
-                  ? <span style={{ display: 'inline-block', width: col.width || col.minWidth || 48 }} />
-                  : col.renderCell({
-                      row,
-                      isEditing,
-                      isNewRow,
-                      onSave,
-                      onCancel,
-                      onAdd,
-                      onDelete: handleConfirmDelete,
-                      onEdit,
-                      onShowLogs,
-                      onResetPassword
-                    })
-              )
-              : (
-                <EditableCell
-                  column={col}
-                  value={row[col.field]}
-                  onChange={onChange}
-                  isEditing={isEditing || isNewRow}
-                  row={row}
-                />
-              )}
+      {columns
+        .filter((col) => !col.hidden)
+        .map((col) => (
+          <TableCell key={col.field} align={col.align || "left"}>
+            {col.field === "actions" ? (
+              <ActionIcons
+                row={row}
+                isEditing={isEditing}
+                isNewRow={isNewRow}
+                onSave={onSave}
+                onDelete={onDelete}
+                onAdd={onAdd}
+                onCancel={onCancel}
+                onResetPassword={onResetPassword}
+                onShowLogs={onShowLogs}
+                onEdit={onEdit}
+                disabled={readonlyRow}
+              />
+            ) : (
+              <EditableCell
+                column={col}
+                value={row?.[col.field]}
+                onChange={handleCellChange}
+                isEditing={(isEditing || isNewRow) && !readonlyRow}
+                row={row}
+                disabled={readonlyRow || col.disabled}
+              />
+            )}
           </TableCell>
-        )
-      })}
-
-      {!hasCustomActions && (
-        <TableCell
-          sx={{
-            width: 140,
-            minWidth: 140,
-            whiteSpace: 'nowrap',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1
-          }}
-        >
-          <ActionIcons
-            row={row}
-            isEditing={isEditing}
-            isNewRow={isNewRow}
-            onSave={onSave}
-            onCancel={onCancel}
-            onAdd={onAdd}
-            onDelete={handleConfirmDelete}
-            onShowLogs={onShowLogs}
-            onResetPassword={onResetPassword}
-          />
-        </TableCell>
-      )}
+        ))}
     </TableRow>
   )
 }

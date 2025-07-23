@@ -1,77 +1,36 @@
 // src/components/clients/ClientsTable.jsx
 
-import React, { useEffect, useState } from "react"
+import React from "react"
 import BaseTable from "@/components/common/BaseTable"
-import { clientsTableColumns } from "@/components/common/tableDefinitions"
 import useTableData from "@/hooks/useTableData"
-import CollapseCell from "@/components/common/CollapseCell"
+import { clientsTableColumns } from "@/components/common/tableDefinitions"
+import { confirmAction } from "@/utils/confirmAction"
 
-export default function ClientsTable({
-  expandedClientId,
-  setExpandedClientId,
-  setAllClients,
-  onShowLogs // ✅ добавили пропс
-}) {
+export default function ClientsTable() {
   const {
     data,
-    setData,
     newRow,
     setNewRow,
     onAdd,
     onSave,
     onDelete
-  } = useTableData("/clients")
+  } = useTableData("/clients", {}, clientsTableColumns)
 
-  const [search, setSearch] = useState("")
-
-  useEffect(() => {
-    setAllClients?.(data)
-  }, [data])
-
-  const filteredData = data.filter((row) =>
-    row.company_name?.toLowerCase().includes(search.toLowerCase()) ||
-    row.contact_person?.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const columnsWithCollapse = [
-    {
-      field: "expand",
-      title: "",
-      width: 48,
-      minWidth: 48,
-      renderCell: ({ row }) => (
-        <CollapseCell
-          row={row}
-          expandedId={expandedClientId}
-          setExpandedId={setExpandedClientId}
-        />
-      )
-    },
-    ...clientsTableColumns
-  ]
+  const handleDelete = async (row) => {
+    await confirmAction(`Удалить клиента "${row.company_name}"?`)
+    await onDelete(row)
+  }
 
   return (
     <BaseTable
-      title="Клиенты"
-      data={filteredData}
-      setData={setData}
+      columns={clientsTableColumns}
+      data={data}
       newRow={newRow}
       setNewRow={setNewRow}
-      onAdd={async () => {
-        const res = await onAdd()
-        if (res !== false) setNewRow({})
-        return res
-      }}
+      onAdd={onAdd}
       onSave={onSave}
-      onDelete={onDelete}
-      onShowLogs={onShowLogs} // ✅ передаём дальше
-      columns={columnsWithCollapse}
-      search={{
-        filterValue: search,
-        onFilterChange: setSearch
-      }}
-      pagination
-      minWidth={1000}
+      onDelete={handleDelete}
+      validateRow={(row) => !!row.company_name}
     />
   )
 }

@@ -1,231 +1,135 @@
-import React, { useEffect, useState } from 'react'
-import axios from '@/api/axiosInstance'
+// src/components/users/RolePermissionsMatrix.jsx
+
+import React, { useEffect, useState } from "react"
 import {
-  Box,
   Checkbox,
-  Typography,
   Table,
   TableBody,
   TableCell,
   TableHead,
-  TableRow,
-  Paper,
-  TextField,
-  IconButton,
-  Tooltip
-} from '@mui/material'
-import AddIcon from '@mui/icons-material/Add'
-import DeleteIcon from '@mui/icons-material/Delete'
-import Swal from 'sweetalert2'
-import { slugify } from 'transliteration'
+  TableRow
+} from "@mui/material"
+import useRoles from "@/hooks/useRoles"
+import axios from "@/api/axiosInstance"
+import { confirmAction } from "@/utils/confirmAction"
+import BaseTable from "@/components/common/BaseTable"
+import { rolesTableColumns } from "@/components/common/tableDefinitions"
 
-export default function RolePermissionsMatrix() {
-  const [roles, setRoles] = useState([])
+export default function RolePermissionsMatrix({ onRolesUpdated }) {
+  const { roles = [], reloadRoles } = useRoles()
+  const [newRow, setNewRow] = useState(null)
   const [tabs, setTabs] = useState([])
   const [permissions, setPermissions] = useState([])
-  const [newRoleName, setNewRoleName] = useState('')
+
+  // 🔒 Пропускаем роль "admin"
+  const filteredRoles = roles.filter(r => r.slug !== "admin")
 
   useEffect(() => {
-    loadData()
+    axios.get("/tabs").then(res => setTabs(res.data || []))
   }, [])
 
-  const loadData = async () => {
+  useEffect(() => {
+    if (roles.length === 0) return
+    axios.get("/role-permissions").then(res => setPermissions(res.data || []))
+  }, [roles])
+
+  const hasPermission = (roleSlug, tabSlug) =>
+    permissions.some(p => p.role_slug === roleSlug && p.tab_slug === tabSlug)
+
+  const handleToggle = async (roleSlug, tabSlug, checked) => {
     try {
-      const [rolesRes, tabsRes, permsRes] = await Promise.all([
-        axios.get('/roles'),
-        axios.get('/tabs'),
-        axios.get('/role-permissions')
-      ])
+      const updated = permissions.filter(
+        p => !(p.role_slug === roleSlug && p.tab_slug === tabSlug)
+      )
 
-      const filteredRoles = rolesRes.data.filter(r => r.slug !== 'admin')
-      setRoles(filteredRoles)
-      setTabs(tabsRes.data)
-      setPermissions(permsRes.data)
-    } catch (err) {
-      console.error('Ошибка загрузки данных:', err)
-      Swal.fire('Ошибка', 'Не удалось загрузить данные', 'error')
-    }
-  }
-
-  const isChecked = (roleId, tabId) => {
-    const p = permissions.find(p => p.role_id === roleId && p.tab_id === tabId)
-    return Boolean(p?.can_view)
-  }
-
-  const togglePermission = async (roleId, tabId) => {
-    const existing = permissions.find(p => p.role_id === roleId && p.tab_id === tabId)
-
-    try {
-      if (existing) {
-        const updated = { ...existing, can_view: existing.can_view ? 0 : 1 }
-        await axios.put(`/role-permissions/${existing.id}`, updated)
-        setPermissions(prev =>
-          prev.map(p =>
-            p.id === existing.id ? { ...p, can_view: updated.can_view } : p
-          )
-        )
-      } else {
-        const res = await axios.post('/role-permissions', {
-          role_id: roleId,
-          tab_id: tabId,
-          can_view: 1
-        })
-        setPermissions(prev => [...prev, res.data])
+      if (checked) {
+        updated.push({ role_slug: roleSlug, tab_slug: tabSlug })
       }
+
+      setPermissions(updated)
+      await axios.put(
+        `/role-permissions/${roleSlug}`,
+        updated.filter(p => p.role_slug === roleSlug)
+      )
     } catch (err) {
-      console.error('Ошибка при обновлении прав:', err)
-      Swal.fire('Ошибка', 'Не удалось обновить права', 'error')
-    }
-  }
-
-  const handleAddRole = async () => {
-    const name = newRoleName.trim()
-    if (!name) return
-
-    const slug = slugify(name)
-
-    try {
-      await axios.post('/roles', { name, slug })
-      setNewRoleName('')
-      await loadData()
-    } catch (err) {
-      console.error('Ошибка при добавлении роли:', err)
-      Swal.fire('Ошибка', 'Не удалось добавить роль', 'error')
+      alert("Не удалось сохранить изменения прав доступа")
+      console.error("Ошибка сохранения прав:", err)
     }
   }
 
   const handleDeleteRole = async (role) => {
-  try {
-    // ✅ Получаем всех пользователей (без фильтрации)
-    const usersRes = await axios.get('/users')
-    const allUsers = usersRes.data || []
+    try {
+      const usersRes = await axios.get("/users")
+      const usersWithRole = usersRes.data.filter(u => u.role_id === role.id)
 
-    // ✅ Оставляем только тех, у кого role_id соответствует текущей роли, и кто не админ
-    const usersWithRole = allUsers.filter(
-      u => u.role_id === role.id && u.role_id !== 1
-    )
+      if (usersWithRole.length > 0) {
+        const names = usersWithRole.map(u => u.username).join(", ")
+        alert(`Нельзя удалить роль: она используется пользователями: ${names}`)
+        return
+      }
 
-    console.log('Проверка удаления роли:', role)
-    console.log('Найдено пользователей с этой ролью:', usersWithRole)
+      const confirmed = await confirmAction(`Удалить роль "${role.name}"?`)
+      if (!confirmed) return
 
-    if (usersWithRole.length > 0) {
-      const list = usersWithRole
-        .map(u => `• ${u.full_name || u.username}`)
-        .join('\n')
-
-      await Swal.fire({
-        title: `Роль «${role.name}» используется у ${usersWithRole.length} пользователь(ей)`,
-        html: `<pre style="text-align: left; font-size: 14px;">${list}</pre><p>Переназначьте этим пользователям другую роль перед удалением.</p>`,
-        icon: 'warning',
-        confirmButtonText: 'Понятно'
-      })
-      return
+      await axios.delete(`/roles/${role.id}`)
+      await reloadRoles()
+      onRolesUpdated?.()
+    } catch (err) {
+      console.error("Ошибка при удалении роли", err)
     }
-
-    const confirm = await Swal.fire({
-      title: `Удалить роль «${role.name}»?`,
-      text: 'Эту операцию нельзя отменить.',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Удалить',
-      cancelButtonText: 'Отмена'
-    })
-
-    if (!confirm.isConfirmed) return
-
-    await axios.delete(`/roles/${role.id}`)
-    await loadData()
-
-    Swal.fire({
-      title: 'Роль удалена',
-      icon: 'success',
-      timer: 1000,
-      showConfirmButton: false
-    })
-  } catch (err) {
-    console.error('Ошибка удаления роли:', err)
-    Swal.fire('Ошибка', 'Не удалось удалить роль', 'error')
   }
-}
 
-
+  const handleAddRole = async (row) => {
+    if (!row.name) return
+    await axios.post("/roles", { name: row.name })
+    await reloadRoles()
+    onRolesUpdated?.()
+  }
 
   return (
-    <Box sx={{ mt: 4 }}>
-      <Typography variant="h6" gutterBottom>
-        Права доступа к вкладкам
-      </Typography>
+    <>
+      <BaseTable
+        title="Роли"
+        columns={rolesTableColumns}
+        data={filteredRoles}
+        newRow={newRow}
+        setNewRow={setNewRow}
+        onAdd={handleAddRole}
+        onDelete={handleDeleteRole}
+        validateRow={(row) => !!row.name}
+      />
 
-      <Paper sx={{ overflow: 'auto' }}>
-        <Table size="small">
+      {tabs.length > 0 && (
+        <Table size="small" sx={{ mt: 2 }}>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ width: 240 }}>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <TextField
-                    size="small"
-                    value={newRoleName}
-                    onChange={(e) => setNewRoleName(e.target.value)}
-                    placeholder="Новая роль"
-                    fullWidth
-                    variant="standard"
-                  />
-                  <Tooltip title="Добавить роль">
-                    <span>
-                      <IconButton
-                        onClick={handleAddRole}
-                        color="primary"
-                        disabled={!newRoleName.trim()}
-                      >
-                        <AddIcon />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                </Box>
-              </TableCell>
-
+              <TableCell>Роль / Вкладка</TableCell>
               {tabs.map(tab => (
-                <TableCell
-                  key={tab.id}
-                  align="left"
-                  sx={{ minWidth: 120, maxWidth: 180, whiteSpace: 'nowrap' }}
-                >
+                <TableCell key={tab.id} align="center">
                   {tab.name}
                 </TableCell>
               ))}
-              <TableCell sx={{ width: 50 }} />
             </TableRow>
           </TableHead>
-
           <TableBody>
-            {roles.map(role => (
-              <TableRow
-                key={role.id}
-                hover
-                sx={{ '&:hover': { backgroundColor: '#f9f9f9' } }}
-              >
+            {filteredRoles.map(role => (
+              <TableRow key={role.id}>
                 <TableCell>{role.name}</TableCell>
                 {tabs.map(tab => (
-                  <TableCell key={tab.id} align="left" sx={{ width: 60 }}>
+                  <TableCell key={tab.id} align="center">
                     <Checkbox
-                      checked={isChecked(role.id, tab.id)}
-                      onChange={() => togglePermission(role.id, tab.id)}
-                      inputProps={{ 'aria-label': `Доступ ${role.name} к ${tab.name}` }}
+                      checked={hasPermission(role.slug, tab.slug)}
+                      onChange={e =>
+                        handleToggle(role.slug, tab.slug, e.target.checked)
+                      }
                     />
                   </TableCell>
                 ))}
-                <TableCell align="center">
-                  <Tooltip title="Удалить роль">
-                    <IconButton onClick={() => handleDeleteRole(role)}>
-                      <DeleteIcon />
-                    </IconButton>
-                  </Tooltip>
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
-      </Paper>
-    </Box>
+      )}
+    </>
   )
 }

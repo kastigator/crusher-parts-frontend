@@ -1,36 +1,36 @@
-import React, { useEffect } from "react"
-import BaseTable from "@/components/common/BaseTable"
-import { clientBillingAddressesColumns } from "@/components/common/tableDefinitions"
-import useTableData from "@/hooks/useTableData"
+// src/components/clients/BillingAddressesTable.jsx
 
-export default function BillingAddressesTable({ clientId }) {
+import React from "react"
+import BaseTable from "@/components/common/BaseTable"
+import useTableData from "@/hooks/useTableData"
+import { clientBillingAddressesColumns } from "@/components/common/tableDefinitions"
+import { confirmAction } from "@/utils/confirmAction"
+
+export default function BillingAddressesTable() {
   const {
     data,
-    setData,
     newRow,
     setNewRow,
     onAdd,
     onSave,
     onDelete
-  } = useTableData("/client-billing-addresses", { client_id: clientId })
+  } = useTableData("/billing-addresses", {}, clientBillingAddressesColumns)
 
-  // 🔍 Лог для отладки
-  useEffect(() => {
-    console.log("🔍 BillingAddressesTable → data", data)
-  }, [data])
+  const handleDelete = async (row) => {
+    await confirmAction(`Удалить адрес "${row.address}"?`)
+    await onDelete(row)
+  }
 
   return (
     <BaseTable
-      title="Юридические адреса"
+      columns={clientBillingAddressesColumns}
       data={data}
-      setData={setData}
       newRow={newRow}
       setNewRow={setNewRow}
       onAdd={onAdd}
       onSave={onSave}
-      onDelete={onDelete}
-      columns={clientBillingAddressesColumns}
-      minWidth={800}
+      onDelete={handleDelete}
+      validateRow={(row) => !!row.address}
     />
   )
 }

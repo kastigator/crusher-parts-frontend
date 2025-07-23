@@ -1,31 +1,36 @@
+// src/components/clients/ShippingAddressesTable.jsx
+
 import React from "react"
 import BaseTable from "@/components/common/BaseTable"
-import { clientShippingAddressesColumns } from "@/components/common/tableDefinitions"
 import useTableData from "@/hooks/useTableData"
+import { clientShippingAddressesColumns } from "@/components/common/tableDefinitions"
+import { confirmAction } from "@/utils/confirmAction"
 
-export default function ShippingAddressesTable({ clientId }) {
+export default function ShippingAddressesTable() {
   const {
     data,
-    setData,
     newRow,
     setNewRow,
     onAdd,
     onSave,
     onDelete
-  } = useTableData("/client-shipping-addresses", { client_id: clientId })
+  } = useTableData("/shipping-addresses", {}, clientShippingAddressesColumns)
+
+  const handleDelete = async (row) => {
+    await confirmAction(`Удалить адрес доставки "${row.address}"?`)
+    await onDelete(row)
+  }
 
   return (
     <BaseTable
-      title="Адреса доставки"
+      columns={clientShippingAddressesColumns}
       data={data}
-      setData={setData}
       newRow={newRow}
       setNewRow={setNewRow}
       onAdd={onAdd}
       onSave={onSave}
-      onDelete={onDelete}
-      columns={clientShippingAddressesColumns}
-      minWidth={800}
+      onDelete={handleDelete}
+      validateRow={(row) => !!row.address}
     />
   )
 }

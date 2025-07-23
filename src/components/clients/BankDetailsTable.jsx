@@ -1,31 +1,36 @@
+// src/components/clients/BankDetailsTable.jsx
+
 import React from "react"
 import BaseTable from "@/components/common/BaseTable"
-import { clientBankDetailsColumns } from "@/components/common/tableDefinitions"
 import useTableData from "@/hooks/useTableData"
+import { clientBankDetailsColumns } from "@/components/common/tableDefinitions"
+import { confirmAction } from "@/utils/confirmAction"
 
-export default function BankDetailsTable({ clientId }) {
+export default function BankDetailsTable() {
   const {
     data,
-    setData,
     newRow,
     setNewRow,
     onAdd,
     onSave,
     onDelete
-  } = useTableData("/client-bank-details", { client_id: clientId })
+  } = useTableData("/bank-details", {}, clientBankDetailsColumns)
+
+  const handleDelete = async (row) => {
+    await confirmAction(`Удалить банк с БИК ${row.bic}?`)
+    await onDelete(row)
+  }
 
   return (
     <BaseTable
-      title="Банковские реквизиты"
+      columns={clientBankDetailsColumns}
       data={data}
-      setData={setData}
       newRow={newRow}
       setNewRow={setNewRow}
       onAdd={onAdd}
       onSave={onSave}
-      onDelete={onDelete}
-      columns={clientBankDetailsColumns}
-      minWidth={900}
+      onDelete={handleDelete}
+      validateRow={(row) => !!row.bic && !!row.account_number}
     />
   )
 }

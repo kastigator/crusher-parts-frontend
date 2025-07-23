@@ -1,73 +1,99 @@
-import { useEffect, useState, useCallback } from "react"
+// src/hooks/useTableData.jsx
+
+import { useEffect, useState } from "react"
 import axios from "@/api/axiosInstance"
+import { sanitizePayload } from "@/utils/sanitizePayload"
 
-import sanitizePayload from "@/utils/sanitizePayload"
-
-export default function useTableData(baseUrl, queryParams = {}, columns = []) {
+export default function useTableData(endpoint, queryParams = {}, columns = [], options = {}) {
   const [data, setData] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [newRow, setNewRow] = useState(null)
+  const [newRow, setNewRow] = useState({})
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(25)
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const query = new URLSearchParams(queryParams).toString()
-      const response = await axios.get(`${baseUrl}${query ? `?${query}` : ""}`)
-      setData(response.data)
-    } catch (err) {
-      console.error("Ошибка при загрузке данных:", err)
-    } finally {
-      setLoading(false)
-    }
-  }, [baseUrl, queryParams])
+  const { pagination = true } = options
 
+  // 🔹 Генерация шаблона строки
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    if (!columns?.length) return
+    const row = {}
+    columns.forEach(col => {
+      if (!col.field || col.field === "actions") return
+      row[col.field] = col.defaultValue ?? ""
+    })
+    setNewRow(row)
+  }, [columns])
 
-  const onAdd = async () => {
-    const payload = sanitizePayload(newRow, columns)
+  // 🔹 Загрузка данных с сервера
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const params = new URLSearchParams(queryParams).toString()
+        const url = params ? `${endpoint}?${params}` : endpoint
+        const res = await axios.get(url)
+        setData(res.data || [])
+      } catch (err) {
+        console.error("Ошибка загрузки данных:", err)
+      }
+    }
+
+    fetchData()
+  }, [endpoint, JSON.stringify(queryParams)])
+
+  // 🔹 CRUD-операции
+  const onAdd = async (row) => {
     try {
-      const res = await axios.post(baseUrl, payload)
-      setNewRow(null)
-      fetchData()
-      return res.data
+      const cleaned = sanitizePayload(row)
+      await axios.post(endpoint, cleaned)
+      const res = await axios.get(endpoint)
+      setData(res.data || [])
     } catch (err) {
-      console.error("Ошибка при добавлении:", err)
-      throw err
+      console.error("Ошибка добавления:", err)
     }
   }
 
   const onSave = async (row) => {
-    const id = row.id
-    const payload = sanitizePayload(row, columns)
     try {
-      await axios.put(`${baseUrl}/${id}`, payload)
-      fetchData()
+      const cleaned = sanitizePayload(row)
+      await axios.put(`${endpoint}/${row.id}`, cleaned)
+      const res = await axios.get(endpoint)
+      setData(res.data || [])
     } catch (err) {
-      console.error("Ошибка при сохранении:", err)
-      throw err
+      console.error("Ошибка сохранения:", err)
     }
   }
 
   const onDelete = async (row) => {
     try {
-      await axios.delete(`${baseUrl}/${row.id}`)
-      fetchData()
+      await axios.delete(`${endpoint}/${row.id}`)
+      const res = await axios.get(endpoint)
+      setData(res.data || [])
     } catch (err) {
-      console.error("Ошибка при удалении:", err)
-      throw err
+      console.error("Ошибка удаления:", err)
     }
   }
 
+  // 🔹 Пагинация
+  const handlePageChange = (newPage) => setPage(newPage)
+  const handleRowsPerPageChange = (rows) => {
+    setRowsPerPage(rows)
+    setPage(0)
+  }
+
+  const paginatedData = pagination
+    ? data.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+    : data
+
   return {
     data,
-    setData,
+    paginatedData,
+    page,
+    rowsPerPage,
+    onPageChange: handlePageChange,
+    onRowsPerPageChange: handleRowsPerPageChange,
     newRow,
     setNewRow,
     onAdd,
     onSave,
-    onDelete,
-    loading
+    onDelete
   }
 }

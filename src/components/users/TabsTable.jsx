@@ -1,48 +1,40 @@
-// src/components/users/TabsTable.jsx
-
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from "react"
 import {
   Box, Table, TableHead, TableRow, TableCell, TableBody,
-  IconButton, TextField, Autocomplete, Typography, Tooltip
-} from '@mui/material'
+  IconButton, TextField, Autocomplete, Tooltip
+} from "@mui/material"
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Save as SaveIcon,
   Close as CancelIcon,
   DragIndicator as DragHandleIcon
-} from '@mui/icons-material'
-import * as MuiIcons from '@mui/icons-material'
-import { generateTabName } from '@/utils/textUtils'
-import { useTabs } from '@/context/TabsContext'
-import axios from '@/api/axiosInstance'
-import { arrayMoveImmutable } from 'array-move'
-import { DndContext, closestCenter } from '@dnd-kit/core'
-import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { confirmAction } from '@/utils/confirmAction'
+} from "@mui/icons-material"
+import * as MuiIcons from "@mui/icons-material"
+import { generateTabName } from "@/utils/textUtils"
+import { useTabs } from "@/context/TabsContext"
+import axios from "@/api/axiosInstance"
+import { arrayMoveImmutable } from "array-move"
+import { DndContext, closestCenter } from "@dnd-kit/core"
+import { useSortable, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+import { confirmAction } from "@/utils/confirmAction"
 
 function SortableRow({ id, children }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id })
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition
-  }
+  const style = { transform: CSS.Transform.toString(transform), transition }
   return (
     <TableRow ref={setNodeRef} style={style}>
-      {children.map((cell, index) => {
-        if (index === 0) {
-          return (
-            <TableCell key={index} {...attributes} {...listeners} sx={{ cursor: 'grab' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <DragHandleIcon fontSize="small" />
-                {cell}
-              </Box>
-            </TableCell>
-          )
-        }
-        return <TableCell key={index}>{cell}</TableCell>
-      })}
+      {children.map((cell, index) => (
+        <TableCell key={index} {...(index === 0 ? { ...attributes, ...listeners, sx: { cursor: "grab" } } : {})}>
+          {index === 0 ? (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <DragHandleIcon fontSize="small" />
+              {cell}
+            </Box>
+          ) : cell}
+        </TableCell>
+      ))}
     </TableRow>
   )
 }
@@ -59,18 +51,17 @@ export default function TabsTable() {
       label: name,
       value: name,
       icon: MuiIcons[name]
-    })), []
-  )
+    })), [])
 
   const fetchTabs = async () => {
-    const res = await axios.get('/tabs')
+    const res = await axios.get("/tabs")
     setTabs(res.data)
   }
 
   useEffect(() => { fetchTabs() }, [])
 
   const handleAdd = async () => {
-    await axios.post('/tabs', newRow)
+    await axios.post("/tabs", newRow)
     setNewRow({})
     await fetchTabs()
     reloadTabs()
@@ -86,7 +77,7 @@ export default function TabsTable() {
   const handleDelete = async (tab) => {
     const confirmed = await confirmAction({
       title: `Удалить вкладку «${tab.name}»?`,
-      text: 'Это действие также удалит связанные права доступа.'
+      text: "Это действие также удалит связанные права доступа."
     })
     if (!confirmed) return
     await axios.delete(`/tabs/${tab.id}`)
@@ -94,10 +85,8 @@ export default function TabsTable() {
     reloadTabs()
   }
 
-  const handleDragEnd = async (event) => {
-    const { active, over } = event
+  const handleDragEnd = async ({ active, over }) => {
     if (!over || active.id === over.id) return
-
     const oldIndex = tabs.findIndex(tab => tab.id === active.id)
     const newIndex = tabs.findIndex(tab => tab.id === over.id)
     const newTabs = arrayMoveImmutable(tabs, oldIndex, newIndex)
@@ -108,7 +97,7 @@ export default function TabsTable() {
       sort_order: i + 1
     }))
 
-    await axios.put('/tabs/order', payload)
+    await axios.put("/tabs/order", payload)
     reloadTabs()
   }
 
@@ -116,11 +105,11 @@ export default function TabsTable() {
     <Autocomplete
       options={iconOptions}
       value={iconOptions.find(o => o.value === value) || null}
-      onChange={(_, newVal) => onChange(newVal?.value || '')}
+      onChange={(_, newVal) => onChange(newVal?.value || "")}
       getOptionLabel={o => o.label}
       renderOption={(props, option) => (
-        <li {...props} key={option.value} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {React.createElement(option.icon, { fontSize: 'small' })}
+        <li {...props} key={option.value} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {React.createElement(option.icon, { fontSize: "small" })}
           {option.label}
         </li>
       )}
@@ -129,14 +118,6 @@ export default function TabsTable() {
       disableClearable
     />
   )
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') handleSave()
-    if (e.key === 'Escape') {
-      setEditId(null)
-      setEditRow({})
-    }
-  }
 
   const autoUpdateSlug = (currentRow, newName) => {
     const generated = generateTabName(newName)
@@ -147,10 +128,16 @@ export default function TabsTable() {
       : { ...currentRow, name: newName }
   }
 
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") handleSave()
+    if (e.key === "Escape") {
+      setEditId(null)
+      setEditRow({})
+    }
+  }
+
   return (
     <Box>
-      <Typography variant="h6" gutterBottom>Управление вкладками</Typography>
-
       <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
         <SortableContext items={tabs.map(t => t.id)} strategy={verticalListSortingStrategy}>
           <Table size="small" onKeyDown={handleKeyDown}>
@@ -166,10 +153,10 @@ export default function TabsTable() {
             <TableBody>
               <TableRow>
                 <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <DragHandleIcon fontSize="small" sx={{ visibility: 'hidden' }} />
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <DragHandleIcon fontSize="small" sx={{ visibility: "hidden" }} />
                     <TextField
-                      value={newRow.name || ''}
+                      value={newRow.name || ""}
                       onChange={e => {
                         const name = e.target.value
                         const slug = generateTabName(name)
@@ -181,14 +168,14 @@ export default function TabsTable() {
                 </TableCell>
                 <TableCell>
                   <TextField
-                    value={newRow.tab_name || ''}
+                    value={newRow.tab_name || ""}
                     onChange={e => setNewRow({ ...newRow, tab_name: e.target.value })}
                     size="small"
                   />
                 </TableCell>
                 <TableCell>
                   <TextField
-                    value={newRow.path || ''}
+                    value={newRow.path || ""}
                     onChange={e => setNewRow({ ...newRow, path: e.target.value })}
                     size="small"
                   />
@@ -206,25 +193,25 @@ export default function TabsTable() {
                 const cells = isEditing ? [
                   <TextField
                     key="name"
-                    value={editRow.name || ''}
+                    value={editRow.name || ""}
                     onChange={e => setEditRow(autoUpdateSlug(editRow, e.target.value))}
                     size="small"
                     autoFocus
                   />,
                   <TextField
                     key="tab_name"
-                    value={editRow.tab_name || ''}
+                    value={editRow.tab_name || ""}
                     onChange={e => setEditRow({ ...editRow, tab_name: e.target.value })}
                     size="small"
                   />,
                   <TextField
                     key="path"
-                    value={editRow.path || ''}
+                    value={editRow.path || ""}
                     onChange={e => setEditRow({ ...editRow, path: e.target.value })}
                     size="small"
                   />,
                   renderIconField(editRow.icon, icon => setEditRow({ ...editRow, icon })),
-                  <Box key="actions" sx={{ display: 'flex', gap: 1 }}>
+                  <Box key="actions" sx={{ display: "flex", gap: 1 }}>
                     <IconButton onClick={handleSave}><SaveIcon /></IconButton>
                     <IconButton onClick={() => setEditId(null)}><CancelIcon /></IconButton>
                   </Box>
@@ -235,7 +222,7 @@ export default function TabsTable() {
                   <Tooltip key="icon" title={tab.icon}>
                     {tab.icon && React.createElement(MuiIcons[tab.icon] || MuiIcons.Help)}
                   </Tooltip>,
-                  <Box key="actions" sx={{ display: 'flex', gap: 1 }}>
+                  <Box key="actions" sx={{ display: "flex", gap: 1 }}>
                     <IconButton onClick={() => {
                       setEditId(Number(tab.id))
                       setEditRow({ ...tab })
