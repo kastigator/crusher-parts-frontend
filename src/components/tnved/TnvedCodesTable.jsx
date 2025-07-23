@@ -7,9 +7,6 @@ import { tnvedCodesColumns } from "@/components/common/tableDefinitions"
 import { confirmAction } from "@/utils/confirmAction"
 import TnvedHistoryDialog from "./TnvedHistoryDialog"
 import ImportModal from "@/components/common/ImportModal"
-import importTnvedCodes from "@/components/common/importHelpers"
-
-
 
 export default function TnvedCodesTable() {
   const [showHistoryFor, setShowHistoryFor] = useState(null)
@@ -27,7 +24,7 @@ export default function TnvedCodesTable() {
     rowsPerPage,
     onPageChange,
     onRowsPerPageChange
-  } = useTableData("/tnved-codes", {}, tnvedCodesColumns)
+  } = useTableData("/tnved-codes", {}, tnvedCodesColumns, { pagination: true })
 
   const handleDelete = async (row) => {
     const confirm = await confirmAction(`Удалить код "${row.code}"?`)
@@ -40,7 +37,7 @@ export default function TnvedCodesTable() {
     <>
       <BaseTable
         title="Коды ТН ВЭД"
-        columns={tnvedCodesColumns}
+        columns={tnvedCodesColumns} // ✅ массив, всё ок
         data={paginatedData}
         newRow={newRow}
         setNewRow={setNewRow}
@@ -64,7 +61,7 @@ export default function TnvedCodesTable() {
       <ImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        importHelper={importTnvedCodes}
+        importHelper={"tnved-codes"} // <- 💡 возможно тут будет имя, если будет upload
         entityName="код ТН ВЭД"
       />
     </>

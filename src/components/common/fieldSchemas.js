@@ -18,28 +18,6 @@ export const fieldSchemas = {
     display: (value, row) => row?.role_name || value
   },
 
-  // Roles
-  name: { title: "Название роли", type: "text", required: true },
-
-  // TNVED
-  code: { title: "Код ТН ВЭД", type: "text", required: true },
-  description: { title: "Описание", type: "text" },
-  duty_rate: { title: "Ставка пошлины", type: "text" },
-  notes: { title: "Примечание", type: "text" },
-
-  // Clients
-  company_name: { title: "Компания", type: "text", required: true },
-  contact_person: { title: "Контактное лицо", type: "text" },
-  inn: { title: "ИНН", type: "text" },
-  kpp: { title: "КПП", type: "text" },
-
-  // Общие поля
-  address: { title: "Адрес", type: "text", required: true },
-  city: { title: "Город", type: "text" },
-  zip_code: { title: "Индекс", type: "text" },
-  country: { title: "Страна", type: "text" },
-
-  bic: { title: "БИК", type: "text", required: true },
-  bank_name: { title: "Банк", type: "text" },
-  account_number: { title: "Р/С", type: "text", required: true }
+  // Roles (для RolePermissionsMatrix)
+  name: { title: "Название роли", type: "text", required: true }
 }

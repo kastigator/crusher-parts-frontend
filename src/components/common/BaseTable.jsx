@@ -4,88 +4,148 @@ import React from "react"
 import {
   Table,
   TableBody,
+  TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  TableCell,
-  Paper
+  Typography,
+  Paper,
+  Collapse,
+  Box
 } from "@mui/material"
-import EditableRow from "./EditableRow"
-import TableFooter from "./TableFooter"
 import TableToolbar from "./TableToolbar"
+import TableFooter from "./TableFooter"
+import EditableRow from "./EditableRow"
+import CollapseCell from "./CollapseCell"
 
 export default function BaseTable({
+  title,
   columns,
-  data,
+  data = [],
   newRow,
   setNewRow,
   onAdd,
   onSave,
   onDelete,
-  onEdit,
   onCancel,
-  onChange,
   onResetPassword,
   onShowLogs,
+  onEdit,
   validateRow,
-  hideToolbar,
-  hideFooter,
-  title
+  pagination = false,
+  page = 0,
+  rowsPerPage = 10,
+  onPageChange,
+  onRowsPerPageChange,
+  renderExpandedRow,
+  withCollapse // { expandedId, setExpandedId }
 }) {
-  const allRows = [...data]
-  if (newRow) {
-    allRows.unshift({ ...newRow, isNewRow: true })
+  const allColumns = [
+    ...(withCollapse ? [{ field: "expand", type: "collapse" }] : []),
+    ...columns
+  ]
+
+  const handleCollapseClick = (id) => {
+    if (withCollapse?.setExpandedId) {
+      withCollapse.setExpandedId(withCollapse.expandedId === id ? null : id)
+    }
   }
+
+  const visibleRows = pagination
+    ? data.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+    : data
 
   return (
     <Paper sx={{ mb: 4 }}>
-      {!hideToolbar && (
-        <TableToolbar title={title} onAdd={() => setNewRow({})} />
+      {title && (
+        <Typography variant="h6" sx={{ p: 2, pb: 0 }}>
+          {title}
+        </Typography>
       )}
+
+      <TableToolbar
+        newRow={newRow}
+        setNewRow={setNewRow}
+        columns={allColumns}
+      />
 
       <TableContainer>
         <Table size="small">
           <TableHead>
             <TableRow>
-              {columns.map((col) => (
-                <TableCell key={col.field}>{col.title || col.headerName}</TableCell>
+              {allColumns.map((col) => (
+                <TableCell key={col.field}>
+                  {col.title || ""}
+                </TableCell>
               ))}
             </TableRow>
           </TableHead>
 
           <TableBody>
-            {allRows.map((row, index) => (
+            {newRow && (
               <EditableRow
-                key={row.id || `new-${index}`}
-                row={row}
-                columns={columns}
-                isEditing={row.isEditing}
-                isNewRow={row.isNewRow}
-                onEdit={onEdit}
-                onCancel={onCancel}
+                row={newRow}
+                columns={allColumns}
+                isNewRow
+                isEditing
                 onChange={(field, value) =>
-                  onChange?.(row, field, value)
+                  setNewRow({ ...newRow, [field]: value })
                 }
-                onSave={() => onSave?.(row)}
-                onDelete={() => onDelete?.(row)}
-                onAdd={() => onAdd?.(row)}
-                onResetPassword={() => onResetPassword?.(row)}
-                onShowLogs={() => onShowLogs?.(row)}
+                onAdd={() => {
+                  if (validateRow?.(newRow)) {
+                    onAdd(newRow)
+                    setNewRow(null)
+                  }
+                }}
+                onCancel={() => setNewRow(null)}
               />
+            )}
+
+            {visibleRows.map((row) => (
+              <React.Fragment key={row.id}>
+                <EditableRow
+                  row={row}
+                  columns={allColumns}
+                  isEditing={!!row.isEditing}
+                  onChange={(field, value) => {
+                    row[field] = value
+                  }}
+                  onSave={onSave}
+                  onDelete={onDelete}
+                  onCancel={onCancel}
+                  onResetPassword={onResetPassword}
+                  onShowLogs={onShowLogs}
+                  onEdit={onEdit}
+                  onAdd={onAdd}
+                />
+
+                {/* Раскрытая строка */}
+                {withCollapse?.expandedId === row.id && renderExpandedRow && (
+                  <TableRow>
+                    <TableCell colSpan={allColumns.length} sx={{ p: 0 }}>
+                      <Collapse in={true} timeout="auto" unmountOnExit>
+                        <Box sx={{ p: 2 }}>
+                          {renderExpandedRow(row)}
+                        </Box>
+                      </Collapse>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </React.Fragment>
             ))}
           </TableBody>
-
-          {!hideFooter && (
-            <TableFooter
-              page={0}
-              rowsPerPage={25}
-              total={data.length}
-              onPageChange={() => {}}
-              onRowsPerPageChange={() => {}}
-            />
-          )}
         </Table>
       </TableContainer>
+
+      {pagination && (
+        <TableFooter
+          count={data.length}
+          page={page}
+          rowsPerPage={rowsPerPage}
+          onPageChange={onPageChange}
+          onRowsPerPageChange={onRowsPerPageChange}
+        />
+      )}
     </Paper>
   )
 }

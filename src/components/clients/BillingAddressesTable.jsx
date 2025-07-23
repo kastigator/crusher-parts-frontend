@@ -1,12 +1,11 @@
 // src/components/clients/BillingAddressesTable.jsx
 
 import React from "react"
-import BaseTable from "@/components/common/BaseTable"
 import useTableData from "@/hooks/useTableData"
+import BaseTable from "@/components/common/BaseTable"
 import { clientBillingAddressesColumns } from "@/components/common/tableDefinitions"
-import { confirmAction } from "@/utils/confirmAction"
 
-export default function BillingAddressesTable() {
+export default function BillingAddressesTable({ clientId }) {
   const {
     data,
     newRow,
@@ -14,22 +13,18 @@ export default function BillingAddressesTable() {
     onAdd,
     onSave,
     onDelete
-  } = useTableData("/billing-addresses", {}, clientBillingAddressesColumns)
-
-  const handleDelete = async (row) => {
-    await confirmAction(`Удалить адрес "${row.address}"?`)
-    await onDelete(row)
-  }
+  } = useTableData(`/clients/${clientId}/billing-addresses`, {}, clientBillingAddressesColumns, { pagination: false })
 
   return (
     <BaseTable
+      title="Юридические адреса"
       columns={clientBillingAddressesColumns}
       data={data}
       newRow={newRow}
       setNewRow={setNewRow}
       onAdd={onAdd}
       onSave={onSave}
-      onDelete={handleDelete}
+      onDelete={onDelete}
       validateRow={(row) => !!row.address}
     />
   )

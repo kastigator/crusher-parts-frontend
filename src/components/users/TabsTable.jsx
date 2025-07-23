@@ -1,242 +1,304 @@
-import React, { useEffect, useMemo, useState } from "react"
-import {
-  Box, Table, TableHead, TableRow, TableCell, TableBody,
-  IconButton, TextField, Autocomplete, Tooltip
-} from "@mui/material"
-import {
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Save as SaveIcon,
-  Close as CancelIcon,
-  DragIndicator as DragHandleIcon
-} from "@mui/icons-material"
-import * as MuiIcons from "@mui/icons-material"
-import { generateTabName } from "@/utils/textUtils"
-import { useTabs } from "@/context/TabsContext"
-import axios from "@/api/axiosInstance"
-import { arrayMoveImmutable } from "array-move"
-import { DndContext, closestCenter } from "@dnd-kit/core"
-import { useSortable, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
-import { confirmAction } from "@/utils/confirmAction"
+// src/components/users/TabsTable.jsx
 
-function SortableRow({ id, children }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id })
-  const style = { transform: CSS.Transform.toString(transform), transition }
-  return (
-    <TableRow ref={setNodeRef} style={style}>
-      {children.map((cell, index) => (
-        <TableCell key={index} {...(index === 0 ? { ...attributes, ...listeners, sx: { cursor: "grab" } } : {})}>
-          {index === 0 ? (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <DragHandleIcon fontSize="small" />
-              {cell}
-            </Box>
-          ) : cell}
-        </TableCell>
-      ))}
-    </TableRow>
-  )
-}
+import React, { useEffect, useState, useRef } from "react"
+import {
+  Table, TableBody, TableCell, TableHead, TableRow,
+  TextField, Select, MenuItem, IconButton, Box, Tooltip
+} from "@mui/material"
+import { Save, Delete, DragIndicator, Edit } from "@mui/icons-material"
+import * as MuiIcons from "@mui/icons-material"
+import axios from "@/api/axiosInstance.js"
+import { confirmAction } from "@/utils/confirmAction.js"
+import { transliterate as tr } from "transliteration"
+import { useTabs } from "@/context/TabsContext"
+
+// Выбираемые иконки (добавь по необходимости)
+const ICON_OPTIONS = [
+  "Dashboard", "Inventory", "People", "ShoppingCart", "Settings",
+  "LocalShipping", "Category", "Assignment", "Build", "BarChart"
+]
+
+const ICONS_MAP = Object.fromEntries(
+  ICON_OPTIONS.map(name => [
+    name,
+    MuiIcons[name] ? React.createElement(MuiIcons[name], { fontSize: "small" }) : null
+  ])
+)
 
 export default function TabsTable() {
-  const { reloadTabs } = useTabs()
   const [tabs, setTabs] = useState([])
-  const [editId, setEditId] = useState(null)
-  const [editRow, setEditRow] = useState({})
-  const [newRow, setNewRow] = useState({})
-
-  const iconOptions = useMemo(() =>
-    Object.keys(MuiIcons).map(name => ({
-      label: name,
-      value: name,
-      icon: MuiIcons[name]
-    })), [])
-
-  const fetchTabs = async () => {
-    const res = await axios.get("/tabs")
-    setTabs(res.data)
-  }
+  const [newTab, setNewTab] = useState({ name: "", tab_name: "", path: "", icon: "" })
+  const [editIndex, setEditIndex] = useState(null)
+  const [editTab, setEditTab] = useState({})
+  const draggingIndex = useRef(null)
+  const { reloadTabs } = useTabs()
 
   useEffect(() => { fetchTabs() }, [])
 
-  const handleAdd = async () => {
-    await axios.post("/tabs", newRow)
-    setNewRow({})
-    await fetchTabs()
-    reloadTabs()
+  const fetchTabs = async () => {
+    const res = await axios.get("/tabs")
+    setTabs(Array.isArray(res.data) ? res.data.sort((a, b) => a.sort_order - b.sort_order) : [])
   }
 
-  const handleSave = async () => {
-    await axios.put(`/tabs/${editId}`, editRow)
-    setEditId(null)
+  // --- CRUD ---
+
+  const handleAdd = async () => {
+    const { name, tab_name, path } = newTab
+    if (!name || !tab_name || !path) return
+    await axios.post("/tabs", newTab)
+    setNewTab({ name: "", tab_name: "", path: "", icon: "" })
     await fetchTabs()
-    reloadTabs()
+    reloadTabs?.()
+  }
+
+  const handleEditStart = (i) => {
+    setEditIndex(i)
+    setEditTab({ ...tabs[i] })
+  }
+
+  const handleEditCancel = () => {
+    setEditIndex(null)
+    setEditTab({})
+  }
+
+  const handleEditChange = (field, value) => {
+    setEditTab((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleEditSave = async () => {
+    await axios.put(`/tabs/${editTab.id}`, editTab)
+    setEditIndex(null)
+    setEditTab({})
+    await fetchTabs()
+    reloadTabs?.()
   }
 
   const handleDelete = async (tab) => {
-    const confirmed = await confirmAction({
-      title: `Удалить вкладку «${tab.name}»?`,
-      text: "Это действие также удалит связанные права доступа."
-    })
+    const confirmed = await confirmAction(`Удалить вкладку "${tab.name}"?`)
     if (!confirmed) return
     await axios.delete(`/tabs/${tab.id}`)
     await fetchTabs()
-    reloadTabs()
+    reloadTabs?.()
   }
 
-  const handleDragEnd = async ({ active, over }) => {
-    if (!over || active.id === over.id) return
-    const oldIndex = tabs.findIndex(tab => tab.id === active.id)
-    const newIndex = tabs.findIndex(tab => tab.id === over.id)
-    const newTabs = arrayMoveImmutable(tabs, oldIndex, newIndex)
-    setTabs(newTabs)
+  // --- Drag & drop ---
+  const handleReorder = async (fromIndex, toIndex) => {
+    if (fromIndex === toIndex) return
+    const updated = [...tabs]
+    const [moved] = updated.splice(fromIndex, 1)
+    updated.splice(toIndex, 0, moved)
+    const reordered = updated.map((t, i) => ({ ...t, sort_order: i }))
+    setTabs(reordered)
+    await axios.put("/tabs/order", reordered.map(t => ({ id: Number(t.id), sort_order: t.sort_order })))
+    await fetchTabs()
+    reloadTabs?.()
+  }
 
-    const payload = newTabs.map((tab, i) => ({
-      id: Number(tab.id),
-      sort_order: i + 1
+  const handleDragStart = (index) => { draggingIndex.current = index }
+  const handleDragOver = (index, e) => {
+    e.preventDefault()
+    const from = draggingIndex.current
+    if (from === null || from === index) return
+    handleReorder(from, index)
+    draggingIndex.current = index
+  }
+
+  // --- Автоматическая генерация tab_name и path ---
+  const handleNameInput = (e) => {
+    const name = e.target.value
+    setNewTab((prev) => ({
+      ...prev,
+      name,
+      tab_name: prev.tab_name || tr(name).toLowerCase().replace(/\s+/g, "_"),
+      path: prev.path || "/" + tr(name).toLowerCase().replace(/\s+/g, "-")
     }))
-
-    await axios.put("/tabs/order", payload)
-    reloadTabs()
   }
 
-  const renderIconField = (value, onChange) => (
-    <Autocomplete
-      options={iconOptions}
-      value={iconOptions.find(o => o.value === value) || null}
-      onChange={(_, newVal) => onChange(newVal?.value || "")}
-      getOptionLabel={o => o.label}
-      renderOption={(props, option) => (
-        <li {...props} key={option.value} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {React.createElement(option.icon, { fontSize: "small" })}
-          {option.label}
-        </li>
-      )}
-      renderInput={(params) => <TextField {...params} size="small" />}
-      isOptionEqualToValue={(opt, val) => opt.value === val.value}
-      disableClearable
-    />
-  )
-
-  const autoUpdateSlug = (currentRow, newName) => {
-    const generated = generateTabName(newName)
-    const wasAuto = currentRow.tab_name === generateTabName(currentRow.name) &&
-                    currentRow.path === `/${generateTabName(currentRow.name)}`
-    return wasAuto
-      ? { ...currentRow, name: newName, tab_name: generated, path: `/${generated}` }
-      : { ...currentRow, name: newName }
-  }
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter") handleSave()
-    if (e.key === "Escape") {
-      setEditId(null)
-      setEditRow({})
-    }
+  // --- Keyboard for add row ---
+  const handleNewTabKeyDown = (e) => {
+    if (e.key === "Enter") handleAdd()
+    if (e.key === "Escape") setNewTab({ name: "", tab_name: "", path: "", icon: "" })
   }
 
   return (
     <Box>
-      <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
-        <SortableContext items={tabs.map(t => t.id)} strategy={verticalListSortingStrategy}>
-          <Table size="small" onKeyDown={handleKeyDown}>
-            <TableHead>
-              <TableRow>
-                <TableCell>Название (RU)</TableCell>
-                <TableCell>tab_name</TableCell>
-                <TableCell>path</TableCell>
-                <TableCell>Иконка</TableCell>
-                <TableCell />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              <TableRow>
+      {/* Строка для добавления новой вкладки */}
+      <Box display="flex" gap={2} mb={2}>
+        <TextField
+          label="Название"
+          size="small"
+          value={newTab.name}
+          onChange={handleNameInput}
+          onKeyDown={handleNewTabKeyDown}
+        />
+        <TextField
+          label="Системное имя"
+          size="small"
+          value={newTab.tab_name}
+          onChange={e => setNewTab({ ...newTab, tab_name: e.target.value })}
+          onKeyDown={handleNewTabKeyDown}
+        />
+        <TextField
+          label="Путь"
+          size="small"
+          value={newTab.path}
+          onChange={e => setNewTab({ ...newTab, path: e.target.value })}
+          onKeyDown={handleNewTabKeyDown}
+        />
+        <Select
+          size="small"
+          value={newTab.icon}
+          displayEmpty
+          onChange={e => setNewTab({ ...newTab, icon: e.target.value })}
+          renderValue={selected => (selected ? ICONS_MAP[selected] : "— выбрать иконку —")}
+          sx={{ minWidth: 120 }}
+        >
+          <MenuItem value="">— выбрать иконку —</MenuItem>
+          {ICON_OPTIONS.map(icon => (
+            <MenuItem key={icon} value={icon}>
+              <Box display="flex" alignItems="center" gap={1}>
+                {ICONS_MAP[icon]}
+                <span style={{ fontSize: 13 }}>{icon}</span>
+              </Box>
+            </MenuItem>
+          ))}
+        </Select>
+      </Box>
+
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell />
+            <TableCell>Название</TableCell>
+            <TableCell>Системное имя</TableCell>
+            <TableCell>Путь</TableCell>
+            <TableCell>Иконка</TableCell>
+            <TableCell align="center">Действия</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {tabs.map((tab, index) => {
+            const isEditing = editIndex === index
+            return (
+              <TableRow
+                key={tab.id}
+                draggable
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={e => handleDragOver(index, e)}
+                sx={{ cursor: "grab" }}
+                onDoubleClick={() => !isEditing && handleEditStart(index)}
+              >
+                {/* Drag handle */}
+                <TableCell width={36}>
+                  <DragIndicator fontSize="small" sx={{ color: "#bbb" }} />
+                </TableCell>
+
+                {/* Название */}
                 <TableCell>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <DragHandleIcon fontSize="small" sx={{ visibility: "hidden" }} />
+                  {isEditing ? (
                     <TextField
-                      value={newRow.name || ""}
-                      onChange={e => {
-                        const name = e.target.value
-                        const slug = generateTabName(name)
-                        setNewRow({ ...newRow, name, tab_name: slug, path: `/${slug}` })
-                      }}
                       size="small"
+                      value={editTab.name}
+                      onChange={e => handleEditChange("name", e.target.value)}
+                      autoFocus
+                      fullWidth
+                      onKeyDown={e => {
+                        if (e.key === "Enter") handleEditSave()
+                        if (e.key === "Escape") handleEditCancel()
+                      }}
                     />
-                  </Box>
+                  ) : (
+                    tab.name
+                  )}
                 </TableCell>
+
+                {/* Системное имя */}
                 <TableCell>
-                  <TextField
-                    value={newRow.tab_name || ""}
-                    onChange={e => setNewRow({ ...newRow, tab_name: e.target.value })}
-                    size="small"
-                  />
+                  {isEditing ? (
+                    <TextField
+                      size="small"
+                      value={editTab.tab_name}
+                      onChange={e => handleEditChange("tab_name", e.target.value)}
+                      fullWidth
+                      onKeyDown={e => {
+                        if (e.key === "Enter") handleEditSave()
+                        if (e.key === "Escape") handleEditCancel()
+                      }}
+                    />
+                  ) : (
+                    tab.tab_name
+                  )}
                 </TableCell>
+
+                {/* Путь */}
                 <TableCell>
-                  <TextField
-                    value={newRow.path || ""}
-                    onChange={e => setNewRow({ ...newRow, path: e.target.value })}
-                    size="small"
-                  />
+                  {isEditing ? (
+                    <TextField
+                      size="small"
+                      value={editTab.path}
+                      onChange={e => handleEditChange("path", e.target.value)}
+                      fullWidth
+                      onKeyDown={e => {
+                        if (e.key === "Enter") handleEditSave()
+                        if (e.key === "Escape") handleEditCancel()
+                      }}
+                    />
+                  ) : (
+                    tab.path
+                  )}
                 </TableCell>
-                <TableCell>
-                  {renderIconField(newRow.icon, icon => setNewRow({ ...newRow, icon }))}
+
+                {/* Иконка */}
+                <TableCell align="center">
+                  {isEditing ? (
+                    <Select
+                      size="small"
+                      value={editTab.icon || ""}
+                      onChange={e => handleEditChange("icon", e.target.value)}
+                      renderValue={selected => ICONS_MAP[selected] || ""}
+                      sx={{ width: 48 }}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") handleEditSave()
+                        if (e.key === "Escape") handleEditCancel()
+                      }}
+                    >
+                      {ICON_OPTIONS.map(icon => (
+                        <MenuItem key={icon} value={icon}>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            {ICONS_MAP[icon]}
+                            <span style={{ fontSize: 13 }}>{icon}</span>
+                          </Box>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  ) : (
+                    tab.icon && ICONS_MAP[tab.icon]
+                  )}
                 </TableCell>
-                <TableCell>
-                  <IconButton onClick={handleAdd}><SaveIcon /></IconButton>
+
+                {/* Действия */}
+                <TableCell align="center">
+                  {isEditing ? (
+                    <>
+                      <IconButton onClick={handleEditSave} size="small" title="Сохранить"><Save /></IconButton>
+                      <IconButton onClick={handleEditCancel} size="small" title="Отмена"><Delete /></IconButton>
+                    </>
+                  ) : (
+                    <>
+                      <Tooltip title="Редактировать">
+                        <IconButton onClick={() => handleEditStart(index)} size="small"><Edit /></IconButton>
+                      </Tooltip>
+                      <Tooltip title="Удалить">
+                        <IconButton onClick={() => handleDelete(tab)} size="small"><Delete /></IconButton>
+                      </Tooltip>
+                    </>
+                  )}
                 </TableCell>
               </TableRow>
-
-              {tabs.map(tab => {
-                const isEditing = Number(editId) === Number(tab.id)
-                const cells = isEditing ? [
-                  <TextField
-                    key="name"
-                    value={editRow.name || ""}
-                    onChange={e => setEditRow(autoUpdateSlug(editRow, e.target.value))}
-                    size="small"
-                    autoFocus
-                  />,
-                  <TextField
-                    key="tab_name"
-                    value={editRow.tab_name || ""}
-                    onChange={e => setEditRow({ ...editRow, tab_name: e.target.value })}
-                    size="small"
-                  />,
-                  <TextField
-                    key="path"
-                    value={editRow.path || ""}
-                    onChange={e => setEditRow({ ...editRow, path: e.target.value })}
-                    size="small"
-                  />,
-                  renderIconField(editRow.icon, icon => setEditRow({ ...editRow, icon })),
-                  <Box key="actions" sx={{ display: "flex", gap: 1 }}>
-                    <IconButton onClick={handleSave}><SaveIcon /></IconButton>
-                    <IconButton onClick={() => setEditId(null)}><CancelIcon /></IconButton>
-                  </Box>
-                ] : [
-                  tab.name,
-                  tab.tab_name,
-                  tab.path,
-                  <Tooltip key="icon" title={tab.icon}>
-                    {tab.icon && React.createElement(MuiIcons[tab.icon] || MuiIcons.Help)}
-                  </Tooltip>,
-                  <Box key="actions" sx={{ display: "flex", gap: 1 }}>
-                    <IconButton onClick={() => {
-                      setEditId(Number(tab.id))
-                      setEditRow({ ...tab })
-                    }}><EditIcon /></IconButton>
-                    <IconButton onClick={() => handleDelete(tab)}><DeleteIcon /></IconButton>
-                  </Box>
-                ]
-
-                return <SortableRow key={tab.id} id={tab.id}>{cells}</SortableRow>
-              })}
-            </TableBody>
-          </Table>
-        </SortableContext>
-      </DndContext>
+            )
+          })}
+        </TableBody>
+      </Table>
     </Box>
   )
 }

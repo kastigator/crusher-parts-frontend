@@ -1,6 +1,6 @@
 // src/hooks/useTableData.jsx
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState, useCallback } from "react"
 import axios from "@/api/axiosInstance"
 import { sanitizePayload } from "@/utils/sanitizePayload"
 
@@ -12,7 +12,7 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
 
   const { pagination = true } = options
 
-  // 🔹 Генерация шаблона строки
+  // 🔹 Генерация шаблона новой строки на основе columns
   useEffect(() => {
     if (!columns?.length) return
     const row = {}
@@ -23,50 +23,53 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     setNewRow(row)
   }, [columns])
 
-  // 🔹 Загрузка данных с сервера
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const params = new URLSearchParams(queryParams).toString()
-        const url = params ? `${endpoint}?${params}` : endpoint
-        const res = await axios.get(url)
-        setData(res.data || [])
-      } catch (err) {
-        console.error("Ошибка загрузки данных:", err)
-      }
+  // 🔹 Подготовка URL
+  const url = useMemo(() => {
+    const params = new URLSearchParams(queryParams).toString()
+    return params ? `${endpoint}?${params}` : endpoint
+  }, [endpoint, ...Object.entries(queryParams).flat()])
+
+  // 🔄 Загрузка данных
+  const reloadData = useCallback(async () => {
+    try {
+      const res = await axios.get(url)
+      setData(res.data || [])
+    } catch (err) {
+      console.error("Ошибка загрузки данных:", err)
     }
+  }, [url])
 
-    fetchData()
-  }, [endpoint, JSON.stringify(queryParams)])
+  useEffect(() => {
+    reloadData()
+  }, [reloadData])
 
-  // 🔹 CRUD-операции
+  // 🔹 Добавление
   const onAdd = async (row) => {
     try {
       const cleaned = sanitizePayload(row)
       await axios.post(endpoint, cleaned)
-      const res = await axios.get(endpoint)
-      setData(res.data || [])
+      await reloadData()
     } catch (err) {
       console.error("Ошибка добавления:", err)
     }
   }
 
+  // 🔹 Сохранение
   const onSave = async (row) => {
     try {
       const cleaned = sanitizePayload(row)
       await axios.put(`${endpoint}/${row.id}`, cleaned)
-      const res = await axios.get(endpoint)
-      setData(res.data || [])
+      await reloadData()
     } catch (err) {
       console.error("Ошибка сохранения:", err)
     }
   }
 
+  // 🔹 Удаление
   const onDelete = async (row) => {
     try {
       await axios.delete(`${endpoint}/${row.id}`)
-      const res = await axios.get(endpoint)
-      setData(res.data || [])
+      await reloadData()
     } catch (err) {
       console.error("Ошибка удаления:", err)
     }
@@ -94,6 +97,7 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     setNewRow,
     onAdd,
     onSave,
-    onDelete
+    onDelete,
+    reloadData // 👈 пригодится, если хочешь обновить извне
   }
 }

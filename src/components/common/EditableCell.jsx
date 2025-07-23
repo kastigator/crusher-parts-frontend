@@ -73,7 +73,7 @@ export default function EditableCell({
     }, [editorProps, loaded])
 
     const effectiveOptions = editorProps.lazyOptions ? options : editorProps.options || []
-    const selected = effectiveOptions.find(opt => opt.value === value) || null
+    const selected = effectiveOptions.find(opt => opt?.value === value) || null
 
     return (
       <Autocomplete
@@ -85,6 +85,7 @@ export default function EditableCell({
         getOptionLabel={editorProps.getOptionLabel || (opt => opt?.label || "")}
         renderOption={editorProps.renderOption}
         disabled={isDisabled}
+        isOptionEqualToValue={(opt, val) => opt?.value === val?.value}
         renderInput={(params) => (
           <TextField
             {...params}

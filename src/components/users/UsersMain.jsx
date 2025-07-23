@@ -1,26 +1,30 @@
-import React from 'react'
-import TableWrapper from '@/components/common/TableWrapper'
-import UsersTable from './UsersTable'
-import TabsTable from './TabsTable'
-import RolePermissionsMatrix from './RolePermissionsMatrix'
-import useRoles from '@/hooks/useRoles'
+import React, { useEffect, useState } from "react"
+import PageWrapper from "@/components/common/PageWrapper.jsx"
+import UsersTable from "./UsersTable.jsx"
+import RolePermissionsMatrix from "./RolePermissionsMatrix.jsx"
+import TabsTable from "./TabsTable.jsx"
+import axios from "@/api/axiosInstance.js"
 
 export default function UsersMain() {
-  const { roles, reloadRoles } = useRoles()
+  const [roles, setRoles] = useState([])
+
+  const reloadRoles = async () => {
+    const res = await axios.get("/roles")
+    const formatted = res.data
+      .filter(r => r.slug !== "admin")
+      .map(r => ({ value: r.id, label: r.name }))
+    setRoles(formatted)
+  }
+
+  useEffect(() => {
+    reloadRoles()
+  }, [])
 
   return (
-    <>
-      <TableWrapper title="Пользователи">
-        <UsersTable roleOptions={roles} />
-      </TableWrapper>
-
-      <TableWrapper title="Управление вкладками">
-        <TabsTable />
-      </TableWrapper>
-
-      <TableWrapper title="Права доступа к вкладкам">
-        <RolePermissionsMatrix onRolesUpdated={reloadRoles} />
-      </TableWrapper>
-    </>
+    <PageWrapper title="Пользователи и доступ">
+      <UsersTable roles={roles} />
+      <RolePermissionsMatrix reloadRoles={reloadRoles} />
+      <TabsTable />
+    </PageWrapper>
   )
 }
