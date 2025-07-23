@@ -6,7 +6,7 @@ import UsersMain from '@/components/users/UsersMain'
 
 export default function UsersPage() {
   return (
-    <TabRendererPage tabKey="users">
+    <TabRendererPage tabKey="users" title="">
       <UsersMain />
     </TabRendererPage>
   )

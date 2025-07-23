@@ -14,7 +14,6 @@ import {
   Box
 } from "@mui/material"
 import TableToolbar from "./TableToolbar"
-import TableFooter from "./TableFooter"
 import EditableRow from "./EditableRow"
 import CollapseCell from "./CollapseCell"
 
@@ -35,10 +34,8 @@ export default function BaseTable({
   pagination = false,
   page = 0,
   rowsPerPage = 10,
-  onPageChange,
-  onRowsPerPageChange,
   renderExpandedRow,
-  withCollapse // { expandedId, setExpandedId }
+  withCollapse
 }) {
   const allColumns = [
     ...(withCollapse ? [{ field: "expand", type: "collapse" }] : []),
@@ -119,7 +116,6 @@ export default function BaseTable({
                   onAdd={onAdd}
                 />
 
-                {/* Раскрытая строка */}
                 {withCollapse?.expandedId === row.id && renderExpandedRow && (
                   <TableRow>
                     <TableCell colSpan={allColumns.length} sx={{ p: 0 }}>
@@ -136,16 +132,6 @@ export default function BaseTable({
           </TableBody>
         </Table>
       </TableContainer>
-
-      {pagination && (
-        <TableFooter
-          count={data.length}
-          page={page}
-          rowsPerPage={rowsPerPage}
-          onPageChange={onPageChange}
-          onRowsPerPageChange={onRowsPerPageChange}
-        />
-      )}
     </Paper>
   )
 }

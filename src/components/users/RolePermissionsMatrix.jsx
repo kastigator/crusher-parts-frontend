@@ -1,5 +1,3 @@
-// src/components/users/RolePermissionsMatrix.jsx
-
 import React, { useEffect, useState } from "react"
 import {
   Table,
@@ -17,40 +15,67 @@ import axios from "@/api/axiosInstance.js"
 import TableWrapper from "@/components/common/TableWrapper.jsx"
 import { confirmAction } from "@/utils/confirmAction.js"
 
-export default function RolePermissionsMatrix({ reloadRoles }) {
-  const [roles, setRoles] = useState([])
+export default function RolePermissionsMatrix({ reloadRoles, roles }) {
   const [tabs, setTabs] = useState([])
   const [permissions, setPermissions] = useState([])
   const [newRole, setNewRole] = useState("")
 
   const fetchAll = async () => {
-    const [rolesRes, tabsRes, permsRes] = await Promise.all([
-      axios.get("/roles"),
+    const [tabsRes, permsRes] = await Promise.all([
       axios.get("/tabs"),
-      axios.get("/role-permissions")
+      axios.get("/role-permissions/raw")
     ])
-    setRoles(rolesRes.data.filter(r => r.slug !== "admin"))
     setTabs(tabsRes.data)
-    setPermissions(permsRes.data)
+
+    setPermissions(
+      permsRes.data.map(p => ({
+        role_id: p.role_id,
+        tab_id: p.tab_id,
+        can_view: p.can_view,
+        tab_slug: tabsRes.data.find(t => t.id === p.tab_id)?.tab_name,
+        role_slug: roles.find(r => r.id === p.role_id)?.slug
+      }))
+    )
   }
 
   useEffect(() => {
     fetchAll()
-  }, [])
+  }, [roles])
 
   const hasPermission = (roleSlug, tabSlug) =>
     permissions.some(p => p.role_slug === roleSlug && p.tab_slug === tabSlug)
 
   const handleToggle = async (roleSlug, tabSlug, checked) => {
-    const updated = permissions.filter(p => !(p.role_slug === roleSlug && p.tab_slug === tabSlug))
-    if (checked) updated.push({ role_slug: roleSlug, tab_slug: tabSlug })
+    const updated = permissions.filter(
+      p => !(p.role_slug === roleSlug && p.tab_slug === tabSlug)
+    )
+
+    if (checked) {
+      updated.push({ role_slug: roleSlug, tab_slug: tabSlug })
+    }
+
     setPermissions(updated)
-    await axios.put(`/role-permissions/${roleSlug}`, updated.filter(p => p.role_slug === roleSlug))
+
+    const rolePermissions = updated
+      .filter(p => p.role_slug === roleSlug)
+      .map(p => {
+        const tab = tabs.find(t => t.tab_name === p.tab_slug)
+        return {
+          tab_id: tab?.id,
+          can_view: 1
+        }
+      })
+
+    try {
+      await axios.put(`/role-permissions/by-role/${roleSlug}`, rolePermissions)
+    } catch (err) {
+      console.error("Ошибка при обновлении прав:", err)
+    }
   }
 
   const handleAddRole = async () => {
     if (!newRole.trim()) return
-    const res = await axios.post("/roles", { name: newRole.trim() })
+    await axios.post("/roles", { name: newRole.trim() })
     setNewRole("")
     await fetchAll()
     await reloadRoles()
@@ -59,12 +84,21 @@ export default function RolePermissionsMatrix({ reloadRoles }) {
   const handleDeleteRole = async (role) => {
     const usersRes = await axios.get("/users")
     const usersWithRole = usersRes.data.filter(u => u.role_id === role.id)
+
     if (usersWithRole.length > 0) {
-      alert("Нельзя удалить роль — она используется: " + usersWithRole.map(u => u.username).join(", "))
+      await confirmAction({
+        title: "Удаление невозможно",
+        text: "Нельзя удалить роль — она используется: " + usersWithRole.map(u => u.username).join(", "),
+        icon: "warning",
+        showCancelButton: false,
+        confirmLabel: "OK"
+      })
       return
     }
-    const confirmed = await confirmAction(`Удалить роль "${role.name}"?`)
+
+    const { confirmed } = await confirmAction(`Удалить роль "${role.name}"?`)
     if (!confirmed) return
+
     await axios.delete(`/roles/${role.id}`)
     await fetchAll()
     await reloadRoles()
@@ -105,7 +139,9 @@ export default function RolePermissionsMatrix({ reloadRoles }) {
                 <TableCell key={tab.id} align="center">
                   <Checkbox
                     checked={hasPermission(role.slug, tab.tab_name)}
-                    onChange={e => handleToggle(role.slug, tab.tab_name, e.target.checked)}
+                    onChange={e =>
+                      handleToggle(role.slug, tab.tab_name, e.target.checked)
+                    }
                   />
                 </TableCell>
               ))}

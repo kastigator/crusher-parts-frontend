@@ -1,23 +1,52 @@
 // src/components/common/fieldSchemas.js
 
 export const fieldSchemas = {
-  // Users
-  username: { title: "Имя пользователя", type: "text", required: true },
-  email: { title: "Email", type: "text" },
-  phone: { title: "Телефон", type: "text" },
-  position: { title: "Должность", type: "text" },
-  role_id: {
-    title: "Роль",
-    type: "autocomplete",
-    required: true,
-    editorProps: {
-      lazyOptions: true,
-      fetchOptions: async () => [],
-      getOptionLabel: (option) => option?.label || ""
-    },
-    display: (value, row) => row?.role_name || value
-  },
+  tnved_code: {
+    columns: [
+      {
+        field: "code",
+        title: "Код",
+        required: true,
+        editable: true,
+        width: 140,
+      },
+      {
+        field: "description",
+        title: "Описание",
+        editable: true,
+        width: 360,
+      },
+      {
+        field: "duty_rate",
+        title: "Ставка пошлины (%)",
+        type: "number",
+        editable: true,
+        width: 160,
+      },
+      {
+        field: "notes",
+        title: "Примечания",
+        editable: true,
+        width: 280,
+      },
+      {
+        field: "actions",
+        type: "actions",
+        width: 100
+      }
+    ],
 
-  // Roles (для RolePermissionsMatrix)
-  name: { title: "Название роли", type: "text", required: true }
+    import: {
+      requiredFields: ["code"],
+      fields: ["code", "description", "duty_rate", "notes"],
+      endpoint: "/import/tnved_code",
+      templateUrl: "https://storage.googleapis.com/shared-parts-bucket/templates/tnved_codes_template.xlsx",
+      transform: `(row) => ({
+        code: String(row.code).trim(),
+        description: row.description?.trim(),
+        duty_rate: row.duty_rate ? parseFloat(row.duty_rate) : null,
+        notes: row.notes?.trim()
+      })`
+    }
+  }
 }

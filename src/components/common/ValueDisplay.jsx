@@ -57,7 +57,8 @@ export default function ValueDisplay({
   value,
   type = 'text',
   emptySymbol = '—',
-  currency
+  currency,
+  href
 }) {
   if (value === null || value === undefined || value === '') return emptySymbol
 
@@ -97,8 +98,13 @@ export default function ValueDisplay({
 
     case 'link':
       return (
-        <Link href={value} target="_blank" rel="noopener noreferrer" underline="hover">
-          {value}
+        <Link
+          href={href || value}
+          target="_blank"
+          rel="noopener noreferrer"
+          underline="hover"
+        >
+          {String(value)}
         </Link>
       )
 

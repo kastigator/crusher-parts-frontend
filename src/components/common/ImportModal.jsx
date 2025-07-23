@@ -8,68 +8,70 @@ import {
   DialogActions,
   Button,
   LinearProgress,
-  Alert
+  Alert,
+  Link
 } from "@mui/material"
 import readXlsxFile from "read-excel-file"
-import { entitySchemas } from "./entitySchemas"
 import axios from "@/api/axiosInstance"
 
 export default function ImportModal({ open, onClose, type }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [errors, setErrors] = useState([])
   const [imported, setImported] = useState(0)
+  const [templateUrl, setTemplateUrl] = useState("")
 
   const handleFileChange = async (event) => {
     const file = event.target.files[0]
     if (!file || !type) return
 
-    const schema = entitySchemas[type]
-    if (!schema || !schema.import) {
-      setError("Схема импорта не найдена")
-      return
-    }
-
-    const { fields, requiredFields = [], validateImportRow, transformBeforeUpload, endpoint } = schema.import
-
     try {
       setLoading(true)
       setError("")
+      setErrors([])
       setImported(0)
 
+      // 🔹 1. Получаем схему с бэкенда
+      const { data: schema } = await axios.get(`/import/schema/${type}`)
+      const {
+        fields,
+        requiredFields = [],
+        transform,
+        templateUrl
+      } = schema
+      setTemplateUrl(templateUrl || "")
+
+      // 🔹 2. Читаем Excel-файл
       const rows = await readXlsxFile(file)
       const header = rows[0]
       const dataRows = rows.slice(1)
 
-      const missingFields = requiredFields.filter(field => !header.includes(field))
-      if (missingFields.length > 0) {
-        setError(`Отсутствуют обязательные поля: ${missingFields.join(", ")}`)
+      const missing = requiredFields.filter(field => !header.includes(field))
+      if (missing.length) {
+        setError(`Отсутствуют обязательные поля: ${missing.join(", ")}`)
         return
       }
 
+      // 🔹 3. Преобразуем строки
       const transformedData = []
       for (let row of dataRows) {
-        const rowObj = {}
+        const obj = {}
         fields.forEach((field, index) => {
-          rowObj[field] = row[index]
+          obj[field] = row[index]
         })
 
-        const validationError = validateImportRow?.(rowObj)
-        if (validationError) {
-          setError(`Ошибка валидации: ${validationError}`)
-          return
-        }
-
-        const transformed = transformBeforeUpload?.(rowObj) || rowObj
+        const fn = new Function("row", `return (${transform})(row)`)
+        const transformed = fn(obj)
         transformedData.push(transformed)
       }
 
-      const url = endpoint || `/api/${type}/import`
-      await axios.post(url, transformedData)
-
-      setImported(transformedData.length)
+      // 🔹 4. Отправляем
+      const res = await axios.post(`/import/${type}`, transformedData)
+      setImported(res.data.inserted?.length || 0)
+      setErrors(res.data.errors || [])
     } catch (e) {
-      setError("Ошибка при импорте файла")
       console.error(e)
+      setError("Ошибка при импорте файла")
     } finally {
       setLoading(false)
     }
@@ -77,7 +79,9 @@ export default function ImportModal({ open, onClose, type }) {
 
   const handleClose = () => {
     setError("")
+    setErrors([])
     setImported(0)
+    setTemplateUrl("")
     onClose()
   }
 
@@ -86,9 +90,38 @@ export default function ImportModal({ open, onClose, type }) {
       <DialogTitle>Импорт из Excel</DialogTitle>
       <DialogContent dividers>
         {loading && <LinearProgress sx={{ mb: 2 }} />}
-        {error && <Alert severity="error">{error}</Alert>}
-        {imported > 0 && <Alert severity="success">Импортировано записей: {imported}</Alert>}
-        <input type="file" accept=".xlsx" onChange={handleFileChange} disabled={loading} />
+        {templateUrl && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <Link
+              href={templateUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              download
+            >
+              📥 Скачать шаблон Excel
+            </Link>
+          </Alert>
+        )}
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {errors.length > 0 && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              {errors.map((e, i) => <li key={i}>{e}</li>)}
+            </ul>
+          </Alert>
+        )}
+        {imported > 0 && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            Импортировано записей: {imported}
+          </Alert>
+        )}
+        <input
+          type="file"
+          accept=".xlsx"
+          onChange={handleFileChange}
+          disabled={loading}
+        />
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose}>Закрыть</Button>

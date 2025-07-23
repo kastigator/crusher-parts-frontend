@@ -12,7 +12,7 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
 
   const { pagination = true } = options
 
-  // 🔹 Генерация шаблона новой строки на основе columns
+  // 🔹 Генерация шаблона новой строки
   useEffect(() => {
     if (!columns?.length) return
     const row = {}
@@ -23,7 +23,7 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     setNewRow(row)
   }, [columns])
 
-  // 🔹 Подготовка URL
+  // 🔹 Построение URL
   const url = useMemo(() => {
     const params = new URLSearchParams(queryParams).toString()
     return params ? `${endpoint}?${params}` : endpoint
@@ -43,7 +43,7 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     reloadData()
   }, [reloadData])
 
-  // 🔹 Добавление
+  // ➕ Добавление
   const onAdd = async (row) => {
     try {
       const cleaned = sanitizePayload(row)
@@ -54,7 +54,7 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     }
   }
 
-  // 🔹 Сохранение
+  // 💾 Сохранение
   const onSave = async (row) => {
     try {
       const cleaned = sanitizePayload(row)
@@ -65,7 +65,7 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     }
   }
 
-  // 🔹 Удаление
+  // 🗑 Удаление
   const onDelete = async (row) => {
     try {
       await axios.delete(`${endpoint}/${row.id}`)
@@ -75,7 +75,7 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     }
   }
 
-  // 🔹 Пагинация
+  // 📄 Пагинация
   const handlePageChange = (newPage) => setPage(newPage)
   const handleRowsPerPageChange = (rows) => {
     setRowsPerPage(rows)
@@ -88,6 +88,7 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
 
   return {
     data,
+    setData, // ✅ ← добавлено
     paginatedData,
     page,
     rowsPerPage,
@@ -98,6 +99,6 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     onAdd,
     onSave,
     onDelete,
-    reloadData // 👈 пригодится, если хочешь обновить извне
+    reloadData
   }
 }

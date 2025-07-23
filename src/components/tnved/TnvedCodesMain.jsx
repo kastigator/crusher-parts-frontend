@@ -6,7 +6,7 @@ import PageWrapper from "@/components/common/PageWrapper"
 
 export default function TnvedCodesMain() {
   return (
-    <PageWrapper title="Коды ТН ВЭД">
+    <PageWrapper >
       <TnvedCodesTable />
     </PageWrapper>
   )

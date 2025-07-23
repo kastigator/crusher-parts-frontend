@@ -6,24 +6,31 @@ import TabsTable from "./TabsTable.jsx"
 import axios from "@/api/axiosInstance.js"
 
 export default function UsersMain() {
-  const [roles, setRoles] = useState([])
+  const [allRoles, setAllRoles] = useState([])
 
   const reloadRoles = async () => {
     const res = await axios.get("/roles")
-    const formatted = res.data
-      .filter(r => r.slug !== "admin")
-      .map(r => ({ value: r.id, label: r.name }))
-    setRoles(formatted)
+    const formatted = res.data.map(r => ({
+      value: r.id,
+      label: r.name,
+      slug: r.slug,
+      id: r.id, // нужно для RolePermissionsMatrix
+      name: r.name
+    }))
+    setAllRoles(formatted)
   }
 
   useEffect(() => {
     reloadRoles()
   }, [])
 
+  const rolesForUsers = allRoles
+  const rolesForMatrix = allRoles.filter(r => r.slug !== "admin")
+
   return (
-    <PageWrapper title="Пользователи и доступ">
-      <UsersTable roles={roles} />
-      <RolePermissionsMatrix reloadRoles={reloadRoles} />
+    <PageWrapper>
+      <UsersTable roles={rolesForUsers} />
+      <RolePermissionsMatrix reloadRoles={reloadRoles} roles={rolesForMatrix} />
       <TabsTable />
     </PageWrapper>
   )
