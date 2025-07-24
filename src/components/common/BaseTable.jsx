@@ -99,6 +99,7 @@ export default function BaseTable({
                   onDelete={() => onDelete?.(row)}
                   onResetPassword={onResetPassword}
                   onShowLogs={onShowLogs}
+                  onEdit={() => onEdit?.(row)}
                 />
               </TableCell>
             </TableRow>
