@@ -26,12 +26,15 @@ export const fieldSchemas = {
 ```
 
 ## Использование
-Импортируется в tableDefinitions:
+Некоторые таблицы хранят описание колонок прямо здесь, например:
 ```js
-import { fieldSchemas } from "./fieldSchemas"
-const usersTableColumns = [
-  fieldSchemas.username,
-  fieldSchemas.email,
-  { field: "actions" }
-]
+export const fieldSchemas = {
+  tnved_code: {
+    columns: [
+      { field: "code", title: "Код" },
+      { field: "description", title: "Описание" }
+    ]
+  }
+}
 ```
+Другие компоненты могут объявлять массив `columns` локально и использовать поля из `fieldSchemas` по необходимости.

@@ -3,19 +3,24 @@
 ## Назначение
 `useTableData` обеспечивает единый подход к загрузке и отправке данных:
 - GET / POST / PUT / DELETE
-- Генерация пустой строки newRow
+- Управляет локальным состоянием и пагинацией
 - Универсален для всех таблиц
 
 ## Использование
 ```js
 const {
   data,
+  paginatedData,
   newRow,
   setNewRow,
   onAdd,
   onSave,
-  onDelete
-} = useTableData("/users", {}, usersTableColumns)
+  onDelete,
+  page,
+  rowsPerPage,
+  onPageChange,
+  onRowsPerPageChange
+} = useTableData("/users")
 ```
 
 ## Аргументы
@@ -23,19 +28,23 @@ const {
 |----------|-----|----------|
 | endpoint | string | URL API (например, "/users") |
 | queryParams | object | GET-параметры (например, { clientId: 42 }) |
-| columns | array | Описание колонок для генерации newRow |
+| options | object | { pagination, filterable } настройки |
 
 ## Возвращает
 | Переменная | Назначение |
 |------------|------------|
 | data | Массив данных |
-| newRow | Новая строка |
+| paginatedData | Срез данных для текущей страницы |
+| newRow | Новая строка (по умолчанию `{}`) |
 | setNewRow | Установить значения новой строки |
 | onAdd(row) | POST запрос |
 | onSave(row) | PUT запрос по id |
 | onDelete(row) | DELETE запрос по id |
+| page, rowsPerPage | Состояние пагинации |
+| onPageChange / onRowsPerPageChange | Обработчики пагинации |
 
 ## Поведение
 - Загружает данные при монтировании
-- Автоматически обновляется при изменении queryParams
-- Удаляет лишние поля с помощью sanitizePayload
+- Автоматически обновляется при изменении `queryParams`
+- Удаляет лишние поля с помощью `sanitizePayload`
+- Поддерживает пагинацию и фильтр при передаче опций

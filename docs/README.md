@@ -21,7 +21,7 @@
 | --------------------- | ------------------------------------------------------------ |
 | `fieldSchemas.js`     | Описание всех доступных полей (type, title, required и т.п.) |
 | `fieldRenderers.jsx`  | Как отображать и редактировать значение по типу              |
-| `tableDefinitions.js` | Какие поля входят в каждую таблицу                           |
+| `tableDefinitions.js` | Устаревший централизованный список колонок |
 
 **Пример использования:**
 
@@ -32,6 +32,8 @@ export const usersTableColumns = [
   { field: 'role_slug', ...userFields.role_slug },
 ]
 ```
+
+На практике колонки могут быть описаны прямо в файле таблицы или как свойство в `fieldSchemas.js` (например, `fieldSchemas.tnved_code.columns`).
 
 ---
 
@@ -102,11 +104,10 @@ export const usersTableColumns = [
 
 ## 🔨 Шаблон создания новой таблицы
 
-1. 📘 В `fieldSchemas.js` описать поля
-2. 📋 В `tableDefinitions.js` собрать `columns`
-3. 🧩 В `UsersTable.jsx` или аналог — подключить `useTableData` и `BaseTable`
-4. 📄 В `UsersMain.jsx` — разместить таблицу
-5. 📂 В `UsersPage.jsx` — подключить `UsersMain`
+1. 📘 В `fieldSchemas.js` описать поля или определить `columns` прямо в компоненте
+2. 🧩 В `UsersTable.jsx` или аналог — подключить `useTableData` и `BaseTable`
+3. 📄 В `UsersMain.jsx` — разместить таблицу
+4. 📂 В `UsersPage.jsx` — подключить `UsersMain`
 
 Готово ✅ Таблица будет поддерживать:
 
@@ -124,7 +125,7 @@ export const usersTableColumns = [
 * Не редактировать `BaseTable`, если не уверен
 * Добавлять поля **только** в `fieldSchemas.js`
 * Использовать `fieldRenderers` вместо ручного `display` / `editor`
-* Все таблицы обязаны использовать `tableDefinitions.js`
+* Ранее использовался `tableDefinitions.js`, теперь колонки описываются рядом с компонентом
 * Если поведение уникальное (иконки, drag’n’drop) — делай локально в таблице
 * Для импорта использовать `ImportModal` и схему из `entitySchemas`
 

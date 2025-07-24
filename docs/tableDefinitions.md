@@ -1,17 +1,15 @@
 # tableDefinitions.js — определение колонок таблиц
 
 ## Назначение
-Файл описывает колонки всех таблиц проекта. Используется в `BaseTable`.
+Ранние версии проекта хранили колонки всех таблиц в отдельном файле.
+Сейчас этот файл отсутствует: описания находятся прямо в компонентах или внутри `fieldSchemas.js`.
 
-## Формат записи
+## Пример старого формата
 ```js
 export const usersTableColumns = [
   fieldSchemas.username,
   fieldSchemas.email,
-  {
-    field: "role_id",
-    ...fieldSchemas.role_id
-  },
+  { field: "role_id", ...fieldSchemas.role_id },
   { field: "actions" }
 ]
 ```
@@ -28,5 +26,4 @@ export const usersTableColumns = [
 | defaultValue | Значение по умолчанию |
 
 ## Поведение
-- Используется `EditableCell` для рендера ячеек
-- Автоматически подставляется в `useTableData` для генерации newRow
+Если файл будет восстановлен, его содержимое можно использовать совместно с `EditableCell` и `useTableData`.
