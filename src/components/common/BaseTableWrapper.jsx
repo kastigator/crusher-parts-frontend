@@ -6,14 +6,14 @@ import {
   TableFooter,
   TableRow,
   TableCell,
-  TablePagination,
-  Button
+  TablePagination
 } from "@mui/material"
 
 import BaseTable from "./BaseTable"
 import ImportModal from "./ImportModal"
 import FullHistoryDialog from "./FullHistoryDialog"
 import TableWrapper from "./TableWrapper"
+import TableToolbar from "./TableToolbar"
 import useTableData from "@/hooks/useTableData"
 import { confirmAction } from "@/utils/confirmAction"
 
@@ -73,22 +73,18 @@ export default function BaseTableWrapper({
 
   return (
     <>
-      <TableWrapper
-        title={withHeader ? title : undefined}
-        extraActions={[
-          ...extraActions,
-          withImport && (
-            <Button
-              key="import"
-              onClick={() => setImportOpen(true)}
-              size="small"
-              variant="outlined"
-            >
-              📥 Импорт из Excel
-            </Button>
-          )
-        ]}
-      >
+      <TableWrapper>
+        {withHeader && (
+          <TableToolbar
+            title={title}
+            onAddClick={() => setNewRow({})}
+            onImportClick={withImport ? () => setImportOpen(true) : undefined}
+            filterValue={filterValue}
+            onFilterChange={onFilterChange}
+            actionsRight={extraActions}
+          />
+        )}
+
         <BaseTable
           columns={columns}
           data={pagination ? paginatedData : data}
