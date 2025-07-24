@@ -4,26 +4,17 @@ import { useEffect, useMemo, useState, useCallback } from "react"
 import axios from "@/api/axiosInstance"
 import { sanitizePayload } from "@/utils/sanitizePayload"
 
-export default function useTableData(endpoint, queryParams = {}, columns = [], options = {}) {
+export default function useTableData(endpoint, queryParams = {}, options = {}) {
   const [data, setData] = useState([])
   const [newRow, setNewRow] = useState({})
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(25)
 
-  const { pagination = true } = options
+  const { pagination = true, filterable = true } = options
 
-  // 🔹 Генерация шаблона новой строки
-  useEffect(() => {
-    if (!columns?.length) return
-    const row = {}
-    columns.forEach(col => {
-      if (!col.field || col.field === "actions") return
-      row[col.field] = col.defaultValue ?? ""
-    })
-    setNewRow(row)
-  }, [columns])
+  const [filterValue, setFilterValue] = useState("")
 
-  // 🔹 Построение URL
+  // 🔹 Подготовка URL
   const url = useMemo(() => {
     const params = new URLSearchParams(queryParams).toString()
     return params ? `${endpoint}?${params}` : endpoint
@@ -43,18 +34,19 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     reloadData()
   }, [reloadData])
 
-  // ➕ Добавление
+  // 🔹 Добавление
   const onAdd = async (row) => {
     try {
       const cleaned = sanitizePayload(row)
       await axios.post(endpoint, cleaned)
       await reloadData()
+      setNewRow({}) // ⬅️ очищаем строку добавления
     } catch (err) {
       console.error("Ошибка добавления:", err)
     }
   }
 
-  // 💾 Сохранение
+  // 🔹 Сохранение
   const onSave = async (row) => {
     try {
       const cleaned = sanitizePayload(row)
@@ -65,7 +57,7 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     }
   }
 
-  // 🗑 Удаление
+  // 🔹 Удаление
   const onDelete = async (row) => {
     try {
       await axios.delete(`${endpoint}/${row.id}`)
@@ -75,9 +67,10 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     }
   }
 
-  // 📄 Пагинация
-  const handlePageChange = (newPage) => setPage(newPage)
-  const handleRowsPerPageChange = (rows) => {
+  // 🔹 Пагинация
+  const handlePageChange = (event, newPage) => setPage(newPage)
+  const handleRowsPerPageChange = (event) => {
+    const rows = parseInt(event.target.value, 10)
     setRowsPerPage(rows)
     setPage(0)
   }
@@ -86,9 +79,13 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     ? data.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
     : data
 
+  // 🔹 Фильтрация
+  const onFilterChange = (e) => setFilterValue(e.target.value)
+  const onResetFilters = () => setFilterValue("")
+
   return {
     data,
-    setData, // ✅ ← добавлено
+    setData,
     paginatedData,
     page,
     rowsPerPage,
@@ -99,6 +96,9 @@ export default function useTableData(endpoint, queryParams = {}, columns = [], o
     onAdd,
     onSave,
     onDelete,
-    reloadData
+    reloadData,
+    filterValue,
+    onFilterChange,
+    onResetFilters
   }
 }

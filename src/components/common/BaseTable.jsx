@@ -1,28 +1,27 @@
 // src/components/common/BaseTable.jsx
+// Универсальный компонент таблицы:
+// - отображает данные
+// - поддерживает редактирование и добавление
+// - автоматически добавляет колонку действий
 
 import React from "react"
 import {
   Table,
-  TableBody,
-  TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Typography,
-  Paper,
-  Collapse,
-  Box
+  TableCell,
+  TableBody
 } from "@mui/material"
-import TableToolbar from "./TableToolbar"
+
 import EditableRow from "./EditableRow"
-import CollapseCell from "./CollapseCell"
+import ActionIcons from "./ActionIcons"
 
 export default function BaseTable({
-  title,
-  columns,
+  columns = [],
   data = [],
   newRow,
   setNewRow,
+  setData,
   onAdd,
   onSave,
   onDelete,
@@ -30,108 +29,82 @@ export default function BaseTable({
   onResetPassword,
   onShowLogs,
   onEdit,
-  validateRow,
-  pagination = false,
-  page = 0,
-  rowsPerPage = 10,
-  renderExpandedRow,
-  withCollapse
+  onChange
 }) {
+  // Добавим колонку "actions" автоматически
   const allColumns = [
-    ...(withCollapse ? [{ field: "expand", type: "collapse" }] : []),
-    ...columns
+    ...columns,
+    { field: "actions", title: "", width: 64 }
   ]
 
-  const handleCollapseClick = (id) => {
-    if (withCollapse?.setExpandedId) {
-      withCollapse.setExpandedId(withCollapse.expandedId === id ? null : id)
-    }
-  }
-
-  const visibleRows = pagination
-    ? data.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-    : data
-
   return (
-    <Paper sx={{ mb: 4 }}>
-      {title && (
-        <Typography variant="h6" sx={{ p: 2, pb: 0 }}>
-          {title}
-        </Typography>
-      )}
+    <Table size="small">
+      <TableHead>
+        <TableRow>
+          {allColumns.map((col) => (
+            <TableCell
+              key={col.field}
+              style={{ minWidth: col.minWidth || 80, width: col.width }}
+            >
+              {col.title}
+            </TableCell>
+          ))}
+        </TableRow>
+      </TableHead>
 
-      <TableToolbar
-        newRow={newRow}
-        setNewRow={setNewRow}
-        columns={allColumns}
-      />
+      <TableBody>
+        {/* Строка добавления — отображается первой */}
+        {newRow && (
+          <EditableRow
+            row={newRow}
+            columns={columns}
+            isNew
+            onChange={(field, value) =>
+              setNewRow((prev) => ({ ...prev, [field]: value }))
+            }
+            onSave={onAdd}
+            onCancel={() => {
+              setNewRow({})
+              onCancel?.()
+            }}
+          />
+        )}
 
-      <TableContainer>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              {allColumns.map((col) => (
+        {/* Основные строки */}
+        {data.map((row) => (
+          row.isEditing ? (
+            <EditableRow
+              key={row.id}
+              row={row}
+              columns={columns}
+              onChange={(field, value) => onChange?.(field, value, row)}
+              onSave={() => onSave?.(row)}
+              onCancel={() => {
+                row.isEditing = false
+                setData([...data])
+              }}
+            />
+          ) : (
+            <TableRow key={row.id} tabIndex={0} onDoubleClick={() => onEdit?.(row)}>
+              {columns.map((col) => (
                 <TableCell key={col.field}>
-                  {col.title || ""}
+                  {col.render
+                    ? col.render(row[col.field], row)
+                    : row[col.field]}
                 </TableCell>
               ))}
-            </TableRow>
-          </TableHead>
-
-          <TableBody>
-            {newRow && (
-              <EditableRow
-                row={newRow}
-                columns={allColumns}
-                isNewRow
-                isEditing
-                onChange={(field, value) =>
-                  setNewRow({ ...newRow, [field]: value })
-                }
-                onAdd={() => {
-                  if (validateRow?.(newRow)) {
-                    onAdd(newRow)
-                    setNewRow(null)
-                  }
-                }}
-                onCancel={() => setNewRow(null)}
-              />
-            )}
-
-            {visibleRows.map((row) => (
-              <React.Fragment key={row.id}>
-                <EditableRow
+              <TableCell>
+                <ActionIcons
                   row={row}
-                  columns={allColumns}
-                  isEditing={!!row.isEditing}
-                  onChange={(field, value) => {
-                    row[field] = value
-                  }}
-                  onSave={onSave}
-                  onDelete={onDelete}
-                  onCancel={onCancel}
+                  onDelete={() => onDelete?.(row)}
                   onResetPassword={onResetPassword}
                   onShowLogs={onShowLogs}
-                  onEdit={onEdit}
-                  onAdd={onAdd}
                 />
-
-                {withCollapse?.expandedId === row.id && renderExpandedRow && (
-                  <TableRow>
-                    <TableCell colSpan={allColumns.length} sx={{ p: 0 }}>
-                      <Collapse in={true} timeout="auto" unmountOnExit>
-                        <Box sx={{ p: 2 }}>
-                          {renderExpandedRow(row)}
-                        </Box>
-                      </Collapse>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </React.Fragment>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Paper>
+              </TableCell>
+            </TableRow>
+          )
+        ))}
+      </TableBody>
+    </Table>
   )
 }

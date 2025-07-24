@@ -21,6 +21,7 @@ export default function EditableRow({
   const handleKeyDown = (e) => {
     if (e.key === "Escape") {
       if (isNewRow) {
+        // Просто очищаем, а не удаляем строку
         const cleared = {}
         columns.forEach((col) => {
           if (col.field && col.field !== "actions") {
@@ -60,9 +61,9 @@ export default function EditableRow({
           onChange={(value) => onChange?.(column.field, value)}
           onSave={() => onSave?.(row)}
           onCancel={onCancel}
-          onDelete={() => onDelete?.(row)}
-          onResetPassword={() => onResetPassword?.(row)}
-          onShowLogs={() => onShowLogs?.(row)}
+          onDelete={onDelete ? () => onDelete(row) : undefined}
+          onResetPassword={onResetPassword ? () => onResetPassword(row) : undefined}
+          onShowLogs={onShowLogs ? () => onShowLogs(row) : undefined}
         />
       ))}
     </TableRow>

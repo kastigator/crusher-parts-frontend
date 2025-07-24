@@ -5,7 +5,9 @@ import {
   Table,
   TableFooter,
   TableRow,
-  TableCell
+  TableCell,
+  TablePagination,
+  Button
 } from "@mui/material"
 
 import BaseTable from "./BaseTable"
@@ -13,7 +15,7 @@ import ImportModal from "./ImportModal"
 import FullHistoryDialog from "./FullHistoryDialog"
 import TableWrapper from "./TableWrapper"
 import useTableData from "@/hooks/useTableData"
-import TablePagination from "@mui/material/TablePagination"
+import { confirmAction } from "@/utils/confirmAction"
 
 export default function BaseTableWrapper({
   title,
@@ -24,7 +26,8 @@ export default function BaseTableWrapper({
   withLogs = false,
   pagination = true,
   filterable = true,
-  extraActions
+  extraActions = [],
+  withHeader = true
 }) {
   const [importOpen, setImportOpen] = useState(false)
   const [showLogsFor, setShowLogsFor] = useState(null)
@@ -45,30 +48,58 @@ export default function BaseTableWrapper({
     filterValue,
     onFilterChange,
     onResetFilters
-  } = useTableData(endpoint, { pagination, filterable })
+  } = useTableData(endpoint, { pagination, filterable }, columns)
 
   const handleEdit = (row) => {
     row.isEditing = true
-    setData([...data]) // триггер перерендера
+    setData([...data])
   }
 
-  const handleChange = (field, value) => {
-    if (field === null && typeof value === "object") {
-      setNewRow(value)
+  const handleChange = (field, value, row) => {
+    const updatedRow = { ...row, [field]: value }
+    const newData = data.map(r => (r.id === row.id ? updatedRow : r))
+    setData(newData)
+  }
+
+  const handleDelete = async (row) => {
+    const confirmed = await confirmAction({
+      title: "Удалить запись?",
+      text: row.code ? `Код: ${row.code}` : "Вы уверены?"
+    })
+    if (confirmed) {
+      await onDelete(row)
     }
   }
 
   return (
     <>
-      <TableWrapper title={title} extraActions={extraActions}>
+      <TableWrapper
+        title={withHeader ? title : undefined}
+        extraActions={[
+          ...extraActions,
+          withImport && (
+            <Button
+              key="import"
+              onClick={() => setImportOpen(true)}
+              size="small"
+              variant="outlined"
+            >
+              📥 Импорт из Excel
+            </Button>
+          )
+        ]}
+      >
         <BaseTable
           columns={columns}
           data={pagination ? paginatedData : data}
           newRow={newRow}
           setNewRow={setNewRow}
+          setData={setData}
           onAdd={onAdd}
           onSave={onSave}
-          onDelete={onDelete}
+          onDelete={handleDelete}
+          onEdit={handleEdit}
+          onChange={handleChange}
           page={page}
           rowsPerPage={rowsPerPage}
           pagination={pagination}
@@ -76,8 +107,6 @@ export default function BaseTableWrapper({
           onFilterChange={onFilterChange}
           onResetFilters={onResetFilters}
           onShowLogs={withLogs ? (row) => setShowLogsFor(row) : undefined}
-          onEdit={handleEdit}
-          onChange={handleChange}
         />
 
         {pagination && (
