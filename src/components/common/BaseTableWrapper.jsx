@@ -48,7 +48,7 @@ export default function BaseTableWrapper({
     filterValue,
     onFilterChange,
     onResetFilters
-  } = useTableData(endpoint, { pagination, filterable }, columns)
+  } = useTableData(endpoint, {}, { pagination, filterable })
 
   const handleEdit = (row) => {
     row.isEditing = true

@@ -13,7 +13,7 @@ export default function BankDetailsTable({ clientId }) {
     onAdd,
     onSave,
     onDelete
-  } = useTableData(`/clients/${clientId}/bank-details`, {}, clientBankDetailsColumns, { pagination: false })
+  } = useTableData(`/clients/${clientId}/bank-details`, {}, { pagination: false })
 
   return (
     <BaseTable

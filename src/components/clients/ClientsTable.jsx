@@ -28,7 +28,7 @@ export default function ClientsTable() {
     rowsPerPage,
     onPageChange,
     onRowsPerPageChange
-  } = useTableData("/clients", {}, clientsTableColumns, { pagination: true })
+  } = useTableData("/clients", {}, { pagination: true })
 
   const renderExpandedRow = (client) => (
     <div>

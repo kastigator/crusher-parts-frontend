@@ -13,7 +13,7 @@ export default function BillingAddressesTable({ clientId }) {
     onAdd,
     onSave,
     onDelete
-  } = useTableData(`/clients/${clientId}/billing-addresses`, {}, clientBillingAddressesColumns, { pagination: false })
+  } = useTableData(`/clients/${clientId}/billing-addresses`, {}, { pagination: false })
 
   return (
     <BaseTable

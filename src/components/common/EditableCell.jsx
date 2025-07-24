@@ -46,6 +46,7 @@ export default function EditableCell({
     return (
       <TableCell>
         <ActionIcons
+          row={row}
           isEditing={isEditing}
           isNewRow={isNewRow}
           onSave={onSave}
