@@ -11,7 +11,7 @@ const LayoutBody = () => {
   const { loading } = useTabs()
 
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <Sidebar />
 
       <div
@@ -20,8 +20,7 @@ const LayoutBody = () => {
           display: 'flex',
           flexDirection: 'column',
           minHeight: 0,
-          width: '100vw',
-          overflow: 'visible' // ✅ исправлено для тултипов
+          overflow: 'visible' // ✅ тултипы и т.п.
         }}
       >
         <Header />

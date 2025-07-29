@@ -145,29 +145,30 @@ export default function TnvedCodesTable({ data, loading, onUpdate, onDelete }) {
 
   return (
     <>
-      <Table
-        dataSource={data}
-        columns={columns}
-        rowKey="id"
-        loading={loading}
-        pagination={{ pageSize: 10 }}
-        bordered
-        size="small"
-        scroll={{ x: true }}
-        onRow={(record) => ({
-          onDoubleClick: () => startEdit(record)
-        })}
-        expandable={{
-          expandedRowRender: (record) => (
-            <div style={{ whiteSpace: "pre-wrap", padding: "8px 24px" }}>
-              <b>Описание:</b> {record.description || "—"}
-              <br />
-              <b>Примечания:</b> {record.notes || "—"}
-            </div>
-          ),
-          rowExpandable: () => true
-        }}
-      />
+      <div style={{ overflowX: "auto" }}>
+        <Table
+          dataSource={data}
+          columns={columns}
+          rowKey="id"
+          loading={loading}
+          pagination={{ pageSize: 10 }}
+          bordered
+          size="small"
+          onRow={(record) => ({
+            onDoubleClick: () => startEdit(record)
+          })}
+          expandable={{
+            expandedRowRender: (record) => (
+              <div style={{ whiteSpace: "pre-wrap", padding: "8px 24px" }}>
+                <b>Описание:</b> {record.description || "—"}
+                <br />
+                <b>Примечания:</b> {record.notes || "—"}
+              </div>
+            ),
+            rowExpandable: () => true
+          }}
+        />
+      </div>
 
       {logId && (
         <FullHistoryDialog

@@ -17,6 +17,8 @@ const Sidebar = () => {
     <div
       style={{
         width: 64,
+        minWidth: 64,       // ✅ фиксированная минимальная ширина
+        flexShrink: 0,       // ✅ запрещаем сжатие
         height: '100%',
         backgroundColor: '#f5f5f5',
         borderRight: '1px solid #ddd',
@@ -25,7 +27,7 @@ const Sidebar = () => {
         alignItems: 'center',
         paddingTop: 8,
         position: 'relative',
-        overflow: 'visible' // позволяет тултипам выходить
+        overflow: 'visible'
       }}
     >
       {loading ? (
@@ -47,7 +49,7 @@ const Sidebar = () => {
               title={tab.name || 'Вкладка'}
               placement="right"
               mouseEnterDelay={0.3}
-              styles={{ root: { zIndex: 9999 } }} // ✅ новый API без предупреждений
+              styles={{ root: { zIndex: 9999 } }}
             >
               <div
                 onClick={() => navigate(tab.path.startsWith('/') ? tab.path : `/${tab.path}`)}

@@ -88,10 +88,11 @@ export default function TnvedCodesMain() {
   )
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size={16}>
+    <Space direction="vertical" style={{ width: "100%", maxWidth: "100%" }} size={16}>
       <Card
         title="Коды ТН ВЭД"
-        styles={{ body: { paddingTop: 0 } }} // ✅ обновлено с bodyStyle
+        bodyStyle={{ paddingTop: 0 }}
+        style={{ width: "100%", boxSizing: "border-box" }}
         extra={
           <Space>
             <Button
@@ -121,7 +122,6 @@ export default function TnvedCodesMain() {
           onImportClick={() => setImportVisible(true)}
         />
 
-        {/* Форма добавления новой записи */}
         <Form layout="inline" style={{ marginBottom: 16 }} onFinish={handleAdd}>
           <Form.Item label="Код">
             <Input
