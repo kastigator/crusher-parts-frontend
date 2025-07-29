@@ -1,12 +1,14 @@
-import { useEffect, useRef } from "react"
+import React, { useEffect, useRef } from "react"
 import { TextField, FormHelperText } from "@mui/material"
 
 export default function PlaceAddressInput({
   value = "",
   onChange,
+  onKeyDown,
   error,
   required,
-  field = "formatted_address" // 👈 передаётся из fieldRenderers
+  label,
+  field = "formatted_address"
 }) {
   const inputRef = useRef(null)
   const autocompleteRef = useRef(null)
@@ -16,57 +18,49 @@ export default function PlaceAddressInput({
 
     if (!autocompleteRef.current) {
       autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
-        fields: ["formatted_address", "address_components"],
+        fields: ["formatted_address", "address_components", "place_id", "geometry"],
         types: ["address"],
-        componentRestrictions: { country: "ru" },
+        componentRestrictions: { country: "ru" }
       })
 
       autocompleteRef.current.addListener("place_changed", () => {
         const place = autocompleteRef.current.getPlace()
+        if (!place || !place.formatted_address) return
 
-        if (place?.formatted_address) {
-          onChange(field, place.formatted_address)
+        const location = place.geometry?.location
+        const lat = location?.lat?.()
+        const lng = location?.lng?.()
+
+        const addressComponents = place.address_components || []
+        const postalComponent = addressComponents.find(c => c.types.includes("postal_code"))
+
+        const result = {
+          formatted_address: place.formatted_address,
+          place_id: place.place_id || null,
+          lat: lat || null,
+          lng: lng || null,
+          postal_code: postalComponent?.short_name || null
         }
 
-        const postal = place.address_components?.find((c) =>
-          c.types.includes("postal_code")
-        )
-        if (postal) {
-          onChange("postal_code", postal.long_name)
-        }
+        onChange(result)
       })
     }
-
-    // Очистка на размонтирование
-    return () => {
-      if (autocompleteRef.current) {
-        window.google.maps.event.clearInstanceListeners(autocompleteRef.current)
-        autocompleteRef.current = null
-      }
-    }
-  }, [field, onChange])
+  }, [])
 
   return (
     <>
       <TextField
         inputRef={inputRef}
         value={value}
-        onChange={(e) => onChange(field, e.target.value)}
-        onBlur={(e) => {
-          if (!e.target.value) {
-            onChange(field, "")
-          }
-        }}
+        onChange={(e) => onChange({ [field]: e.target.value })}
+        onKeyDown={onKeyDown}
         error={!!error}
         required={required}
         fullWidth
-        placeholder="Введите адрес"
+        label={label}
         size="small"
-        sx={{ width: 300 }}
       />
-      {error && required && (
-        <FormHelperText error>Введите или выберите адрес</FormHelperText>
-      )}
+      {error && <FormHelperText error>{error}</FormHelperText>}
     </>
   )
 }

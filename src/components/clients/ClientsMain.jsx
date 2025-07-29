@@ -1,25 +1,53 @@
-// src/components/clients/ClientsMain.jsx
-
 import React, { useState } from "react"
+import { Box, Tabs, Tab } from "@mui/material"
 import ClientsTable from "./ClientsTable"
 import BillingAddressesTable from "./BillingAddressesTable"
 import ShippingAddressesTable from "./ShippingAddressesTable"
 import BankDetailsTable from "./BankDetailsTable"
-import PageWrapper from "@/components/common/PageWrapper"
 
 export default function ClientsMain() {
-  const [selectedClientId, setSelectedClientId] = useState(null)
+  const [expandedClientId, setExpandedClientId] = useState(null)
+  const [activeTab, setActiveTab] = useState(0)
+  const [allClients, setAllClients] = useState([])
+  const [search, setSearch] = useState("")
+
+  const client = allClients.find(c => c.id === expandedClientId)
 
   return (
-    <PageWrapper title="Клиенты и реквизиты">
-      <ClientsTable onSelectClient={setSelectedClientId} />
-      {selectedClientId && (
+    <Box sx={{ p: 2 }}>
+      <ClientsTable
+        expandedClientId={expandedClientId}
+        setExpandedClientId={setExpandedClientId}
+        setAllClients={setAllClients}
+        search={search}
+        setSearch={setSearch}
+      />
+
+      {expandedClientId && (
         <>
-          <BillingAddressesTable clientId={selectedClientId} />
-          <ShippingAddressesTable clientId={selectedClientId} />
-          <BankDetailsTable clientId={selectedClientId} />
+          <Tabs
+            value={activeTab}
+            onChange={(_, i) => setActiveTab(i)}
+            sx={{ mt: 2 }}
+          >
+            <Tab label="Юридические адреса" />
+            <Tab label="Адреса доставки" />
+            <Tab label="Банковские реквизиты" />
+          </Tabs>
+
+          <Box sx={{ mt: 2 }}>
+            {activeTab === 0 && (
+              <BillingAddressesTable clientId={expandedClientId} />
+            )}
+            {activeTab === 1 && (
+              <ShippingAddressesTable clientId={expandedClientId} />
+            )}
+            {activeTab === 2 && (
+              <BankDetailsTable clientId={expandedClientId} />
+            )}
+          </Box>
         </>
       )}
-    </PageWrapper>
+    </Box>
   )
 }

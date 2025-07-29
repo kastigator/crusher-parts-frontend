@@ -1,31 +1,157 @@
-// src/components/clients/ShippingAddressesTable.jsx
-
-import React from "react"
-import useTableData from "@/hooks/useTableData"
-import BaseTable from "@/components/common/BaseTable"
-import { clientShippingAddressesColumns } from "@/components/common/tableDefinitions"
+import React, { useEffect, useState } from "react"
+import {
+  Table, TableHead, TableRow, TableCell, TableBody,
+  IconButton, Tooltip
+} from "@mui/material"
+import DeleteIcon from "@mui/icons-material/Delete"
+import axios from "@/api/axiosInstance"
+import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
+import { confirmAction } from "@/utils/confirmAction"
 
 export default function ShippingAddressesTable({ clientId }) {
-  const {
-    data,
-    newRow,
-    setNewRow,
-    onAdd,
-    onSave,
-    onDelete
-  } = useTableData(`/clients/${clientId}/shipping-addresses`, {}, { pagination: false })
+  const [rows, setRows] = useState([])
+  const [newRow, setNewRow] = useState({})
+  const [editingId, setEditingId] = useState(null)
+  const [backupRow, setBackupRow] = useState(null)
+
+  useEffect(() => {
+    if (!clientId || isNaN(+clientId)) return
+    axios.get("/client_shipping_addresses", {
+      params: { client_id: clientId }
+    }).then(res => {
+      setRows(res.data || [])
+    }).catch(err => {
+      console.error("Ошибка при загрузке адресов доставки:", err)
+    })
+  }, [clientId])
+
+  const handleChange = (row, value) => {
+    const isNew = !row.id
+    const updated = { ...row, ...value }
+
+    if (isNew) {
+      setNewRow(updated)
+    } else {
+      setRows(prev => prev.map(r => (r.id === row.id ? updated : r)))
+    }
+  }
+
+  const handleSave = async (row) => {
+    try {
+      if (!row.formatted_address) return
+
+      if (!row.id) {
+        const res = await axios.post("/client_shipping_addresses", {
+          ...row,
+          client_id: clientId
+        })
+        const fullRow = { ...row, id: res.data.id }
+        setRows(prev => [fullRow, ...prev])
+        setNewRow({})
+      } else {
+        await axios.put(`/client_shipping_addresses/${row.id}`, row)
+        setEditingId(null)
+      }
+    } catch (err) {
+      console.error("Ошибка при сохранении адреса доставки:", err)
+    }
+  }
+
+  const handleKeyDown = (e, row) => {
+    if (e.key === "Enter") handleSave(row)
+    if (e.key === "Escape") {
+      if (!row.id) {
+        setNewRow({})
+      } else {
+        setRows(prev =>
+          prev.map(r => (r.id === row.id ? backupRow : r))
+        )
+        setEditingId(null)
+      }
+    }
+  }
+
+  const handleDelete = async (id) => {
+    const ok = await confirmAction("Удалить адрес?")
+    if (!ok) return
+    try {
+      await axios.delete(`/client_shipping_addresses/${id}`)
+      setRows(prev => prev.filter(r => r.id !== id))
+    } catch (err) {
+      console.error("Ошибка при удалении адреса доставки:", err)
+    }
+  }
+
+  const renderRow = (row) => {
+    const isEditing = editingId === row.id
+
+    return (
+      <TableRow
+        key={row.id || "new"}
+        onDoubleClick={() => {
+          if (row.id) {
+            setBackupRow({ ...row })
+            setEditingId(row.id)
+          }
+        }}
+        sx={isEditing || !row.id ? { backgroundColor: "#f3f6f9" } : {}}
+      >
+        <TableCell sx={{ width: "50%" }}>
+          <PlaceAddressInput
+            value={row.formatted_address || ""}
+            onChange={val => handleChange(row, val)}
+            onKeyDown={e => handleKeyDown(e, row)}
+            autoFocus={!row.id}
+          />
+        </TableCell>
+
+        <TableCell>
+          <input
+            type="text"
+            value={row.label || ""}
+            onChange={e => handleChange(row, { label: e.target.value })}
+            onKeyDown={e => handleKeyDown(e, row)}
+            style={{ width: "100%" }}
+          />
+        </TableCell>
+
+        <TableCell>
+          <input
+            type="text"
+            value={row.comment || ""}
+            onChange={e => handleChange(row, { comment: e.target.value })}
+            onKeyDown={e => handleKeyDown(e, row)}
+            style={{ width: "100%" }}
+          />
+        </TableCell>
+
+        <TableCell sx={{ width: 48 }}>
+          {row.id && (
+            <Tooltip title="Удалить">
+              <IconButton onClick={() => handleDelete(row.id)}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+        </TableCell>
+      </TableRow>
+    )
+  }
 
   return (
-    <BaseTable
-      title="Адреса доставки"
-      columns={clientShippingAddressesColumns}
-      data={data}
-      newRow={newRow}
-      setNewRow={setNewRow}
-      onAdd={onAdd}
-      onSave={onSave}
-      onDelete={onDelete}
-      validateRow={(row) => !!row.address}
-    />
+    <Table size="small">
+      <TableHead>
+        <TableRow>
+          <TableCell>Адрес доставки</TableCell>
+          <TableCell>Метка</TableCell>
+          <TableCell>Комментарий</TableCell>
+          <TableCell />
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {Object.keys(newRow).length > 0 && renderRow(newRow)}
+        {rows.map(renderRow)}
+      </TableBody>
+    </Table>
   )
 }

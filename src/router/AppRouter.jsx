@@ -6,7 +6,7 @@ import MainLayout from '../layout/MainLayout'
 import HomePage from '../pages/HomePage'
 import UsersPage from '../pages/UsersPage'
 import TnvedCodesPage from '../pages/TnvedCodesPage'
-// import ClientsPage from "../pages/ClientsPage"
+import ClientsPage from "../pages/ClientsPage"
 
 const AppRouter = () => (
   <Suspense fallback={<div>Загрузка...</div>}>
@@ -23,7 +23,7 @@ const AppRouter = () => (
         <Route index element={<HomePage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="tnved-codes" element={<TnvedCodesPage />} />
-        {/* <Route path="clients" element={<ClientsPage />} /> */}
+        <Route path="clients" element={<ClientsPage />} />
         <Route path="*" element={<div style={{ padding: 32 }}>Страница не найдена</div>} />
       </Route>
     </Routes>
