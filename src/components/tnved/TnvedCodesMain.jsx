@@ -189,7 +189,7 @@ export default function TnvedCodesMain() {
         onClose={() => setImportVisible(false)}
         onSuccess={fetchData}
         type="tnved_code"
-        templateUrl="/templates/tnved_template.xlsx"
+        templateUrl="https://storage.googleapis.com/shared-parts-bucket/templates/tnved_codes_template.xlsx" // ✅
       />
     </Space>
   )
