@@ -1,15 +1,15 @@
-// src/components/common/ValueDisplay.jsx
+// src/components/common/ValueDisplay.jsx — улучшено под Ant Design таблицы, email и телефон кликабельны
 
 import React from 'react'
-import { Chip, Link } from '@mui/material'
+import { Tag, Tooltip, Typography } from 'antd'
 
 const STATUS_MAP = {
-  new:       { label: 'Новая',        color: 'info' },
-  pending:   { label: 'Ожидает',      color: 'warning' },
-  approved:  { label: 'Подтверждена', color: 'success' },
-  rejected:  { label: 'Отклонена',    color: 'error' },
-  done:      { label: 'Завершена',    color: 'default' },
-  draft:     { label: 'Черновик',     color: 'default' }
+  new: { label: 'Новая', color: 'blue' },
+  pending: { label: 'Ожидает', color: 'orange' },
+  approved: { label: 'Подтверждена', color: 'green' },
+  rejected: { label: 'Отклонена', color: 'red' },
+  done: { label: 'Завершена', color: 'default' },
+  draft: { label: 'Черновик', color: 'default' }
 }
 
 const formatDate = (val) => {
@@ -22,8 +22,10 @@ const formatDate = (val) => {
 
 const formatTime = (val) => {
   try {
-    const date = new Date(val)
-    return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    return new Date(val).toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit'
+    })
   } catch {
     return '—'
   }
@@ -58,9 +60,37 @@ export default function ValueDisplay({
   type = 'text',
   emptySymbol = '—',
   currency,
-  href
+  href,
+  maxLength = 60,
+  onDoubleClick
 }) {
   if (value === null || value === undefined || value === '') return emptySymbol
+
+  const safeStr = (val) => {
+    try {
+      return String(val)
+    } catch {
+      return emptySymbol
+    }
+  }
+
+  const renderWithTooltip = (text) => {
+    const str = safeStr(text)
+    const isTruncated = str.length > maxLength
+    const displayText = isTruncated ? `${str.slice(0, maxLength)}…` : str
+
+    return (
+      <Tooltip title={str}>
+        <Typography.Text
+          style={{ maxWidth: 240 }}
+          ellipsis
+          onDoubleClick={onDoubleClick}
+        >
+          {displayText}
+        </Typography.Text>
+      </Tooltip>
+    )
+  }
 
   switch (type) {
     case 'date':
@@ -85,31 +115,46 @@ export default function ValueDisplay({
     }
 
     case 'array':
-      return Array.isArray(value) && value.length > 0 ? value.join(', ') : emptySymbol
+      return renderWithTooltip(Array.isArray(value) ? value.join(', ') : '')
 
     case 'number':
       return isNaN(Number(value)) ? emptySymbol : value
 
     case 'status': {
-      const key = String(value).toLowerCase()
-      const status = STATUS_MAP[key] || { label: String(value), color: 'default' }
-      return <Chip label={status.label} size="small" color={status.color} />
+      const key = safeStr(value).toLowerCase()
+      const status = STATUS_MAP[key] || { label: safeStr(value), color: 'default' }
+      return <Tag color={status.color}>{status.label}</Tag>
     }
+
+    case 'email':
+      return (
+        <Tooltip title={value}>
+          <a href={`mailto:${value}`} onDoubleClick={onDoubleClick}>
+            {safeStr(value)}
+          </a>
+        </Tooltip>
+      )
+
+    case 'phone':
+      return (
+        <Tooltip title={value}>
+          <a href={`tel:${value}`} onDoubleClick={onDoubleClick}>
+            {safeStr(value)}
+          </a>
+        </Tooltip>
+      )
 
     case 'link':
       return (
-        <Link
-          href={href || value}
-          target="_blank"
-          rel="noopener noreferrer"
-          underline="hover"
-        >
-          {String(value)}
-        </Link>
+        <Tooltip title={value}>
+          <a href={href || value} target="_blank" rel="noopener noreferrer">
+            {safeStr(value)}
+          </a>
+        </Tooltip>
       )
 
     case 'tnved':
-      return String(value).replace(/\s+/g, '')
+      return safeStr(value).replace(/\s+/g, '')
 
     case 'bankAccount': {
       if (!value || typeof value !== 'object') return emptySymbol
@@ -119,6 +164,6 @@ export default function ValueDisplay({
 
     case 'text':
     default:
-      return String(value)
+      return renderWithTooltip(value)
   }
 }

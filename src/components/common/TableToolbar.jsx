@@ -1,17 +1,16 @@
-import React from 'react'
+import React from "react"
+import { Row, Col, Input, Button, Tooltip, Space } from "antd"
 import {
-  Box, Stack, Typography, TextField, IconButton, Tooltip, Button
-} from '@mui/material'
-import {
-  Add as AddIcon,
-  FileUpload as ImportIcon,
-  FileDownload as ExportIcon,
-  Refresh as RefreshIcon,
-  RestartAlt as ResetIcon
-} from '@mui/icons-material'
+  PlusOutlined,
+  UploadOutlined,
+  DownloadOutlined,
+  ReloadOutlined,
+  UndoOutlined
+} from "@ant-design/icons"
+
+const { Search } = Input
 
 export default function TableToolbar({
-  title,
   onAddClick,
   onImportClick,
   onExport,
@@ -19,74 +18,65 @@ export default function TableToolbar({
   onResetFilters,
   filterValue,
   onFilterChange,
-  filterComponent,
-  importTemplateUrl,
-  actionsRight
+  customFilter,
+  actionsRight,
+  children
 }) {
   return (
-    <Box sx={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      mb: 2,
-      gap: 2,
-      flexWrap: 'wrap'
-    }}>
-      {/* Левая часть: заголовок и фильтры */}
-      <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
-        {title && (
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            {title}
-          </Typography>
-        )}
-        {filterValue !== undefined && onFilterChange && (
-          <TextField
-            size="small"
-            placeholder="Поиск..."
-            value={filterValue}
-            onChange={(e) => onFilterChange(e.target.value)}
-            sx={{ minWidth: 200 }}
-          />
-        )}
-        {filterComponent}
-      </Stack>
+    <div style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[8, 8]} wrap>
+        {/* Левая часть: фильтры и кастомные элементы */}
+        <Col>
+          <Space size="middle" wrap>
+            {typeof filterValue !== "undefined" && typeof onFilterChange === "function" && (
+              <Search
+                placeholder="Поиск..."
+                allowClear
+                value={filterValue}
+                onChange={(e) => onFilterChange(e.target.value)}
+                style={{ width: 300 }}
+              />
+            )}
 
-      {/* Правая часть: действия */}
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-        {onResetFilters && (
-          <Tooltip title="Сбросить фильтры">
-            <IconButton onClick={onResetFilters}><ResetIcon /></IconButton>
-          </Tooltip>
-        )}
-        {onRefresh && (
-          <Tooltip title="Обновить">
-            <IconButton onClick={onRefresh}><RefreshIcon /></IconButton>
-          </Tooltip>
-        )}
-        {onExport && (
-          <Tooltip title="Экспорт">
-            <IconButton onClick={onExport}><ExportIcon /></IconButton>
-          </Tooltip>
-        )}
-        {onImportClick && (
-          <Tooltip title="Импорт">
-            <IconButton onClick={onImportClick}><ImportIcon /></IconButton>
-          </Tooltip>
-        )}
-        {importTemplateUrl && (
-          <Tooltip title="Скачать шаблон">
-            <IconButton component="a" href={importTemplateUrl} download>
-              <ImportIcon />
-            </IconButton>
-          </Tooltip>
-        )}
-        {onAddClick && (
-          <Tooltip title="Добавить">
-            <IconButton onClick={onAddClick}><AddIcon /></IconButton>
-          </Tooltip>
-        )}
-        {actionsRight}
-      </Stack>
-    </Box>
+            {customFilter}
+            {children}
+          </Space>
+        </Col>
+
+        {/* Правая часть: действия */}
+        <Col>
+          <Space wrap>
+            {onResetFilters && (
+              <Tooltip title="Сбросить фильтры">
+                <Button icon={<UndoOutlined />} onClick={onResetFilters} />
+              </Tooltip>
+            )}
+            {onRefresh && (
+              <Tooltip title="Обновить">
+                <Button icon={<ReloadOutlined />} onClick={onRefresh} />
+              </Tooltip>
+            )}
+            {onExport && (
+              <Tooltip title="Экспорт">
+                <Button icon={<DownloadOutlined />} onClick={onExport} />
+              </Tooltip>
+            )}
+            {onImportClick && (
+              <Tooltip title="Импорт">
+                <Button icon={<UploadOutlined />} onClick={onImportClick}>
+                  Импорт
+                </Button>
+              </Tooltip>
+            )}
+            {onAddClick && (
+              <Tooltip title="Добавить новую запись">
+                <Button icon={<PlusOutlined />} type="primary" onClick={onAddClick} />
+              </Tooltip>
+            )}
+            {actionsRight}
+          </Space>
+        </Col>
+      </Row>
+    </div>
   )
 }

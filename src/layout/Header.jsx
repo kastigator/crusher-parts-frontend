@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Box, Button } from '@mui/material'
+import { Button, Typography } from 'antd'
 import { useAuth } from '../auth/AuthContext'
 
 const Header = () => {
@@ -13,22 +13,24 @@ const Header = () => {
   }
 
   return (
-    <Box
-      sx={{
+    <div
+      style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        p: 2,
+        padding: '16px 24px',
         borderBottom: '1px solid #eee',
+        backgroundColor: '#fff',
       }}
     >
-      <Box sx={{ fontWeight: 'bold' }}>
+      <Typography.Text strong>
         {user?.full_name || 'Пользователь'}
-      </Box>
-      <Button variant="outlined" onClick={handleLogout}>
+      </Typography.Text>
+
+      <Button type="default" onClick={handleLogout}>
         Выйти
       </Button>
-    </Box>
+    </div>
   )
 }
 

@@ -1,69 +1,98 @@
-import React from 'react'
-import {
-  Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, Table, TableHead, TableRow, TableCell, TableBody, Typography
-} from '@mui/material'
+import React, { useEffect, useState } from "react"
+import { Modal, Table, Typography, Spin, Empty } from "antd"
+import axios from "@/api/axiosInstance"
+import { logSchemas } from "@/utils/logSchemas"
 
-const entityLabels = {
-  clients: "Клиент",
-  client_billing_addresses: "Юр. адрес",
-  client_shipping_addresses: "Адрес доставки",
-  client_bank_details: "Банковский реквизит"
-}
+export default function FullHistoryDialog({ entityId, entityType, onClose }) {
+  const [logs, setLogs] = useState([])
+  const [loading, setLoading] = useState(false)
 
-const fieldLabels = {
-  company_name: "Компания",
-  contact_person: "Контактное лицо",
-  phone: "Телефон",
-  email: "Email",
-  bank_name: "Банк",
-  bic: "БИК",
-  correspondent_account: "К/счёт",
-  checking_account: "Р/счёт",
-  formatted_address: "Адрес",
-  label: "Метка",
-  comment: "Комментарий"
-}
+  useEffect(() => {
+    if (!entityId || !entityType) return
 
-export default function FullHistoryDialog({ open, onClose, logs = [] }) {
+    const fetchLogs = async () => {
+      setLoading(true)
+      try {
+        const res = await axios.get(`/activity-logs/${entityType}/${entityId}`)
+        setLogs(res.data)
+      } catch (err) {
+        console.error("Ошибка при загрузке логов:", err)
+        setLogs([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchLogs()
+  }, [entityId, entityType])
+
+  const schema = logSchemas[entityType] || { fields: {}, excludeFields: [] }
+  const { fields, excludeFields } = schema
+
+  const filteredLogs = logs.filter(
+    (log) => !excludeFields.includes(log.field_changed)
+  )
+
+  const columns = [
+    {
+      title: "Поле",
+      dataIndex: "field_changed",
+      render: (value) => fields[value] || value || "—",
+      width: 150
+    },
+    {
+      title: "Было",
+      dataIndex: "old_value",
+      render: (value) => value ?? "—"
+    },
+    {
+      title: "Стало",
+      dataIndex: "new_value",
+      render: (value) => value ?? "—"
+    },
+    {
+      title: "Пользователь",
+      dataIndex: "user_name",
+      render: (value) => value || "—",
+      width: 180
+    },
+    {
+      title: "Дата",
+      dataIndex: "created_at",
+      render: (value) =>
+        value ? new Date(value).toLocaleString("ru-RU") : "—",
+      width: 180
+    }
+  ]
+
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
-      <DialogTitle>История изменений</DialogTitle>
-      <DialogContent>
-        {logs.length === 0 ? (
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            Изменений не найдено.
-          </Typography>
-        ) : (
-          <Table size="small" sx={{ mt: 1 }}>
-            <TableHead>
-              <TableRow>
-                <TableCell>Сущность</TableCell>
-                <TableCell>Поле</TableCell>
-                <TableCell>Было</TableCell>
-                <TableCell>Стало</TableCell>
-                <TableCell>Пользователь</TableCell>
-                <TableCell>Дата</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {logs.map((log, index) => (
-                <TableRow key={index}>
-                  <TableCell>{entityLabels[log.entity_type] || log.entity_type}</TableCell>
-                  <TableCell>{fieldLabels[log.field_changed] || log.field_changed || '—'}</TableCell>
-                  <TableCell>{log.old_value ?? '—'}</TableCell>
-                  <TableCell>{log.new_value ?? '—'}</TableCell>
-                  <TableCell>{log.user_name || '—'}</TableCell>
-                  <TableCell>{new Date(log.created_at).toLocaleString('ru-RU')}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Закрыть</Button>
-      </DialogActions>
-    </Dialog>
+    <Modal
+      open={!!entityId}
+      onCancel={onClose}
+      onOk={onClose}
+      width={900}
+      title="История изменений"
+      okText="Закрыть"
+      cancelButtonProps={{ style: { display: "none" } }}
+    >
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "2rem" }}>
+          <Spin />
+        </div>
+      ) : filteredLogs.length === 0 ? (
+        <Empty description="Изменений не найдено" style={{ padding: "2rem" }} />
+      ) : (
+        <Table
+          dataSource={filteredLogs}
+          columns={columns}
+          rowKey={(row) =>
+            `${row.field_changed}-${row.created_at}-${row.user_name}`
+          }
+          size="small"
+          pagination={false}
+          bordered
+        />
+      )}
+    </Modal>
   )
 }

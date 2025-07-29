@@ -5,7 +5,7 @@ import withReactContent from 'sweetalert2-react-content'
 
 const MySwal = withReactContent(Swal)
 
-export async function confirmAction(input = {}) {
+const confirmAction = async (input = {}) => {
   const options = typeof input === 'string' ? { title: input } : input
 
   const {
@@ -64,3 +64,5 @@ export async function confirmAction(input = {}) {
     inputValue: result.value
   }
 }
+
+export default confirmAction

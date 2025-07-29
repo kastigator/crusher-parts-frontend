@@ -1,33 +1,31 @@
 import React from 'react'
-import { Box, Typography } from '@mui/material'
+import { Typography } from 'antd'
 import { useAuth } from '../auth/AuthContext'
-import welcomeImage from '../assets/welcome.png' // 👈 убедись, что файл есть
+import welcomeImage from '../assets/welcome.png' // Убедись, что файл существует
 
 const HomePage = () => {
   const { user } = useAuth()
 
   return (
-    <Box sx={{ p: 4, textAlign: 'center' }}>
-      <Typography variant="h4" gutterBottom>
+    <div style={{ padding: 32, textAlign: 'center' }}>
+      <Typography.Title level={2}>
         {user?.full_name || 'Пользователь'}
-      </Typography>
+      </Typography.Title>
 
-      <Typography variant="h5" sx={{ mt: 2, fontStyle: 'italic' }}>
+      <Typography.Title level={4} style={{ marginTop: 16, fontStyle: 'italic' }}>
         Глаза боятся, а лапки делают
-      </Typography>
+      </Typography.Title>
 
-      <Box
-        component="img"
+      <img
         src={welcomeImage}
         alt="Welcome"
-        sx={{
-          mt: 4,
+        style={{
+          marginTop: 32,
           maxWidth: 800,
           width: '100%',
-          mx: 'auto',
         }}
       />
-    </Box>
+    </div>
   )
 }
 

@@ -1,292 +1,305 @@
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState } from 'react'
 import {
-  Table, TableBody, TableCell, TableHead, TableRow,
-  TextField, Select, MenuItem, IconButton, Box, Tooltip, InputLabel
-} from "@mui/material"
-import { Save, Delete, Edit } from "@mui/icons-material"
-import * as MuiIcons from "@mui/icons-material"
-import axios from "@/api/axiosInstance"
-import { confirmAction } from "@/utils/confirmAction"
-import { transliterate as tr } from "transliteration"
-import { useTabs } from "@/context/TabsContext"
-import TableWrapper from "@/components/common/TableWrapper"
-
+  Table,
+  Input,
+  Button,
+  Space,
+  Form,
+  Tooltip,
+  Modal,
+  message
+} from 'antd'
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors
-} from "@dnd-kit/core"
+  ArrowUpOutlined,
+  ArrowDownOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  SaveOutlined,
+  AppstoreOutlined
+} from '@ant-design/icons'
+import * as Icons from '@ant-design/icons'
+import axios from '@/api/axiosInstance'
+import confirmAction from '@/utils/confirmAction'
+import { useTabs } from '@/context/TabsContext'
+import CyrillicToTranslit from 'cyrillic-to-translit-js'
 
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy
-} from "@dnd-kit/sortable"
-
-import { CSS } from "@dnd-kit/utilities"
-
-const ICON_OPTIONS = Object.keys(MuiIcons).filter(name => /^[A-Z]/.test(name))
+const translit = new CyrillicToTranslit()
+const iconOptions = Object.keys(Icons).filter((key) => key.endsWith('Outlined'))
 
 export default function TabsTable() {
-  const [tabs, setTabs] = useState([])
-  const [newTab, setNewTab] = useState({ name: "", tab_name: "", path: "", icon: "" })
-  const [editIndex, setEditIndex] = useState(null)
-  const [editTab, setEditTab] = useState({})
-  const [iconSearch, setIconSearch] = useState("")
   const { reloadTabs } = useTabs()
+  const [data, setData] = useState([])
+  const [editingKey, setEditingKey] = useState('')
+  const [form] = Form.useForm()
+  const [newRow, setNewRow] = useState({
+    name: '',
+    tab_name: '',
+    path: '',
+    icon: ''
+  })
+  const [iconModalOpen, setIconModalOpen] = useState(false)
+  const [iconTargetKey, setIconTargetKey] = useState(null)
+  const [iconSearch, setIconSearch] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates
-    })
-  )
-
-  useEffect(() => { fetchTabs() }, [])
+  useEffect(() => {
+    fetchTabs()
+  }, [])
 
   const fetchTabs = async () => {
-    const res = await axios.get("/tabs")
-    const data = Array.isArray(res.data) ? res.data.sort((a, b) => a.sort_order - b.sort_order) : []
-    setTabs(data)
+    setLoading(true)
+    try {
+      const res = await axios.get('/tabs')
+      setData(res.data.sort((a, b) => a.sort_order - b.sort_order))
+    } catch (err) {
+      console.error('Ошибка загрузки:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleAdd = async () => {
-    const { name, tab_name, path } = newTab
-    if (!name || !tab_name || !path) return
-    await axios.post("/tabs", newTab)
-    setNewTab({ name: "", tab_name: "", path: "", icon: "" })
-    await fetchTabs()
-    reloadTabs?.()
+  const isEditing = (record) => record.id === editingKey
+
+  const edit = (record) => {
+    form.setFieldsValue({ ...record })
+    setEditingKey(record.id)
   }
 
-  const handleEditStart = (i) => {
-    setEditIndex(i)
-    setEditTab({ ...tabs[i] })
+  const cancel = () => setEditingKey('')
+
+  const save = async (id) => {
+    try {
+      const row = await form.validateFields()
+      await axios.put(`/tabs/${id}`, row)
+      setEditingKey('')
+      fetchTabs()
+      reloadTabs()
+      message.success('Сохранено')
+    } catch (err) {
+      console.error('Ошибка сохранения:', err)
+      message.error('Ошибка')
+    }
   }
 
-  const handleEditCancel = () => {
-    setEditIndex(null)
-    setEditTab({})
-  }
-
-  const handleEditChange = (field, value) => {
-    setEditTab((prev) => ({ ...prev, [field]: value }))
-  }
-
-  const handleEditSave = async () => {
-    await axios.put(`/tabs/${editTab.id}`, {
-      ...editTab,
-      sort_order: editIndex,
-    })
-    setEditIndex(null)
-    setEditTab({})
-    await fetchTabs()
-    reloadTabs?.()
-  }
-
-  const handleDelete = async (tab) => {
-    const confirmed = await confirmAction(`Удалить вкладку "${tab.name}"?`)
+  const handleDelete = async (record) => {
+    const { confirmed } = await confirmAction(`Удалить вкладку "${record.name}"?`)
     if (!confirmed) return
-    await axios.delete(`/tabs/${tab.id}`)
-    await fetchTabs()
-    reloadTabs?.()
+    try {
+      await axios.delete(`/tabs/${record.id}`)
+      fetchTabs()
+      reloadTabs()
+      message.success('Удалено')
+    } catch (err) {
+      console.error('Ошибка удаления:', err)
+    }
   }
 
-  const handleDragEnd = async (event) => {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-
-    const oldIndex = tabs.findIndex(t => t.id === active.id)
-    const newIndex = tabs.findIndex(t => t.id === over.id)
-    const newTabs = arrayMove(tabs, oldIndex, newIndex)
-      .map((t, i) => ({ ...t, sort_order: i }))
-    setTabs(newTabs)
-
-    await axios.put("/tabs/order", newTabs.map(t => ({ id: Number(t.id), sort_order: t.sort_order })))
-    reloadTabs?.()
+  const handleCreate = async () => {
+    if (!newRow.name) return
+    try {
+      await axios.post('/tabs', newRow)
+      setNewRow({ name: '', tab_name: '', path: '', icon: '' })
+      fetchTabs()
+      reloadTabs()
+      message.success('Вкладка создана')
+    } catch (err) {
+      console.error('Ошибка создания:', err)
+      message.error('Ошибка при добавлении')
+    }
   }
 
-  const handleNameInput = (e) => {
-    const name = e.target.value
-    setNewTab((prev) => ({
+  const handleInput = (key, value) => {
+    const name = key === 'name' ? value : newRow.name
+    const slug = translit.transform(name, '_')
+    setNewRow((prev) => ({
       ...prev,
-      name,
-      tab_name: prev.tab_name || tr(name).toLowerCase().replace(/\s+/g, "_"),
-      path: prev.path || "/" + tr(name).toLowerCase().replace(/\s+/g, "-")
+      [key]: value,
+      tab_name: key === 'name' ? slug : prev.tab_name,
+      path: key === 'name' ? '/' + slug.replace(/_/g, '-') : prev.path
     }))
   }
 
-  const handleNewTabKeyDown = (e) => {
-    if (e.key === "Enter") handleAdd()
-    if (e.key === "Escape") setNewTab({ name: "", tab_name: "", path: "", icon: "" })
+  const moveRow = async (id, direction) => {
+    const index = data.findIndex((r) => r.id === id)
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= data.length) return
+
+    const updated = [...data]
+    const [moved] = updated.splice(index, 1)
+    updated.splice(targetIndex, 0, moved)
+
+    await axios.put(
+      '/tabs/order',
+      updated.map((r, i) => ({ id: r.id, sort_order: i + 1 }))
+    )
+    fetchTabs()
+    reloadTabs()
   }
 
-  const filteredIcons = ICON_OPTIONS.filter(icon => icon.toLowerCase().includes(iconSearch.toLowerCase()))
+  const openIconModal = (rowKey) => {
+    setIconTargetKey(rowKey)
+    setIconSearch('')
+    setIconModalOpen(true)
+  }
 
-  return (
-    <TableWrapper title="Управление вкладками">
-      <Box display="flex" gap={2} mb={2}>
-        <TextField label="Название" size="small" value={newTab.name} onChange={handleNameInput} onKeyDown={handleNewTabKeyDown} />
-        <TextField label="Системное имя" size="small" value={newTab.tab_name} onChange={e => setNewTab({ ...newTab, tab_name: e.target.value })} onKeyDown={handleNewTabKeyDown} />
-        <TextField label="Путь" size="small" value={newTab.path} onChange={e => setNewTab({ ...newTab, path: e.target.value })} onKeyDown={handleNewTabKeyDown} />
-        <Box display="flex" flexDirection="column" minWidth={180}>
-          <TextField size="small" placeholder="Поиск иконки" value={iconSearch} onChange={e => setIconSearch(e.target.value)} />
-          <Select
-            size="small"
-            value={newTab.icon}
-            displayEmpty
-            onChange={e => setNewTab({ ...newTab, icon: e.target.value })}
-            renderValue={selected => (
-              selected ? React.createElement(MuiIcons[selected], { fontSize: "small" }) : "— выбрать иконку —"
-            )}
-          >
-            <MenuItem value="">— выбрать иконку —</MenuItem>
-            {filteredIcons.map(icon => (
-              <MenuItem key={icon} value={icon}>
-                <Box display="flex" alignItems="center" gap={1}>
-                  {React.createElement(MuiIcons[icon], { fontSize: "small" })}
-                  <span style={{ fontSize: 13 }}>{icon}</span>
-                </Box>
-              </MenuItem>
-            ))}
-          </Select>
-        </Box>
-      </Box>
+  const selectIcon = async (icon) => {
+    try {
+      if (iconTargetKey === 'new') {
+        setNewRow((prev) => ({ ...prev, icon }))
+      } else {
+        const record = data.find((r) => r.id === iconTargetKey)
+        if (!record) return
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={tabs.map(t => t.id)} strategy={verticalListSortingStrategy}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell />
-                <TableCell>Название</TableCell>
-                <TableCell>Системное имя</TableCell>
-                <TableCell>Путь</TableCell>
-                <TableCell>Иконка</TableCell>
-                <TableCell align="center">Действия</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {tabs.map((tab, index) => (
-                <SortableRow
-                  key={tab.id}
-                  tab={tab}
-                  index={index}
-                  isEditing={editIndex === index}
-                  editTab={editTab}
-                  onEditStart={() => handleEditStart(index)}
-                  onEditChange={handleEditChange}
-                  onEditCancel={handleEditCancel}
-                  onEditSave={handleEditSave}
-                  onDelete={() => handleDelete(tab)}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </SortableContext>
-      </DndContext>
-    </TableWrapper>
+        // Заполняем undefined → null
+        const safe = (v) => (v === undefined ? null : v)
+
+        await axios.put(`/tabs/${record.id}`, {
+          name: safe(record.name),
+          tab_name: safe(record.tab_name),
+          path: safe(record.path),
+          icon
+        })
+        message.success('Иконка обновлена')
+        fetchTabs()
+        reloadTabs()
+      }
+    } catch (err) {
+      console.error('Ошибка при обновлении иконки:', err)
+      message.error('Не удалось обновить иконку')
+    } finally {
+      setIconModalOpen(false)
+    }
+  }
+
+  const filteredIcons = iconOptions.filter((icon) =>
+    icon.toLowerCase().includes(iconSearch.toLowerCase())
   )
-}
 
-function SortableRow({ tab, index, isEditing, editTab, onEditStart, onEditChange, onEditCancel, onEditSave, onDelete }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: tab.id })
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition
-  }
-
-  const Icon = tab.icon && MuiIcons[tab.icon]
-
-  return (
-    <TableRow ref={setNodeRef} style={style} {...attributes} {...listeners} sx={{ cursor: "grab" }} onDoubleClick={onEditStart}>
-      <TableCell width={36}>::</TableCell>
-
-      <TableCell>
-        {isEditing ? (
-          <TextField
-            size="small"
-            value={editTab.name}
-            onChange={e => onEditChange("name", e.target.value)}
-            autoFocus
-            fullWidth
-            onKeyDown={e => {
-              if (e.key === "Enter") onEditSave()
-              if (e.key === "Escape") onEditCancel()
-            }}
-          />
-        ) : tab.name}
-      </TableCell>
-
-      <TableCell>
-        {isEditing ? (
-          <TextField
-            size="small"
-            value={editTab.tab_name}
-            onChange={e => onEditChange("tab_name", e.target.value)}
-            fullWidth
-          />
-        ) : tab.tab_name}
-      </TableCell>
-
-      <TableCell>
-        {isEditing ? (
-          <TextField
-            size="small"
-            value={editTab.path}
-            onChange={e => onEditChange("path", e.target.value)}
-            fullWidth
-          />
-        ) : tab.path}
-      </TableCell>
-
-      <TableCell align="center">
-        {isEditing ? (
-          <Select
-            size="small"
-            value={editTab.icon || ""}
-            onChange={e => onEditChange("icon", e.target.value)}
-            renderValue={selected =>
-              selected ? React.createElement(MuiIcons[selected], { fontSize: "small" }) : ""
-            }
-            sx={{ width: 48 }}
-          >
-            {ICON_OPTIONS.map(icon => (
-              <MenuItem key={icon} value={icon}>
-                <Box display="flex" alignItems="center" gap={1}>
-                  {React.createElement(MuiIcons[icon], { fontSize: "small" })}
-                  <span style={{ fontSize: 13 }}>{icon}</span>
-                </Box>
-              </MenuItem>
-            ))}
-          </Select>
+  const columns = [
+    { title: 'Название', dataIndex: 'name', editable: true },
+    { title: 'Тех. имя', dataIndex: 'tab_name', editable: true },
+    { title: 'Путь', dataIndex: 'path', editable: true },
+    {
+      title: 'Иконка',
+      dataIndex: 'icon',
+      editable: true,
+      render: (value, record) => (
+        <Button
+          icon={
+            value && Icons[value]
+              ? React.createElement(Icons[value])
+              : <AppstoreOutlined />
+          }
+          onClick={() => openIconModal(record.id)}
+        >
+          {value || 'Выбрать'}
+        </Button>
+      )
+    },
+    {
+      title: '',
+      dataIndex: 'actions',
+      render: (_, record) =>
+        isEditing(record) ? (
+          <Space>
+            <Button icon={<SaveOutlined />} onClick={() => save(record.id)} size="small" type="primary" />
+            <Button onClick={cancel} size="small">Отмена</Button>
+          </Space>
         ) : (
-          Icon ? <Icon fontSize="small" /> : null
-        )}
-      </TableCell>
-
-      <TableCell align="center">
-        {isEditing ? (
-          <>
-            <IconButton onClick={onEditSave} size="small" title="Сохранить"><Save /></IconButton>
-            <IconButton onClick={onEditCancel} size="small" title="Отмена"><Delete /></IconButton>
-          </>
-        ) : (
-          <>
-            <Tooltip title="Редактировать">
-              <IconButton onClick={onEditStart} size="small"><Edit /></IconButton>
+          <Space>
+            <Tooltip title="Вверх">
+              <Button icon={<ArrowUpOutlined />} onClick={() => moveRow(record.id, 'up')} size="small" />
+            </Tooltip>
+            <Tooltip title="Вниз">
+              <Button icon={<ArrowDownOutlined />} onClick={() => moveRow(record.id, 'down')} size="small" />
             </Tooltip>
             <Tooltip title="Удалить">
-              <IconButton onClick={onDelete} size="small"><Delete /></IconButton>
+              <Button icon={<DeleteOutlined />} danger onClick={() => handleDelete(record)} size="small" />
             </Tooltip>
-          </>
-        )}
-      </TableCell>
-    </TableRow>
+          </Space>
+        )
+    }
+  ]
+
+  const mergedColumns = columns.map((col) =>
+    !col.editable
+      ? col
+      : {
+          ...col,
+          onCell: (record) => ({
+            record,
+            inputType: 'text',
+            dataIndex: col.dataIndex,
+            title: col.title,
+            editing: isEditing(record),
+            onDoubleClick: () => edit(record)
+          })
+        }
+  )
+
+  const EditableCell = ({
+    editing,
+    dataIndex,
+    inputType,
+    record,
+    children,
+    ...restProps
+  }) => (
+    <td {...restProps}>
+      {editing ? (
+        <Form.Item name={dataIndex} style={{ margin: 0 }} initialValue={record[dataIndex]}>
+          <Input onPressEnter={() => save(record.id)} />
+        </Form.Item>
+      ) : (
+        children
+      )}
+    </td>
+  )
+
+  return (
+    <div>
+      <Space style={{ marginBottom: 16 }} wrap>
+        <Input placeholder="Название" value={newRow.name} onChange={(e) => handleInput('name', e.target.value)} />
+        <Input placeholder="Тех. имя" value={newRow.tab_name} onChange={(e) => handleInput('tab_name', e.target.value)} />
+        <Input placeholder="Путь" value={newRow.path} onChange={(e) => handleInput('path', e.target.value)} />
+        <Button icon={newRow.icon && Icons[newRow.icon] ? React.createElement(Icons[newRow.icon]) : <AppstoreOutlined />} onClick={() => openIconModal('new')}>
+          {newRow.icon || 'Выбрать'}
+        </Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>Добавить</Button>
+      </Space>
+
+      <Form form={form} component={false}>
+        <Table
+          components={{ body: { cell: EditableCell } }}
+          bordered
+          rowKey="id"
+          dataSource={data}
+          columns={mergedColumns}
+          pagination={false}
+          loading={loading}
+        />
+      </Form>
+
+      <Modal open={iconModalOpen} title="Выберите иконку" onCancel={() => setIconModalOpen(false)} footer={null} width={800}>
+        <Input
+          placeholder="Поиск иконки..."
+          value={iconSearch}
+          onChange={(e) => setIconSearch(e.target.value)}
+          style={{ marginBottom: 12 }}
+        />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, maxHeight: '60vh', overflowY: 'auto' }}>
+          {filteredIcons.map((icon) => (
+            <Button
+              key={icon}
+              icon={React.createElement(Icons[icon])}
+              onClick={() => selectIcon(icon)}
+              style={{ width: 120 }}
+            >
+              {icon.replace('Outlined', '')}
+            </Button>
+          ))}
+        </div>
+      </Modal>
+    </div>
   )
 }

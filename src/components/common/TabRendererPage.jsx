@@ -3,16 +3,16 @@
 import React from 'react'
 import { useTabs } from '@/context/TabsContext'
 import PageWrapper from './PageWrapper'
-import { CircularProgress, Box, Typography } from '@mui/material'
+import { Spin, Typography } from 'antd'
 
 export default function TabRendererPage({ tabKey, title, children }) {
   const { tabs, permissions, loading } = useTabs()
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}>
-        <CircularProgress />
-      </Box>
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 48 }}>
+        <Spin size="large" />
+      </div>
     )
   }
 
@@ -20,21 +20,21 @@ export default function TabRendererPage({ tabKey, title, children }) {
 
   if (!tab) {
     return (
-      <Box sx={{ p: 4 }}>
-        <Typography variant="h6" color="error">
-          ❗ Вкладка "{tabKey}" не найдена в системе
-        </Typography>
-      </Box>
+      <div style={{ padding: 32 }}>
+        <Typography.Title level={5} type="danger">
+          ❗ Вкладка "{tabKey}" не найдена
+        </Typography.Title>
+      </div>
     )
   }
 
   if (!permissions.includes(tab.id)) {
     return (
-      <Box sx={{ p: 4 }}>
-        <Typography variant="h6" color="text.secondary">
-          🚫 У вас нет доступа к вкладке "{tab.name}"
-        </Typography>
-      </Box>
+      <div style={{ padding: 32 }}>
+        <Typography.Text type="secondary">
+          🚫 У вас нет доступа к вкладке «{tab.name}»
+        </Typography.Text>
+      </div>
     )
   }
 

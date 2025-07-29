@@ -1,0 +1,69 @@
+/* ===================== */
+/*  Ant Design Table UI  */
+/* ===================== */
+
+/* Базовая таблица */
+.ant-table {
+  table-layout: auto;            /* ✅ ширина колонок по содержимому */
+  width: 100%;
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  background-color: #fff;
+}
+
+/* Заголовок */
+.ant-table-thead > tr > th {
+  background-color: #f9fafb;
+  font-weight: 600;
+  padding: 8px;
+  color: #1f2937;
+  white-space: nowrap;          /* ❗️заголовок без переноса */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Ячейки таблицы */
+.ant-table-tbody > tr > td {
+  padding: 8px;
+  color: #1f2937;
+  white-space: pre-wrap;        /* ✅ перенос строк */
+  word-break: break-word;
+  vertical-align: top;
+}
+
+/* Hover строки */
+.ant-table-tbody > tr:hover > td {
+  background-color: #f0f8ff;
+}
+
+/* Раскрытая строка */
+.ant-table-expanded-row > td {
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  background-color: #fcfcfc;
+}
+
+/* Инлайн-редактирование */
+.ant-input,
+.ant-input-affix-wrapper {
+  font-size: 13px;
+  padding: 4px 8px;
+}
+
+/* Кнопки действий */
+.ant-btn {
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+/* Для пометки длинных строк */
+.tr-long-text td {
+  background-color: #f9f9f9;
+}
+
+/* Глобально — разрешаем горизонтальный скролл body */
+body {
+  overflow-x: auto;
+}

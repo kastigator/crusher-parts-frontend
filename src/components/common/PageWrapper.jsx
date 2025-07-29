@@ -1,26 +1,20 @@
 // src/components/common/PageWrapper.jsx
 
-import React from 'react'
-import { Box, Typography } from '@mui/material'
+import React from "react"
 
-const PageWrapper = ({ title, children }) => {
+const PageWrapper = ({ children }) => {
   return (
-    <Box
-      sx={{
-        px: { xs: 2, sm: 3, md: 4 },
-        pt: 4,
-        pb: 6,
-        minWidth: 'fit-content', // 👈 теперь содержимое не сжимается
-        width: '100%'
+    <div
+      style={{
+        padding: "32px 24px",
+        width: "100%",
+        maxWidth: "100%",
+        overflowX: "auto",
+        boxSizing: "border-box"
       }}
     >
-      {title && (
-        <Typography variant="h5" fontWeight={600} gutterBottom>
-          {title}
-        </Typography>
-      )}
       {children}
-    </Box>
+    </div>
   )
 }
 

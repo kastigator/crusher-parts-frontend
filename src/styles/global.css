@@ -1,22 +1,23 @@
+/* ==== Base Layout ==== */
 html, body, #root {
   height: 100%;
-  overflow: auto;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
+  overflow-x: visible;
+  overflow-y: auto;
   margin: 0;
   padding: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #f9fafb;
+  color: #1f2937;
+}
+
+* {
+  box-sizing: border-box;
+  transition: all 0.2s ease-in-out;
 }
 
 /* ==== SweetAlert2 Custom Styles ==== */
-
 .swal2-popup.sweet-dialog {
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
@@ -36,8 +37,8 @@ body {
 }
 
 .swal2-confirm.sweet-confirm {
-  background-color: #2563eb !important; /* primary */
-  color: white !important;
+  background-color: #2563eb !important;
+  color: #fff !important;
   border-radius: 6px !important;
   padding: 0.6em 1.6em !important;
   font-size: 14px !important;
@@ -51,4 +52,97 @@ body {
   padding: 0.6em 1.6em !important;
   font-size: 14px !important;
   font-family: 'Inter', sans-serif;
+}
+
+/* ==== Ant Design Table ==== */
+.ant-table {
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  border-radius: 8px;
+  background-color: #fff;
+  border: 1px solid #e0e0e0;
+}
+
+.ant-table-thead > tr > th {
+  background-color: #f3f4f6;
+  font-weight: 600;
+  color: #1f2937;
+  padding: 8px;
+  font-size: 13px;
+}
+
+.ant-table-tbody > tr > td {
+  padding: 8px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background-color: #f5faff;
+}
+
+.ant-table-row.new-row td {
+  background-color: #f0faff !important;
+  font-style: italic;
+}
+
+/* ==== Ant Design Buttons ==== */
+.ant-btn {
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+}
+
+.ant-btn-primary {
+  background-color: #2563eb;
+  border-color: #2563eb;
+}
+
+/* ==== Ant Design Input & Select ==== */
+.ant-input,
+.ant-select-selector {
+  border-radius: 6px !important;
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Focus & Hover enhancements */
+.ant-input:focus,
+.ant-input-focused,
+.ant-btn:focus,
+.ant-btn:hover,
+.ant-btn:active {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+/* ==== Ant Design Modal ==== */
+.ant-modal-content {
+  border-radius: 12px;
+  font-family: 'Inter', sans-serif;
+}
+
+.ant-modal-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+/* ==== Ant Design Tooltip Fix ==== */
+.ant-tooltip {
+  z-index: 9999 !important;
+  pointer-events: auto;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.ant-tooltip-inner {
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+/* ==== Prevent clipping ==== */
+#root {
+  overflow: visible !important;
 }

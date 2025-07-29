@@ -1,8 +1,8 @@
-// src/components/common/LayoutBody.jsx
+// src/layout/LayoutBody.jsx
 
 import React from 'react'
 import { Outlet } from 'react-router-dom'
-import { Box, CircularProgress } from '@mui/material'
+import { Spin } from 'antd'
 import Sidebar from '@/components/Sidebar'
 import Header from './Header'
 import { useTabs } from '@/context/TabsContext'
@@ -11,35 +11,37 @@ const LayoutBody = () => {
   const { loading } = useTabs()
 
   return (
-    <Box sx={{ display: 'flex', height: '100%' }}>
+    <div style={{ display: 'flex', height: '100%' }}>
       <Sidebar />
 
-      <Box
-        sx={{
+      <div
+        style={{
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
           minHeight: 0,
-          width: '100vw',      // 👈 расширяем до ширины окна
-          overflowX: 'auto'    // 👈 scroll появляется здесь
+          width: '100vw',
+          overflow: 'visible' // ✅ исправлено для тултипов
         }}
       >
         <Header />
-        <Box
-          sx={{
+        <div
+          style={{
             flex: 1,
             overflowY: 'auto',
             minHeight: 0
           }}
         >
           {loading ? (
-            <CircularProgress sx={{ mt: 4, mx: 'auto', display: 'block' }} />
+            <div style={{ marginTop: 64, textAlign: 'center' }}>
+              <Spin size="large" />
+            </div>
           ) : (
             <Outlet />
           )}
-        </Box>
-      </Box>
-    </Box>
+        </div>
+      </div>
+    </div>
   )
 }
 

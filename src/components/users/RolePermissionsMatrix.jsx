@@ -1,157 +1,157 @@
-import React, { useEffect, useState } from "react"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Checkbox,
-  IconButton,
-  TextField,
-  Box
-} from "@mui/material"
-import { Delete } from "@mui/icons-material"
-import axios from "@/api/axiosInstance.js"
-import TableWrapper from "@/components/common/TableWrapper.jsx"
-import { confirmAction } from "@/utils/confirmAction.js"
+import React, { useEffect, useState } from 'react'
+import { Table, Checkbox, Button, Input, Tooltip, Space, message } from 'antd'
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import axios from '@/api/axiosInstance'
+import confirmAction from '@/utils/confirmAction'
 
-export default function RolePermissionsMatrix({ reloadRoles, roles }) {
+export default function RolePermissionsMatrix() {
+  const [roles, setRoles] = useState([])
   const [tabs, setTabs] = useState([])
-  const [permissions, setPermissions] = useState([])
-  const [newRole, setNewRole] = useState("")
-
-  const fetchAll = async () => {
-    const [tabsRes, permsRes] = await Promise.all([
-      axios.get("/tabs"),
-      axios.get("/role-permissions/raw")
-    ])
-    setTabs(tabsRes.data)
-
-    setPermissions(
-      permsRes.data.map(p => ({
-        role_id: p.role_id,
-        tab_id: p.tab_id,
-        can_view: p.can_view,
-        tab_slug: tabsRes.data.find(t => t.id === p.tab_id)?.tab_name,
-        role_slug: roles.find(r => r.id === p.role_id)?.slug
-      }))
-    )
-  }
+  const [permissions, setPermissions] = useState({})
+  const [newRole, setNewRole] = useState('')
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    fetchAll()
-  }, [roles])
+    fetchData()
+  }, [])
 
-  const hasPermission = (roleSlug, tabSlug) =>
-    permissions.some(p => p.role_slug === roleSlug && p.tab_slug === tabSlug)
+  const fetchData = async () => {
+    setLoading(true)
+    try {
+      const [rolesRes, tabsRes, permsRes] = await Promise.all([
+        axios.get('/roles'),
+        axios.get('/tabs'),
+        axios.get('/role-permissions/raw')
+      ])
 
-  const handleToggle = async (roleSlug, tabSlug, checked) => {
-    const updated = permissions.filter(
-      p => !(p.role_slug === roleSlug && p.tab_slug === tabSlug)
-    )
+      const filteredRoles = (rolesRes.data || []).filter(r => r.slug !== 'admin')
+      setRoles(filteredRoles)
+      setTabs((tabsRes.data || []).filter(t => t.slug !== 'users'))
 
-    if (checked) {
-      updated.push({ role_slug: roleSlug, tab_slug: tabSlug })
+      const matrix = {}
+      for (const perm of permsRes.data || []) {
+        matrix[`${perm.role_id}__${perm.tab_id}`] = perm.can_view === 1
+      }
+      setPermissions(matrix)
+    } catch (err) {
+      console.error('Ошибка загрузки данных:', err)
+      message.error('Ошибка загрузки данных')
+    } finally {
+      setLoading(false)
     }
+  }
 
-    setPermissions(updated)
+  const handleToggle = async (roleId, tabId) => {
+    const key = `${roleId}__${tabId}`
+    const newValue = !permissions[key]
 
-    const rolePermissions = updated
-      .filter(p => p.role_slug === roleSlug)
-      .map(p => {
-        const tab = tabs.find(t => t.tab_name === p.tab_slug)
-        return {
-          tab_id: tab?.id,
-          can_view: 1
-        }
-      })
+    setPermissions(prev => ({
+      ...prev,
+      [key]: newValue
+    }))
 
     try {
-      await axios.put(`/role-permissions/by-role/${roleSlug}`, rolePermissions)
+      await axios.put('/role-permissions', [
+        { role_id: roleId, tab_id: tabId, can_view: newValue ? 1 : 0 }
+      ])
     } catch (err) {
-      console.error("Ошибка при обновлении прав:", err)
+      message.error('Ошибка при сохранении')
+      console.error('Ошибка при сохранении права:', err)
     }
   }
 
   const handleAddRole = async () => {
     if (!newRole.trim()) return
-    await axios.post("/roles", { name: newRole.trim() })
-    setNewRole("")
-    await fetchAll()
-    await reloadRoles()
+    try {
+      await axios.post('/roles', { role: newRole.trim() })
+      setNewRole('')
+      await fetchData()
+      message.success('Роль добавлена')
+    } catch (err) {
+      message.error('Не удалось добавить роль')
+      console.error('Ошибка добавления роли:', err)
+    }
   }
 
   const handleDeleteRole = async (role) => {
-    const usersRes = await axios.get("/users")
-    const usersWithRole = usersRes.data.filter(u => u.role_id === role.id)
-
-    if (usersWithRole.length > 0) {
-      await confirmAction({
-        title: "Удаление невозможно",
-        text: "Нельзя удалить роль — она используется: " + usersWithRole.map(u => u.username).join(", "),
-        icon: "warning",
-        showCancelButton: false,
-        confirmLabel: "OK"
-      })
-      return
-    }
-
     const { confirmed } = await confirmAction(`Удалить роль "${role.name}"?`)
     if (!confirmed) return
 
-    await axios.delete(`/roles/${role.id}`)
-    await fetchAll()
-    await reloadRoles()
+    try {
+      const usersRes = await axios.get('/users')
+      const usedBy = usersRes.data.filter(u => u.role_id === role.id)
+
+      if (usedBy.length > 0) {
+        const names = usedBy.map(u => u.full_name || u.username).join(', ')
+        return message.warning(`Роль используется у пользователей: ${names}`)
+      }
+
+      await axios.delete(`/roles/${role.slug}`)
+      await fetchData()
+      message.success('Роль удалена')
+    } catch (err) {
+      message.error('Не удалось удалить роль')
+      console.error('Ошибка удаления роли:', err)
+    }
   }
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter") handleAddRole()
-    if (e.key === "Escape") setNewRole("")
-  }
+  const columns = [
+    {
+      title: 'Роль',
+      dataIndex: 'name',
+      key: 'name',
+      fixed: 'left'
+    },
+    ...tabs.map(tab => ({
+      title: tab.name,
+      dataIndex: `tab_${tab.id}`,
+      align: 'center',
+      render: (_, role) => (
+        <Checkbox
+          checked={!!permissions[`${role.id}__${tab.id}`]}
+          onChange={() => handleToggle(role.id, tab.id)}
+        />
+      )
+    })),
+    {
+      title: '',
+      key: 'actions',
+      fixed: 'right',
+      render: (_, role) => (
+        <Tooltip title="Удалить">
+          <Button
+            icon={<DeleteOutlined />}
+            danger
+            size="small"
+            onClick={() => handleDeleteRole(role)}
+          />
+        </Tooltip>
+      )
+    }
+  ]
 
   return (
-    <TableWrapper title="Права доступа к вкладкам">
-      <Box display="flex" gap={2} mb={2}>
-        <TextField
-          label="Новая роль"
-          size="small"
+    <div>
+      <Space style={{ marginBottom: 16 }}>
+        <Input
+          placeholder="Новая роль"
           value={newRole}
-          onChange={e => setNewRole(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onChange={(e) => setNewRole(e.target.value)}
+          onPressEnter={handleAddRole}
         />
-      </Box>
-
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>Роль</TableCell>
-            {tabs.map(tab => (
-              <TableCell key={tab.id} align="center">{tab.name}</TableCell>
-            ))}
-            <TableCell align="center">Удалить</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {roles.map(role => (
-            <TableRow key={role.id}>
-              <TableCell>{role.name}</TableCell>
-              {tabs.map(tab => (
-                <TableCell key={tab.id} align="center">
-                  <Checkbox
-                    checked={hasPermission(role.slug, tab.tab_name)}
-                    onChange={e =>
-                      handleToggle(role.slug, tab.tab_name, e.target.checked)
-                    }
-                  />
-                </TableCell>
-              ))}
-              <TableCell align="center">
-                <IconButton onClick={() => handleDeleteRole(role)}><Delete /></IconButton>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </TableWrapper>
+        <Button icon={<PlusOutlined />} type="primary" onClick={handleAddRole}>
+          Добавить
+        </Button>
+      </Space>
+      <Table
+        rowKey="id"
+        dataSource={roles}
+        columns={columns}
+        loading={loading}
+        scroll={{ x: 'max-content' }}
+        pagination={false}
+        size="middle"
+      />
+    </div>
   )
 }
