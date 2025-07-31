@@ -1,219 +1,203 @@
-import React, { useEffect, useState } from "react"
-import {
-  Table, TableHead, TableBody, TableRow, TableCell,
-  IconButton, Collapse, Tooltip, Box, TextField
-} from "@mui/material"
-import {
-  ExpandMore, ExpandLess, Delete, History
-} from "@mui/icons-material"
-import axios from "@/api/axiosInstance"
+import React, { useState } from "react"
+import { Table, Button, Input, Space, Tooltip, Popconfirm } from "antd"
+import { DeleteOutlined, HistoryOutlined, DownOutlined, UpOutlined } from "@ant-design/icons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
-import { confirmAction } from "@/utils/confirmAction"
+import confirmAction from "@/utils/confirmAction"
+import axios from "@/api/axiosInstance"
 
 export default function ClientsTable({
+  data = [],
+  loading = false,
   expandedClientId,
-  setExpandedClientId,
-  setAllClients,
-  search,
-  setSearch
+  setExpandedClientId
 }) {
-  const [rows, setRows] = useState([])
-  const [newRow, setNewRow] = useState({})
-  const [editingId, setEditingId] = useState(null)
-  const [backup, setBackup] = useState({})
+  const [editingKey, setEditingKey] = useState(null)
+  const [editedRow, setEditedRow] = useState({})
   const [logClientId, setLogClientId] = useState(null)
 
-  useEffect(() => {
-    axios.get("/clients").then(res => {
-      setRows(res.data || [])
-      setAllClients?.(res.data || [])
-    })
-  }, [])
+  const isEditing = (record) => record.id === editingKey
 
-  const filtered = rows.filter(r =>
-    r.company_name?.toLowerCase().includes(search.toLowerCase()) ||
-    r.contact_person?.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const handleChange = (row, field, value) => {
-    const update = row.id ? setRows : setNewRow
-    const target = row.id ? [...rows] : { ...newRow }
-
-    if (row.id) {
-      const idx = target.findIndex(r => r.id === row.id)
-      target[idx] = { ...target[idx], [field]: value }
-      update(target)
-    } else {
-      update({ ...target, [field]: value })
-    }
+  const handleEdit = (record) => {
+    setEditingKey(record.id)
+    setEditedRow({ ...record })
   }
 
-  const handleSave = async (row) => {
-    if (!row.company_name) return
-
-    if (!row.id) {
-      const res = await axios.post("/clients", row)
-      const full = { ...row, id: res.data.id }
-      setRows(prev => [full, ...prev])
-      setNewRow({})
-    } else {
-      await axios.put(`/clients/${row.id}`, row)
-      setEditingId(null)
-    }
+  const cancelEdit = () => {
+    setEditingKey(null)
+    setEditedRow({})
   }
 
-  const handleKeyDown = (e, row) => {
-    if (e.key === "Enter") handleSave(row)
-    if (e.key === "Escape") {
-      if (!row.id) {
-        setNewRow({})
-      } else {
-        setRows(prev =>
-          prev.map(r => (r.id === row.id ? backup : r))
-        )
-        setEditingId(null)
-      }
+  const saveEdit = async (record) => {
+    try {
+      await axios.put(`/clients/${record.id}`, editedRow)
+      setEditingKey(null)
+    } catch (err) {
+      console.error("Ошибка при сохранении:", err)
     }
   }
 
   const handleDelete = async (id) => {
     const ok = await confirmAction("Удалить клиента?")
     if (!ok) return
-    await axios.delete(`/clients/${id}`)
-    setRows(prev => prev.filter(r => r.id !== id))
-    if (expandedClientId === id) setExpandedClientId(null)
+    try {
+      await axios.delete(`/clients/${id}`)
+      if (expandedClientId === id) setExpandedClientId(null)
+    } catch (err) {
+      console.error("Ошибка при удалении:", err)
+    }
   }
 
-  const renderRow = (row) => {
-    const isEditing = editingId === row.id
-    const isExpanded = expandedClientId === row.id
-
-    return (
-      <React.Fragment key={row.id}>
-        <TableRow
-          onDoubleClick={() => {
-            if (row.id) {
-              setEditingId(row.id)
-              setBackup({ ...row })
+  const columns = [
+    {
+      title: "",
+      dataIndex: "expand",
+      width: 40,
+      render: (_, record) =>
+        record.id ? (
+          <Button
+            type="link"
+            icon={expandedClientId === record.id ? <UpOutlined /> : <DownOutlined />}
+            onClick={() =>
+              setExpandedClientId(
+                expandedClientId === record.id ? null : record.id
+              )
             }
-          }}
-          sx={isEditing || !row.id ? { backgroundColor: "#f3f6f9" } : {}}
-        >
-          <TableCell sx={{ width: 48 }}>
-            {row.id && (
-              <IconButton onClick={() =>
-                setExpandedClientId(isExpanded ? null : row.id)
-              }>
-                {isExpanded ? <ExpandLess /> : <ExpandMore />}
-              </IconButton>
-            )}
-          </TableCell>
-
-          <TableCell>
-            <TextField
-              value={row.company_name || ""}
-              onChange={e => handleChange(row, "company_name", e.target.value)}
-              onKeyDown={e => handleKeyDown(e, row)}
-              size="small"
-              fullWidth
-              autoFocus={!row.id}
-            />
-          </TableCell>
-
-          <TableCell>
-            <TextField
-              value={row.contact_person || ""}
-              onChange={e => handleChange(row, "contact_person", e.target.value)}
-              onKeyDown={e => handleKeyDown(e, row)}
-              size="small"
-              fullWidth
-            />
-          </TableCell>
-
-          <TableCell>
-            <TextField
-              value={row.phone || ""}
-              onChange={e => handleChange(row, "phone", e.target.value)}
-              onKeyDown={e => handleKeyDown(e, row)}
-              size="small"
-              fullWidth
-            />
-          </TableCell>
-
-          <TableCell>
-            <TextField
-              value={row.email || ""}
-              onChange={e => handleChange(row, "email", e.target.value)}
-              onKeyDown={e => handleKeyDown(e, row)}
-              size="small"
-              fullWidth
-            />
-          </TableCell>
-
-          <TableCell sx={{ width: 48 }}>
-            {row.id && (
+          />
+        ) : null
+    },
+    {
+      title: "Компания",
+      dataIndex: "company_name",
+      editable: true,
+      render: (_, record) =>
+        isEditing(record) ? (
+          <Input
+            value={editedRow.company_name}
+            onChange={(e) =>
+              setEditedRow((prev) => ({ ...prev, company_name: e.target.value }))
+            }
+          />
+        ) : (
+          record.company_name
+        )
+    },
+    {
+      title: "Контакт",
+      dataIndex: "contact_person",
+      editable: true,
+      render: (_, record) =>
+        isEditing(record) ? (
+          <Input
+            value={editedRow.contact_person}
+            onChange={(e) =>
+              setEditedRow((prev) => ({ ...prev, contact_person: e.target.value }))
+            }
+          />
+        ) : (
+          record.contact_person
+        )
+    },
+    {
+      title: "Телефон",
+      dataIndex: "phone",
+      editable: true,
+      render: (_, record) =>
+        isEditing(record) ? (
+          <Input
+            value={editedRow.phone}
+            onChange={(e) =>
+              setEditedRow((prev) => ({ ...prev, phone: e.target.value }))
+            }
+          />
+        ) : (
+          record.phone
+        )
+    },
+    {
+      title: "Email",
+      dataIndex: "email",
+      editable: true,
+      render: (_, record) =>
+        isEditing(record) ? (
+          <Input
+            value={editedRow.email}
+            onChange={(e) =>
+              setEditedRow((prev) => ({ ...prev, email: e.target.value }))
+            }
+          />
+        ) : (
+          record.email
+        )
+    },
+    {
+      title: "Действия",
+      dataIndex: "actions",
+      width: 120,
+      render: (_, record) => {
+        const editable = isEditing(record)
+        return record.id ? (
+          <Space>
+            {editable ? (
               <>
+                <Button type="link" onClick={() => saveEdit(record)}>
+                  Сохранить
+                </Button>
+                <Button type="link" onClick={cancelEdit}>
+                  Отмена
+                </Button>
+              </>
+            ) : (
+              <>
+                <Tooltip title="Редактировать">
+                  <Button type="link" onClick={() => handleEdit(record)}>
+                    ✏️
+                  </Button>
+                </Tooltip>
                 <Tooltip title="Удалить">
-                  <IconButton onClick={() => handleDelete(row.id)}>
-                    <Delete fontSize="small" />
-                  </IconButton>
+                  <Popconfirm
+                    title="Удалить клиента?"
+                    onConfirm={() => handleDelete(record.id)}
+                  >
+                    <Button danger type="link" icon={<DeleteOutlined />} />
+                  </Popconfirm>
                 </Tooltip>
                 <Tooltip title="История изменений">
-                  <IconButton onClick={() => setLogClientId(row.id)}>
-                    <History fontSize="small" />
-                  </IconButton>
+                  <Button
+                    type="link"
+                    icon={<HistoryOutlined />}
+                    onClick={() => setLogClientId(record.id)}
+                  />
                 </Tooltip>
               </>
             )}
-          </TableCell>
-        </TableRow>
-
-        {row.id && (
-          <TableRow>
-            <TableCell colSpan={6} sx={{ p: 0 }}>
-              <Collapse in={expandedClientId === row.id} timeout="auto" unmountOnExit>
-                <Box sx={{ p: 2 }} />
-              </Collapse>
-            </TableCell>
-          </TableRow>
-        )}
-      </React.Fragment>
-    )
-  }
+          </Space>
+        ) : null
+      }
+    }
+  ]
 
   return (
-    <Box>
-      <TextField
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Поиск по названию или контакту"
+    <>
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={data}
+        loading={loading}
+        pagination={false}
+        expandable={{
+          expandedRowKeys: expandedClientId ? [expandedClientId] : [],
+          onExpand: (expanded, record) =>
+            setExpandedClientId(expanded ? record.id : null),
+          expandedRowRender: () => null // рендерится в ClientsMain
+        }}
         size="small"
-        fullWidth
-        sx={{ mb: 2 }}
       />
-
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell />
-            <TableCell>Компания</TableCell>
-            <TableCell>Контакт</TableCell>
-            <TableCell>Телефон</TableCell>
-            <TableCell>Email</TableCell>
-            <TableCell />
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {Object.keys(newRow).length > 0 && renderRow(newRow)}
-          {filtered.map(renderRow)}
-        </TableBody>
-      </Table>
 
       <FullHistoryDialog
         open={!!logClientId}
         onClose={() => setLogClientId(null)}
         clientId={logClientId}
       />
-    </Box>
+    </>
   )
 }

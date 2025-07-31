@@ -1,75 +1,59 @@
 import React, { useEffect, useState } from "react"
-import {
-  Table, TableHead, TableRow, TableCell, TableBody,
-  IconButton, Tooltip
-} from "@mui/material"
-import DeleteIcon from "@mui/icons-material/Delete"
+import { Table, Input, Button, Popconfirm, Tooltip, Space, message } from "antd"
+import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
+import confirmAction from "@/utils/confirmAction"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
-import { confirmAction } from "@/utils/confirmAction"
 
 export default function BillingAddressesTable({ clientId }) {
-  const [rows, setRows] = useState([])
-  const [newRow, setNewRow] = useState({})
+  const [data, setData] = useState([])
+  const [loading, setLoading] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [backupRow, setBackupRow] = useState(null)
+  const [editedRow, setEditedRow] = useState({})
+  const [newRow, setNewRow] = useState(null)
 
-  useEffect(() => {
-    if (!clientId || isNaN(+clientId)) return
-    axios.get("/client_billing_addresses", {
-      params: { client_id: clientId }
-    }).then(res => {
-      setRows(res.data || [])
-    }).catch(err => {
-      console.error("Ошибка при загрузке юр. адресов:", err)
-    })
-  }, [clientId])
-
-  const handleChange = (row, value) => {
-    const target = row.id ? rows : [newRow]
-    const updater = r => (r.id === row.id ? { ...r, ...value } : r)
-
-    if (row.id) {
-      setRows(prev => prev.map(updater))
-    } else {
-      setNewRow(prev => ({ ...prev, ...value }))
+  const fetchData = async () => {
+    if (!clientId) return
+    setLoading(true)
+    try {
+      const res = await axios.get("/client_billing_addresses", {
+        params: { client_id: clientId }
+      })
+      setData(res.data || [])
+    } catch (err) {
+      console.error("Ошибка загрузки юр. адресов:", err)
+      message.error("Не удалось загрузить юр. адреса")
+    } finally {
+      setLoading(false)
     }
   }
 
+  useEffect(() => {
+    fetchData()
+  }, [clientId])
+
   const handleSave = async (row) => {
     try {
-      if (!row.formatted_address) return
+      if (!row.formatted_address) {
+        message.warning("Адрес обязателен")
+        return
+      }
 
       if (!row.id) {
         const res = await axios.post("/client_billing_addresses", {
           ...row,
           client_id: clientId
         })
-        const fullRow = { ...row, id: res.data.id }
-        setRows(prev => [fullRow, ...prev])
-        setNewRow({})
+        setData(prev => [{ ...row, id: res.data.id }, ...prev])
+        setNewRow(null)
       } else {
         await axios.put(`/client_billing_addresses/${row.id}`, row)
+        setData(prev => prev.map(r => (r.id === row.id ? row : r)))
         setEditingId(null)
       }
     } catch (err) {
-      console.error("Ошибка при сохранении юр. адреса:", err)
-    }
-  }
-
-  const handleKeyDown = (e, row) => {
-    if (e.key === "Enter") {
-      handleSave(row)
-    }
-    if (e.key === "Escape") {
-      if (!row.id) {
-        setNewRow({})
-      } else {
-        setRows(prev =>
-          prev.map(r => (r.id === row.id ? backupRow : r))
-        )
-        setEditingId(null)
-      }
+      console.error("Ошибка при сохранении:", err)
+      message.error("Не удалось сохранить адрес")
     }
   }
 
@@ -78,82 +62,123 @@ export default function BillingAddressesTable({ clientId }) {
     if (!ok) return
     try {
       await axios.delete(`/client_billing_addresses/${id}`)
-      setRows(prev => prev.filter(r => r.id !== id))
+      setData(prev => prev.filter(r => r.id !== id))
     } catch (err) {
-      console.error("Ошибка при удалении юр. адреса:", err)
+      console.error("Ошибка при удалении:", err)
+      message.error("Не удалось удалить адрес")
     }
   }
 
-  const renderRow = (row) => {
-    const isEditing = editingId === row.id
-
-    return (
-      <TableRow
-        key={row.id || "new"}
-        onDoubleClick={() => {
-          if (row.id) {
-            setBackupRow({ ...row })
-            setEditingId(row.id)
-          }
-        }}
-        sx={isEditing || !row.id ? { backgroundColor: "#f3f6f9" } : {}}
-      >
-        <TableCell sx={{ width: "50%" }}>
+  const columns = [
+    {
+      title: "Юридический адрес",
+      dataIndex: "formatted_address",
+      render: (_, record) =>
+        (editingId === record.id || record.id === undefined) ? (
           <PlaceAddressInput
-            value={row.formatted_address || ""}
-            onChange={val => handleChange(row, val)}
-            onKeyDown={e => handleKeyDown(e, row)}
-            autoFocus={!row.id}
+            value={record.formatted_address}
+            onChange={(val) =>
+              record.id
+                ? setEditedRow(prev => ({ ...prev, ...val }))
+                : setNewRow(prev => ({ ...prev, ...val }))
+            }
           />
-        </TableCell>
-
-        <TableCell>
-          <input
-            type="text"
-            value={row.label || ""}
-            onChange={e => handleChange(row, { label: e.target.value })}
-            onKeyDown={e => handleKeyDown(e, row)}
-            style={{ width: "100%" }}
+        ) : (
+          record.formatted_address
+        )
+    },
+    {
+      title: "Метка",
+      dataIndex: "label",
+      render: (_, record) =>
+        (editingId === record.id || record.id === undefined) ? (
+          <Input
+            value={record.label}
+            onChange={(e) => {
+              const val = e.target.value
+              record.id
+                ? setEditedRow(prev => ({ ...prev, label: val }))
+                : setNewRow(prev => ({ ...prev, label: val }))
+            }}
           />
-        </TableCell>
-
-        <TableCell>
-          <input
-            type="text"
-            value={row.comment || ""}
-            onChange={e => handleChange(row, { comment: e.target.value })}
-            onKeyDown={e => handleKeyDown(e, row)}
-            style={{ width: "100%" }}
+        ) : (
+          record.label
+        )
+    },
+    {
+      title: "Комментарий",
+      dataIndex: "comment",
+      render: (_, record) =>
+        (editingId === record.id || record.id === undefined) ? (
+          <Input
+            value={record.comment}
+            onChange={(e) => {
+              const val = e.target.value
+              record.id
+                ? setEditedRow(prev => ({ ...prev, comment: val }))
+                : setNewRow(prev => ({ ...prev, comment: val }))
+            }}
           />
-        </TableCell>
+        ) : (
+          record.comment
+        )
+    },
+    {
+      title: "Действия",
+      dataIndex: "actions",
+      width: 120,
+      render: (_, record) => {
+        const isEditing = editingId === record.id
+        const isNew = record.id === undefined
 
-        <TableCell sx={{ width: 48 }}>
-          {row.id && (
-            <Tooltip title="Удалить">
-              <IconButton onClick={() => handleDelete(row.id)}>
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
-        </TableCell>
-      </TableRow>
-    )
-  }
+        return (
+          <Space>
+            {(isEditing || isNew) ? (
+              <>
+                <Button type="link" onClick={() => handleSave(isNew ? newRow : editedRow)}>
+                  Сохранить
+                </Button>
+                <Button
+                  type="link"
+                  onClick={() => {
+                    isNew ? setNewRow(null) : setEditingId(null)
+                  }}
+                >
+                  Отмена
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button type="link" onClick={() => {
+                  setEditedRow(record)
+                  setEditingId(record.id)
+                }}>
+                  ✏️
+                </Button>
+                <Popconfirm
+                  title="Удалить адрес?"
+                  onConfirm={() => handleDelete(record.id)}
+                >
+                  <Button danger type="link" icon={<DeleteOutlined />} />
+                </Popconfirm>
+              </>
+            )}
+          </Space>
+        )
+      }
+    }
+  ]
+
+  const mergedData = newRow ? [newRow, ...data] : data
 
   return (
-    <Table size="small">
-      <TableHead>
-        <TableRow>
-          <TableCell>Юридический адрес</TableCell>
-          <TableCell>Метка</TableCell>
-          <TableCell>Комментарий</TableCell>
-          <TableCell />
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {Object.keys(newRow).length > 0 && renderRow(newRow)}
-        {rows.map(renderRow)}
-      </TableBody>
-    </Table>
+    <Table
+      rowKey="id"
+      columns={columns}
+      dataSource={mergedData}
+      loading={loading}
+      pagination={false}
+      size="small"
+    />
   )
 }
