@@ -1,27 +1,32 @@
+// src/components/clients/ClientsMain.jsx
+
 import React, { useEffect, useState } from "react"
-import { Card, Space, Form, Input, Button, Tabs, message } from "antd"
+import { Card, Space, Form, Input, Button, message } from "antd"
 import axios from "@/api/axiosInstance"
 import ClientsTable from "./ClientsTable"
-import BillingAddressesTable from "./BillingAddressesTable"
-import ShippingAddressesTable from "./ShippingAddressesTable"
-import BankDetailsTable from "./BankDetailsTable"
 import TableToolbar from "@/components/common/TableToolbar"
 
-const { TabPane } = Tabs
-
 export default function ClientsMain() {
-  const [data, setData] = useState([])
+  const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
   const [expandedClientId, setExpandedClientId] = useState(null)
-  const [activeTab, setActiveTab] = useState("billing")
-  const [newClient, setNewClient] = useState(null)
+  const [newClient, setNewClient] = useState({
+    company_name: "",
+    contact_person: "",
+    phone: "",
+    email: "",
+    registration_number: "",
+    tax_id: "",
+    website: "",
+    notes: ""
+  })
 
-  const fetchData = async () => {
+  const fetchClients = async () => {
     setLoading(true)
     try {
       const res = await axios.get("/clients")
-      setData(res.data)
+      setClients(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       console.error("Ошибка загрузки клиентов:", err)
       message.error("Не удалось загрузить клиентов")
@@ -31,31 +36,47 @@ export default function ClientsMain() {
   }
 
   useEffect(() => {
-    fetchData()
+    fetchClients()
   }, [])
 
   const handleAdd = async () => {
-    if (!newClient?.company_name) {
+    const payload = {
+      company_name: newClient.company_name.trim(),
+      contact_person: newClient.contact_person?.trim() || "",
+      phone: newClient.phone?.trim() || "",
+      email: newClient.email?.trim() || "",
+      registration_number: newClient.registration_number?.trim() || "",
+      tax_id: newClient.tax_id?.trim() || "",
+      website: newClient.website?.trim() || "",
+      notes: newClient.notes?.trim() || ""
+    }
+
+    if (!payload.company_name) {
       message.warning("Название компании обязательно")
       return
     }
 
     try {
-      const res = await axios.post("/clients", {
-        ...newClient,
-        phone: newClient.phone || "",
-        email: newClient.email || "",
-      })
+      await axios.post("/clients", payload)
       message.success("Клиент добавлен")
-      setNewClient(null)
-      fetchData()
+      setNewClient({
+        company_name: "",
+        contact_person: "",
+        phone: "",
+        email: "",
+        registration_number: "",
+        tax_id: "",
+        website: "",
+        notes: ""
+      })
+      fetchClients()
     } catch (err) {
       console.error("Ошибка при добавлении клиента:", err)
       message.error("Не удалось добавить клиента")
     }
   }
 
-  const filtered = data.filter(
+  const filtered = clients.filter(
     (r) =>
       r.company_name?.toLowerCase().includes(search.toLowerCase()) ||
       r.contact_person?.toLowerCase().includes(search.toLowerCase())
@@ -73,7 +94,7 @@ export default function ClientsMain() {
         <Form layout="inline" style={{ marginBottom: 16 }} onFinish={handleAdd}>
           <Form.Item label="Компания">
             <Input
-              value={newClient?.company_name || ""}
+              value={newClient.company_name}
               onChange={(e) =>
                 setNewClient((prev) => ({ ...prev, company_name: e.target.value }))
               }
@@ -83,7 +104,7 @@ export default function ClientsMain() {
 
           <Form.Item label="Контактное лицо">
             <Input
-              value={newClient?.contact_person || ""}
+              value={newClient.contact_person}
               onChange={(e) =>
                 setNewClient((prev) => ({ ...prev, contact_person: e.target.value }))
               }
@@ -93,7 +114,7 @@ export default function ClientsMain() {
 
           <Form.Item label="Телефон">
             <Input
-              value={newClient?.phone || ""}
+              value={newClient.phone}
               onChange={(e) =>
                 setNewClient((prev) => ({ ...prev, phone: e.target.value }))
               }
@@ -103,7 +124,7 @@ export default function ClientsMain() {
 
           <Form.Item label="Email">
             <Input
-              value={newClient?.email || ""}
+              value={newClient.email}
               onChange={(e) =>
                 setNewClient((prev) => ({ ...prev, email: e.target.value }))
               }
@@ -123,25 +144,8 @@ export default function ClientsMain() {
           loading={loading}
           expandedClientId={expandedClientId}
           setExpandedClientId={setExpandedClientId}
+          onReload={fetchClients}
         />
-
-        {expandedClientId && (
-          <Tabs
-            activeKey={activeTab}
-            onChange={setActiveTab}
-            style={{ marginTop: 24 }}
-          >
-            <TabPane tab="Юридические адреса" key="billing">
-              <BillingAddressesTable clientId={expandedClientId} />
-            </TabPane>
-            <TabPane tab="Адреса доставки" key="shipping">
-              <ShippingAddressesTable clientId={expandedClientId} />
-            </TabPane>
-            <TabPane tab="Банковские реквизиты" key="bank">
-              <BankDetailsTable clientId={expandedClientId} />
-            </TabPane>
-          </Tabs>
-        )}
       </Card>
     </Space>
   )

@@ -1,59 +1,34 @@
-import React, { useEffect, useState } from "react"
-import { Table, Input, Button, Popconfirm, Tooltip, Space, message } from "antd"
+// src/components/clients/BankDetailsTable.jsx
+
+import React, { useState } from "react"
+import { Table, Input, Button, Popconfirm, Space, message, Form } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
-import fetchBankByBic from "@/utils/fetchBankByBic"
 import confirmAction from "@/utils/confirmAction"
 
-export default function BankDetailsTable({ clientId }) {
-  const [data, setData] = useState([])
-  const [loading, setLoading] = useState(false)
+export default function BankDetailsTable({ data, loading, clientId, setData }) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState({})
-  const [newRow, setNewRow] = useState(null)
+  const [newBank, setNewBank] = useState({
+    bic: "",
+    bank_name: "",
+    correspondent_account: "",
+    account_number: ""
+  })
 
-  const fetchData = async () => {
-    if (!clientId) return
-    setLoading(true)
+  const isEditing = (record) => record.id === editingId
+
+  const saveEdit = async (record) => {
     try {
-      const res = await axios.get("/client_bank_details", {
-        params: { client_id: clientId }
-      })
-      setData(res.data || [])
-    } catch (err) {
-      console.error("Ошибка при загрузке банковских реквизитов:", err)
-      message.error("Не удалось загрузить банковские реквизиты")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchData()
-  }, [clientId])
-
-  const handleSave = async (row) => {
-    try {
-      if (!row.bank_name || !row.bic || !row.checking_account) {
-        message.warning("Поля 'Банк', 'BIC', 'Расч. счёт' обязательны")
-        return
-      }
-
-      if (!row.id) {
-        const res = await axios.post("/client_bank_details", {
-          ...row,
-          client_id: clientId
-        })
-        setData(prev => [{ ...row, id: res.data.id }, ...prev])
-        setNewRow(null)
-      } else {
-        await axios.put(`/client_bank_details/${row.id}`, row)
-        setData(prev => prev.map(r => (r.id === row.id ? row : r)))
-        setEditingId(null)
-      }
+      await axios.put(`/client-bank-details/${record.id}`, editedRow)
+      setEditingId(null)
+      const updated = data.map((r) =>
+        r.id === record.id ? { ...r, ...editedRow } : r
+      )
+      setData(updated)
     } catch (err) {
       console.error("Ошибка при сохранении:", err)
-      message.error("Не удалось сохранить реквизиты")
+      message.error("Не удалось сохранить изменения")
     }
   }
 
@@ -61,28 +36,50 @@ export default function BankDetailsTable({ clientId }) {
     const ok = await confirmAction("Удалить реквизиты?")
     if (!ok) return
     try {
-      await axios.delete(`/client_bank_details/${id}`)
-      setData(prev => prev.filter(r => r.id !== id))
+      await axios.delete(`/client-bank-details/${id}`)
+      setData((prev) => prev.filter((r) => r.id !== id))
     } catch (err) {
-      console.error("Ошибка при удалении:", err)
-      message.error("Не удалось удалить реквизиты")
+      console.error("Ошибка удаления:", err)
+      message.error("Не удалось удалить")
     }
   }
 
-  const handleBicLookup = async (value, isNew) => {
-    if (value.length !== 9) return
-    const data = await fetchBankByBic(value)
-    if (!data) return
-    const updates = {
-      bank_name: data.name,
-      correspondent_account: data.corr_account
+  const handleAdd = async () => {
+    if (!clientId || !newBank.account_number.trim()) {
+      message.warning("Номер счёта обязателен")
+      return
     }
 
-    if (isNew) {
-      setNewRow(prev => ({ ...prev, ...updates }))
-    } else {
-      setEditedRow(prev => ({ ...prev, ...updates }))
+    try {
+      const res = await axios.post("/client-bank-details", {
+        ...newBank,
+        client_id: clientId
+      })
+      setData((prev) => [res.data, ...prev])
+      setNewBank({
+        bic: "",
+        bank_name: "",
+        correspondent_account: "",
+        account_number: ""
+      })
+    } catch (err) {
+      console.error("Ошибка добавления реквизитов:", err)
+      message.error("Не удалось добавить")
     }
+  }
+
+  const renderInput = (field, record) => {
+    const value = editedRow?.[field]
+    return (
+      <Input
+        value={value}
+        onChange={(e) => setEditedRow((prev) => ({ ...prev, [field]: e.target.value }))}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") saveEdit(record)
+          if (e.key === "Escape") setEditingId(null)
+        }}
+      />
+    )
   }
 
   const columns = [
@@ -90,150 +87,116 @@ export default function BankDetailsTable({ clientId }) {
       title: "Банк",
       dataIndex: "bank_name",
       render: (_, record) =>
-        (editingId === record.id || record.id === undefined) ? (
-          <Input
-            value={
-              record.id === undefined ? newRow?.bank_name : editedRow?.bank_name
-            }
-            onChange={(e) => {
-              const val = e.target.value
-              record.id
-                ? setEditedRow((prev) => ({ ...prev, bank_name: val }))
-                : setNewRow((prev) => ({ ...prev, bank_name: val }))
-            }}
-          />
-        ) : (
-          record.bank_name
-        )
+        isEditing(record) ? renderInput("bank_name", record) : record.bank_name
     },
     {
       title: "BIC",
       dataIndex: "bic",
       render: (_, record) =>
-        (editingId === record.id || record.id === undefined) ? (
-          <Input
-            value={record.id === undefined ? newRow?.bic : editedRow?.bic}
-            onChange={(e) => {
-              const val = e.target.value
-              if (record.id) {
-                setEditedRow((prev) => ({ ...prev, bic: val }))
-                if (val.length === 9) handleBicLookup(val, false)
-              } else {
-                setNewRow((prev) => ({ ...prev, bic: val }))
-                if (val.length === 9) handleBicLookup(val, true)
-              }
-            }}
-          />
-        ) : (
-          record.bic
-        )
+        isEditing(record) ? renderInput("bic", record) : record.bic
     },
     {
       title: "Кор. счёт",
       dataIndex: "correspondent_account",
       render: (_, record) =>
-        (editingId === record.id || record.id === undefined) ? (
-          <Input
-            value={
-              record.id === undefined
-                ? newRow?.correspondent_account
-                : editedRow?.correspondent_account
-            }
-            onChange={(e) => {
-              const val = e.target.value
-              record.id
-                ? setEditedRow((prev) => ({ ...prev, correspondent_account: val }))
-                : setNewRow((prev) => ({ ...prev, correspondent_account: val }))
-            }}
-          />
-        ) : (
-          record.correspondent_account
-        )
+        isEditing(record)
+          ? renderInput("correspondent_account", record)
+          : record.correspondent_account
     },
     {
       title: "Расч. счёт",
-      dataIndex: "checking_account",
+      dataIndex: "account_number",
       render: (_, record) =>
-        (editingId === record.id || record.id === undefined) ? (
-          <Input
-            value={
-              record.id === undefined
-                ? newRow?.checking_account
-                : editedRow?.checking_account
-            }
-            onChange={(e) => {
-              const val = e.target.value
-              record.id
-                ? setEditedRow((prev) => ({ ...prev, checking_account: val }))
-                : setNewRow((prev) => ({ ...prev, checking_account: val }))
-            }}
-          />
-        ) : (
-          record.checking_account
-        )
+        isEditing(record)
+          ? renderInput("account_number", record)
+          : record.account_number
     },
     {
       title: "Действия",
       dataIndex: "actions",
       width: 120,
-      render: (_, record) => {
-        const isEditing = editingId === record.id
-        const isNew = record.id === undefined
-
-        return (
+      render: (_, record) =>
+        isEditing(record) ? (
           <Space>
-            {(isEditing || isNew) ? (
-              <>
-                <Button
-                  type="link"
-                  onClick={() => handleSave(isNew ? newRow : editedRow)}
-                >
-                  Сохранить
-                </Button>
-                <Button
-                  type="link"
-                  onClick={() =>
-                    isNew ? setNewRow(null) : setEditingId(null)
-                  }
-                >
-                  Отмена
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  type="link"
-                  onClick={() => {
-                    setEditedRow(record)
-                    setEditingId(record.id)
-                  }}
-                >
-                  ✏️
-                </Button>
-                <Popconfirm
-                  title="Удалить реквизиты?"
-                  onConfirm={() => handleDelete(record.id)}
-                >
-                  <Button danger type="link" icon={<DeleteOutlined />} />
-                </Popconfirm>
-              </>
-            )}
+            <Button type="link" onClick={() => saveEdit(record)}>
+              Сохранить
+            </Button>
+            <Button type="link" onClick={() => setEditingId(null)}>
+              Отмена
+            </Button>
+          </Space>
+        ) : (
+          <Space>
+            <Button
+              type="link"
+              onClick={() => {
+                setEditedRow(record)
+                setEditingId(record.id)
+              }}
+            >
+              ✏️
+            </Button>
+            <Popconfirm
+              title="Удалить реквизиты?"
+              onConfirm={() => handleDelete(record.id)}
+            >
+              <Button danger type="link" icon={<DeleteOutlined />} />
+            </Popconfirm>
           </Space>
         )
-      }
     }
   ]
 
-  const mergedData = newRow ? [newRow, ...data] : data
-
   return (
-    <Table
-      rowKey="id"
-      columns={columns}
-      dataSource={mergedData}
-      loading={loading}
-      pagination={false}
-      size="small"
-    />
+    <>
+      <Form layout="inline" style={{ marginBottom: 16 }} onFinish={handleAdd}>
+        <Form.Item label="BIC">
+          <Input
+            value={newBank.bic}
+            onChange={(e) => setNewBank((prev) => ({ ...prev, bic: e.target.value }))}
+            placeholder="BIC"
+          />
+        </Form.Item>
+        <Form.Item label="Банк">
+          <Input
+            value={newBank.bank_name}
+            onChange={(e) => setNewBank((prev) => ({ ...prev, bank_name: e.target.value }))}
+            placeholder="Название банка"
+          />
+        </Form.Item>
+        <Form.Item label="Кор. счёт">
+          <Input
+            value={newBank.correspondent_account}
+            onChange={(e) =>
+              setNewBank((prev) => ({ ...prev, correspondent_account: e.target.value }))
+            }
+            placeholder="Кор. счёт"
+          />
+        </Form.Item>
+        <Form.Item label="Расч. счёт" required>
+          <Input
+            value={newBank.account_number}
+            onChange={(e) =>
+              setNewBank((prev) => ({ ...prev, account_number: e.target.value }))
+            }
+            placeholder="Расчётный счёт"
+          />
+        </Form.Item>
+        <Form.Item>
+          <Button type="primary" htmlType="submit">
+            Добавить
+          </Button>
+        </Form.Item>
+      </Form>
+
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={data}
+        loading={loading}
+        pagination={false}
+        size="small"
+      />
+    </>
   )
 }

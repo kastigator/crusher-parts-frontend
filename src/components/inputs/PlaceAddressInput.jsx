@@ -1,66 +1,134 @@
-import React, { useEffect, useRef } from "react"
-import { TextField, FormHelperText } from "@mui/material"
+// src/components/inputs/PlaceAddressInput.jsx
+import React, { useEffect, useRef, useState } from 'react'
+import { Input, Button, Space, Spin, message } from 'antd'
+import loadYandexMaps from '@/utils/loadYandexMaps'
 
-export default function PlaceAddressInput({
-  value = "",
-  onChange,
-  onKeyDown,
-  error,
-  required,
-  label,
-  field = "formatted_address"
-}) {
-  const inputRef = useRef(null)
-  const autocompleteRef = useRef(null)
+export default function PlaceAddressInput({ value = {}, onChange }) {
+  const mapRef = useRef(null)
+  const [ymaps, setYmaps] = useState(null)
+  const [query, setQuery] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [mapInstance, setMapInstance] = useState(null)
 
   useEffect(() => {
-    if (!window.google || !window.google.maps || !inputRef.current) return
+    loadYandexMaps()
+      .then((ymapsInstance) => {
+        setYmaps(ymapsInstance)
 
-    if (!autocompleteRef.current) {
-      autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
-        fields: ["formatted_address", "address_components", "place_id", "geometry"],
-        types: ["address"],
-        componentRestrictions: { country: "ru" }
-      })
+        const center = value?.lat && value?.lng ? [value.lat, value.lng] : [55.751574, 37.573856]
+        const map = new ymapsInstance.Map(mapRef.current, {
+          center,
+          zoom: 10,
+          controls: ['zoomControl'],
+        })
+        setMapInstance(map)
 
-      autocompleteRef.current.addListener("place_changed", () => {
-        const place = autocompleteRef.current.getPlace()
-        if (!place || !place.formatted_address) return
-
-        const location = place.geometry?.location
-        const lat = location?.lat?.()
-        const lng = location?.lng?.()
-
-        const addressComponents = place.address_components || []
-        const postalComponent = addressComponents.find(c => c.types.includes("postal_code"))
-
-        const result = {
-          formatted_address: place.formatted_address,
-          place_id: place.place_id || null,
-          lat: lat || null,
-          lng: lng || null,
-          postal_code: postalComponent?.short_name || null
+        if (value.lat && value.lng) {
+          const marker = new ymapsInstance.Placemark(center, {}, { draggable: false })
+          map.geoObjects.add(marker)
         }
 
-        onChange(result)
+        // 👇 Добавим клик по карте
+        map.events.add('click', (e) => {
+          const coords = e.get('coords')
+          map.geoObjects.removeAll()
+          const marker = new ymapsInstance.Placemark(coords, {}, { draggable: false })
+          map.geoObjects.add(marker)
+
+          ymapsInstance.geocode(coords).then((res) => {
+            const first = res.geoObjects.get(0)
+            if (!first) {
+              message.warning('Не удалось определить адрес по координатам')
+              return
+            }
+
+            const addressLine = first.getAddressLine()
+            const placeId = first.properties.get('metaDataProperty.GeocoderMetaData.id')
+            const postalCode = first.properties.get('metaDataProperty.GeocoderMetaData.Address.postal_code') || ''
+
+            console.log('📍 Клик по карте', { coords, addressLine, placeId, postalCode })
+
+            onChange?.({
+              address_line: addressLine,
+              place_id: placeId,
+              lat: coords[0],
+              lng: coords[1],
+              postal_code: postalCode,
+            })
+          })
+        })
       })
-    }
+      .catch((err) => {
+        console.error(err)
+        message.error('Ошибка загрузки Яндекс.Карт')
+      })
   }, [])
 
+  const handleSearch = () => {
+    if (!query || !ymaps || !mapInstance) return
+
+    setLoading(true)
+    ymaps.geocode(query)
+      .then((res) => {
+        const firstResult = res.geoObjects.get(0)
+        if (!firstResult) {
+          message.warning('Адрес не найден')
+          setLoading(false)
+          return
+        }
+
+        const coords = firstResult.geometry.getCoordinates()
+        const addressLine = firstResult.getAddressLine()
+        const placeId = firstResult.properties.get('metaDataProperty.GeocoderMetaData.id')
+        const postalCode = firstResult.properties.get('metaDataProperty.GeocoderMetaData.Address.postal_code') || ''
+
+        console.log('🔍 Поиск по строке', { coords, addressLine, placeId, postalCode })
+
+        mapInstance.setCenter(coords, 14)
+        mapInstance.geoObjects.removeAll()
+        const marker = new ymaps.Placemark(coords, {}, { draggable: false })
+        mapInstance.geoObjects.add(marker)
+
+        onChange?.({
+          address_line: addressLine,
+          place_id: placeId,
+          lat: coords[0],
+          lng: coords[1],
+          postal_code: postalCode,
+        })
+
+        setLoading(false)
+      })
+      .catch((err) => {
+        console.error(err)
+        message.error('Ошибка геокодирования')
+        setLoading(false)
+      })
+  }
+
   return (
-    <>
-      <TextField
-        inputRef={inputRef}
-        value={value}
-        onChange={(e) => onChange({ [field]: e.target.value })}
-        onKeyDown={onKeyDown}
-        error={!!error}
-        required={required}
-        fullWidth
-        label={label}
-        size="small"
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <Space.Compact style={{ width: '100%' }}>
+        <Input
+          placeholder="Введите адрес"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onPressEnter={handleSearch}
+        />
+        <Button type="primary" onClick={handleSearch} loading={loading}>
+          Найти
+        </Button>
+      </Space.Compact>
+
+      <div
+        ref={mapRef}
+        style={{
+          width: '100%',
+          height: 250,
+          borderRadius: 6,
+          border: '1px solid #ddd',
+        }}
       />
-      {error && <FormHelperText error>{error}</FormHelperText>}
-    </>
+    </div>
   )
 }

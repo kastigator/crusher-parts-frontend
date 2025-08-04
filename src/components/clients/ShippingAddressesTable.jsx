@@ -1,9 +1,13 @@
+// src/components/clients/ShippingAddressesTable.jsx
+
 import React, { useEffect, useState } from "react"
-import { Table, Input, Button, Popconfirm, Tooltip, Space, message } from "antd"
+import { Table, Input, Button, Popconfirm, Space, Typography, message } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
+
+const { Text } = Typography
 
 export default function ShippingAddressesTable({ clientId }) {
   const [data, setData] = useState([])
@@ -16,10 +20,10 @@ export default function ShippingAddressesTable({ clientId }) {
     if (!clientId) return
     setLoading(true)
     try {
-      const res = await axios.get("/client_shipping_addresses", {
+      const res = await axios.get("/client-shipping-addresses", {
         params: { client_id: clientId }
       })
-      setData(res.data || [])
+      setData(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       console.error("Ошибка загрузки адресов доставки:", err)
       message.error("Не удалось загрузить адреса доставки")
@@ -33,26 +37,35 @@ export default function ShippingAddressesTable({ clientId }) {
   }, [clientId])
 
   const handleSave = async (row) => {
-    try {
-      if (!row.formatted_address) {
-        message.warning("Не заполнен адрес")
-        return
-      }
+    if (!clientId) return
+    if (!row.formatted_address?.trim()) {
+      message.warning("Поле 'Адрес' обязательно")
+      return
+    }
 
+    const payload = {
+      client_id: clientId,
+      formatted_address: row.formatted_address.trim(),
+      place_id: row.place_id || null,
+      lat: row.lat || null,
+      lng: row.lng || null,
+      postal_code: row.postal_code || null,
+      label: row.label?.trim() || null,
+      comment: row.comment?.trim() || null
+    }
+
+    try {
       if (!row.id) {
-        const res = await axios.post("/client_shipping_addresses", {
-          ...row,
-          client_id: clientId
-        })
-        setData(prev => [{ ...row, id: res.data.id }, ...prev])
+        const res = await axios.post("/client-shipping-addresses", payload)
+        setData(prev => [res.data, ...prev])
         setNewRow(null)
       } else {
-        await axios.put(`/client_shipping_addresses/${row.id}`, row)
-        setData(prev => prev.map(r => (r.id === row.id ? row : r)))
+        await axios.put(`/client-shipping-addresses/${row.id}`, payload)
+        setData(prev => prev.map(r => (r.id === row.id ? { ...r, ...payload } : r)))
         setEditingId(null)
       }
     } catch (err) {
-      console.error("Ошибка сохранения:", err)
+      console.error("Ошибка при сохранении:", err)
       message.error("Не удалось сохранить адрес")
     }
   }
@@ -61,10 +74,10 @@ export default function ShippingAddressesTable({ clientId }) {
     const ok = await confirmAction("Удалить адрес?")
     if (!ok) return
     try {
-      await axios.delete(`/client_shipping_addresses/${id}`)
+      await axios.delete(`/client-shipping-addresses/${id}`)
       setData(prev => prev.filter(r => r.id !== id))
     } catch (err) {
-      console.error("Ошибка удаления:", err)
+      console.error("Ошибка при удалении адреса:", err)
       message.error("Не удалось удалить адрес")
     }
   }
@@ -73,27 +86,44 @@ export default function ShippingAddressesTable({ clientId }) {
     {
       title: "Адрес доставки",
       dataIndex: "formatted_address",
-      render: (_, record) =>
-        (editingId === record.id || record.id === undefined) ? (
+      render: (_, record) => {
+        const isEditing = editingId === record.id || record.id === undefined
+        const val = isEditing
+          ? record.id
+            ? editedRow
+            : newRow
+          : record
+
+        return isEditing ? (
           <PlaceAddressInput
-            value={record.formatted_address}
-            onChange={(val) =>
+            value={val}
+            onChange={(updated) =>
               record.id
-                ? setEditedRow(prev => ({ ...prev, ...val }))
-                : setNewRow(prev => ({ ...prev, ...val }))
+                ? setEditedRow(prev => ({ ...prev, ...updated }))
+                : setNewRow(prev => ({ ...prev, ...updated }))
             }
+            label=""
+            required
           />
         ) : (
-          record.formatted_address
+          <Text type={!record.place_id ? "danger" : undefined}>
+            {record.formatted_address || <i>не указано</i>}
+          </Text>
         )
+      }
     },
     {
       title: "Метка",
       dataIndex: "label",
-      render: (_, record) =>
-        (editingId === record.id || record.id === undefined) ? (
+      render: (_, record) => {
+        const isEditing = editingId === record.id || record.id === undefined
+        const value = isEditing
+          ? record.id ? editedRow?.label : newRow?.label
+          : record.label
+
+        return isEditing ? (
           <Input
-            value={record.label}
+            value={value}
             onChange={(e) => {
               const val = e.target.value
               record.id
@@ -104,14 +134,20 @@ export default function ShippingAddressesTable({ clientId }) {
         ) : (
           record.label
         )
+      }
     },
     {
       title: "Комментарий",
       dataIndex: "comment",
-      render: (_, record) =>
-        (editingId === record.id || record.id === undefined) ? (
+      render: (_, record) => {
+        const isEditing = editingId === record.id || record.id === undefined
+        const value = isEditing
+          ? record.id ? editedRow?.comment : newRow?.comment
+          : record.comment
+
+        return isEditing ? (
           <Input
-            value={record.comment}
+            value={value}
             onChange={(e) => {
               const val = e.target.value
               record.id
@@ -122,6 +158,7 @@ export default function ShippingAddressesTable({ clientId }) {
         ) : (
           record.comment
         )
+      }
     },
     {
       title: "Действия",
@@ -135,24 +172,28 @@ export default function ShippingAddressesTable({ clientId }) {
           <Space>
             {(isEditing || isNew) ? (
               <>
-                <Button type="link" onClick={() => handleSave(isNew ? newRow : editedRow)}>
+                <Button
+                  type="link"
+                  onClick={() => handleSave(isNew ? newRow : editedRow)}
+                >
                   Сохранить
                 </Button>
                 <Button
                   type="link"
-                  onClick={() => {
-                    isNew ? setNewRow(null) : setEditingId(null)
-                  }}
+                  onClick={() => (isNew ? setNewRow(null) : setEditingId(null))}
                 >
                   Отмена
                 </Button>
               </>
             ) : (
               <>
-                <Button type="link" onClick={() => {
-                  setEditedRow(record)
-                  setEditingId(record.id)
-                }}>
+                <Button
+                  type="link"
+                  onClick={() => {
+                    setEditedRow(record)
+                    setEditingId(record.id)
+                  }}
+                >
                   ✏️
                 </Button>
                 <Popconfirm
@@ -173,7 +214,7 @@ export default function ShippingAddressesTable({ clientId }) {
 
   return (
     <Table
-      rowKey="id"
+      rowKey={(record) => record.id ?? "new"}
       columns={columns}
       dataSource={mergedData}
       loading={loading}

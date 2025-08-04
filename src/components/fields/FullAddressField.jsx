@@ -1,6 +1,8 @@
 import React from "react"
-import { Box, Typography } from "@mui/material"
-import { LocationOn } from "@mui/icons-material"
+import { Space, Typography } from "antd"
+import { EnvironmentOutlined } from "@ant-design/icons"
+
+const { Text } = Typography
 
 export default function FullAddressField({
   formatted_address,
@@ -9,18 +11,24 @@ export default function FullAddressField({
   compact = false
 }) {
   return (
-    <Box display="flex" alignItems="start" gap={1}>
-      {icon && <LocationOn fontSize="small" sx={{ mt: compact ? 0 : "2px" }} />}
-      <Box>
-        <Typography variant="body2">
+    <Space align="start" size="small">
+      {icon && (
+        <EnvironmentOutlined
+          style={{ marginTop: compact ? 0 : 4, color: "#555" }}
+        />
+      )}
+      <div>
+        <Text type={formatted_address ? undefined : "secondary"}>
           {formatted_address || <i>не указано</i>}
-        </Typography>
+        </Text>
         {comment && !compact && (
-          <Typography variant="caption" color="text.secondary">
-            {comment}
-          </Typography>
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {comment}
+            </Text>
+          </div>
         )}
-      </Box>
-    </Box>
+      </div>
+    </Space>
   )
 }
