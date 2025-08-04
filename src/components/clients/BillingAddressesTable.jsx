@@ -32,6 +32,8 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
       city: row.city || null,
       street: row.street || null,
       house: row.house || null,
+      building: row.building || null,
+      entrance: row.entrance || null,
       comment: row.comment?.trim() || null
     }
 
@@ -89,12 +91,27 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
                 region: val.region,
                 city: val.city,
                 street: val.street,
-                house: val.house
+                house: val.house,
+                building: val.building,
+                entrance: val.entrance
               }))
             }
           />
         ) : (
-          <Text>{record.formatted_address || <i>не указано</i>}</Text>
+          <Text>
+            {[
+              record.postal_code,
+              record.country,
+              record.region,
+              record.city,
+              record.street,
+              record.house,
+              record.building,
+              record.entrance
+            ]
+              .filter(Boolean)
+              .join(", ") || <i>не указано</i>}
+          </Text>
         )
       }
     },

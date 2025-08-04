@@ -1,40 +1,20 @@
 // src/components/clients/ShippingAddressesTable.jsx
 
-import React, { useEffect, useState } from "react"
-import { Table, Input, Button, Popconfirm, Space, Typography, message } from "antd"
+import React, { useState } from "react"
+import { Table, Input, Button, Space, Typography, message } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
+import ValueDisplay from "@/components/common/ValueDisplay"
 
 const { Text } = Typography
 
-export default function ShippingAddressesTable({ clientId }) {
-  const [data, setData] = useState([])
-  const [loading, setLoading] = useState(false)
+export default function ShippingAddressesTable({ clientId, data = [], loading, reloadData }) {
   const [editingId, setEditingId] = useState(null)
-  const [editedRow, setEditedRow] = useState({})
-  const [newRow, setNewRow] = useState(null)
+  const [editedRow, setEditedRow] = useState(null)
 
-  const fetchData = async () => {
-    if (!clientId) return
-    setLoading(true)
-    try {
-      const res = await axios.get("/client-shipping-addresses", {
-        params: { client_id: clientId }
-      })
-      setData(Array.isArray(res.data) ? res.data : [])
-    } catch (err) {
-      console.error("Ошибка загрузки адресов доставки:", err)
-      message.error("Не удалось загрузить адреса доставки")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchData()
-  }, [clientId])
+  const isEditing = (record) => editingId !== null && record?.id === editingId
 
   const handleSave = async (row) => {
     if (!clientId) return
@@ -44,28 +24,29 @@ export default function ShippingAddressesTable({ clientId }) {
     }
 
     const payload = {
-      client_id: clientId,
       formatted_address: row.formatted_address.trim(),
       place_id: row.place_id || null,
       lat: row.lat || null,
       lng: row.lng || null,
       postal_code: row.postal_code || null,
-      label: row.label?.trim() || null,
+      country: row.country || null,
+      region: row.region || null,
+      city: row.city || null,
+      street: row.street || null,
+      house: row.house || null,
+      building: row.building || null,
+      entrance: row.entrance || null,
       comment: row.comment?.trim() || null
     }
 
     try {
-      if (!row.id) {
-        const res = await axios.post("/client-shipping-addresses", payload)
-        setData(prev => [res.data, ...prev])
-        setNewRow(null)
-      } else {
-        await axios.put(`/client-shipping-addresses/${row.id}`, payload)
-        setData(prev => prev.map(r => (r.id === row.id ? { ...r, ...payload } : r)))
-        setEditingId(null)
-      }
+      await axios.put(`/client-shipping-addresses/${row.id}`, payload)
+      message.success("Адрес обновлён")
+      setEditingId(null)
+      setEditedRow(null)
+      reloadData()
     } catch (err) {
-      console.error("Ошибка при сохранении:", err)
+      console.error("Ошибка при обновлении:", err)
       message.error("Не удалось сохранить адрес")
     }
   }
@@ -75,7 +56,8 @@ export default function ShippingAddressesTable({ clientId }) {
     if (!ok) return
     try {
       await axios.delete(`/client-shipping-addresses/${id}`)
-      setData(prev => prev.filter(r => r.id !== id))
+      message.success("Адрес удалён")
+      reloadData()
     } catch (err) {
       console.error("Ошибка при удалении адреса:", err)
       message.error("Не удалось удалить адрес")
@@ -87,139 +69,123 @@ export default function ShippingAddressesTable({ clientId }) {
       title: "Адрес доставки",
       dataIndex: "formatted_address",
       render: (_, record) => {
-        const isEditing = editingId === record.id || record.id === undefined
-        const val = isEditing
-          ? record.id
-            ? editedRow
-            : newRow
-          : record
+        const editing = isEditing(record)
 
-        return isEditing ? (
-          <PlaceAddressInput
-            value={val}
-            onChange={(updated) =>
-              record.id
-                ? setEditedRow(prev => ({ ...prev, ...updated }))
-                : setNewRow(prev => ({ ...prev, ...updated }))
-            }
-            label=""
-            required
-          />
-        ) : (
-          <Text type={!record.place_id ? "danger" : undefined}>
-            {record.formatted_address || <i>не указано</i>}
-          </Text>
-        )
-      }
-    },
-    {
-      title: "Метка",
-      dataIndex: "label",
-      render: (_, record) => {
-        const isEditing = editingId === record.id || record.id === undefined
-        const value = isEditing
-          ? record.id ? editedRow?.label : newRow?.label
-          : record.label
+        if (editing && editedRow) {
+          return (
+            <PlaceAddressInput
+              debugId={`shipping-row-${record.id}`}
+              value={{
+                address_line: editedRow.formatted_address,
+                lat: editedRow.lat,
+                lng: editedRow.lng,
+                place_id: editedRow.place_id,
+                postal_code: editedRow.postal_code
+              }}
+              onChange={(val) =>
+                setEditedRow((prev) => ({
+                  ...prev,
+                  formatted_address: val.address_line,
+                  place_id: val.place_id,
+                  lat: val.lat,
+                  lng: val.lng,
+                  postal_code: val.postal_code,
+                  country: val.country,
+                  region: val.region,
+                  city: val.city,
+                  street: val.street,
+                  house: val.house,
+                  building: val.building,
+                  entrance: val.entrance
+                }))
+              }
+            />
+          )
+        }
 
-        return isEditing ? (
-          <Input
-            value={value}
-            onChange={(e) => {
-              const val = e.target.value
-              record.id
-                ? setEditedRow(prev => ({ ...prev, label: val }))
-                : setNewRow(prev => ({ ...prev, label: val }))
-            }}
-          />
-        ) : (
-          record.label
-        )
+        const parts = [
+          record.postal_code,
+          record.country,
+          record.region,
+          record.city,
+          record.street,
+          record.house,
+          record.building ? `стр. ${record.building}` : null,
+          record.entrance ? `подъезд ${record.entrance}` : null
+        ].filter(Boolean)
+
+        return <Text>{parts.length > 0 ? parts.join(", ") : <i>не указано</i>}</Text>
       }
     },
     {
       title: "Комментарий",
       dataIndex: "comment",
-      render: (_, record) => {
-        const isEditing = editingId === record.id || record.id === undefined
-        const value = isEditing
-          ? record.id ? editedRow?.comment : newRow?.comment
-          : record.comment
-
-        return isEditing ? (
+      render: (_, record) =>
+        isEditing(record) && editedRow ? (
           <Input
-            value={value}
-            onChange={(e) => {
-              const val = e.target.value
-              record.id
-                ? setEditedRow(prev => ({ ...prev, comment: val }))
-                : setNewRow(prev => ({ ...prev, comment: val }))
+            value={editedRow.comment}
+            onChange={(e) =>
+              setEditedRow((prev) => ({ ...prev, comment: e.target.value }))
+            }
+            onPressEnter={() => handleSave(editedRow)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setEditingId(null)
+                setEditedRow(null)
+              }
             }}
           />
         ) : (
-          record.comment
+          <ValueDisplay value={record.comment} />
         )
-      }
     },
     {
       title: "Действия",
       dataIndex: "actions",
-      width: 120,
-      render: (_, record) => {
-        const isEditing = editingId === record.id
-        const isNew = record.id === undefined
-
-        return (
+      width: 100,
+      render: (_, record) =>
+        isEditing(record) && editedRow ? (
           <Space>
-            {(isEditing || isNew) ? (
-              <>
-                <Button
-                  type="link"
-                  onClick={() => handleSave(isNew ? newRow : editedRow)}
-                >
-                  Сохранить
-                </Button>
-                <Button
-                  type="link"
-                  onClick={() => (isNew ? setNewRow(null) : setEditingId(null))}
-                >
-                  Отмена
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  type="link"
-                  onClick={() => {
-                    setEditedRow(record)
-                    setEditingId(record.id)
-                  }}
-                >
-                  ✏️
-                </Button>
-                <Popconfirm
-                  title="Удалить адрес?"
-                  onConfirm={() => handleDelete(record.id)}
-                >
-                  <Button danger type="link" icon={<DeleteOutlined />} />
-                </Popconfirm>
-              </>
-            )}
+            <Button type="link" onClick={() => handleSave(editedRow)}>
+              Сохранить
+            </Button>
+            <Button
+              type="link"
+              onClick={() => {
+                setEditingId(null)
+                setEditedRow(null)
+              }}
+            >
+              Отмена
+            </Button>
           </Space>
+        ) : (
+          <Button
+            danger
+            type="link"
+            icon={<DeleteOutlined />}
+            onClick={() => handleDelete(record.id)}
+          />
         )
-      }
     }
   ]
 
-  const mergedData = newRow ? [newRow, ...data] : data
-
   return (
     <Table
-      rowKey={(record) => record.id ?? "new"}
+      rowKey="id"
       columns={columns}
-      dataSource={mergedData}
+      dataSource={data}
       loading={loading}
       pagination={false}
       size="small"
+      onRow={(record) => ({
+        onDoubleClick: () => {
+          if (record?.id !== undefined) {
+            setEditedRow({ ...record })
+            setEditingId(record.id)
+          }
+        }
+      })}
     />
   )
 }

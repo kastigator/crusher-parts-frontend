@@ -14,12 +14,14 @@ export default function BillingAddressesMain({ clientId }) {
     place_id: null,
     lat: null,
     lng: null,
-    postal_code: null,
+    postal_code: "",
     country: "",
     region: "",
     city: "",
     street: "",
     house: "",
+    building: "",
+    entrance: "",
     comment: ""
   })
 
@@ -60,6 +62,8 @@ export default function BillingAddressesMain({ clientId }) {
       city: newAddress.city || null,
       street: newAddress.street || null,
       house: newAddress.house || null,
+      building: newAddress.building || null,
+      entrance: newAddress.entrance || null,
       comment: newAddress.comment?.trim() || null
     }
 
@@ -73,12 +77,14 @@ export default function BillingAddressesMain({ clientId }) {
         place_id: null,
         lat: null,
         lng: null,
-        postal_code: null,
+        postal_code: "",
         country: "",
         region: "",
         city: "",
         street: "",
         house: "",
+        building: "",
+        entrance: "",
         comment: ""
       })
       setResetCounter(prev => prev + 1)
@@ -89,7 +95,7 @@ export default function BillingAddressesMain({ clientId }) {
   }
 
   return (
-    <Card size="small"> {/* 🧼 Без заголовка, он уже есть во вкладке */}
+    <Card size="small">
       <Space direction="vertical" size="middle" style={{ width: "100%" }}>
         <PlaceAddressInput
           debugId="main-form"
@@ -113,12 +119,77 @@ export default function BillingAddressesMain({ clientId }) {
               region: value.region,
               city: value.city,
               street: value.street,
-              house: value.house
+              house: value.house,
+              building: value.building,
+              entrance: value.entrance
             }))
           }
         />
 
+        {/* Ручное уточнение полей */}
         <Row gutter={12}>
+          <Col span={6}>
+            <Input
+              placeholder="Страна"
+              value={newAddress.country}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, country: e.target.value }))}
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Регион"
+              value={newAddress.region}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, region: e.target.value }))}
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Город"
+              value={newAddress.city}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, city: e.target.value }))}
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Индекс"
+              value={newAddress.postal_code}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, postal_code: e.target.value }))}
+            />
+          </Col>
+        </Row>
+
+        <Row gutter={12} style={{ marginTop: 8 }}>
+          <Col span={12}>
+            <Input
+              placeholder="Улица"
+              value={newAddress.street}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, street: e.target.value }))}
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Дом"
+              value={newAddress.house}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, house: e.target.value }))}
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Строение"
+              value={newAddress.building}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, building: e.target.value }))}
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Подъезд"
+              value={newAddress.entrance}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, entrance: e.target.value }))}
+            />
+          </Col>
+        </Row>
+
+        <Row gutter={12} style={{ marginTop: 8 }}>
           <Col flex="auto">
             <Input
               placeholder="Комментарий"

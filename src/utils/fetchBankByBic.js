@@ -19,7 +19,7 @@ export default async function fetchBankByBic(bic) {
   return {
     name: bank.name?.payment,
     address: bank.address?.value,
-    corr_account: bank.correspondent_account,
+    correspondent_account: bank.correspondent_account, // ✅ ключ согласован
     swift: bank.swift
   }
 }

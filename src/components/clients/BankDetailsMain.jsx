@@ -1,13 +1,26 @@
 // src/components/clients/BankDetailsMain.jsx
 
-import React, { useState, useEffect } from "react"
-import { message, Space, Card } from "antd"
+import React, { useEffect, useState } from "react"
+import { Card, Row, Col, Input, Button, message } from "antd"
+import { Autocomplete, TextField } from "@mui/material"
 import axios from "@/api/axiosInstance"
+import fetchBankByBic from "@/utils/fetchBankByBic"
 import BankDetailsTable from "./BankDetailsTable"
+
+const currencyOptions = ["RUB", "USD", "EUR", "CNY"]
 
 export default function BankDetailsMain({ clientId }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  const [newBank, setNewBank] = useState({
+    bic: "",
+    bank_name: "",
+    correspondent_account: "",
+    account_number: "",
+    currency: "RUB"
+  })
 
   const fetchData = async () => {
     if (!clientId) return
@@ -19,7 +32,7 @@ export default function BankDetailsMain({ clientId }) {
       setData(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       console.error("Ошибка загрузки банковских реквизитов:", err)
-      message.error("Не удалось загрузить банковские реквизиты")
+      message.error("Не удалось загрузить реквизиты")
     } finally {
       setLoading(false)
     }
@@ -29,18 +42,106 @@ export default function BankDetailsMain({ clientId }) {
     fetchData()
   }, [clientId])
 
+  const handleBicChange = async (bic) => {
+    setNewBank((prev) => ({ ...prev, bic }))
+    if (bic.length === 9) {
+      try {
+        const bank = await fetchBankByBic(bic)
+        if (bank?.name) {
+          setNewBank((prev) => ({
+            ...prev,
+            bank_name: bank.name,
+            correspondent_account: bank.correspondent_account || ""
+          }))
+        }
+      } catch {
+        message.warning("Банк по БИК не найден")
+      }
+    }
+  }
+
+  const handleAdd = async () => {
+    if (!newBank.account_number?.trim()) {
+      message.warning("Введите расчётный счёт")
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const res = await axios.post("/client-bank-details", {
+        ...newBank,
+        client_id: clientId
+      })
+      setData(prev => [res.data, ...prev])
+      setNewBank({
+        bic: "",
+        bank_name: "",
+        correspondent_account: "",
+        account_number: "",
+        currency: "RUB"
+      })
+      message.success("Реквизиты добавлены")
+    } catch (err) {
+      console.error("Ошибка при добавлении:", err)
+      message.error("Не удалось добавить реквизиты")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   if (!clientId) return null
 
   return (
-    <Card title="Банковские реквизиты" size="small">
-      <Space direction="vertical" style={{ width: "100%" }}>
-        <BankDetailsTable
-          clientId={clientId}
-          data={data}
-          setData={setData}
-          loading={loading}
-        />
-      </Space>
+    <Card size="small">
+      <Row gutter={12} style={{ marginBottom: 16 }}>
+        <Col span={4}>
+          <Input
+            placeholder="BIC"
+            value={newBank.bic}
+            onChange={(e) => handleBicChange(e.target.value)}
+          />
+        </Col>
+        <Col span={5}>
+          <Input placeholder="Банк" value={newBank.bank_name} disabled />
+        </Col>
+        <Col span={5}>
+          <Input placeholder="Кор. счёт" value={newBank.correspondent_account} disabled />
+        </Col>
+        <Col span={3}>
+          <Autocomplete
+            disableClearable
+            size="small"
+            options={currencyOptions}
+            value={newBank.currency}
+            onChange={(_, val) => setNewBank(prev => ({ ...prev, currency: val }))}
+            PopperProps={{
+              disablePortal: true  // 🔧 предотвращает "телепортацию" выпадающего списка
+            }}
+            renderInput={(params) => <TextField {...params} label="Валюта" />}
+          />
+        </Col>
+        <Col span={5}>
+          <Input
+            placeholder="* Расч. счёт"
+            value={newBank.account_number}
+            onChange={(e) =>
+              setNewBank(prev => ({ ...prev, account_number: e.target.value }))
+            }
+          />
+        </Col>
+        <Col>
+          <Button type="primary" onClick={handleAdd} loading={submitting}>
+            Добавить
+          </Button>
+        </Col>
+      </Row>
+
+      <BankDetailsTable
+        clientId={clientId}
+        data={data}
+        setData={setData}
+        loading={loading}
+      />
     </Card>
   )
 }

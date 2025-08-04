@@ -9,12 +9,21 @@ import ShippingAddressesTable from "./ShippingAddressesTable"
 export default function ShippingAddressesMain({ clientId }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
+  const [resetCounter, setResetCounter] = useState(0)
+
   const [newAddress, setNewAddress] = useState({
     formatted_address: "",
     place_id: null,
     lat: null,
     lng: null,
-    postal_code: null,
+    postal_code: "",
+    country: "",
+    region: "",
+    city: "",
+    street: "",
+    house: "",
+    building: "",
+    entrance: "",
     comment: ""
   })
 
@@ -50,31 +59,49 @@ export default function ShippingAddressesMain({ clientId }) {
       lat: newAddress.lat || null,
       lng: newAddress.lng || null,
       postal_code: newAddress.postal_code || null,
+      country: newAddress.country || null,
+      region: newAddress.region || null,
+      city: newAddress.city || null,
+      street: newAddress.street || null,
+      house: newAddress.house || null,
+      building: newAddress.building || null,
+      entrance: newAddress.entrance || null,
       comment: newAddress.comment?.trim() || null
     }
 
     try {
-      await axios.post("/client-shipping-addresses", payload)
+      const res = await axios.post("/client-shipping-addresses", payload)
       message.success("Адрес добавлен")
+      setData(prev => [res.data, ...prev])
+
       setNewAddress({
         formatted_address: "",
         place_id: null,
         lat: null,
         lng: null,
-        postal_code: null,
+        postal_code: "",
+        country: "",
+        region: "",
+        city: "",
+        street: "",
+        house: "",
+        building: "",
+        entrance: "",
         comment: ""
       })
-      fetchData()
+      setResetCounter(prev => prev + 1)
     } catch (err) {
-      console.error("Ошибка при добавлении адреса доставки:", err)
+      console.error("Ошибка при добавлении адреса:", err)
       message.error("Не удалось добавить адрес")
     }
   }
 
   return (
-    <Card title="Адреса доставки" size="small">
+    <Card size="small">
       <Space direction="vertical" size="middle" style={{ width: "100%" }}>
         <PlaceAddressInput
+          debugId="shipping-form"
+          resetTrigger={resetCounter}
           value={{
             address_line: newAddress.formatted_address,
             lat: newAddress.lat,
@@ -89,19 +116,86 @@ export default function ShippingAddressesMain({ clientId }) {
               place_id: value.place_id,
               lat: value.lat,
               lng: value.lng,
-              postal_code: value.postal_code
+              postal_code: value.postal_code,
+              country: value.country,
+              region: value.region,
+              city: value.city,
+              street: value.street,
+              house: value.house,
+              building: value.building,
+              entrance: value.entrance
             }))
           }
         />
 
         <Row gutter={12}>
-          <Col flex="auto">
+          <Col span={6}>
+            <Input
+              placeholder="Страна"
+              value={newAddress.country}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, country: e.target.value }))}
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Регион"
+              value={newAddress.region}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, region: e.target.value }))}
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Город"
+              value={newAddress.city}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, city: e.target.value }))}
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Индекс"
+              value={newAddress.postal_code}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, postal_code: e.target.value }))}
+            />
+          </Col>
+        </Row>
+
+        <Row gutter={12} style={{ marginTop: 8 }}>
+          <Col span={12}>
+            <Input
+              placeholder="Улица"
+              value={newAddress.street}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, street: e.target.value }))}
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Дом"
+              value={newAddress.house}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, house: e.target.value }))}
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Строение"
+              value={newAddress.building}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, building: e.target.value }))}
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Подъезд"
+              value={newAddress.entrance}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, entrance: e.target.value }))}
+            />
+          </Col>
+        </Row>
+
+        <Row gutter={12} style={{ marginTop: 8 }}>
+          <Col span={18}>
             <Input
               placeholder="Комментарий"
               value={newAddress.comment}
-              onChange={(e) =>
-                setNewAddress((prev) => ({ ...prev, comment: e.target.value }))
-              }
+              onChange={(e) => setNewAddress(prev => ({ ...prev, comment: e.target.value }))}
             />
           </Col>
           <Col>
