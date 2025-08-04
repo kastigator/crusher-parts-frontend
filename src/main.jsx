@@ -6,6 +6,7 @@ import { AuthProvider } from './auth/AuthContext'
 import { TabsProvider } from './context/TabsContext'
 import { Toaster } from 'react-hot-toast'
 import loadYandexMaps from '@/utils/loadYandexMaps'
+import { App as AntdApp } from 'antd'
 
 import '@fontsource/inter/300.css'
 import '@fontsource/inter/400.css'
@@ -19,16 +20,16 @@ loadYandexMaps()
     const root = document.getElementById('root')
     if (root) {
       ReactDOM.createRoot(root).render(
-        <React.StrictMode>
-          <BrowserRouter>
-            <AuthProvider>
-              <TabsProvider>
+        <BrowserRouter>
+          <AuthProvider>
+            <TabsProvider>
+              <AntdApp>
                 <App />
                 <Toaster position="bottom-center" />
-              </TabsProvider>
-            </AuthProvider>
-          </BrowserRouter>
-        </React.StrictMode>
+              </AntdApp>
+            </TabsProvider>
+          </AuthProvider>
+        </BrowserRouter>
       )
     } else {
       console.error('❌ Не найден элемент root в index.html')

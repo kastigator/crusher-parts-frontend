@@ -9,9 +9,10 @@ const { Text } = Typography
 
 export default function BillingAddressesTable({ clientId, data = [], loading, reloadData }) {
   const [editingId, setEditingId] = useState(null)
-  const [editedRow, setEditedRow] = useState({})
+  const [editedRow, setEditedRow] = useState(null)
 
-  const isEditing = (record) => record.id === editingId
+  const isEditing = (record) =>
+    editingId !== null && record?.id !== undefined && record.id === editingId
 
   const handleSave = async (row) => {
     if (!clientId) return
@@ -26,6 +27,11 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
       lat: row.lat || null,
       lng: row.lng || null,
       postal_code: row.postal_code || null,
+      country: row.country || null,
+      region: row.region || null,
+      city: row.city || null,
+      street: row.street || null,
+      house: row.house || null,
       comment: row.comment?.trim() || null
     }
 
@@ -33,6 +39,7 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
       await axios.put(`/client-billing-addresses/${row.id}`, payload)
       message.success("Адрес обновлён")
       setEditingId(null)
+      setEditedRow(null)
       reloadData()
     } catch (err) {
       console.error("Ошибка при обновлении:", err)
@@ -55,11 +62,14 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
 
   const columns = [
     {
-      title: "Юридический адрес",
+      title: "Адрес",
       dataIndex: "formatted_address",
       render: (_, record) => {
-        return isEditing(record) ? (
+        const editing = isEditing(record)
+
+        return editing && editedRow ? (
           <PlaceAddressInput
+            debugId={`table-row-${record.id}`}
             value={{
               address_line: editedRow.formatted_address,
               lat: editedRow.lat,
@@ -74,14 +84,17 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
                 place_id: val.place_id,
                 lat: val.lat,
                 lng: val.lng,
-                postal_code: val.postal_code
+                postal_code: val.postal_code,
+                country: val.country,
+                region: val.region,
+                city: val.city,
+                street: val.street,
+                house: val.house
               }))
             }
           />
         ) : (
-          <Text type={!record.place_id ? "danger" : undefined}>
-            {record.formatted_address || <i>не указано</i>}
-          </Text>
+          <Text>{record.formatted_address || <i>не указано</i>}</Text>
         )
       }
     },
@@ -89,7 +102,7 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
       title: "Комментарий",
       dataIndex: "comment",
       render: (_, record) =>
-        isEditing(record) ? (
+        isEditing(record) && editedRow ? (
           <Input
             value={editedRow.comment}
             onChange={(e) =>
@@ -97,7 +110,10 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
             }
             onPressEnter={() => handleSave(editedRow)}
             onKeyDown={(e) => {
-              if (e.key === "Escape") setEditingId(null)
+              if (e.key === "Escape") {
+                setEditingId(null)
+                setEditedRow(null)
+              }
             }}
           />
         ) : (
@@ -109,12 +125,18 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
       dataIndex: "actions",
       width: 100,
       render: (_, record) =>
-        isEditing(record) ? (
+        isEditing(record) && editedRow ? (
           <Space>
             <Button type="link" onClick={() => handleSave(editedRow)}>
               Сохранить
             </Button>
-            <Button type="link" onClick={() => setEditingId(null)}>
+            <Button
+              type="link"
+              onClick={() => {
+                setEditingId(null)
+                setEditedRow(null)
+              }}
+            >
               Отмена
             </Button>
           </Space>
@@ -139,8 +161,10 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
       size="small"
       onRow={(record) => ({
         onDoubleClick: () => {
-          setEditedRow(record)
-          setEditingId(record.id)
+          if (record?.id !== undefined) {
+            setEditedRow({ ...record })
+            setEditingId(record.id)
+          }
         }
       })}
     />

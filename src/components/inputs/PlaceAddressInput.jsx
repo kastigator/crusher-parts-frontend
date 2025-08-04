@@ -1,102 +1,152 @@
-// src/components/inputs/PlaceAddressInput.jsx
 import React, { useEffect, useRef, useState } from 'react'
-import { Input, Button, Space, Spin, message } from 'antd'
-import loadYandexMaps from '@/utils/loadYandexMaps'
+import { Input, Button, Space, message } from 'antd'
+import Autocomplete from '@mui/material/Autocomplete'
+import TextField from '@mui/material/TextField'
+import Box from '@mui/material/Box'
 
-export default function PlaceAddressInput({ value = {}, onChange }) {
+export default function PlaceAddressInput({ value = {}, onChange, debugId = "?", resetTrigger }) {
   const mapRef = useRef(null)
-  const [ymaps, setYmaps] = useState(null)
-  const [query, setQuery] = useState('')
+  const mapInstance = useRef(null)
+  const [query, setQuery] = useState(value?.address_line || '')
   const [loading, setLoading] = useState(false)
-  const [mapInstance, setMapInstance] = useState(null)
+  const [options, setOptions] = useState([])
+  const [geoObjects, setGeoObjects] = useState(null)
+  const [open, setOpen] = useState(false)
 
+  // Сброс поля поиска и списка при изменении resetTrigger
   useEffect(() => {
-    loadYandexMaps()
-      .then((ymapsInstance) => {
-        setYmaps(ymapsInstance)
+    setQuery('')
+    setOptions([])
+    setOpen(false)
+  }, [resetTrigger])
 
-        const center = value?.lat && value?.lng ? [value.lat, value.lng] : [55.751574, 37.573856]
-        const map = new ymapsInstance.Map(mapRef.current, {
-          center,
-          zoom: 10,
-          controls: ['zoomControl'],
-        })
-        setMapInstance(map)
+  // Инициализация Яндекс.Карты и маркера
+  useEffect(() => {
+    if (mapInstance.current || !mapRef.current) return
 
-        if (value.lat && value.lng) {
-          const marker = new ymapsInstance.Placemark(center, {}, { draggable: false })
-          map.geoObjects.add(marker)
-        }
+    if (typeof window.ymaps === 'undefined') {
+      console.error('❌ Yandex Maps API не загружен')
+      message.error('Не удалось загрузить Яндекс.Карты')
+      return
+    }
 
-        // 👇 Добавим клик по карте
-        map.events.add('click', (e) => {
-          const coords = e.get('coords')
-          map.geoObjects.removeAll()
-          const marker = new ymapsInstance.Placemark(coords, {}, { draggable: false })
-          map.geoObjects.add(marker)
+    window.ymaps.ready(() => {
+      const ymaps = window.ymaps
+      const center = value?.lat && value?.lng ? [value.lat, value.lng] : [55.751574, 37.573856]
 
-          ymapsInstance.geocode(coords).then((res) => {
-            const first = res.geoObjects.get(0)
-            if (!first) {
-              message.warning('Не удалось определить адрес по координатам')
-              return
-            }
+      const map = new ymaps.Map(mapRef.current, {
+        center,
+        zoom: 10,
+        controls: ['zoomControl']
+      })
+      mapInstance.current = map
 
-            const addressLine = first.getAddressLine()
-            const placeId = first.properties.get('metaDataProperty.GeocoderMetaData.id')
-            const postalCode = first.properties.get('metaDataProperty.GeocoderMetaData.Address.postal_code') || ''
+      if (value.lat && value.lng) {
+        const marker = new ymaps.Placemark(center, {}, { draggable: false })
+        map.geoObjects.add(marker)
+      }
 
-            console.log('📍 Клик по карте', { coords, addressLine, placeId, postalCode })
+      map.events.add('click', (e) => {
+        const coords = e.get('coords')
+        map.geoObjects.removeAll()
+        const marker = new ymaps.Placemark(coords, {}, { draggable: false })
+        map.geoObjects.add(marker)
 
-            onChange?.({
-              address_line: addressLine,
-              place_id: placeId,
-              lat: coords[0],
-              lng: coords[1],
-              postal_code: postalCode,
-            })
+        ymaps.geocode(coords).then((res) => {
+          const first = res.geoObjects.get(0)
+          if (!first) return message.warning('Не удалось определить адрес по координатам')
+
+          const meta = first.properties.get('metaDataProperty.GeocoderMetaData')
+          const addressLine = first.getAddressLine()
+          const postalCode = meta.Address.postal_code || ''
+
+          // Собираем компоненты адреса из геокодера
+          const components = meta.Address.Components || []
+
+          const country = components.find(c => c.kind === 'country')?.name || ''
+          const province = components.find(c => c.kind === 'province')?.name || ''
+          const area = components.find(c => c.kind === 'area')?.name || ''
+          const locality = components.find(c => c.kind === 'locality')?.name || ''
+          const street = components.find(c => c.kind === 'street')?.name || ''
+          const house = components.find(c => c.kind === 'house')?.name || ''
+          const building = components.find(c => c.kind === 'building')?.name || ''
+          const entrance = components.find(c => c.kind === 'entrance')?.name || ''
+
+          setQuery(addressLine)
+          setOpen(false)
+          onChange?.({
+            address_line: addressLine,
+            place_id: meta.id,
+            lat: coords[0],
+            lng: coords[1],
+            postal_code: postalCode,
+            country,
+            region: province,
+            area,
+            city: locality,
+            street,
+            house,
+            building,
+            entrance
           })
         })
       })
-      .catch((err) => {
-        console.error(err)
-        message.error('Ошибка загрузки Яндекс.Карт')
-      })
-  }, [])
+    })
 
+    return () => {
+      if (mapInstance.current?.destroy) {
+        mapInstance.current.destroy()
+        mapInstance.current = null
+      }
+    }
+  }, [value?.lat, value?.lng])
+
+  // Формируем максимально полный юридический адрес из компонентов для выпадающего списка
   const handleSearch = () => {
-    if (!query || !ymaps || !mapInstance) return
+    const ymaps = window.ymaps
+    if (!query || !ymaps || !mapInstance.current) return
 
     setLoading(true)
     ymaps.geocode(query)
       .then((res) => {
-        const firstResult = res.geoObjects.get(0)
-        if (!firstResult) {
+        const geoList = res.geoObjects
+        const found = geoList.getLength()
+
+        if (found === 0) {
           message.warning('Адрес не найден')
           setLoading(false)
           return
         }
 
-        const coords = firstResult.geometry.getCoordinates()
-        const addressLine = firstResult.getAddressLine()
-        const placeId = firstResult.properties.get('metaDataProperty.GeocoderMetaData.id')
-        const postalCode = firstResult.properties.get('metaDataProperty.GeocoderMetaData.Address.postal_code') || ''
+        const choices = []
+        for (let i = 0; i < found; i++) {
+          const obj = geoList.get(i)
+          const meta = obj.properties.get('metaDataProperty.GeocoderMetaData')
+          const components = meta.Address.Components || []
 
-        console.log('🔍 Поиск по строке', { coords, addressLine, placeId, postalCode })
+          const parts = [
+            components.find(c => c.kind === 'postal_code')?.name,
+            components.find(c => c.kind === 'province')?.name,
+            components.find(c => c.kind === 'area')?.name,
+            components.find(c => c.kind === 'locality')?.name,
+            components.find(c => c.kind === 'street')?.name,
+            components.find(c => c.kind === 'house')?.name,
+            components.find(c => c.kind === 'building')?.name,
+            components.find(c => c.kind === 'entrance')?.name
+          ].filter(Boolean)
 
-        mapInstance.setCenter(coords, 14)
-        mapInstance.geoObjects.removeAll()
-        const marker = new ymaps.Placemark(coords, {}, { draggable: false })
-        mapInstance.geoObjects.add(marker)
+          const fullLabel = parts.join(', ')
 
-        onChange?.({
-          address_line: addressLine,
-          place_id: placeId,
-          lat: coords[0],
-          lng: coords[1],
-          postal_code: postalCode,
-        })
+          choices.push({
+            label: fullLabel || obj.getAddressLine(),
+            addressLine: obj.getAddressLine(),
+            index: i
+          })
+        }
 
+        setOptions(choices)
+        setGeoObjects(geoList)
+        setOpen(true)
         setLoading(false)
       })
       .catch((err) => {
@@ -106,8 +156,55 @@ export default function PlaceAddressInput({ value = {}, onChange }) {
       })
   }
 
+  // Обработка выбора из списка
+  const handleSelect = (_, option) => {
+    if (!option || !geoObjects) return
+    const selected = geoObjects.get(option.index)
+    if (!selected) return
+
+    const coords = selected.geometry.getCoordinates()
+    const meta = selected.properties.get('metaDataProperty.GeocoderMetaData')
+    const addressLine = option.addressLine || selected.getAddressLine()
+    const postalCode = meta.Address.postal_code || ''
+
+    const components = meta.Address.Components || []
+
+    const country = components.find(c => c.kind === 'country')?.name || ''
+    const province = components.find(c => c.kind === 'province')?.name || ''
+    const area = components.find(c => c.kind === 'area')?.name || ''
+    const locality = components.find(c => c.kind === 'locality')?.name || ''
+    const street = components.find(c => c.kind === 'street')?.name || ''
+    const house = components.find(c => c.kind === 'house')?.name || ''
+    const building = components.find(c => c.kind === 'building')?.name || ''
+    const entrance = components.find(c => c.kind === 'entrance')?.name || ''
+
+    mapInstance.current.setCenter(coords, 14)
+    mapInstance.current.geoObjects.removeAll()
+    const marker = new ymaps.Placemark(coords, {}, { draggable: false })
+    mapInstance.current.geoObjects.add(marker)
+
+    setQuery(addressLine)
+    setOpen(false)
+
+    onChange?.({
+      address_line: addressLine,
+      place_id: meta.id,
+      lat: coords[0],
+      lng: coords[1],
+      postal_code: postalCode,
+      country,
+      region: province,
+      area,
+      city: locality,
+      street,
+      house,
+      building,
+      entrance
+    })
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <Space.Compact style={{ width: '100%' }}>
         <Input
           placeholder="Введите адрес"
@@ -120,13 +217,26 @@ export default function PlaceAddressInput({ value = {}, onChange }) {
         </Button>
       </Space.Compact>
 
-      <div
+      {open && (
+        <Autocomplete
+          options={options}
+          open={open}
+          onClose={() => setOpen(false)}
+          onOpen={() => setOpen(true)}
+          getOptionLabel={(option) => option?.label || ''}
+          isOptionEqualToValue={(option, value) => option.index === value.index}
+          onChange={handleSelect}
+          renderInput={(params) => <TextField {...params} label="Выберите адрес" size="small" />}
+        />
+      )}
+
+      <Box
         ref={mapRef}
-        style={{
+        sx={{
           width: '100%',
-          height: 250,
-          borderRadius: 6,
-          border: '1px solid #ddd',
+          height: 300,
+          borderRadius: 1,
+          border: '1px solid #ccc'
         }}
       />
     </div>
