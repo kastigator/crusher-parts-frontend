@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react"
-import { Modal, Table, Typography, Spin, Empty } from "antd"
+import { Modal, Table, Spin, Empty } from "antd"
 import axios from "@/api/axiosInstance"
 import { logSchemas } from "@/utils/logSchemas"
 
@@ -13,8 +13,12 @@ export default function FullHistoryDialog({ entityId, entityType, onClose }) {
     const fetchLogs = async () => {
       setLoading(true)
       try {
-        const res = await axios.get(`/activity-logs/${entityType}/${entityId}`)
-        setLogs(res.data)
+        const res =
+          entityType === "clients-combined"
+            ? await axios.get(`/clients/${entityId}/logs`)
+            : await axios.get(`/activity-logs/${entityType}/${entityId}`)
+
+        setLogs(Array.isArray(res.data) ? res.data : [])
       } catch (err) {
         console.error("Ошибка при загрузке логов:", err)
         setLogs([])
@@ -26,18 +30,39 @@ export default function FullHistoryDialog({ entityId, entityType, onClose }) {
     fetchLogs()
   }, [entityId, entityType])
 
-  const schema = logSchemas[entityType] || { fields: {}, excludeFields: [] }
-  const { fields, excludeFields } = schema
+  // Собираем поля и исключения
+  let combinedFields = {}
+  let combinedExclude = []
+
+  if (entityType === "clients-combined") {
+    const related = [
+      "clients",
+      "client_billing_addresses",
+      "client_shipping_addresses",
+      "client_bank_details"
+    ]
+    related.forEach((key) => {
+      const schema = logSchemas[key]
+      if (schema) {
+        Object.assign(combinedFields, schema.fields)
+        combinedExclude.push(...(schema.excludeFields || []))
+      }
+    })
+  } else {
+    const schema = logSchemas[entityType] || { fields: {}, excludeFields: [] }
+    combinedFields = schema.fields
+    combinedExclude = schema.excludeFields
+  }
 
   const filteredLogs = logs.filter(
-    (log) => !excludeFields.includes(log.field_changed)
+    (log) => !combinedExclude.includes(log.field_changed)
   )
 
   const columns = [
     {
       title: "Поле",
       dataIndex: "field_changed",
-      render: (value) => fields[value] || value || "—",
+      render: (value) => combinedFields[value] || value || "—",
       width: 150
     },
     {
@@ -53,7 +78,7 @@ export default function FullHistoryDialog({ entityId, entityType, onClose }) {
     {
       title: "Пользователь",
       dataIndex: "user_name",
-      render: (value) => value || "—",
+      render: (value, row) => value || row.user_id || "—",
       width: 180
     },
     {
@@ -86,7 +111,7 @@ export default function FullHistoryDialog({ entityId, entityType, onClose }) {
           dataSource={filteredLogs}
           columns={columns}
           rowKey={(row) =>
-            `${row.field_changed}-${row.created_at}-${row.user_name}`
+            `${row.field_changed}-${row.created_at}-${row.user_name || row.user_id}`
           }
           size="small"
           pagination={false}

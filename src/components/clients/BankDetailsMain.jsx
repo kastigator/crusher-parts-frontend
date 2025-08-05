@@ -6,6 +6,7 @@ import { Autocomplete, TextField } from "@mui/material"
 import axios from "@/api/axiosInstance"
 import fetchBankByBic from "@/utils/fetchBankByBic"
 import BankDetailsTable from "./BankDetailsTable"
+import TableToolbar from "@/components/common/TableToolbar"
 
 const currencyOptions = ["RUB", "USD", "EUR", "CNY"]
 
@@ -93,7 +94,8 @@ export default function BankDetailsMain({ clientId }) {
 
   return (
     <Card size="small">
-      <Row gutter={12} style={{ marginBottom: 16 }}>
+      <TableToolbar placeholder="Поиск по БИК или банку" />
+      <Row gutter={12} style={{ marginBottom: 16, marginTop: 8 }}>
         <Col span={4}>
           <Input
             placeholder="BIC"
@@ -108,17 +110,24 @@ export default function BankDetailsMain({ clientId }) {
           <Input placeholder="Кор. счёт" value={newBank.correspondent_account} disabled />
         </Col>
         <Col span={3}>
-          <Autocomplete
-            disableClearable
-            size="small"
-            options={currencyOptions}
-            value={newBank.currency}
-            onChange={(_, val) => setNewBank(prev => ({ ...prev, currency: val }))}
-            PopperProps={{
-              disablePortal: true  // 🔧 предотвращает "телепортацию" выпадающего списка
-            }}
-            renderInput={(params) => <TextField {...params} label="Валюта" />}
-          />
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <Autocomplete
+              disableClearable
+              size="small"
+              options={currencyOptions}
+              value={newBank.currency}
+              onChange={(_, val) => setNewBank(prev => ({ ...prev, currency: val }))}
+              slotProps={{
+                popper: {
+                  disablePortal: true
+                }
+              }}
+              renderInput={(params) => (
+                <TextField {...params} label="Валюта" variant="standard" />
+              )}
+              sx={{ minWidth: 100 }}
+            />
+          </div>
         </Col>
         <Col span={5}>
           <Input

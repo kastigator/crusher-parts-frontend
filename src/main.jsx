@@ -1,3 +1,4 @@
+// src/main.jsx
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
@@ -7,6 +8,8 @@ import { TabsProvider } from './context/TabsContext'
 import { Toaster } from 'react-hot-toast'
 import loadYandexMaps from '@/utils/loadYandexMaps'
 import { App as AntdApp } from 'antd'
+import { ThemeProvider } from '@mui/material/styles'
+import muiTheme from '@/theme/theme' // ✅ твоя тема для MUI
 
 import '@fontsource/inter/300.css'
 import '@fontsource/inter/400.css'
@@ -23,10 +26,12 @@ loadYandexMaps()
         <BrowserRouter>
           <AuthProvider>
             <TabsProvider>
-              <AntdApp>
-                <App />
-                <Toaster position="bottom-center" />
-              </AntdApp>
+              <ThemeProvider theme={muiTheme}> {/* ✅ добавлено */}
+                <AntdApp>
+                  <App />
+                  <Toaster position="bottom-center" />
+                </AntdApp>
+              </ThemeProvider>
             </TabsProvider>
           </AuthProvider>
         </BrowserRouter>

@@ -9,7 +9,58 @@ export const logSchemas = {
       notes: "Примечания"
     },
     excludeFields: ["created_at", "updated_at", "id"]
-  }
+  },
 
-  // Добавляй сюда другие сущности (clients, suppliers и т.п.) по мере необходимости.
+  clients: {
+    fields: {
+      company_name: "Компания",
+      contact_person: "Контактное лицо",
+      phone: "Телефон",
+      email: "Email"
+    },
+    excludeFields: ["created_at", "updated_at", "id"]
+  },
+
+  client_billing_addresses: {
+    fields: {
+      country: "Страна",
+      region: "Регион",
+      city: "Город",
+      street: "Улица",
+      house: "Дом",
+      building: "Корпус",
+      entrance: "Подъезд",
+      postal_code: "Индекс",
+      comment: "Комментарий",
+      label: "Метка"
+    },
+    excludeFields: ["id", "client_id", "created_at", "updated_at"]
+  },
+
+  client_shipping_addresses: {
+    fields: {
+      country: "Страна",
+      region: "Регион",
+      city: "Город",
+      street: "Улица",
+      house: "Дом",
+      building: "Корпус",
+      entrance: "Подъезд",
+      postal_code: "Индекс",
+      comment: "Комментарий",
+      label: "Метка"
+    },
+    excludeFields: ["id", "client_id", "created_at", "updated_at"]
+  },
+
+  client_bank_details: {
+    fields: {
+      bic: "БИК",
+      bank_name: "Банк",
+      correspondent_account: "Кор. счёт",
+      account_number: "Расч. счёт",
+      currency: "Валюта"
+    },
+    excludeFields: ["id", "client_id", "created_at", "updated_at"]
+  }
 }

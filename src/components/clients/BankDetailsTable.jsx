@@ -1,20 +1,18 @@
-// src/components/clients/BankDetailsTable.jsx
-
 import React, { useState } from "react"
-import { Table, Input, Select, Space, Button, message } from "antd"
-import { DeleteOutlined, CloseOutlined } from "@ant-design/icons"
+import { Table, Input, Button, message } from "antd"
+import { CloseOutlined, DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import ValueDisplay from "@/components/common/ValueDisplay"
+import { Autocomplete, TextField } from "@mui/material"
 
-const { Option } = Select
 const currencyOptions = ["RUB", "USD", "EUR", "CNY"]
 
 export default function BankDetailsTable({ data, loading, clientId, setData }) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState({})
 
-  const isEditing = (record) => record.id === editingId
+  const isEditing = (record) => editingId === record.id
 
   const cancelEdit = () => {
     setEditingId(null)
@@ -23,9 +21,12 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
 
   const saveEdit = async (record) => {
     try {
-      await axios.put(`/client-bank-details/${record.id}`, editedRow)
+      const payload = {
+        ...editedRow
+      }
+      await axios.put(`/client-bank-details/${record.id}`, payload)
       setData((prev) =>
-        prev.map((r) => (r.id === record.id ? { ...r, ...editedRow } : r))
+        prev.map((r) => (r.id === record.id ? { ...r, ...payload } : r))
       )
       message.success("Изменения сохранены")
       cancelEdit()
@@ -50,7 +51,7 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
 
   const renderInput = (field, record) => (
     <Input
-      value={editedRow?.[field]}
+      value={editedRow?.[field] ?? ""}
       onChange={(e) =>
         setEditedRow((prev) => ({ ...prev, [field]: e.target.value }))
       }
@@ -64,21 +65,33 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
   )
 
   const renderCurrencySelect = (record) => (
-    <Select
-      value={editedRow.currency || record.currency}
-      onChange={(val) =>
-        setEditedRow((prev) => ({ ...prev, currency: val }))
-      }
-      size="small"
-      style={{ width: 80 }}
-    >
-      {currencyOptions.map((cur) => (
-        <Option key={cur} value={cur}>
-          {cur}
-        </Option>
-      ))}
-    </Select>
+    <div style={{ position: "relative", zIndex: 1050 }}>
+      <Autocomplete
+        options={currencyOptions}
+        value={editedRow.currency || record.currency || ""}
+        onChange={(_, val) =>
+          setEditedRow((prev) => ({ ...prev, currency: val }))
+        }
+        disableClearable
+        size="small"
+        autoHighlight
+        slotProps={{
+          popper: {
+            disablePortal: true
+          }
+        }}
+        renderInput={(params) => (
+          <TextField {...params} label="Валюта" variant="standard" />
+        )}
+        sx={{ minWidth: 100 }}
+      />
+    </div>
   )
+
+  const makeEditable = (record) => {
+    setEditingId(record.id)
+    setEditedRow(record)
+  }
 
   const columns = [
     {
@@ -88,12 +101,7 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
         isEditing(record)
           ? renderInput("bank_name", record)
           : <ValueDisplay value={record.bank_name} />,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          setEditingId(record.id)
-          setEditedRow(record)
-        }
-      })
+      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) })
     },
     {
       title: "BIC",
@@ -102,12 +110,7 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
         isEditing(record)
           ? renderInput("bic", record)
           : <ValueDisplay value={record.bic} />,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          setEditingId(record.id)
-          setEditedRow(record)
-        }
-      })
+      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) })
     },
     {
       title: "Кор. счёт",
@@ -116,12 +119,7 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
         isEditing(record)
           ? renderInput("correspondent_account", record)
           : <ValueDisplay value={record.correspondent_account} />,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          setEditingId(record.id)
-          setEditedRow(record)
-        }
-      })
+      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) })
     },
     {
       title: "Валюта",
@@ -130,12 +128,7 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
         isEditing(record)
           ? renderCurrencySelect(record)
           : <ValueDisplay value={record.currency} />,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          setEditingId(record.id)
-          setEditedRow(record)
-        }
-      })
+      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) })
     },
     {
       title: "Расч. счёт",
@@ -144,12 +137,7 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
         isEditing(record)
           ? renderInput("account_number", record)
           : <ValueDisplay value={record.account_number} />,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          setEditingId(record.id)
-          setEditedRow(record)
-        }
-      })
+      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) })
     },
     {
       title: "Действия",
@@ -174,13 +162,15 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
   ]
 
   return (
-    <Table
-      rowKey="id"
-      columns={columns}
-      dataSource={data}
-      loading={loading}
-      pagination={false}
-      size="small"
-    />
+    <div style={{ position: "relative" }}>
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={data}
+        loading={loading}
+        pagination={false}
+        size="small"
+      />
+    </div>
   )
 }
