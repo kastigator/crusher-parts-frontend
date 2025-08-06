@@ -151,31 +151,46 @@ export default function ClientsTable({
     }
   ]
 
+  // ✅ Исправлено смещение таблиц во вкладках
   const expandedRowRender = (client) => {
     if (!client?.id) return null
 
     return (
-      <Tabs
-        defaultActiveKey="billing"
-        destroyInactiveTabPane={true}
-        items={[
-          {
-            key: "billing",
-            label: "Юридические адреса",
-            children: <BillingAddressesMain clientId={client.id} />
-          },
-          {
-            key: "shipping",
-            label: "Адреса доставки",
-            children: <ShippingAddressesMain clientId={client.id} />
-          },
-          {
-            key: "bank",
-            label: "Банковские реквизиты",
-            children: <BankDetailsMain clientId={client.id} />
-          }
-        ]}
-      />
+      <div style={{ paddingInline: 0 }}>
+        <Tabs
+          defaultActiveKey="billing"
+          destroyInactiveTabPane={true}
+          items={[
+            {
+              key: "billing",
+              label: "Юридические адреса",
+              children: (
+                <div style={{ paddingInline: 0 }}>
+                  <BillingAddressesMain clientId={client.id} />
+                </div>
+              )
+            },
+            {
+              key: "shipping",
+              label: "Адреса доставки",
+              children: (
+                <div style={{ paddingInline: 0 }}>
+                  <ShippingAddressesMain clientId={client.id} />
+                </div>
+              )
+            },
+            {
+              key: "bank",
+              label: "Банковские реквизиты",
+              children: (
+                <div style={{ paddingInline: 0 }}>
+                  <BankDetailsMain clientId={client.id} />
+                </div>
+              )
+            }
+          ]}
+        />
+      </div>
     )
   }
 

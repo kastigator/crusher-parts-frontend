@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react"
-import { Card, Space, Button, message, Input, Row, Col } from "antd"
+import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import BillingAddressesTable from "./BillingAddressesTable"
@@ -95,8 +95,8 @@ export default function BillingAddressesMain({ clientId }) {
   }
 
   return (
-    <Card size="small">
-      <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+    <>
+      <Card size="small">
         <PlaceAddressInput
           debugId="main-form"
           resetTrigger={resetCounter}
@@ -126,8 +126,7 @@ export default function BillingAddressesMain({ clientId }) {
           }
         />
 
-        {/* Ручное уточнение полей */}
-        <Row gutter={12}>
+        <Row gutter={12} style={{ marginTop: 8 }}>
           <Col span={6}>
             <Input
               placeholder="Страна"
@@ -208,14 +207,16 @@ export default function BillingAddressesMain({ clientId }) {
             </Button>
           </Col>
         </Row>
+      </Card>
 
+      <div style={{ marginTop: 8 }}>
         <BillingAddressesTable
           data={data}
           loading={loading}
           clientId={clientId}
           reloadData={fetchData}
         />
-      </Space>
-    </Card>
+      </div>
+    </>
   )
 }

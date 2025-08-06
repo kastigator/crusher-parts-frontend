@@ -1,5 +1,3 @@
-// src/components/clients/ShippingAddressesTable.jsx
-
 import React, { useState } from "react"
 import { Table, Input, Button, Space, Typography, message } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
@@ -177,7 +175,7 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
       dataSource={data}
       loading={loading}
       pagination={false}
-      size="small"
+      style={{ width: "100%" }} // ✅ добавлено!
       onRow={(record) => ({
         onDoubleClick: () => {
           if (record?.id !== undefined) {
