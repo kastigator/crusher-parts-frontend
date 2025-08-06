@@ -4,6 +4,7 @@ import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
+import ValueDisplay from "@/components/common/ValueDisplay"
 
 const { Text } = Typography
 
@@ -69,50 +70,50 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
       render: (_, record) => {
         const editing = isEditing(record)
 
-        return editing && editedRow ? (
-          <PlaceAddressInput
-            debugId={`table-row-${record.id}`}
-            value={{
-              address_line: editedRow.formatted_address,
-              lat: editedRow.lat,
-              lng: editedRow.lng,
-              place_id: editedRow.place_id,
-              postal_code: editedRow.postal_code
-            }}
-            onChange={(val) =>
-              setEditedRow((prev) => ({
-                ...prev,
-                formatted_address: val.address_line,
-                place_id: val.place_id,
-                lat: val.lat,
-                lng: val.lng,
-                postal_code: val.postal_code,
-                country: val.country,
-                region: val.region,
-                city: val.city,
-                street: val.street,
-                house: val.house,
-                building: val.building,
-                entrance: val.entrance
-              }))
-            }
-          />
-        ) : (
-          <Text>
-            {[
-              record.postal_code,
-              record.country,
-              record.region,
-              record.city,
-              record.street,
-              record.house,
-              record.building,
-              record.entrance
-            ]
-              .filter(Boolean)
-              .join(", ") || <i>не указано</i>}
-          </Text>
-        )
+        if (editing && editedRow) {
+          return (
+            <PlaceAddressInput
+              debugId={`table-row-${record.id}`}
+              value={{
+                address_line: editedRow.formatted_address,
+                lat: editedRow.lat,
+                lng: editedRow.lng,
+                place_id: editedRow.place_id,
+                postal_code: editedRow.postal_code
+              }}
+              onChange={(val) =>
+                setEditedRow((prev) => ({
+                  ...prev,
+                  formatted_address: val.address_line,
+                  place_id: val.place_id,
+                  lat: val.lat,
+                  lng: val.lng,
+                  postal_code: val.postal_code,
+                  country: val.country,
+                  region: val.region,
+                  city: val.city,
+                  street: val.street,
+                  house: val.house,
+                  building: val.building,
+                  entrance: val.entrance
+                }))
+              }
+            />
+          )
+        }
+
+        const parts = [
+          record.postal_code,
+          record.country,
+          record.region,
+          record.city,
+          record.street,
+          record.house,
+          record.building ? `стр. ${record.building}` : null,
+          record.entrance ? `подъезд ${record.entrance}` : null
+        ].filter(Boolean)
+
+        return <Text>{parts.length > 0 ? parts.join(", ") : <i>не указано</i>}</Text>
       }
     },
     {
@@ -134,7 +135,7 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
             }}
           />
         ) : (
-          record.comment
+          <ValueDisplay value={record.comment} />
         )
     },
     {
@@ -169,21 +170,23 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
   ]
 
   return (
-    <Table
-      rowKey="id"
-      columns={columns}
-      dataSource={data}
-      loading={loading}
-      pagination={false}
-      size="small"
-      onRow={(record) => ({
-        onDoubleClick: () => {
-          if (record?.id !== undefined) {
-            setEditedRow({ ...record })
-            setEditingId(record.id)
+    <div style={{ position: "relative", marginTop: 8, paddingBottom: 12, minHeight: 120 }}>
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={data}
+        loading={loading}
+        pagination={false}
+        size="small"
+        onRow={(record) => ({
+          onDoubleClick: () => {
+            if (record?.id !== undefined) {
+              setEditedRow({ ...record })
+              setEditingId(record.id)
+            }
           }
-        }
-      })}
-    />
+        })}
+      />
+    </div>
   )
 }

@@ -1,7 +1,5 @@
-// src/components/clients/BankDetailsMain.jsx
-
 import React, { useEffect, useState } from "react"
-import { Card, Row, Col, Input, Button, message } from "antd"
+import { Row, Col, Input, Button, message } from "antd"
 import { Autocomplete, TextField } from "@mui/material"
 import axios from "@/api/axiosInstance"
 import fetchBankByBic from "@/utils/fetchBankByBic"
@@ -93,9 +91,10 @@ export default function BankDetailsMain({ clientId }) {
   if (!clientId) return null
 
   return (
-    <Card size="small">
+    <>
       <TableToolbar placeholder="Поиск по БИК или банку" />
-      <Row gutter={12} style={{ marginBottom: 16, marginTop: 8 }}>
+
+      <Row gutter={12} style={{ marginBottom: 8, marginTop: 8 }}>
         <Col span={4}>
           <Input
             placeholder="BIC"
@@ -151,6 +150,6 @@ export default function BankDetailsMain({ clientId }) {
         setData={setData}
         loading={loading}
       />
-    </Card>
+    </>
   )
 }

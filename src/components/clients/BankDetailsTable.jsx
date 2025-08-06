@@ -21,9 +21,7 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
 
   const saveEdit = async (record) => {
     try {
-      const payload = {
-        ...editedRow
-      }
+      const payload = { ...editedRow }
       await axios.put(`/client-bank-details/${record.id}`, payload)
       setData((prev) =>
         prev.map((r) => (r.id === record.id ? { ...r, ...payload } : r))
@@ -65,27 +63,30 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
   )
 
   const renderCurrencySelect = (record) => (
-    <div style={{ position: "relative", zIndex: 1050 }}>
-      <Autocomplete
-        options={currencyOptions}
-        value={editedRow.currency || record.currency || ""}
-        onChange={(_, val) =>
-          setEditedRow((prev) => ({ ...prev, currency: val }))
+    <Autocomplete
+      options={currencyOptions}
+      value={editedRow.currency || record.currency || ""}
+      onChange={(_, val) =>
+        setEditedRow((prev) => ({ ...prev, currency: val }))
+      }
+      disableClearable
+      size="small"
+      autoHighlight
+      slotProps={{
+        popper: {
+          disablePortal: true
         }
-        disableClearable
-        size="small"
-        autoHighlight
-        slotProps={{
-          popper: {
-            disablePortal: true
-          }
-        }}
-        renderInput={(params) => (
-          <TextField {...params} label="Валюта" variant="standard" />
-        )}
-        sx={{ minWidth: 100 }}
-      />
-    </div>
+      }}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          label="Валюта"
+          variant="standard"
+          InputProps={{ ...params.InputProps, style: { padding: 0 } }}
+        />
+      )}
+      sx={{ minWidth: 100 }}
+    />
   )
 
   const makeEditable = (record) => {
@@ -162,15 +163,12 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
   ]
 
   return (
-    <div style={{ position: "relative" }}>
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={data}
-        loading={loading}
-        pagination={false}
-        size="small"
-      />
-    </div>
+    <Table
+      rowKey="id"
+      columns={columns}
+      dataSource={data}
+      loading={loading}
+      pagination={false}
+    />
   )
 }
