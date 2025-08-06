@@ -1,22 +1,34 @@
+// src/components/common/FullHistoryDialog.jsx
+
 import React, { useEffect, useState } from "react"
 import { Modal, Table, Spin, Empty } from "antd"
 import axios from "@/api/axiosInstance"
 import { logSchemas } from "@/utils/logSchemas"
 
-export default function FullHistoryDialog({ entityId, entityType, onClose }) {
+export default function FullHistoryDialog({
+  entityId,
+  entityType,
+  onClose,
+  onlyDeleted = false
+}) {
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!entityId || !entityType) return
+    if (!entityType || (entityId === null && !onlyDeleted)) return
 
     const fetchLogs = async () => {
       setLoading(true)
       try {
-        const res =
-          entityType === "clients-combined"
-            ? await axios.get(`/clients/${entityId}/logs`)
-            : await axios.get(`/activity-logs/${entityType}/${entityId}`)
+        let res
+
+        if (onlyDeleted) {
+          res = await axios.get("/clients/logs/deleted")
+        } else if (entityType === "clients-combined") {
+          res = await axios.get(`/clients/${entityId}/logs`)
+        } else {
+          res = await axios.get(`/activity-logs/${entityType}/${entityId}`)
+        }
 
         setLogs(Array.isArray(res.data) ? res.data : [])
       } catch (err) {
@@ -28,7 +40,7 @@ export default function FullHistoryDialog({ entityId, entityType, onClose }) {
     }
 
     fetchLogs()
-  }, [entityId, entityType])
+  }, [entityId, entityType, onlyDeleted])
 
   // Собираем поля и исключения
   let combinedFields = {}
@@ -54,16 +66,32 @@ export default function FullHistoryDialog({ entityId, entityType, onClose }) {
     combinedExclude = schema.excludeFields
   }
 
-  const filteredLogs = logs.filter(
-    (log) => !combinedExclude.includes(log.field_changed)
+  const baseLogs = onlyDeleted
+    ? logs.filter((log) => log.action === "delete")
+    : logs
+
+  const filteredLogs = baseLogs.filter(
+    (log) =>
+      log.action === "delete" || !combinedExclude.includes(log.field_changed)
   )
 
   const columns = [
     {
       title: "Поле",
       dataIndex: "field_changed",
-      render: (value) => combinedFields[value] || value || "—",
-      width: 150
+      render: (value, record) =>
+        value
+          ? combinedFields[value] || value
+          : record.action === "delete"
+          ? "Удалено"
+          : record.comment || "—",
+      width: 160
+    },
+    {
+      title: "Комментарий",
+      dataIndex: "comment",
+      render: (value) => value || "—",
+      width: 200
     },
     {
       title: "Было",
@@ -92,11 +120,11 @@ export default function FullHistoryDialog({ entityId, entityType, onClose }) {
 
   return (
     <Modal
-      open={!!entityId}
+      open={onlyDeleted || !!entityId}
       onCancel={onClose}
       onOk={onClose}
-      width={900}
-      title="История изменений"
+      width={1000}
+      title={onlyDeleted ? "Удалённые записи" : "История изменений"}
       okText="Закрыть"
       cancelButtonProps={{ style: { display: "none" } }}
     >
@@ -105,13 +133,18 @@ export default function FullHistoryDialog({ entityId, entityType, onClose }) {
           <Spin />
         </div>
       ) : filteredLogs.length === 0 ? (
-        <Empty description="Изменений не найдено" style={{ padding: "2rem" }} />
+        <Empty
+          description={
+            onlyDeleted ? "Удалённых записей не найдено" : "Изменений не найдено"
+          }
+          style={{ padding: "2rem" }}
+        />
       ) : (
         <Table
           dataSource={filteredLogs}
           columns={columns}
-          rowKey={(row) =>
-            `${row.field_changed}-${row.created_at}-${row.user_name || row.user_id}`
+          rowKey={(row, index) =>
+            `${row.field_changed || "deleted"}-${row.created_at}-${row.user_name || row.user_id}-${index}`
           }
           size="small"
           pagination={false}

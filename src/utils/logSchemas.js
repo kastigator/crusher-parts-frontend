@@ -23,6 +23,8 @@ export const logSchemas = {
 
   client_billing_addresses: {
     fields: {
+      formatted_address: "Адрес",
+      label: "Метка",
       country: "Страна",
       region: "Регион",
       city: "Город",
@@ -31,14 +33,15 @@ export const logSchemas = {
       building: "Корпус",
       entrance: "Подъезд",
       postal_code: "Индекс",
-      comment: "Комментарий",
-      label: "Метка"
+      comment: "Комментарий"
     },
     excludeFields: ["id", "client_id", "created_at", "updated_at"]
   },
 
   client_shipping_addresses: {
     fields: {
+      formatted_address: "Адрес",
+      label: "Метка",
       country: "Страна",
       region: "Регион",
       city: "Город",
@@ -47,16 +50,15 @@ export const logSchemas = {
       building: "Корпус",
       entrance: "Подъезд",
       postal_code: "Индекс",
-      comment: "Комментарий",
-      label: "Метка"
+      comment: "Комментарий"
     },
     excludeFields: ["id", "client_id", "created_at", "updated_at"]
   },
 
   client_bank_details: {
     fields: {
-      bic: "БИК",
       bank_name: "Банк",
+      bic: "БИК",
       correspondent_account: "Кор. счёт",
       account_number: "Расч. счёт",
       currency: "Валюта"

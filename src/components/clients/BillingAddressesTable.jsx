@@ -5,6 +5,8 @@ import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ValueDisplay from "@/components/common/ValueDisplay"
+import logActivity from "@/utils/logActivity"
+import logFieldDiffs from "@/utils/logFieldDiffs"
 
 const { Text } = Typography
 
@@ -40,6 +42,14 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
 
     try {
       await axios.put(`/client-billing-addresses/${row.id}`, payload)
+
+      await logFieldDiffs({
+        oldData: row,
+        newData: payload,
+        entity_type: "client_billing_addresses",
+        entity_id: row.id
+      })
+
       message.success("Адрес обновлён")
       setEditingId(null)
       setEditedRow(null)
@@ -55,6 +65,7 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
     if (!ok) return
     try {
       await axios.delete(`/client-billing-addresses/${id}`)
+      await logActivity("delete", "client_billing_addresses", id)
       message.success("Адрес удалён")
       reloadData()
     } catch (err) {
@@ -170,23 +181,21 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
   ]
 
   return (
-    <div style={{ position: "relative", marginTop: 8, paddingBottom: 12, minHeight: 120 }}>
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={data}
-        loading={loading}
-        pagination={false}
-        size="small"
-        onRow={(record) => ({
-          onDoubleClick: () => {
-            if (record?.id !== undefined) {
-              setEditedRow({ ...record })
-              setEditingId(record.id)
-            }
+    <Table
+      rowKey="id"
+      columns={columns}
+      dataSource={data}
+      loading={loading}
+      pagination={false}
+      size="small"
+      onRow={(record) => ({
+        onDoubleClick: () => {
+          if (record?.id !== undefined) {
+            setEditedRow({ ...record })
+            setEditingId(record.id)
           }
-        })}
-      />
-    </div>
+        }
+      })}
+    />
   )
 }

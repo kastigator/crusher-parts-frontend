@@ -3,11 +3,14 @@ import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import BillingAddressesTable from "./BillingAddressesTable"
+import TableToolbar from "@/components/common/TableToolbar"
 
 export default function BillingAddressesMain({ clientId }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [resetCounter, setResetCounter] = useState(0)
+  // Если нужен фильтр
+  const [search, setSearch] = useState("")
 
   const [newAddress, setNewAddress] = useState({
     formatted_address: "",
@@ -93,6 +96,13 @@ export default function BillingAddressesMain({ clientId }) {
       message.error("Не удалось добавить адрес")
     }
   }
+
+  // Простейшая фильтрация по formatted_address (можно усложнить)
+  const filteredData = search
+    ? data.filter(addr =>
+        addr.formatted_address?.toLowerCase().includes(search.toLowerCase())
+      )
+    : data
 
   return (
     <>
@@ -209,14 +219,18 @@ export default function BillingAddressesMain({ clientId }) {
         </Row>
       </Card>
 
-      <div style={{ marginTop: 8 }}>
-        <BillingAddressesTable
-          data={data}
-          loading={loading}
-          clientId={clientId}
-          reloadData={fetchData}
-        />
-      </div>
+      {/* Тулбар без кнопки обновить */}
+      <TableToolbar
+        filterValue={search}
+        onFilterChange={setSearch}
+      />
+
+      <BillingAddressesTable
+        data={filteredData}
+        loading={loading}
+        clientId={clientId}
+        reloadData={fetchData}
+      />
     </>
   )
 }

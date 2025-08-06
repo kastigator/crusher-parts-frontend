@@ -5,6 +5,8 @@ import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import { Autocomplete, TextField } from "@mui/material"
+import logActivity from "@/utils/logActivity"
+import logFieldDiffs from "@/utils/logFieldDiffs"
 
 const currencyOptions = ["RUB", "USD", "EUR", "CNY"]
 
@@ -22,7 +24,16 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
   const saveEdit = async (record) => {
     try {
       const payload = { ...editedRow }
+
       await axios.put(`/client-bank-details/${record.id}`, payload)
+
+      await logFieldDiffs({
+        oldData: record,
+        newData: payload,
+        entity_type: "client_bank_details",
+        entity_id: record.id
+      })
+
       setData((prev) =>
         prev.map((r) => (r.id === record.id ? { ...r, ...payload } : r))
       )
@@ -39,6 +50,9 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
     if (!ok) return
     try {
       await axios.delete(`/client-bank-details/${id}`)
+
+      await logActivity("delete", "client_bank_details", id)
+
       setData((prev) => prev.filter((r) => r.id !== id))
       message.success("Реквизиты удалены")
     } catch (err) {

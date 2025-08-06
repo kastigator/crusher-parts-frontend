@@ -5,6 +5,8 @@ import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ValueDisplay from "@/components/common/ValueDisplay"
+import logActivity from "@/utils/logActivity"
+import logFieldDiffs from "@/utils/logFieldDiffs"
 
 const { Text } = Typography
 
@@ -39,6 +41,14 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
 
     try {
       await axios.put(`/client-shipping-addresses/${row.id}`, payload)
+
+      await logFieldDiffs({
+        oldData: row,
+        newData: payload,
+        entity_type: "client_shipping_addresses",
+        entity_id: row.id
+      })
+
       message.success("Адрес обновлён")
       setEditingId(null)
       setEditedRow(null)
@@ -54,6 +64,7 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
     if (!ok) return
     try {
       await axios.delete(`/client-shipping-addresses/${id}`)
+      await logActivity("delete", "client_shipping_addresses", id)
       message.success("Адрес удалён")
       reloadData()
     } catch (err) {
@@ -68,7 +79,6 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
       dataIndex: "formatted_address",
       render: (_, record) => {
         const editing = isEditing(record)
-
         if (editing && editedRow) {
           return (
             <PlaceAddressInput
@@ -175,7 +185,8 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
       dataSource={data}
       loading={loading}
       pagination={false}
-      style={{ width: "100%" }} // ✅ добавлено!
+      size="small"
+      style={{ width: "100%" }}
       onRow={(record) => ({
         onDoubleClick: () => {
           if (record?.id !== undefined) {

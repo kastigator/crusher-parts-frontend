@@ -5,12 +5,15 @@ import { Card, Space, Form, Input, Button, message } from "antd"
 import axios from "@/api/axiosInstance"
 import ClientsTable from "./ClientsTable"
 import TableToolbar from "@/components/common/TableToolbar"
+import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 
 export default function ClientsMain() {
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
   const [expandedClientId, setExpandedClientId] = useState(null)
+  const [showDeletedModal, setShowDeletedModal] = useState(false)
+
   const [newClient, setNewClient] = useState({
     company_name: "",
     contact_person: "",
@@ -89,6 +92,11 @@ export default function ClientsMain() {
           filterValue={search}
           onFilterChange={setSearch}
           searchPlaceholder="Поиск по названию или контакту"
+          actionsRight={
+            <Button onClick={() => setShowDeletedModal(true)}>
+              Удалённые записи
+            </Button>
+          }
         />
 
         <Form layout="inline" style={{ marginBottom: 16 }} onFinish={handleAdd}>
@@ -147,6 +155,15 @@ export default function ClientsMain() {
           onReload={fetchClients}
         />
       </Card>
+
+      {showDeletedModal && (
+        <FullHistoryDialog
+          entityType="clients-combined"
+          entityId={null}
+          onlyDeleted={true}
+          onClose={() => setShowDeletedModal(false)}
+        />
+      )}
     </Space>
   )
 }

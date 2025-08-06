@@ -147,14 +147,13 @@ export default function ShippingAddressesMain({ clientId }) {
         <Col><Button type="primary" onClick={handleAdd}>Добавить адрес</Button></Col>
       </Row>
 
-      <div style={{ marginTop: 16 }}>
-        <ShippingAddressesTable
-          data={data}
-          loading={loading}
-          clientId={clientId}
-          reloadData={fetchData}
-        />
-      </div>
+      {/* Критично! Только Table, никаких div! */}
+      <ShippingAddressesTable
+        data={data}
+        loading={loading}
+        clientId={clientId}
+        reloadData={fetchData}
+      />
     </>
   )
 }
