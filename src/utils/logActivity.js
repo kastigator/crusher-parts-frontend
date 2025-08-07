@@ -1,3 +1,4 @@
+// src/utils/logActivity.js
 import axios from "@/api/axiosInstance"
 
 /**
@@ -17,9 +18,18 @@ export default async function logActivity(
   old_value = null,
   meta = {}
 ) {
+  if (!action || !entity_type || !entity_id) {
+    console.warn("⛔ logActivity: отсутствуют обязательные поля", {
+      action,
+      entity_type,
+      entity_id
+    })
+    return
+  }
+
   try {
     await axios.post("/activity-logs", {
-      action,
+      action: action.trim().toLowerCase(), // нормализуем
       entity_type,
       entity_id,
       field_changed,
@@ -28,6 +38,6 @@ export default async function logActivity(
       comment: meta?.comment ?? null
     })
   } catch (err) {
-    console.error("Ошибка логирования (frontend):", err)
+    console.error("❌ Ошибка логирования (frontend):", err?.message || err)
   }
 }

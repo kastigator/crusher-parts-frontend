@@ -1,5 +1,3 @@
-// src/components/common/FullHistoryDialog.jsx
-
 import React, { useEffect, useState } from "react"
 import { Modal, Table, Spin, Empty } from "antd"
 import axios from "@/api/axiosInstance"
@@ -21,7 +19,6 @@ export default function FullHistoryDialog({
       setLoading(true)
       try {
         let res
-
         if (onlyDeleted) {
           res = await axios.get("/clients/logs/deleted")
         } else if (entityType === "clients-combined") {
@@ -42,7 +39,7 @@ export default function FullHistoryDialog({
     fetchLogs()
   }, [entityId, entityType, onlyDeleted])
 
-  // Собираем поля и исключения
+  // Собираем схему
   let combinedFields = {}
   let combinedExclude = []
 
@@ -66,14 +63,16 @@ export default function FullHistoryDialog({
     combinedExclude = schema.excludeFields
   }
 
+  // ✅ Главное исправление: фильтрация по exclude, без лишней жёсткости
   const baseLogs = onlyDeleted
     ? logs.filter((log) => log.action === "delete")
     : logs
 
-  const filteredLogs = baseLogs.filter(
-    (log) =>
-      log.action === "delete" || !combinedExclude.includes(log.field_changed)
-  )
+  const filteredLogs = baseLogs.filter((log) => {
+    if (!log) return false
+    if (log.action === "delete" || log.action === "create") return true
+    return !combinedExclude.includes(log.field_changed)
+  })
 
   const columns = [
     {
@@ -84,6 +83,8 @@ export default function FullHistoryDialog({
           ? combinedFields[value] || value
           : record.action === "delete"
           ? "Удалено"
+          : record.action === "create"
+          ? "Создание"
           : record.comment || "—",
       width: 160
     },
@@ -144,7 +145,7 @@ export default function FullHistoryDialog({
           dataSource={filteredLogs}
           columns={columns}
           rowKey={(row, index) =>
-            `${row.field_changed || "deleted"}-${row.created_at}-${row.user_name || row.user_id}-${index}`
+            `${row.field_changed || "action"}-${row.created_at}-${row.user_name || row.user_id}-${index}`
           }
           size="small"
           pagination={false}

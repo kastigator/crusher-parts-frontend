@@ -1,5 +1,5 @@
 import React, { useState } from "react"
-import { Table, Input, Button, Space, Typography, message } from "antd"
+import { Table, Input, Button, Space, Typography, message, Row, Col, Divider } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
@@ -79,35 +79,134 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
       dataIndex: "formatted_address",
       render: (_, record) => {
         const editing = isEditing(record)
+
         if (editing && editedRow) {
           return (
-            <PlaceAddressInput
-              debugId={`shipping-row-${record.id}`}
-              value={{
-                address_line: editedRow.formatted_address,
-                lat: editedRow.lat,
-                lng: editedRow.lng,
-                place_id: editedRow.place_id,
-                postal_code: editedRow.postal_code
-              }}
-              onChange={(val) =>
-                setEditedRow((prev) => ({
-                  ...prev,
-                  formatted_address: val.address_line,
-                  place_id: val.place_id,
-                  lat: val.lat,
-                  lng: val.lng,
-                  postal_code: val.postal_code,
-                  country: val.country,
-                  region: val.region,
-                  city: val.city,
-                  street: val.street,
-                  house: val.house,
-                  building: val.building,
-                  entrance: val.entrance
-                }))
-              }
-            />
+            <>
+              <PlaceAddressInput
+                debugId={`shipping-row-${record.id}`}
+                value={{
+                  address_line: editedRow.formatted_address,
+                  lat: editedRow.lat,
+                  lng: editedRow.lng,
+                  place_id: editedRow.place_id,
+                  postal_code: editedRow.postal_code
+                }}
+                onChange={(val) =>
+                  setEditedRow((prev) => ({
+                    ...prev,
+                    formatted_address: val.address_line,
+                    place_id: val.place_id,
+                    lat: val.lat,
+                    lng: val.lng,
+                    postal_code: val.postal_code,
+                    country: val.country,
+                    region: val.region,
+                    city: val.city,
+                    street: val.street,
+                    house: val.house,
+                    building: val.building,
+                    entrance: val.entrance
+                  }))
+                }
+              />
+
+              <Divider style={{ margin: "8px 0" }} />
+
+              <Row gutter={8}>
+                <Col span={6}>
+                  <Input
+                    placeholder="Страна"
+                    value={editedRow.country}
+                    onChange={(e) =>
+                      setEditedRow((prev) => ({ ...prev, country: e.target.value }))
+                    }
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Регион"
+                    value={editedRow.region}
+                    onChange={(e) =>
+                      setEditedRow((prev) => ({ ...prev, region: e.target.value }))
+                    }
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Город"
+                    value={editedRow.city}
+                    onChange={(e) =>
+                      setEditedRow((prev) => ({ ...prev, city: e.target.value }))
+                    }
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Индекс"
+                    value={editedRow.postal_code}
+                    onChange={(e) =>
+                      setEditedRow((prev) => ({ ...prev, postal_code: e.target.value }))
+                    }
+                  />
+                </Col>
+              </Row>
+
+              <Row gutter={8} style={{ marginTop: 8 }}>
+                <Col span={8}>
+                  <Input
+                    placeholder="Улица"
+                    value={editedRow.street}
+                    onChange={(e) =>
+                      setEditedRow((prev) => ({ ...prev, street: e.target.value }))
+                    }
+                  />
+                </Col>
+                <Col span={4}>
+                  <Input
+                    placeholder="Дом"
+                    value={editedRow.house}
+                    onChange={(e) =>
+                      setEditedRow((prev) => ({ ...prev, house: e.target.value }))
+                    }
+                  />
+                </Col>
+                <Col span={4}>
+                  <Input
+                    placeholder="Строение"
+                    value={editedRow.building}
+                    onChange={(e) =>
+                      setEditedRow((prev) => ({ ...prev, building: e.target.value }))
+                    }
+                  />
+                </Col>
+                <Col span={4}>
+                  <Input
+                    placeholder="Подъезд"
+                    value={editedRow.entrance}
+                    onChange={(e) =>
+                      setEditedRow((prev) => ({ ...prev, entrance: e.target.value }))
+                    }
+                  />
+                </Col>
+              </Row>
+
+              <Input.TextArea
+                style={{ marginTop: 8 }}
+                placeholder="Комментарий"
+                value={editedRow.comment}
+                onChange={(e) =>
+                  setEditedRow((prev) => ({ ...prev, comment: e.target.value }))
+                }
+                onPressEnter={() => handleSave(editedRow)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setEditingId(null)
+                    setEditedRow(null)
+                  }
+                }}
+              />
+            </>
           )
         }
 
@@ -129,21 +228,7 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
       title: "Комментарий",
       dataIndex: "comment",
       render: (_, record) =>
-        isEditing(record) && editedRow ? (
-          <Input
-            value={editedRow.comment}
-            onChange={(e) =>
-              setEditedRow((prev) => ({ ...prev, comment: e.target.value }))
-            }
-            onPressEnter={() => handleSave(editedRow)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setEditingId(null)
-                setEditedRow(null)
-              }
-            }}
-          />
-        ) : (
+        isEditing(record) && editedRow ? null : (
           <ValueDisplay value={record.comment} />
         )
     },
