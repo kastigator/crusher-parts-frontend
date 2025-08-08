@@ -20,8 +20,13 @@ export default function FullHistoryDialog({
       setLoading(true)
       try {
         let res
+
         if (onlyDeleted) {
-          res = await axios.get("/clients/logs/deleted")
+          if (entityType === "clients-combined") {
+            res = await axios.get("/clients/logs/deleted")
+          } else {
+            res = await axios.get(`/activity-logs/deleted?entity_type=${entityType}`)
+          }
         } else if (entityType === "clients-combined") {
           // сервер уже вернёт логи клиента + все связанные сущности
           res = await axios.get(`/clients/${entityId}/logs`)

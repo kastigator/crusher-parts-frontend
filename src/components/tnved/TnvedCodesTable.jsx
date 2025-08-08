@@ -36,10 +36,10 @@ export default function TnvedCodesTable({ data, loading, onUpdate, onDelete }) {
   }
 
   const handleDelete = async (record) => {
-    const confirmed = await confirmAction(`Удалить код ${record.code}?`)
-    if (confirmed) {
-      await onDelete(record)
-    }
+    const { confirmed } = await confirmAction(`Удалить код ${record.code}?`)
+    if (!confirmed) return
+
+    await onDelete(record)
   }
 
   const columns = [

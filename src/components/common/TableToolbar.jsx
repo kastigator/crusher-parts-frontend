@@ -1,82 +1,64 @@
-import React from "react"
-import { Row, Col, Input, Button, Tooltip, Space } from "antd"
-import {
-  PlusOutlined,
-  UploadOutlined,
-  DownloadOutlined,
-  ReloadOutlined,
-  UndoOutlined
-} from "@ant-design/icons"
+// src/components/common/TableToolbar.jsx
 
-const { Search } = Input
+import React from "react"
+import { Row, Col, Input, Button, Tooltip, Space, Typography } from "antd"
+import { PlusOutlined, DeleteOutlined, UploadOutlined } from "@ant-design/icons"
+
+const { Title } = Typography
 
 export default function TableToolbar({
-  onAddClick,
-  onImportClick,
-  onExport,
-  onRefresh,
-  onResetFilters,
-  filterValue,
-  onFilterChange,
-  customFilter,
-  actionsRight,
-  children
+  title,          // заголовок, если нужен
+  search,         // значение поиска
+  onSearch,       // функция изменения поиска
+  onAdd,          // обработчик "Добавить"
+  onImport,       // обработчик "Импорт"
+  onShowDeleted   // обработчик "Удалённые записи"
 }) {
   return (
-    <div style={{ marginBottom: 16 }}>
-      <Row justify="space-between" align="middle" gutter={[8, 8]} wrap>
-        {/* Левая часть: фильтры и кастомные элементы */}
-        <Col>
-          <Space size="middle" wrap>
-            {typeof filterValue !== "undefined" && typeof onFilterChange === "function" && (
-              <Search
-                placeholder="Поиск..."
-                allowClear
-                value={filterValue}
-                onChange={(e) => onFilterChange(e.target.value)}
-                style={{ width: 300 }}
-              />
-            )}
+    <Row justify="space-between" align="middle" style={{ marginBottom: 16 }} gutter={16}>
+      <Col flex="auto">
+        <Space direction="horizontal">
+          {title && <Title level={5} style={{ margin: 0 }}>{title}</Title>}
 
-            {customFilter}
-            {children}
-          </Space>
-        </Col>
+          {onSearch && (
+            <Input.Search
+              allowClear
+              placeholder="Поиск..."
+              value={search}
+              onChange={(e) => onSearch(e.target.value)}
+              style={{ width: 300 }}
+            />
+          )}
+        </Space>
+      </Col>
 
-        {/* Правая часть: действия */}
-        <Col>
-          <Space wrap>
-            {onResetFilters && (
-              <Tooltip title="Сбросить фильтры">
-                <Button icon={<UndoOutlined />} onClick={onResetFilters} />
-              </Tooltip>
-            )}
-            {onRefresh && (
-              <Tooltip title="Обновить">
-                <Button icon={<ReloadOutlined />} onClick={onRefresh} />
-              </Tooltip>
-            )}
-            {onExport && (
-              <Tooltip title="Экспорт">
-                <Button icon={<DownloadOutlined />} onClick={onExport} />
-              </Tooltip>
-            )}
-            {onImportClick && (
-              <Tooltip title="Импорт">
-                <Button icon={<UploadOutlined />} onClick={onImportClick}>
-                  Импорт
-                </Button>
-              </Tooltip>
-            )}
-            {onAddClick && (
-              <Tooltip title="Добавить новую запись">
-                <Button icon={<PlusOutlined />} type="primary" onClick={onAddClick} />
-              </Tooltip>
-            )}
-            {actionsRight}
-          </Space>
-        </Col>
-      </Row>
-    </div>
+      <Col>
+        <Space>
+          {onAdd && (
+            <Tooltip title="Добавить">
+              <Button type="primary" icon={<PlusOutlined />} onClick={onAdd}>
+                Добавить
+              </Button>
+            </Tooltip>
+          )}
+
+          {onImport && (
+            <Tooltip title="Импорт из Excel">
+              <Button icon={<UploadOutlined />} onClick={onImport}>
+                Импорт
+              </Button>
+            </Tooltip>
+          )}
+
+          {onShowDeleted && (
+            <Tooltip title="Удалённые записи">
+              <Button icon={<DeleteOutlined />} onClick={onShowDeleted}>
+                Удалённые
+              </Button>
+            </Tooltip>
+          )}
+        </Space>
+      </Col>
+    </Row>
   )
 }

@@ -1,5 +1,7 @@
+// src/components/clients/BillingAddressesTable.jsx
+
 import React, { useState } from "react"
-import { Table, Input, Button, Space, Typography, message, Row, Col, Divider } from "antd"
+import { Table, Input, Button, message, Space, Typography, Row, Col, Divider } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
@@ -61,8 +63,8 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
   }
 
   const handleDelete = async (id) => {
-    const ok = await confirmAction("Удалить адрес?")
-    if (!ok) return
+    const { confirmed } = await confirmAction("Удалить адрес?")
+    if (!confirmed) return
     try {
       await axios.delete(`/client-billing-addresses/${id}`)
       await logActivity("delete", "client_billing_addresses", id)

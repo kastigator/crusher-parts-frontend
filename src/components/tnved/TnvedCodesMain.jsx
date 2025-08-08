@@ -1,11 +1,10 @@
-// src/components/tnved/TnvedCodesMain.jsx
-
 import React, { useState, useEffect } from "react"
 import { Card, Space, message, Button, Input, Form } from "antd"
 import axios from "@/api/axiosInstance"
 import TnvedCodesTable from "./TnvedCodesTable"
 import ImportModal from "@/components/common/ImportModal"
 import TableToolbar from "@/components/common/TableToolbar"
+import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import logActivity from "@/utils/logActivity"
 
 const { TextArea } = Input
@@ -16,6 +15,7 @@ export default function TnvedCodesMain() {
   const [importVisible, setImportVisible] = useState(false)
   const [search, setSearch] = useState("")
   const [newRecord, setNewRecord] = useState(null)
+  const [logId, setLogId] = useState(null)
 
   const fetchData = async () => {
     setLoading(true)
@@ -117,9 +117,10 @@ export default function TnvedCodesMain() {
         }
       >
         <TableToolbar
-          filterValue={search}
-          onFilterChange={setSearch}
-          onImportClick={() => setImportVisible(true)}
+          search={search}
+          onSearch={setSearch}
+          onImport={() => setImportVisible(true)}
+          onShowDeleted={() => setLogId("deleted")}
         />
 
         <Form layout="inline" style={{ marginBottom: 16 }} onFinish={handleAdd}>
@@ -189,8 +190,16 @@ export default function TnvedCodesMain() {
         onClose={() => setImportVisible(false)}
         onSuccess={fetchData}
         type="tnved_code"
-        templateUrl="https://storage.googleapis.com/shared-parts-bucket/templates/tnved_codes_template.xlsx" // ✅
+        templateUrl="https://storage.googleapis.com/shared-parts-bucket/templates/tnved_codes_template.xlsx"
       />
+
+      {logId === "deleted" && (
+        <FullHistoryDialog
+          onlyDeleted
+          entityType="tnved_code"
+          onClose={() => setLogId(null)}
+        />
+      )}
     </Space>
   )
 }

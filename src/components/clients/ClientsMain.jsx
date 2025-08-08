@@ -1,5 +1,3 @@
-// src/components/clients/ClientsMain.jsx
-
 import React, { useEffect, useState } from "react"
 import { Card, Space, Form, Input, Button, message } from "antd"
 import axios from "@/api/axiosInstance"
@@ -89,14 +87,9 @@ export default function ClientsMain() {
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Card title="Клиенты" bodyStyle={{ paddingTop: 0 }}>
         <TableToolbar
-          filterValue={search}
-          onFilterChange={setSearch}
-          searchPlaceholder="Поиск по названию или контакту"
-          actionsRight={
-            <Button onClick={() => setShowDeletedModal(true)}>
-              Удалённые записи
-            </Button>
-          }
+          search={search}
+          onSearch={setSearch}
+          onShowDeleted={() => setShowDeletedModal(true)}
         />
 
         <Form layout="inline" style={{ marginBottom: 16 }} onFinish={handleAdd}>

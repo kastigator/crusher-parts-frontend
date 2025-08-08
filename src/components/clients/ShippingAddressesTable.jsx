@@ -1,3 +1,5 @@
+// src/components/clients/ShippingAddressesTable.jsx
+
 import React, { useState } from "react"
 import { Table, Input, Button, Space, Typography, message, Row, Col, Divider } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
@@ -60,8 +62,8 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
   }
 
   const handleDelete = async (id) => {
-    const ok = await confirmAction("Удалить адрес?")
-    if (!ok) return
+    const { confirmed } = await confirmAction("Удалить адрес?")
+    if (!confirmed) return
     try {
       await axios.delete(`/client-shipping-addresses/${id}`)
       await logActivity("delete", "client_shipping_addresses", id)

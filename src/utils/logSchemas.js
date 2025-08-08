@@ -66,3 +66,27 @@ export const logSchemas = {
     excludeFields: ["id", "client_id", "created_at", "updated_at"]
   }
 }
+
+/**
+ * 📌 Шаблон для новых таблиц (например, поставщики, детали и т.д.)
+ * 
+ * "your_entity": {
+ *   fields: {
+ *     field1: "Человекочитаемое имя",
+ *     field2: "Описание поля",
+ *     ...
+ *   },
+ *   excludeFields: ["id", "client_id", "created_at", "updated_at"]
+ * }
+ * 
+ * Пример:
+ * 
+ * "suppliers": {
+ *   fields: {
+ *     name: "Поставщик",
+ *     inn: "ИНН",
+ *     country: "Страна"
+ *   },
+ *   excludeFields: ["id", "created_at", "updated_at"]
+ * }
+ */

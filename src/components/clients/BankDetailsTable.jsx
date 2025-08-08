@@ -1,3 +1,5 @@
+// src/components/clients/BankDetailsTable.jsx
+
 import React, { useState } from "react"
 import { Table, Input, Button, message } from "antd"
 import { CloseOutlined, DeleteOutlined } from "@ant-design/icons"
@@ -46,8 +48,8 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
   }
 
   const handleDelete = async (id) => {
-    const ok = await confirmAction("Удалить реквизиты?")
-    if (!ok) return
+    const { confirmed } = await confirmAction("Удалить реквизиты?")
+    if (!confirmed) return
     try {
       await axios.delete(`/client-bank-details/${id}`)
 
