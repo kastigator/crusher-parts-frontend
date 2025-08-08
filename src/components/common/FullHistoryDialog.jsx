@@ -1,5 +1,6 @@
+// src/components/common/FullHistoryDialog.jsx
 import React, { useEffect, useState } from "react"
-import { Modal, Table, Spin, Empty } from "antd"
+import { Modal, Table, Spin, Empty, Tag } from "antd"
 import axios from "@/api/axiosInstance"
 import { logSchemas } from "@/utils/logSchemas"
 
@@ -13,7 +14,7 @@ export default function FullHistoryDialog({
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!entityType || (entityId === null && !onlyDeleted)) return
+    if (!entityType || (entityId == null && !onlyDeleted)) return
 
     const fetchLogs = async () => {
       setLoading(true)
@@ -22,11 +23,12 @@ export default function FullHistoryDialog({
         if (onlyDeleted) {
           res = await axios.get("/clients/logs/deleted")
         } else if (entityType === "clients-combined") {
+          // сервер уже вернёт логи клиента + все связанные сущности
           res = await axios.get(`/clients/${entityId}/logs`)
         } else {
+          // точечная история по конкретной сущности
           res = await axios.get(`/activity-logs/${entityType}/${entityId}`)
         }
-
         setLogs(Array.isArray(res.data) ? res.data : [])
       } catch (err) {
         console.error("Ошибка при загрузке логов:", err)
@@ -39,83 +41,94 @@ export default function FullHistoryDialog({
     fetchLogs()
   }, [entityId, entityType, onlyDeleted])
 
-  // Собираем схему
-  let combinedFields = {}
-  let combinedExclude = []
-
-  if (entityType === "clients-combined") {
-    const related = [
-      "clients",
-      "client_billing_addresses",
-      "client_shipping_addresses",
-      "client_bank_details"
-    ]
-    related.forEach((key) => {
-      const schema = logSchemas[key]
-      if (schema) {
-        Object.assign(combinedFields, schema.fields)
-        combinedExclude.push(...(schema.excludeFields || []))
-      }
-    })
-  } else {
-    const schema = logSchemas[entityType] || { fields: {}, excludeFields: [] }
-    combinedFields = schema.fields
-    combinedExclude = schema.excludeFields
+  // Человеческие названия сущностей для колонки "Сущность"
+  const entityLabels = {
+    clients: "Клиент",
+    client_billing_addresses: "Юр. адрес",
+    client_shipping_addresses: "Адрес доставки",
+    client_bank_details: "Банковские реквизиты",
+    tnved_code: "ТН ВЭД"
   }
 
-  // ✅ Главное исправление: фильтрация по exclude, без лишней жёсткости
-  const baseLogs = onlyDeleted
-    ? logs.filter((log) => log.action === "delete")
-    : logs
+  // Технические поля, которые не несут смысла для пользователя
+  const TECH_FIELDS = new Set(["id", "created_at", "updated_at", "client_id", "entity_id", "user_id"])
 
-  const filteredLogs = baseLogs.filter((log) => {
+  // Аккуратно подписываем поле по схеме конкретной сущности строки
+  const labelForField = (record) => {
+    const schema = logSchemas[record?.entity_type]
+    const nice = schema?.fields?.[record?.field_changed]
+    if (nice) return nice
+
+    // Если поле не указано (create/delete без конкретного поля)
+    if (!record?.field_changed) {
+      if (record?.action === "delete") return "Удаление"
+      if (record?.action === "create") return "Создание"
+      return record?.comment || "—"
+    }
+    // Фоллбэк — показать сырое имя поля
+    return record.field_changed
+  }
+
+  // Фильтрация: показываем всё, кроме чисто технических полей (для update).
+  const base = onlyDeleted ? logs.filter((l) => l.action === "delete") : logs
+  const filteredLogs = base.filter((log) => {
     if (!log) return false
-    if (log.action === "delete" || log.action === "create") return true
-    return !combinedExclude.includes(log.field_changed)
+    if (log.action === "create" || log.action === "delete") return true
+    // update
+    if (!log.field_changed) return false
+    if (TECH_FIELDS.has(log.field_changed)) return false
+    return true
   })
 
   const columns = [
     {
-      title: "Поле",
-      dataIndex: "field_changed",
-      render: (value, record) =>
-        value
-          ? combinedFields[value] || value
-          : record.action === "delete"
-          ? "Удалено"
-          : record.action === "create"
-          ? "Создание"
-          : record.comment || "—",
-      width: 160
+      title: "Сущность",
+      dataIndex: "entity_type",
+      width: 170,
+      render: (val) => entityLabels[val] || val
     },
     {
-      title: "Комментарий",
-      dataIndex: "comment",
-      render: (value) => value || "—",
-      width: 200
+      title: "Действие",
+      dataIndex: "action",
+      width: 110,
+      render: (val) => {
+        const mapColor = { create: "green", update: "blue", delete: "red" }
+        return <Tag color={mapColor[val] || "default"}>{val}</Tag>
+      }
+    },
+    {
+      title: "Поле",
+      dataIndex: "field_changed",
+      width: 220,
+      render: (_val, record) => labelForField(record)
     },
     {
       title: "Было",
       dataIndex: "old_value",
-      render: (value) => value ?? "—"
+      render: (v) => (v === null || v === undefined || v === "" ? "—" : String(v))
     },
     {
       title: "Стало",
       dataIndex: "new_value",
-      render: (value) => value ?? "—"
+      render: (v) => (v === null || v === undefined || v === "" ? "—" : String(v))
+    },
+    {
+      title: "Комментарий",
+      dataIndex: "comment",
+      width: 260,
+      render: (v) => v || "—"
     },
     {
       title: "Пользователь",
       dataIndex: "user_name",
-      render: (value, row) => value || row.user_id || "—",
-      width: 180
+      width: 180,
+      render: (v, row) => v || row.user_id || "—"
     },
     {
       title: "Дата",
       dataIndex: "created_at",
-      render: (value) =>
-        value ? new Date(value).toLocaleString("ru-RU") : "—",
-      width: 180
+      width: 180,
+      render: (value) => (value ? new Date(value).toLocaleString("ru-RU") : "—")
     }
   ]
 
@@ -124,7 +137,7 @@ export default function FullHistoryDialog({
       open={onlyDeleted || !!entityId}
       onCancel={onClose}
       onOk={onClose}
-      width={1000}
+      width={1100}
       title={onlyDeleted ? "Удалённые записи" : "История изменений"}
       okText="Закрыть"
       cancelButtonProps={{ style: { display: "none" } }}
@@ -135,18 +148,14 @@ export default function FullHistoryDialog({
         </div>
       ) : filteredLogs.length === 0 ? (
         <Empty
-          description={
-            onlyDeleted ? "Удалённых записей не найдено" : "Изменений не найдено"
-          }
+          description={onlyDeleted ? "Удалённых записей не найдено" : "Изменений не найдено"}
           style={{ padding: "2rem" }}
         />
       ) : (
         <Table
           dataSource={filteredLogs}
           columns={columns}
-          rowKey={(row, index) =>
-            `${row.field_changed || "action"}-${row.created_at}-${row.user_name || row.user_id}-${index}`
-          }
+          rowKey={(row, i) => row.id || `${row.entity_type}-${row.entity_id}-${row.action}-${row.field_changed || "action"}-${row.created_at || i}`}
           size="small"
           pagination={false}
           bordered
