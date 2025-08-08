@@ -11,7 +11,8 @@ steps:
     env:
       - VITE_API_URL=${_VITE_API_URL}
       - VITE_DADATA_API_KEY=${_VITE_DADATA_API_KEY}
-      - VITE_GOOGLE_MAPS_API_KEY=${_VITE_GOOGLE_MAPS_API_KEY}
+      - VITE_YANDEX_MAPS_API_KEY=${_VITE_YANDEX_MAPS_API_KEY}
+
 
   # 3. Синхронизировать dist/ с Bucket (с удалением устаревших файлов)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
