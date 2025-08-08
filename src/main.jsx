@@ -1,4 +1,3 @@
-// src/main.jsx
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
@@ -9,7 +8,7 @@ import { Toaster } from 'react-hot-toast'
 import loadYandexMaps from '@/utils/loadYandexMaps'
 import { App as AntdApp } from 'antd'
 import { ThemeProvider } from '@mui/material/styles'
-import muiTheme from '@/theme/theme' // ✅ твоя тема для MUI
+import muiTheme from '@/theme/theme'
 
 import '@fontsource/inter/300.css'
 import '@fontsource/inter/400.css'
@@ -17,6 +16,9 @@ import '@fontsource/inter/500.css'
 import '@fontsource/inter/600.css'
 import './styles/global.css'
 import './styles/tableStyles.css'
+
+// ✅ 👇 ДОБАВЬ ЭТО СЮДА
+console.log('🔑 VITE_YANDEX_MAPS_API_KEY =', import.meta.env.VITE_YANDEX_MAPS_API_KEY)
 
 loadYandexMaps()
   .then(() => {
@@ -26,7 +28,7 @@ loadYandexMaps()
         <BrowserRouter>
           <AuthProvider>
             <TabsProvider>
-              <ThemeProvider theme={muiTheme}> {/* ✅ добавлено */}
+              <ThemeProvider theme={muiTheme}>
                 <AntdApp>
                   <App />
                   <Toaster position="bottom-center" />
