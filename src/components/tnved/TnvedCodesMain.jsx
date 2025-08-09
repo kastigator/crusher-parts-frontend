@@ -6,6 +6,7 @@ import ImportModal from "@/components/common/ImportModal"
 import TableToolbar from "@/components/common/TableToolbar"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import logActivity from "@/utils/logActivity"
+import logFieldDiffs from "@/utils/logFieldDiffs" // ✅ для update
 
 const { TextArea } = Input
 
@@ -46,7 +47,10 @@ export default function TnvedCodesMain() {
 
     try {
       const res = await axios.post("/tnved-codes", sanitized)
-      logActivity("tnved_code", res.data.id, "create", sanitized)
+      // ✅ правильный порядок аргументов
+      await logActivity("create", "tnved_code", res.data.id, null, null, {
+        comment: "Создано вручную"
+      })
       message.success("Запись добавлена")
       setNewRecord(null)
       fetchData()
@@ -56,10 +60,16 @@ export default function TnvedCodesMain() {
     }
   }
 
-  const handleUpdate = async (id, updated) => {
+  const handleUpdate = async (id, updated, oldRecord) => {
     try {
       await axios.put(`/tnved-codes/${id}`, updated)
-      logActivity("tnved_code", id, "update", updated)
+      // ✅ логируем изменения полей
+      await logFieldDiffs({
+        oldData: oldRecord,
+        newData: updated,
+        entity_type: "tnved_code",
+        entity_id: id
+      })
       message.success("Изменения сохранены")
       fetchData()
     } catch (err) {
@@ -71,7 +81,21 @@ export default function TnvedCodesMain() {
   const handleDelete = async (record) => {
     try {
       await axios.delete(`/tnved-codes/${record.id}`)
-      logActivity("tnved_code", record.id, "delete", record)
+
+      // ✅ Детали для колонки "Детали" в модалке "Удалённые"
+      const details = record?.description
+        ? `${record.code} — ${record.description}`
+        : String(record?.code ?? "")
+
+      await logActivity(
+        "delete",
+        "tnved_code",
+        record.id,
+        null,                 // field_changed
+        details || null,      // old_value → попадёт в "Детали"
+        { comment: `Удалён код ТН ВЭД: ${record.code}` }
+      )
+
       message.success("Код удалён")
       fetchData()
     } catch (err) {
@@ -134,7 +158,7 @@ export default function TnvedCodesMain() {
             />
           </Form.Item>
 
-          <Form.Item label="Описание">
+        <Form.Item label="Описание">
             <TextArea
               rows={1}
               value={newRecord?.description || ""}
@@ -180,7 +204,11 @@ export default function TnvedCodesMain() {
         <TnvedCodesTable
           data={filteredData}
           loading={loading}
-          onUpdate={handleUpdate}
+          // Важно: передавать старую запись в handleUpdate
+          onUpdate={(id, updated) => {
+            const oldRecord = data.find((item) => item.id === id)
+            handleUpdate(id, updated, oldRecord)
+          }}
           onDelete={handleDelete}
         />
       </Card>

@@ -151,7 +151,7 @@ export default function ClientsMain() {
 
       {showDeletedModal && (
         <FullHistoryDialog
-          entityType="clients-combined"
+          entityType="clients"      // ⬅️ показываем только удалённых клиентов
           entityId={null}
           onlyDeleted={true}
           onClose={() => setShowDeletedModal(false)}
