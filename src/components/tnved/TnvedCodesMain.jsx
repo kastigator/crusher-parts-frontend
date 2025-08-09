@@ -1,3 +1,4 @@
+// src/components/tnved/TnvedCodesMain.jsx
 import React, { useState, useEffect } from "react"
 import { Card, Space, message, Button, Input, Form } from "antd"
 import axios from "@/api/axiosInstance"
@@ -5,8 +6,6 @@ import TnvedCodesTable from "./TnvedCodesTable"
 import ImportModal from "@/components/common/ImportModal"
 import TableToolbar from "@/components/common/TableToolbar"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
-import logActivity from "@/utils/logActivity"
-import logFieldDiffs from "@/utils/logFieldDiffs" // ✅ для update
 
 const { TextArea } = Input
 
@@ -22,7 +21,7 @@ export default function TnvedCodesMain() {
     setLoading(true)
     try {
       const res = await axios.get("/tnved-codes")
-      setData(res.data)
+      setData(res.data || [])
     } catch (err) {
       console.error("Ошибка загрузки данных:", err)
       message.error("Не удалось загрузить коды ТН ВЭД")
@@ -35,70 +34,88 @@ export default function TnvedCodesMain() {
     fetchData()
   }, [])
 
+  // ---- helpers -------------------------------------------------
+  const replaceRow = (fresh) => {
+    setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+  }
+
+  const removeRow = (id) => {
+    setData((prev) => prev.filter((r) => r.id !== id))
+  }
+
+  // ---- create --------------------------------------------------
   const handleAdd = async () => {
-    if (!newRecord?.code) {
+    if (!newRecord?.code?.trim()) {
       message.warning("Поле 'Код' обязательно для заполнения")
       return
     }
 
-    const sanitized = Object.fromEntries(
-      Object.entries(newRecord).map(([k, v]) => [k, v ?? ""])
-    )
+    const payload = {
+      code: newRecord.code.trim(),
+      description: newRecord.description ?? "",
+      duty_rate: newRecord.duty_rate ?? "",
+      notes: newRecord.notes ?? "",
+    }
 
     try {
-      const res = await axios.post("/tnved-codes", sanitized)
-      // ✅ правильный порядок аргументов
-      await logActivity("create", "tnved_code", res.data.id, null, null, {
-        comment: "Создано вручную"
-      })
-      message.success("Запись добавлена")
-      setNewRecord(null)
-      fetchData()
+      const res = await axios.post("/tnved-codes", payload)
+      const inserted = res?.data?.inserted || []
+      const errors = res?.data?.errors || []
+
+      if (inserted.length) {
+        // свежие записи добавим в начало
+        setData((prev) => [...inserted, ...prev])
+        setNewRecord(null)
+        message.success(`Добавлено: ${inserted.length}`)
+      }
+
+      if (errors.length) {
+        // покажем кратко первую ошибку
+        message.warning(errors[0] || "Некоторые строки не добавлены")
+      }
     } catch (err) {
       console.error("Ошибка при добавлении:", err)
-      message.error("Не удалось добавить запись")
+      if (err?.isDuplicateKey) {
+        message.error("Код уже существует")
+      } else {
+        message.error("Не удалось добавить запись")
+      }
     }
   }
 
-  const handleUpdate = async (id, updated, oldRecord) => {
+  // ---- update (с version) -------------------------------------
+  const handleUpdate = async (id, updated) => {
+    // updated должен содержать актуальный updated.version
     try {
-      await axios.put(`/tnved-codes/${id}`, updated)
-      // ✅ логируем изменения полей
-      await logFieldDiffs({
-        oldData: oldRecord,
-        newData: updated,
-        entity_type: "tnved_code",
-        entity_id: id
+      const { data: fresh } = await axios.put(`/tnved-codes/${id}`, {
+        code: updated.code?.trim(),
+        description: updated.description ?? null,
+        duty_rate: updated.duty_rate ?? null,
+        notes: updated.notes ?? null,
+        version: updated.version, // ВАЖНО
       })
+      replaceRow(fresh) // сервер вернёт запись с version+1
       message.success("Изменения сохранены")
-      fetchData()
     } catch (err) {
-      console.error("Ошибка при обновлении:", err)
-      message.error("Ошибка при сохранении изменений")
+      // Пробрасываем дальше, чтобы таблица показала модалку/сообщение
+      throw err
     }
   }
 
+  // ---- delete (с ?version=) -----------------------------------
   const handleDelete = async (record) => {
     try {
-      await axios.delete(`/tnved-codes/${record.id}`)
-
-      // ✅ Детали для колонки "Детали" в модалке "Удалённые"
-      const details = record?.description
-        ? `${record.code} — ${record.description}`
-        : String(record?.code ?? "")
-
-      await logActivity(
-        "delete",
-        "tnved_code",
-        record.id,
-        null,                 // field_changed
-        details || null,      // old_value → попадёт в "Детали"
-        { comment: `Удалён код ТН ВЭД: ${record.code}` }
-      )
-
+      await axios.delete(`/tnved-codes/${record.id}`, {
+        params: { version: record.version }, // защита от гонок удаления
+      })
+      removeRow(record.id)
       message.success("Код удалён")
-      fetchData()
     } catch (err) {
+      if (err?.isVersionConflict) {
+        if (err.currentRecord) replaceRow(err.currentRecord)
+        message.warning("Запись изменилась и не была удалена. Обновили строку.")
+        return
+      }
       console.error("Ошибка удаления:", err)
       message.error("Ошибка при удалении кода")
     }
@@ -158,7 +175,7 @@ export default function TnvedCodesMain() {
             />
           </Form.Item>
 
-        <Form.Item label="Описание">
+          <Form.Item label="Описание">
             <TextArea
               rows={1}
               value={newRecord?.description || ""}
@@ -204,12 +221,10 @@ export default function TnvedCodesMain() {
         <TnvedCodesTable
           data={filteredData}
           loading={loading}
-          // Важно: передавать старую запись в handleUpdate
-          onUpdate={(id, updated) => {
-            const oldRecord = data.find((item) => item.id === id)
-            handleUpdate(id, updated, oldRecord)
-          }}
+          onUpdate={handleUpdate}
           onDelete={handleDelete}
+          onReplaceRow={replaceRow} // для модалки конфликта
+          onRefresh={fetchData}
         />
       </Card>
 

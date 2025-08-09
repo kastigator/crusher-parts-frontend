@@ -1,14 +1,16 @@
-import React, { useEffect, useState } from 'react'
-import { Table, Checkbox, Button, Input, Tooltip, Space, message } from 'antd'
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
-import axios from '@/api/axiosInstance'
-import confirmAction from '@/utils/confirmAction'
+// src/components/roles/RolePermissionsMatrix.jsx
+import React, { useEffect, useState } from "react"
+import { Table, Checkbox, Button, Input, Space, message } from "antd"
+import { PlusOutlined } from "@ant-design/icons"
+import axios from "@/api/axiosInstance"
+import ActionButtons from "@/components/common/ActionButtons"
+import confirmAction from "@/utils/confirmAction"
 
 export default function RolePermissionsMatrix() {
   const [roles, setRoles] = useState([])
   const [tabs, setTabs] = useState([])
   const [permissions, setPermissions] = useState({})
-  const [newRole, setNewRole] = useState('')
+  const [newRole, setNewRole] = useState("")
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -19,14 +21,14 @@ export default function RolePermissionsMatrix() {
     setLoading(true)
     try {
       const [rolesRes, tabsRes, permsRes] = await Promise.all([
-        axios.get('/roles'),
-        axios.get('/tabs'),
-        axios.get('/role-permissions/raw')
+        axios.get("/roles"),
+        axios.get("/tabs"),
+        axios.get("/role-permissions/raw")
       ])
 
-      const filteredRoles = (rolesRes.data || []).filter(r => r.slug !== 'admin')
+      const filteredRoles = (rolesRes.data || []).filter(r => r.slug !== "admin")
       setRoles(filteredRoles)
-      setTabs((tabsRes.data || []).filter(t => t.slug !== 'users'))
+      setTabs((tabsRes.data || []).filter(t => t.slug !== "users"))
 
       const matrix = {}
       for (const perm of permsRes.data || []) {
@@ -34,8 +36,8 @@ export default function RolePermissionsMatrix() {
       }
       setPermissions(matrix)
     } catch (err) {
-      console.error('Ошибка загрузки данных:', err)
-      message.error('Ошибка загрузки данных')
+      console.error("Ошибка загрузки данных:", err)
+      message.error("Ошибка загрузки данных")
     } finally {
       setLoading(false)
     }
@@ -51,25 +53,25 @@ export default function RolePermissionsMatrix() {
     }))
 
     try {
-      await axios.put('/role-permissions', [
+      await axios.put("/role-permissions", [
         { role_id: roleId, tab_id: tabId, can_view: newValue ? 1 : 0 }
       ])
     } catch (err) {
-      message.error('Ошибка при сохранении')
-      console.error('Ошибка при сохранении права:', err)
+      message.error("Ошибка при сохранении")
+      console.error("Ошибка при сохранении права:", err)
     }
   }
 
   const handleAddRole = async () => {
     if (!newRole.trim()) return
     try {
-      await axios.post('/roles', { role: newRole.trim() })
-      setNewRole('')
+      await axios.post("/roles", { role: newRole.trim() })
+      setNewRole("")
       await fetchData()
-      message.success('Роль добавлена')
+      message.success("Роль добавлена")
     } catch (err) {
-      message.error('Не удалось добавить роль')
-      console.error('Ошибка добавления роли:', err)
+      message.error("Не удалось добавить роль")
+      console.error("Ошибка добавления роли:", err)
     }
   }
 
@@ -78,34 +80,34 @@ export default function RolePermissionsMatrix() {
     if (!confirmed) return
 
     try {
-      const usersRes = await axios.get('/users')
+      const usersRes = await axios.get("/users")
       const usedBy = usersRes.data.filter(u => u.role_id === role.id)
 
       if (usedBy.length > 0) {
-        const names = usedBy.map(u => u.full_name || u.username).join(', ')
+        const names = usedBy.map(u => u.full_name || u.username).join(", ")
         return message.warning(`Роль используется у пользователей: ${names}`)
       }
 
       await axios.delete(`/roles/${role.slug}`)
       await fetchData()
-      message.success('Роль удалена')
+      message.success("Роль удалена")
     } catch (err) {
-      message.error('Не удалось удалить роль')
-      console.error('Ошибка удаления роли:', err)
+      message.error("Не удалось удалить роль")
+      console.error("Ошибка удаления роли:", err)
     }
   }
 
   const columns = [
     {
-      title: 'Роль',
-      dataIndex: 'name',
-      key: 'name',
-      fixed: 'left'
+      title: "Роль",
+      dataIndex: "name",
+      key: "name",
+      fixed: "left"
     },
     ...tabs.map(tab => ({
       title: tab.name,
       dataIndex: `tab_${tab.id}`,
-      align: 'center',
+      align: "center",
       render: (_, role) => (
         <Checkbox
           checked={!!permissions[`${role.id}__${tab.id}`]}
@@ -114,18 +116,14 @@ export default function RolePermissionsMatrix() {
       )
     })),
     {
-      title: '',
-      key: 'actions',
-      fixed: 'right',
+      title: "",
+      key: "actions",
+      fixed: "right",
       render: (_, role) => (
-        <Tooltip title="Удалить">
-          <Button
-            icon={<DeleteOutlined />}
-            danger
-            size="small"
-            onClick={() => handleDeleteRole(role)}
-          />
-        </Tooltip>
+        <ActionButtons
+          onDelete={() => handleDeleteRole(role)}
+          size="small"
+        />
       )
     }
   ]
@@ -148,7 +146,7 @@ export default function RolePermissionsMatrix() {
         dataSource={roles}
         columns={columns}
         loading={loading}
-        scroll={{ x: 'max-content' }}
+        scroll={{ x: "max-content" }}
         pagination={false}
         size="middle"
       />

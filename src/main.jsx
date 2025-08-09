@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
-import { TabsProvider } from './context/TabsContext'
+import TabsProvider from './context/TabsContext' // ⬅️ было { TabsProvider }
 import { Toaster } from 'react-hot-toast'
 import loadYandexMaps from '@/utils/loadYandexMaps'
 import { App as AntdApp } from 'antd'
@@ -17,7 +17,6 @@ import '@fontsource/inter/600.css'
 import './styles/global.css'
 import './styles/tableStyles.css'
 
-// ✅ 👇 ДОБАВЬ ЭТО СЮДА
 console.log('🔑 VITE_YANDEX_MAPS_API_KEY =', import.meta.env.VITE_YANDEX_MAPS_API_KEY)
 
 loadYandexMaps()

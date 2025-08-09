@@ -1,13 +1,14 @@
+// src/components/clients/ClientsTable.jsx
 import React, { useState } from "react"
-import { Table, Input, Button, Space, Tabs, message } from "antd"
-import { DeleteOutlined, ClockCircleOutlined } from "@ant-design/icons"
+import { Table, Input, message, Tabs } from "antd"
 import BillingAddressesMain from "./BillingAddressesMain"
 import ShippingAddressesMain from "./ShippingAddressesMain"
 import BankDetailsMain from "./BankDetailsMain"
 import axios from "@/api/axiosInstance"
-import confirmAction from "@/utils/confirmAction"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
+import ActionButtons from "@/components/common/ActionButtons"
+import confirmAction from "@/utils/confirmAction"
 
 export default function ClientsTable({
   data,
@@ -45,9 +46,9 @@ export default function ClientsTable({
     }
   }
 
-  const handleDelete = async (client) => {
-    const ok = await confirmAction(`Удалить клиента "${client.company_name}" и все связанные записи?`)
-    if (!ok) return
+  const deleteClient = async (client) => {
+    const { confirmed } = await confirmAction("Удалить клиента?")
+    if (!confirmed) return
 
     try {
       await axios.delete(`/clients/${client.id}`)
@@ -82,9 +83,7 @@ export default function ClientsTable({
         isEditing(record)
           ? renderInput("company_name")
           : <ValueDisplay value={record.company_name} />,
-      onCell: (record) => ({
-        onDoubleClick: () => startEdit(record)
-      })
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
     },
     {
       title: "Контакт",
@@ -93,9 +92,7 @@ export default function ClientsTable({
         isEditing(record)
           ? renderInput("contact_person")
           : <ValueDisplay value={record.contact_person} />,
-      onCell: (record) => ({
-        onDoubleClick: () => startEdit(record)
-      })
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
     },
     {
       title: "Телефон",
@@ -104,9 +101,7 @@ export default function ClientsTable({
         isEditing(record)
           ? renderInput("phone")
           : <ValueDisplay value={record.phone} />,
-      onCell: (record) => ({
-        onDoubleClick: () => startEdit(record)
-      })
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
     },
     {
       title: "Email",
@@ -115,43 +110,27 @@ export default function ClientsTable({
         isEditing(record)
           ? renderInput("email")
           : <ValueDisplay value={record.email} type="email" />,
-      onCell: (record) => ({
-        onDoubleClick: () => startEdit(record)
-      })
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
     },
     {
       title: "Действия",
       key: "actions",
-      width: 120,
-      render: (_, record) =>
-        isEditing(record) ? (
-          <Space>
-            <Button type="link" onClick={saveEdit}>
-              Сохранить
-            </Button>
-            <Button type="link" onClick={cancelEdit}>
-              Отмена
-            </Button>
-          </Space>
-        ) : (
-          <Space>
-            <Button
-              icon={<ClockCircleOutlined />}
-              onClick={() => setHistoryForId(record.id)}
-              title="История изменений"
-            />
-            <Button
-              danger
-              type="link"
-              icon={<DeleteOutlined />}
-              onClick={() => handleDelete(record)}
-            />
-          </Space>
+      width: 140,
+      render: (_, record) => {
+        const editing = isEditing(record)
+        return (
+          <ActionButtons
+            onSave={editing ? saveEdit : undefined}
+            onCancel={editing ? cancelEdit : undefined}
+            onHistory={!editing ? () => setHistoryForId(record.id) : undefined}
+            onDelete={!editing ? () => deleteClient(record) : undefined}
+            size="small"
+          />
         )
+      }
     }
   ]
 
-  // ✅ Исправлено смещение таблиц во вкладках
   const expandedRowRender = (client) => {
     if (!client?.id) return null
 
@@ -159,34 +138,22 @@ export default function ClientsTable({
       <div style={{ paddingInline: 0 }}>
         <Tabs
           defaultActiveKey="billing"
-          destroyInactiveTabPane={true}
+          destroyInactiveTabPane
           items={[
             {
               key: "billing",
               label: "Юридические адреса",
-              children: (
-                <div style={{ paddingInline: 0 }}>
-                  <BillingAddressesMain clientId={client.id} />
-                </div>
-              )
+              children: <BillingAddressesMain clientId={client.id} />
             },
             {
               key: "shipping",
               label: "Адреса доставки",
-              children: (
-                <div style={{ paddingInline: 0 }}>
-                  <ShippingAddressesMain clientId={client.id} />
-                </div>
-              )
+              children: <ShippingAddressesMain clientId={client.id} />
             },
             {
               key: "bank",
               label: "Банковские реквизиты",
-              children: (
-                <div style={{ paddingInline: 0 }}>
-                  <BankDetailsMain clientId={client.id} />
-                </div>
-              )
+              children: <BankDetailsMain clientId={client.id} />
             }
           ]}
         />

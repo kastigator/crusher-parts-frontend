@@ -1,14 +1,13 @@
 // src/components/clients/BillingAddressesTable.jsx
-
 import React, { useState } from "react"
-import { Table, Input, Button, message, Space, Typography, Row, Col, Divider } from "antd"
-import { DeleteOutlined } from "@ant-design/icons"
+import { Table, Input, message, Typography, Row, Col, Divider } from "antd"
 import axios from "@/api/axiosInstance"
-import confirmAction from "@/utils/confirmAction"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import logActivity from "@/utils/logActivity"
 import logFieldDiffs from "@/utils/logFieldDiffs"
+import ActionButtons from "@/components/common/ActionButtons"
+import confirmAction from "@/utils/confirmAction"
 
 const { Text } = Typography
 
@@ -18,6 +17,11 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
 
   const isEditing = (record) =>
     editingId !== null && record?.id !== undefined && record.id === editingId
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditedRow(null)
+  }
 
   const handleSave = async (row) => {
     if (!clientId) return
@@ -49,12 +53,12 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
         oldData: row,
         newData: payload,
         entity_type: "client_billing_addresses",
-        entity_id: row.id
+        entity_id: row.id,
+        client_id: clientId
       })
 
       message.success("Адрес обновлён")
-      setEditingId(null)
-      setEditedRow(null)
+      cancelEdit()
       reloadData()
     } catch (err) {
       console.error("Ошибка при обновлении:", err)
@@ -62,12 +66,12 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
     }
   }
 
-  const handleDelete = async (id) => {
+  const deleteRow = async (id) => {
     const { confirmed } = await confirmAction("Удалить адрес?")
     if (!confirmed) return
     try {
       await axios.delete(`/client-billing-addresses/${id}`)
-      await logActivity("delete", "client_billing_addresses", id)
+      await logActivity("delete", "client_billing_addresses", id, { client_id: clientId })
       message.success("Адрес удалён")
       reloadData()
     } catch (err) {
@@ -203,10 +207,7 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
                 }
                 onPressEnter={() => handleSave(editedRow)}
                 onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setEditingId(null)
-                    setEditedRow(null)
-                  }
+                  if (e.key === "Escape") cancelEdit()
                 }}
               />
             </>
@@ -236,31 +237,19 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
     {
       title: "Действия",
       dataIndex: "actions",
-      width: 100,
-      render: (_, record) =>
-        isEditing(record) && editedRow ? (
-          <Space>
-            <Button type="link" onClick={() => handleSave(editedRow)}>
-              Сохранить
-            </Button>
-            <Button
-              type="link"
-              onClick={() => {
-                setEditingId(null)
-                setEditedRow(null)
-              }}
-            >
-              Отмена
-            </Button>
-          </Space>
-        ) : (
-          <Button
-            danger
-            type="link"
-            icon={<DeleteOutlined />}
-            onClick={() => handleDelete(record.id)}
+      width: 140,
+      render: (_, record) => {
+        const editing = isEditing(record)
+        return (
+          <ActionButtons
+            onSave={editing ? () => handleSave(editedRow) : undefined}
+            onCancel={editing ? cancelEdit : undefined}
+            onDelete={!editing ? () => deleteRow(record.id) : undefined}
+            confirmDelete={false} // подтверждение делаем вручную в deleteRow
+            size="small"
           />
         )
+      }
     }
   ]
 

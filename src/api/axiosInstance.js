@@ -20,17 +20,16 @@ instance.interceptors.request.use((config) => {
   return config
 })
 
-// ✅ Перехват 401 и автоматическое обновление токена
+// ===============================================
+// ✅ Перехват ответов: 409 (конфликты) + 401 refresh
+// ===============================================
 let isRefreshing = false
 let failedQueue = []
 
 const processQueue = (error, token = null) => {
   failedQueue.forEach(p => {
-    if (error) {
-      p.reject(error)
-    } else {
-      p.resolve(token)
-    }
+    if (error) p.reject(error)
+    else p.resolve(token)
   })
   failedQueue = []
 }
@@ -39,8 +38,23 @@ instance.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
+    const status = error?.response?.status
+    const data = error?.response?.data
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // --- 409: бизнес-конфликты (НЕ трогаем refresh-поток) ---
+    if (status === 409) {
+      if (data?.type === 'version_conflict') {
+        error.isVersionConflict = true
+        error.currentRecord = data?.current || null
+      }
+      if (data?.type === 'duplicate_key') {
+        error.isDuplicateKey = true
+      }
+      return Promise.reject(error)
+    }
+
+    // --- 401: пробуем refresh-токена (как было) ---
+    if (status === 401 && !originalRequest?._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({
@@ -48,7 +62,7 @@ instance.interceptors.response.use(
               originalRequest.headers.Authorization = `Bearer ${token}`
               resolve(instance(originalRequest))
             },
-            reject: (err) => reject(err)
+            reject: (err) => reject(err),
           })
         })
       }
@@ -57,13 +71,13 @@ instance.interceptors.response.use(
       isRefreshing = true
 
       try {
-        const { data } = await axios.post(
+        const { data: refreshData } = await axios.post(
           `${import.meta.env.VITE_API_URL}/api/auth/refresh`,
           {},
           { withCredentials: true }
         )
 
-        const newToken = data.token
+        const newToken = refreshData.token
         localStorage.setItem('token', newToken)
 
         instance.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
