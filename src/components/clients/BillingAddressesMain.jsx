@@ -34,9 +34,10 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
       const res = await axios.get("/client-billing-addresses", {
         params: { client_id: clientId }
       })
-      setData(res.data)
+      setData(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       console.error("Ошибка при загрузке адресов:", err)
+      message.error("Не удалось загрузить адреса")
     } finally {
       setLoading(false)
     }
@@ -44,6 +45,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
 
   useEffect(() => {
     fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId])
 
   const handleAdd = async () => {
@@ -56,8 +58,8 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
       client_id: clientId,
       formatted_address: newAddress.formatted_address.trim(),
       place_id: newAddress.place_id || null,
-      lat: newAddress.lat || null,
-      lng: newAddress.lng || null,
+      lat: newAddress.lat ?? null,
+      lng: newAddress.lng ?? null,
       postal_code: newAddress.postal_code || null,
       country: newAddress.country || null,
       region: newAddress.region || null,
@@ -71,8 +73,10 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
 
     try {
       const res = await axios.post("/client-billing-addresses", payload)
+      // мгновенно добавляем в таблицу
       setData(prev => [res.data, ...prev])
 
+      // сброс формы
       setNewAddress({
         formatted_address: "",
         place_id: null,
@@ -91,7 +95,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
       setResetCounter(prev => prev + 1)
       message.success("Адрес добавлен")
 
-      onChanged?.() // 🔹 уведомляем родителя
+      onChanged?.() // оповещаем родителя (для глобального слежения, если нужно)
     } catch (err) {
       console.error("Ошибка при добавлении адреса:", err)
       message.error("Не удалось добавить адрес")
@@ -100,7 +104,9 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
 
   const filteredData = search
     ? data.filter(addr =>
-        addr.formatted_address?.toLowerCase().includes(search.toLowerCase())
+        (addr.formatted_address || "")
+          .toLowerCase()
+          .includes(search.toLowerCase())
       )
     : data
 
@@ -110,7 +116,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
     <>
       <Card size="small">
         <PlaceAddressInput
-          debugId="main-form"
+          debugId="billing-main-form"
           resetTrigger={resetCounter}
           value={{
             address_line: newAddress.formatted_address,
@@ -154,7 +160,13 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
         </Row>
 
         <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col flex="auto"><Input placeholder="Комментарий" value={newAddress.comment} onChange={(e) => setNewAddress(prev => ({ ...prev, comment: e.target.value }))} /></Col>
+          <Col flex="auto">
+            <Input
+              placeholder="Комментарий"
+              value={newAddress.comment}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, comment: e.target.value }))}
+            />
+          </Col>
           <Col><Button type="primary" onClick={handleAdd}>Добавить адрес</Button></Col>
         </Row>
       </Card>
@@ -166,7 +178,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
         loading={loading}
         clientId={clientId}
         setData={setData}
-        onChanged={onChanged} // 🔹 пробрасываем колбэк
+        onChanged={onChanged}
       />
     </>
   )

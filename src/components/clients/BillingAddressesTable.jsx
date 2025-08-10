@@ -1,16 +1,12 @@
-// src/components/clients/BillingAddressesTable.jsx
 import React, { useState } from "react"
-import { Table, Input, message, Typography, Row, Col, Divider, Space, Tooltip, Button } from "antd"
+import { Table, Input, message, Row, Col, Divider, Space, Tooltip, Button } from "antd"
 import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
-import ValueDisplay from "@/components/common/ValueDisplay"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import { CopyOutlined } from "@ant-design/icons"
 
-const { Text } = Typography
-
-// Единственный форматированный вывод адреса
+// Единый человеко‑читаемый формат
 const formatFullAddress = (r = {}) => {
   const parts = [
     r.country,
@@ -25,18 +21,14 @@ const formatFullAddress = (r = {}) => {
   return parts.join(", ")
 }
 
-export default function BillingAddressesTable({ clientId, data = [], loading, reloadData }) {
+export default function BillingAddressesTable({ clientId, data = [], loading, setData, onChanged }) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
 
   const isEditing = (record) => editingId !== null && record?.id === editingId
+  const cancelEdit = () => { setEditingId(null); setEditedRow(null) }
 
-  const cancelEdit = () => {
-    setEditingId(null)
-    setEditedRow(null)
-  }
-
-  // --- SAVE c авто‑ретраем при 409 -----------------------------------------
+  // PUT с авто‑повтором один раз при 409 (version conflict)
   const doPut = (id, payload) => axios.put(`/client-billing-addresses/${id}`, payload)
 
   const handleSave = async (row) => {
@@ -64,19 +56,22 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
     }
 
     try {
-      await doPut(row.id, payload)
+      const { data: fresh } = await doPut(row.id, payload)
+      // сервер возвращает свежую строку -> обновляем локально
+      setData(prev => prev.map(r => (r.id === row.id ? fresh : r)))
       message.success("Адрес обновлён")
       cancelEdit()
-      await reloadData?.()
+      onChanged?.()
     } catch (err) {
-      // Автоматическое примирение версии и один повтор
       if (err?.response?.status === 409 && err.response.data?.current) {
+        // один повтор с актуальной версией
         const current = err.response.data.current
         try {
-          await doPut(row.id, { ...payload, version: current.version })
+          const { data: fresh2 } = await doPut(row.id, { ...payload, version: current.version })
+          setData(prev => prev.map(r => (r.id === row.id ? fresh2 : r)))
           message.success("Адрес обновлён")
           cancelEdit()
-          await reloadData?.()
+          onChanged?.()
           return
         } catch (e2) {
           console.error("Повтор после 409 не удался:", e2)
@@ -96,8 +91,9 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
       await axios.delete(`/client-billing-addresses/${record.id}`, {
         params: { version: record.version },
       })
+      setData(prev => prev.filter(r => r.id !== record.id))
       message.success("Адрес удалён")
-      await reloadData?.()
+      onChanged?.()
     } catch (err) {
       console.error("Ошибка при удалении адреса:", err)
       if (err?.response?.status === 409) {
@@ -119,7 +115,7 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
           return (
             <>
               <PlaceAddressInput
-                debugId={`table-row-${record.id}`}
+                debugId={`billing-table-row-${record.id}`}
                 value={{
                   address_line: editedRow.formatted_address,
                   lat: editedRow.lat,
@@ -149,65 +145,17 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
               <Divider style={{ margin: "8px 0" }} />
 
               <Row gutter={8}>
-                <Col span={6}>
-                  <Input
-                    placeholder="Страна"
-                    value={editedRow.country}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, country: e.target.value }))}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Input
-                    placeholder="Регион"
-                    value={editedRow.region}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, region: e.target.value }))}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Input
-                    placeholder="Город"
-                    value={editedRow.city}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, city: e.target.value }))}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Input
-                    placeholder="Индекс"
-                    value={editedRow.postal_code}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, postal_code: e.target.value }))}
-                  />
-                </Col>
+                <Col span={6}><Input placeholder="Страна" value={editedRow.country} onChange={(e) => setEditedRow((p) => ({ ...p, country: e.target.value }))} /></Col>
+                <Col span={6}><Input placeholder="Регион" value={editedRow.region} onChange={(e) => setEditedRow((p) => ({ ...p, region: e.target.value }))} /></Col>
+                <Col span={6}><Input placeholder="Город" value={editedRow.city} onChange={(e) => setEditedRow((p) => ({ ...p, city: e.target.value }))} /></Col>
+                <Col span={6}><Input placeholder="Индекс" value={editedRow.postal_code} onChange={(e) => setEditedRow((p) => ({ ...p, postal_code: e.target.value }))} /></Col>
               </Row>
 
               <Row gutter={8} style={{ marginTop: 8 }}>
-                <Col span={8}>
-                  <Input
-                    placeholder="Улица"
-                    value={editedRow.street}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, street: e.target.value }))}
-                  />
-                </Col>
-                <Col span={4}>
-                  <Input
-                    placeholder="Дом"
-                    value={editedRow.house}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, house: e.target.value }))}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Input
-                    placeholder="Строение"
-                    value={editedRow.building}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, building: e.target.value }))}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Input
-                    placeholder="Подъезд"
-                    value={editedRow.entrance}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, entrance: e.target.value }))}
-                  />
-                </Col>
+                <Col span={8}><Input placeholder="Улица" value={editedRow.street} onChange={(e) => setEditedRow((p) => ({ ...p, street: e.target.value }))} /></Col>
+                <Col span={4}><Input placeholder="Дом" value={editedRow.house} onChange={(e) => setEditedRow((p) => ({ ...p, house: e.target.value }))} /></Col>
+                <Col span={6}><Input placeholder="Строение" value={editedRow.building} onChange={(e) => setEditedRow((p) => ({ ...p, building: e.target.value }))} /></Col>
+                <Col span={6}><Input placeholder="Подъезд" value={editedRow.entrance} onChange={(e) => setEditedRow((p) => ({ ...p, entrance: e.target.value }))} /></Col>
               </Row>
 
               <Row style={{ marginTop: 8 }}>
@@ -224,8 +172,8 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
           )
         }
 
-        const headline = record.formatted_address || "—"
-        const line2 = formatFullAddress(record)
+        // режим просмотра — одна строка, без дублей
+        const oneLine = (record.formatted_address?.trim() || formatFullAddress(record) || "—")
         return (
           <div
             onDoubleClick={() => {
@@ -233,12 +181,7 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
               setEditedRow({ ...record })
             }}
           >
-            <div style={{ fontWeight: 600 }}>
-              <ValueDisplay value={headline} />
-            </div>
-            <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
-              {line2 || "—"}
-            </div>
+            <div style={{ fontWeight: 600 }}>{oneLine}</div>
             {record.comment && (
               <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
                 Комментарий: {record.comment}
@@ -248,7 +191,7 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
                       type="text"
                       size="small"
                       icon={<CopyOutlined />}
-                      onClick={() => navigator.clipboard.writeText(`${headline}. ${line2}`)}
+                      onClick={() => navigator.clipboard.writeText(oneLine)}
                     />
                   </Tooltip>
                 </Space>
