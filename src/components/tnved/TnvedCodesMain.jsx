@@ -17,11 +17,43 @@ export default function TnvedCodesMain() {
   const [newRecord, setNewRecord] = useState(null)
   const [logId, setLogId] = useState(null)
 
+  // баннер «появились изменения»
+  const [hasNew, setHasNew] = useState(false)
+  // маркер состояния таблицы (COUNT:SUM(version))
+  const [etag, setEtag] = useState(null)
+
+  // ---------- helpers ----------
+  const toNull = (v) => (v === "" || v === undefined ? null : v)
+  const toNumberOrNull = (v) => {
+    if (v === "" || v === null || v === undefined) return null
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+
+  const replaceRow = (fresh) => {
+    setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+  }
+  const removeRow = (id) => setData((prev) => prev.filter((r) => r.id !== id))
+
+  // ---------- API ----------
+  const fetchEtag = async () => {
+    try {
+      const { data: e } = await axios.get("/tnved-codes/etag")
+      return e?.etag || null
+    } catch {
+      return null
+    }
+  }
+
   const fetchData = async () => {
     setLoading(true)
     try {
       const res = await axios.get("/tnved-codes")
       setData(res.data || [])
+      // подтянем свежий маркер состояния и погасим баннер
+      const freshEtag = await fetchEtag()
+      setEtag(freshEtag)
+      setHasNew(false)
     } catch (err) {
       console.error("Ошибка загрузки данных:", err)
       message.error("Не удалось загрузить коды ТН ВЭД")
@@ -34,16 +66,30 @@ export default function TnvedCodesMain() {
     fetchData()
   }, [])
 
-  // ---- helpers -------------------------------------------------
-  const replaceRow = (fresh) => {
-    setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
-  }
+  // ---------- поллинг по ETag (ловим add/edit/delete в других окнах) ----------
+  useEffect(() => {
+    let timer
+    const checkChanged = async () => {
+      if (document.hidden || loading) return
+      const next = await fetchEtag()
+      if (etag && next && next !== etag) {
+        setHasNew(true)
+      }
+    }
 
-  const removeRow = (id) => {
-    setData((prev) => prev.filter((r) => r.id !== id))
-  }
+    const t0 = setTimeout(checkChanged, 10000) // первый через 10с
+    timer = setInterval(checkChanged, 30000)   // далее каждые 30с
+    const vis = () => checkChanged()
+    document.addEventListener("visibilitychange", vis)
 
-  // ---- create --------------------------------------------------
+    return () => {
+      clearTimeout(t0)
+      clearInterval(timer)
+      document.removeEventListener("visibilitychange", vis)
+    }
+  }, [etag, loading])
+
+  // ---------- create ----------
   const handleAdd = async () => {
     if (!newRecord?.code?.trim()) {
       message.warning("Поле 'Код' обязательно для заполнения")
@@ -52,63 +98,57 @@ export default function TnvedCodesMain() {
 
     const payload = {
       code: newRecord.code.trim(),
-      description: newRecord.description ?? "",
-      duty_rate: newRecord.duty_rate ?? "",
-      notes: newRecord.notes ?? "",
+      description: toNull(newRecord?.description?.trim?.()),
+      duty_rate: toNumberOrNull(newRecord?.duty_rate),
+      notes: toNull(newRecord?.notes?.trim?.()),
     }
 
     try {
-      const res = await axios.post("/tnved-codes", payload)
-      const inserted = res?.data?.inserted || []
-      const errors = res?.data?.errors || []
-
-      if (inserted.length) {
-        // свежие записи добавим в начало
-        setData((prev) => [...inserted, ...prev])
-        setNewRecord(null)
-        message.success(`Добавлено: ${inserted.length}`)
-      }
-
-      if (errors.length) {
-        // покажем кратко первую ошибку
-        message.warning(errors[0] || "Некоторые строки не добавлены")
-      }
+      const { data: created } = await axios.post("/tnved-codes", payload)
+      // локально добавим запись в начало — быстрее, чем полный refetch
+      setData((prev) => [created, ...prev])
+      setNewRecord(null)
+      setHasNew(false)
+      // обновим локальный etag, чтобы поллинг не мигал
+      const freshEtag = await fetchEtag()
+      setEtag(freshEtag)
+      message.success("Запись добавлена")
     } catch (err) {
       console.error("Ошибка при добавлении:", err)
-      if (err?.isDuplicateKey) {
-        message.error("Код уже существует")
-      } else {
-        message.error("Не удалось добавить запись")
-      }
+      const t = err?.response?.data?.type
+      if (t === "duplicate_key") message.error("Код уже существует")
+      else message.error(err?.response?.data?.message || "Не удалось добавить запись")
     }
   }
 
-  // ---- update (с version) -------------------------------------
+  // ---------- update (optimistic locking) ----------
   const handleUpdate = async (id, updated) => {
-    // updated должен содержать актуальный updated.version
     try {
       const { data: fresh } = await axios.put(`/tnved-codes/${id}`, {
         code: updated.code?.trim(),
-        description: updated.description ?? null,
-        duty_rate: updated.duty_rate ?? null,
-        notes: updated.notes ?? null,
-        version: updated.version, // ВАЖНО
+        description: toNull(updated?.description?.trim?.()),
+        duty_rate: toNumberOrNull(updated?.duty_rate),
+        notes: toNull(updated?.notes?.trim?.()),
+        version: updated.version,
       })
-      replaceRow(fresh) // сервер вернёт запись с version+1
+      replaceRow(fresh)
+      // подтянем etag (изменился version)
+      const freshEtag = await fetchEtag()
+      setEtag(freshEtag)
       message.success("Изменения сохранены")
     } catch (err) {
-      // Пробрасываем дальше, чтобы таблица показала модалку/сообщение
+      // пробрасываем — таблица покажет модалку конфликта
       throw err
     }
   }
 
-  // ---- delete (с ?version=) -----------------------------------
+  // ---------- delete (с ?version=) ----------
   const handleDelete = async (record) => {
     try {
-      await axios.delete(`/tnved-codes/${record.id}`, {
-        params: { version: record.version }, // защита от гонок удаления
-      })
+      await axios.delete(`/tnved-codes/${record.id}`, { params: { version: record.version } })
       removeRow(record.id)
+      const freshEtag = await fetchEtag()
+      setEtag(freshEtag)
       message.success("Код удалён")
     } catch (err) {
       if (err?.isVersionConflict) {
@@ -121,6 +161,7 @@ export default function TnvedCodesMain() {
     }
   }
 
+  // ---------- фильтр ----------
   const filteredData = data.filter(
     (item) =>
       item.code?.toLowerCase().includes(search.toLowerCase()) ||
@@ -136,13 +177,7 @@ export default function TnvedCodesMain() {
         style={{ width: "100%", boxSizing: "border-box" }}
         extra={
           <Space>
-            <Button
-              size="small"
-              type="link"
-              href="https://www.alta.ru/tnved/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <Button size="small" type="link" href="https://www.alta.ru/tnved/" target="_blank" rel="noopener noreferrer">
               Коды ТН ВЭД РФ
             </Button>
             <Button
@@ -157,6 +192,26 @@ export default function TnvedCodesMain() {
           </Space>
         }
       >
+        {/* подсказка по управлению */}
+        <div style={{ fontSize: 12, color: '#6b7280', margin: '8px 0' }}>
+          Двойной клик — редактирование; Enter — сохранить; Esc — отменить.
+        </div>
+
+        {/* баннер «есть изменения» */}
+        {hasNew && (
+          <div style={{ margin: '8px 0' }}>
+            <Button
+              type="primary"
+              onClick={async () => {
+                await fetchData()
+                message.success("Список обновлён")
+              }}
+            >
+              Появились изменения — Обновить
+            </Button>
+          </div>
+        )}
+
         <TableToolbar
           search={search}
           onSearch={setSearch}
@@ -164,13 +219,12 @@ export default function TnvedCodesMain() {
           onShowDeleted={() => setLogId("deleted")}
         />
 
+        {/* форма быстрого добавления */}
         <Form layout="inline" style={{ marginBottom: 16 }} onFinish={handleAdd}>
           <Form.Item label="Код">
             <Input
               value={newRecord?.code || ""}
-              onChange={(e) =>
-                setNewRecord((prev) => ({ ...prev, code: e.target.value }))
-              }
+              onChange={(e) => setNewRecord((prev) => ({ ...prev, code: e.target.value }))}
               placeholder="Введите код"
             />
           </Form.Item>
@@ -179,9 +233,7 @@ export default function TnvedCodesMain() {
             <TextArea
               rows={1}
               value={newRecord?.description || ""}
-              onChange={(e) =>
-                setNewRecord((prev) => ({ ...prev, description: e.target.value }))
-              }
+              onChange={(e) => setNewRecord((prev) => ({ ...prev, description: e.target.value }))}
               placeholder="Описание"
               style={{ width: 300 }}
             />
@@ -190,10 +242,8 @@ export default function TnvedCodesMain() {
           <Form.Item label="Пошлина">
             <Input
               type="number"
-              value={newRecord?.duty_rate || ""}
-              onChange={(e) =>
-                setNewRecord((prev) => ({ ...prev, duty_rate: e.target.value }))
-              }
+              value={newRecord?.duty_rate ?? ""}
+              onChange={(e) => setNewRecord((prev) => ({ ...prev, duty_rate: e.target.value }))}
               placeholder="%"
               style={{ width: 100 }}
             />
@@ -203,9 +253,7 @@ export default function TnvedCodesMain() {
             <TextArea
               rows={1}
               value={newRecord?.notes || ""}
-              onChange={(e) =>
-                setNewRecord((prev) => ({ ...prev, notes: e.target.value }))
-              }
+              onChange={(e) => setNewRecord((prev) => ({ ...prev, notes: e.target.value }))}
               placeholder="Примечания"
               style={{ width: 200 }}
             />
@@ -223,7 +271,7 @@ export default function TnvedCodesMain() {
           loading={loading}
           onUpdate={handleUpdate}
           onDelete={handleDelete}
-          onReplaceRow={replaceRow} // для модалки конфликта
+          onReplaceRow={replaceRow}
           onRefresh={fetchData}
         />
       </Card>
@@ -237,11 +285,7 @@ export default function TnvedCodesMain() {
       />
 
       {logId === "deleted" && (
-        <FullHistoryDialog
-          onlyDeleted
-          entityType="tnved_code"
-          onClose={() => setLogId(null)}
-        />
+        <FullHistoryDialog onlyDeleted entityType="tnved_code" onClose={() => setLogId(null)} />
       )}
     </Space>
   )

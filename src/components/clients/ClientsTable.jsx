@@ -35,6 +35,10 @@ export default function ClientsTable({
 
   const saveEdit = async () => {
     if (!editedRow) return
+    if (editedRow.version === undefined) {
+      message.error("Нет версии записи для сохранения")
+      return
+    }
     try {
       await axios.put(`/clients/${editedRow.id}`, editedRow)
       message.success("Изменения сохранены")
@@ -51,9 +55,11 @@ export default function ClientsTable({
     if (!confirmed) return
 
     try {
-      await axios.delete(`/clients/${client.id}`)
+      await axios.delete(`/clients/${client.id}`, {
+        params: { version: client.version }
+      })
       message.success("Клиент удалён")
-      onReload()
+      await onReload()
     } catch (err) {
       console.error("Ошибка при удалении клиента:", err)
       message.error("Не удалось удалить клиента")
@@ -133,7 +139,6 @@ export default function ClientsTable({
 
   const expandedRowRender = (client) => {
     if (!client?.id) return null
-
     return (
       <div style={{ paddingInline: 0 }}>
         <Tabs
@@ -182,6 +187,7 @@ export default function ClientsTable({
         <FullHistoryDialog
           entityType="clients-combined"
           entityId={historyForId}
+          onlyDeleted={false}
           onClose={() => setHistoryForId(null)}
         />
       )}

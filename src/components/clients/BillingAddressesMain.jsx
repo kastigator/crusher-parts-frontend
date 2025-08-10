@@ -5,11 +5,10 @@ import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import BillingAddressesTable from "./BillingAddressesTable"
 import TableToolbar from "@/components/common/TableToolbar"
 
-export default function BillingAddressesMain({ clientId }) {
+export default function BillingAddressesMain({ clientId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [resetCounter, setResetCounter] = useState(0)
-  // Если нужен фильтр
   const [search, setSearch] = useState("")
 
   const [newAddress, setNewAddress] = useState({
@@ -72,7 +71,6 @@ export default function BillingAddressesMain({ clientId }) {
 
     try {
       const res = await axios.post("/client-billing-addresses", payload)
-      message.success("Адрес добавлен")
       setData(prev => [res.data, ...prev])
 
       setNewAddress({
@@ -91,18 +89,22 @@ export default function BillingAddressesMain({ clientId }) {
         comment: ""
       })
       setResetCounter(prev => prev + 1)
+      message.success("Адрес добавлен")
+
+      onChanged?.() // 🔹 уведомляем родителя
     } catch (err) {
       console.error("Ошибка при добавлении адреса:", err)
       message.error("Не удалось добавить адрес")
     }
   }
 
-  // Простейшая фильтрация по formatted_address (можно усложнить)
   const filteredData = search
     ? data.filter(addr =>
         addr.formatted_address?.toLowerCase().includes(search.toLowerCase())
       )
     : data
+
+  if (!clientId) return null
 
   return (
     <>
@@ -136,100 +138,35 @@ export default function BillingAddressesMain({ clientId }) {
           }
         />
 
+        {/* Поля адреса */}
         <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col span={6}>
-            <Input
-              placeholder="Страна"
-              value={newAddress.country}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, country: e.target.value }))}
-            />
-          </Col>
-          <Col span={6}>
-            <Input
-              placeholder="Регион"
-              value={newAddress.region}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, region: e.target.value }))}
-            />
-          </Col>
-          <Col span={6}>
-            <Input
-              placeholder="Город"
-              value={newAddress.city}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, city: e.target.value }))}
-            />
-          </Col>
-          <Col span={6}>
-            <Input
-              placeholder="Индекс"
-              value={newAddress.postal_code}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, postal_code: e.target.value }))}
-            />
-          </Col>
+          <Col span={6}><Input placeholder="Страна" value={newAddress.country} onChange={(e) => setNewAddress(prev => ({ ...prev, country: e.target.value }))} /></Col>
+          <Col span={6}><Input placeholder="Регион" value={newAddress.region} onChange={(e) => setNewAddress(prev => ({ ...prev, region: e.target.value }))} /></Col>
+          <Col span={6}><Input placeholder="Город" value={newAddress.city} onChange={(e) => setNewAddress(prev => ({ ...prev, city: e.target.value }))} /></Col>
+          <Col span={6}><Input placeholder="Индекс" value={newAddress.postal_code} onChange={(e) => setNewAddress(prev => ({ ...prev, postal_code: e.target.value }))} /></Col>
         </Row>
 
         <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col span={12}>
-            <Input
-              placeholder="Улица"
-              value={newAddress.street}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, street: e.target.value }))}
-            />
-          </Col>
-          <Col span={4}>
-            <Input
-              placeholder="Дом"
-              value={newAddress.house}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, house: e.target.value }))}
-            />
-          </Col>
-          <Col span={4}>
-            <Input
-              placeholder="Строение"
-              value={newAddress.building}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, building: e.target.value }))}
-            />
-          </Col>
-          <Col span={4}>
-            <Input
-              placeholder="Подъезд"
-              value={newAddress.entrance}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, entrance: e.target.value }))}
-            />
-          </Col>
+          <Col span={12}><Input placeholder="Улица" value={newAddress.street} onChange={(e) => setNewAddress(prev => ({ ...prev, street: e.target.value }))} /></Col>
+          <Col span={4}><Input placeholder="Дом" value={newAddress.house} onChange={(e) => setNewAddress(prev => ({ ...prev, house: e.target.value }))} /></Col>
+          <Col span={4}><Input placeholder="Строение" value={newAddress.building} onChange={(e) => setNewAddress(prev => ({ ...prev, building: e.target.value }))} /></Col>
+          <Col span={4}><Input placeholder="Подъезд" value={newAddress.entrance} onChange={(e) => setNewAddress(prev => ({ ...prev, entrance: e.target.value }))} /></Col>
         </Row>
 
         <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col flex="auto">
-            <Input
-              placeholder="Комментарий"
-              value={newAddress.comment}
-              onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  comment: e.target.value
-                }))
-              }
-            />
-          </Col>
-          <Col>
-            <Button type="primary" onClick={handleAdd}>
-              Добавить адрес
-            </Button>
-          </Col>
+          <Col flex="auto"><Input placeholder="Комментарий" value={newAddress.comment} onChange={(e) => setNewAddress(prev => ({ ...prev, comment: e.target.value }))} /></Col>
+          <Col><Button type="primary" onClick={handleAdd}>Добавить адрес</Button></Col>
         </Row>
       </Card>
 
-      {/* Тулбар без кнопки обновить */}
-      <TableToolbar
-        filterValue={search}
-        onFilterChange={setSearch}
-      />
+      <TableToolbar filterValue={search} onFilterChange={setSearch} />
 
       <BillingAddressesTable
         data={filteredData}
         loading={loading}
         clientId={clientId}
-        reloadData={fetchData}
+        setData={setData}
+        onChanged={onChanged} // 🔹 пробрасываем колбэк
       />
     </>
   )

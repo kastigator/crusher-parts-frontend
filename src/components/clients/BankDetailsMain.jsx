@@ -1,3 +1,4 @@
+// src/components/clients/BankDetailsMain.jsx
 import React, { useEffect, useState } from "react"
 import { Row, Col, Input, Button, message } from "antd"
 import { Autocomplete, TextField } from "@mui/material"
@@ -8,10 +9,11 @@ import TableToolbar from "@/components/common/TableToolbar"
 
 const currencyOptions = ["RUB", "USD", "EUR", "CNY"]
 
-export default function BankDetailsMain({ clientId }) {
+export default function BankDetailsMain({ clientId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [search, setSearch] = useState("")
 
   const [newBank, setNewBank] = useState({
     bic: "",
@@ -80,6 +82,8 @@ export default function BankDetailsMain({ clientId }) {
         currency: "RUB"
       })
       message.success("Реквизиты добавлены")
+
+      if (onChanged) onChanged() // 🔹 сообщаем родителю об изменении
     } catch (err) {
       console.error("Ошибка при добавлении:", err)
       message.error("Не удалось добавить реквизиты")
@@ -88,11 +92,24 @@ export default function BankDetailsMain({ clientId }) {
     }
   }
 
+  // 🔹 фильтрация по поиску
+  const filteredData = search
+    ? data.filter(
+        (item) =>
+          item.bic?.toLowerCase().includes(search.toLowerCase()) ||
+          item.bank_name?.toLowerCase().includes(search.toLowerCase())
+      )
+    : data
+
   if (!clientId) return null
 
   return (
     <>
-      <TableToolbar placeholder="Поиск по БИК или банку" />
+      <TableToolbar
+        placeholder="Поиск по БИК или банку"
+        search={search}
+        onSearch={setSearch}
+      />
 
       <Row gutter={12} style={{ marginBottom: 8, marginTop: 8 }}>
         <Col span={4}>
@@ -146,8 +163,11 @@ export default function BankDetailsMain({ clientId }) {
 
       <BankDetailsTable
         clientId={clientId}
-        data={data}
-        setData={setData}
+        data={filteredData}
+        setData={(val) => {
+          setData(val)
+          if (onChanged) onChanged() // 🔹 любое изменение в таблице → сигнал родителю
+        }}
         loading={loading}
       />
     </>

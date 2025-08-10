@@ -4,8 +4,6 @@ import { Table, Input, Typography, message, Row, Col, Divider } from "antd"
 import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ValueDisplay from "@/components/common/ValueDisplay"
-import logActivity from "@/utils/logActivity"
-import logFieldDiffs from "@/utils/logFieldDiffs"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 
@@ -42,40 +40,41 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
       house: row.house || null,
       building: row.building || null,
       entrance: row.entrance || null,
-      comment: row.comment?.trim() || null
+      comment: row.comment?.trim() || null,
+      version: row.version, // обязателен
     }
 
     try {
       await axios.put(`/client-shipping-addresses/${row.id}`, payload)
-
-      await logFieldDiffs({
-        oldData: row,
-        newData: payload,
-        entity_type: "client_shipping_addresses",
-        entity_id: row.id,
-        client_id: clientId
-      })
-
       message.success("Адрес обновлён")
       cancelEdit()
       reloadData()
     } catch (err) {
       console.error("Ошибка при обновлении:", err)
-      message.error("Не удалось сохранить адрес")
+      if (err?.response?.status === 409) {
+        message.error("Конфликт версий: запись изменилась. Обновите список.")
+      } else {
+        message.error("Не удалось сохранить адрес")
+      }
     }
   }
 
-  const deleteRow = async (id) => {
+  const deleteRow = async (record) => {
     const { confirmed } = await confirmAction("Удалить адрес?")
     if (!confirmed) return
     try {
-      await axios.delete(`/client-shipping-addresses/${id}`)
-      await logActivity("delete", "client_shipping_addresses", id, { client_id: clientId })
+      await axios.delete(`/client-shipping-addresses/${record.id}`, {
+        params: { version: record.version }
+      })
       message.success("Адрес удалён")
       reloadData()
     } catch (err) {
       console.error("Ошибка при удалении адреса:", err)
-      message.error("Не удалось удалить адрес")
+      if (err?.response?.status === 409) {
+        message.error("Конфликт версий: запись изменилась. Обновите список.")
+      } else {
+        message.error("Не удалось удалить адрес")
+      }
     }
   }
 
@@ -177,7 +176,7 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
                     }
                   />
                 </Col>
-                <Col span={4}>
+                <Col span={6}>
                   <Input
                     placeholder="Строение"
                     value={editedRow.building}
@@ -186,7 +185,7 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
                     }
                   />
                 </Col>
-                <Col span={4}>
+                <Col span={6}>
                   <Input
                     placeholder="Подъезд"
                     value={editedRow.entrance}
@@ -196,44 +195,21 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
                   />
                 </Col>
               </Row>
-
-              <Input.TextArea
-                style={{ marginTop: 8 }}
-                placeholder="Комментарий"
-                value={editedRow.comment}
-                onChange={(e) =>
-                  setEditedRow((prev) => ({ ...prev, comment: e.target.value }))
-                }
-                onPressEnter={() => handleSave(editedRow)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") cancelEdit()
-                }}
-              />
             </>
           )
         }
 
-        const parts = [
-          record.postal_code,
-          record.country,
-          record.region,
-          record.city,
-          record.street,
-          record.house,
-          record.building ? `стр. ${record.building}` : null,
-          record.entrance ? `подъезд ${record.entrance}` : null
-        ].filter(Boolean)
-
-        return <Text>{parts.length > 0 ? parts.join(", ") : <i>не указано</i>}</Text>
-      }
-    },
-    {
-      title: "Комментарий",
-      dataIndex: "comment",
-      render: (_, record) =>
-        isEditing(record) && editedRow ? null : (
-          <ValueDisplay value={record.comment} />
+        return (
+          <div onDoubleClick={() => { setEditingId(record.id); setEditedRow({ ...record }) }}>
+            <ValueDisplay value={record.formatted_address} />
+            {record.comment && (
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>Комментарий: {record.comment}</Text>
+              </div>
+            )}
+          </div>
         )
+      },
     },
     {
       title: "Действия",
@@ -245,13 +221,13 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
           <ActionButtons
             onSave={editing ? () => handleSave(editedRow) : undefined}
             onCancel={editing ? cancelEdit : undefined}
-            onDelete={!editing ? () => deleteRow(record.id) : undefined}
-            confirmDelete={false} // подтверждение делаем вручную в deleteRow
+            onDelete={!editing ? () => deleteRow(record) : undefined}
+            confirmDelete={false}
             size="small"
           />
         )
-      }
-    }
+      },
+    },
   ]
 
   return (
@@ -262,15 +238,6 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
       loading={loading}
       pagination={false}
       size="small"
-      style={{ width: "100%" }}
-      onRow={(record) => ({
-        onDoubleClick: () => {
-          if (record?.id !== undefined) {
-            setEditedRow({ ...record })
-            setEditingId(record.id)
-          }
-        }
-      })}
     />
   )
 }

@@ -1,12 +1,9 @@
 // src/components/clients/BankDetailsTable.jsx
-
 import React, { useState } from "react"
 import { Table, Input, message } from "antd"
 import axios from "@/api/axiosInstance"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import { Autocomplete, TextField } from "@mui/material"
-import logActivity from "@/utils/logActivity"
-import logFieldDiffs from "@/utils/logFieldDiffs"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 
@@ -20,7 +17,7 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
 
   const makeEditable = (record) => {
     setEditingId(record.id)
-    setEditedRow(record)
+    setEditedRow({ ...record })
   }
 
   const cancelEdit = () => {
@@ -30,41 +27,42 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
 
   const saveEdit = async (record) => {
     try {
-      const payload = { ...editedRow }
+      // Бэкенд требует version
+      const payload = { ...editedRow, version: record.version }
 
-      await axios.put(`/client-bank-details/${record.id}`, payload)
+      const { data: fresh } = await axios.put(`/client-bank-details/${record.id}`, payload)
 
-      await logFieldDiffs({
-        oldData: record,
-        newData: payload,
-        entity_type: "client_bank_details",
-        entity_id: record.id,
-        client_id: clientId ?? undefined,
-      })
+      // Обновляем строку свежими данными с бэка (включая новый version)
+      setData((prev) => prev.map((r) => (r.id === record.id ? { ...fresh } : r)))
 
-      setData((prev) =>
-        prev.map((r) => (r.id === record.id ? { ...r, ...payload } : r))
-      )
       message.success("Изменения сохранены")
       cancelEdit()
     } catch (err) {
       console.error("Ошибка при сохранении:", err)
-      message.error("Не удалось сохранить изменения")
+      if (err?.response?.status === 409) {
+        message.error("Конфликт версий: запись изменилась. Обновите список.")
+      } else {
+        message.error("Не удалось сохранить изменения")
+      }
     }
   }
 
-  const deleteRow = async (id) => {
+  const deleteRow = async (record) => {
     const { confirmed } = await confirmAction("Удалить реквизиты?")
     if (!confirmed) return
-
     try {
-      await axios.delete(`/client-bank-details/${id}`)
-      await logActivity("delete", "client_bank_details", id, { client_id: clientId })
-      setData((prev) => prev.filter((r) => r.id !== id))
+      await axios.delete(`/client-bank-details/${record.id}`, {
+        params: { version: record.version }
+      })
+      setData((prev) => prev.filter((r) => r.id !== record.id))
       message.success("Реквизиты удалены")
     } catch (err) {
       console.error("Ошибка удаления:", err)
-      message.error("Не удалось удалить")
+      if (err?.response?.status === 409) {
+        message.error("Конфликт версий: запись изменилась. Обновите список.")
+      } else {
+        message.error("Не удалось удалить")
+      }
     }
   }
 
@@ -86,10 +84,8 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
   const renderCurrencySelect = (record) => (
     <Autocomplete
       options={currencyOptions}
-      value={editedRow.currency || record.currency || ""}
-      onChange={(_, val) =>
-        setEditedRow((prev) => ({ ...prev, currency: val }))
-      }
+      value={editedRow.currency ?? record.currency ?? ""}
+      onChange={(_, val) => setEditedRow((prev) => ({ ...prev, currency: val }))}
       disableClearable
       size="small"
       autoHighlight
@@ -162,8 +158,8 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
           <ActionButtons
             onSave={editing ? () => saveEdit(record) : undefined}
             onCancel={editing ? cancelEdit : undefined}
-            onDelete={!editing ? () => deleteRow(record.id) : undefined}
-            confirmDelete={false} // подтверждение вручную
+            onDelete={!editing ? () => deleteRow(record) : undefined}
+            confirmDelete={false}
             size="small"
           />
         )

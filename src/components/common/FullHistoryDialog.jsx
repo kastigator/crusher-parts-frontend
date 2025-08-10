@@ -12,20 +12,28 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
   const [actionFilter, setActionFilter] = useState(
     onlyDeleted ? { create: false, update: false, delete: true } : { create: true, update: true, delete: true }
   )
+
   useEffect(() => {
     setActionFilter(onlyDeleted ? { create: false, update: false, delete: true } : { create: true, update: true, delete: true })
   }, [onlyDeleted])
 
   useEffect(() => {
     if (!entityType || (entityId == null && !onlyDeleted)) return
+
     const fetchLogs = async () => {
       setLoading(true)
       try {
         let res
         if (onlyDeleted) {
-          res = await axios.get(`/activity-logs/deleted?entity_type=${entityType === "clients-combined" ? "clients" : entityType}`)
-        } else if (entityType === "clients-combined") {
-          res = await axios.get(`/clients/${entityId}/logs`)
+          if (entityType.endsWith("-combined")) {
+            const baseType = entityType.replace("-combined", "")
+            res = await axios.get(`/${baseType}/logs/deleted`)
+          } else {
+            res = await axios.get(`/activity-logs/deleted?entity_type=${entityType}`)
+          }
+        } else if (entityType.endsWith("-combined")) {
+          const baseType = entityType.replace("-combined", "")
+          res = await axios.get(`/${baseType}/${entityId}/logs/combined`)
         } else {
           res = await axios.get(`/activity-logs/${entityType}/${entityId}`)
         }
@@ -37,6 +45,7 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
         setLoading(false)
       }
     }
+
     fetchLogs()
   }, [entityId, entityType, onlyDeleted])
 
@@ -48,7 +57,9 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
     tnved_code: "ВЭД"
   }
 
-  const TECH_FIELDS = new Set(["id", "created_at", "updated_at", "client_id", "entity_id", "user_id"])
+  // ← добавил 'version' в техполя
+  const TECH_FIELDS = new Set(["id", "created_at", "updated_at", "client_id", "entity_id", "user_id", "version"])
+
   const labelForField = (record) => {
     const schema = logSchemas[record?.entity_type]
     const nice = schema?.fields?.[record?.field_changed]
@@ -78,14 +89,23 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
   const cellWrap = { whiteSpace: "pre-wrap", wordBreak: "break-word" }
   const bgOld = "#fff1f0"
   const bgNew = "#f6ffed"
-  const formatValue = (v) => (v == null || v === "" ? "—" : typeof v === "object" ? (() => { try { return JSON.stringify(v, null, 2) } catch { return String(v) } })() : String(v))
-  const copyText = async (t) => { try { await navigator.clipboard.writeText(t); message.success("Скопировано") } catch { message.warning("Не удалось скопировать") } }
+  const formatValue = (v) =>
+    v == null || v === ""
+      ? "—"
+      : typeof v === "object"
+      ? (() => { try { return JSON.stringify(v, null, 2) } catch { return String(v) } })()
+      : String(v)
 
-  // экспорт CSV (подстраивается под режим)
+  const copyText = async (t) => {
+    try { await navigator.clipboard.writeText(t); message.success("Скопировано") }
+    catch { message.warning("Не удалось скопировать") }
+  }
+
   const exportCSV = () => {
     const header = onlyDeleted
       ? ["Сущность","Действие","Детали","Комментарий","Пользователь","Дата"]
       : ["Сущность","Действие","Поле","Было","Стало","Комментарий","Пользователь","Дата"]
+
     const lines = rows.map((r) => {
       const h = entityLabels[r.entity_type] || r.entity_type
       const action = r.action
@@ -93,25 +113,32 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
       const date = r.created_at ? new Date(r.created_at).toLocaleString("ru-RU") : "—"
       const esc = (s) => `"${String(s).replaceAll(`"`, `""`)}"`
       if (onlyDeleted) {
-        const details = formatValue(r.old_value) // главное, что было удалено
+        const details = formatValue(r.old_value)
         return [h, action, details, r.comment || "—", user, date].map(esc).join(",")
       } else {
         const field = labelForField(r)
-        return [h, action, field, formatValue(r.old_value), formatValue(r.new_value), r.comment || "—", user, date].map(esc).join(",")
+        return [h, action, field, formatValue(r.old_value), formatValue(r.new_value), r.comment || "—", user, date]
+          .map(esc)
+          .join(",")
       }
     })
     const csv = [header.join(","), ...lines].join("\n")
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }))
-    const a = document.createElement("a"); a.href = url; a.download = `history_${entityType || "all"}_${Date.now()}.csv`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `history_${entityType || "all"}_${Date.now()}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
-  // общие левые колонки
   const leftCols = [
     { title: "Сущность", dataIndex: "entity_type", width: 150, fixed: "left", render: (val) => entityLabels[val] || val },
-    { title: "Действие", dataIndex: "action", width: 110, fixed: "left", render: (val) => <Tag color={{create:"green",update:"blue",delete:"red"}[val] || "default"}>{val}</Tag> }
+    { title: "Действие", dataIndex: "action", width: 110, fixed: "left",
+      render: (val) => <Tag color={{create:"green",update:"blue",delete:"red"}[val] || "default"}>{val}</Tag> }
   ]
 
-  // колонки для обычного режима (есть Было/Стало)
   const columnsFull = [
     ...leftCols,
     { title: "Поле", dataIndex: "field_changed", width: 180, render: (_v, r) => <div style={cellWrap}>{labelForField(r)}</div> },
@@ -136,13 +163,12 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
     { title: "Дата", dataIndex: "created_at", width: 170, render: (v) => (v ? new Date(v).toLocaleString("ru-RU") : "—") }
   ]
 
-  // колонки для режима onlyDeleted (без Было/Стало)
   const columnsDeleted = [
     ...leftCols,
     {
       title: "Детали", dataIndex: "old_value", width: 820,
-      render: (v, r) => {
-        const text = formatValue(v) // имя клиента, код ВЭД и т.п., если лог писался с old_value
+      render: (v) => {
+        const text = formatValue(v)
         return (
           <Space size={6} align="start">
             <div style={cellWrap}>{text}</div>

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react"
-import { Button, message, Input, Row, Col } from "antd"
+import React, { useEffect, useState } from "react"
+import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ShippingAddressesTable from "./ShippingAddressesTable"
@@ -9,6 +9,7 @@ export default function ShippingAddressesMain({ clientId }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [resetCounter, setResetCounter] = useState(0)
+  const [search, setSearch] = useState("")
 
   const [newAddress, setNewAddress] = useState({
     formatted_address: "",
@@ -33,9 +34,10 @@ export default function ShippingAddressesMain({ clientId }) {
       const res = await axios.get("/client-shipping-addresses", {
         params: { client_id: clientId }
       })
-      setData(res.data)
+      setData(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       console.error("Ошибка при загрузке адресов доставки:", err)
+      message.error("Не удалось загрузить адреса доставки")
     } finally {
       setLoading(false)
     }
@@ -55,8 +57,8 @@ export default function ShippingAddressesMain({ clientId }) {
       client_id: clientId,
       formatted_address: newAddress.formatted_address.trim(),
       place_id: newAddress.place_id || null,
-      lat: newAddress.lat || null,
-      lng: newAddress.lng || null,
+      lat: newAddress.lat ?? null,
+      lng: newAddress.lng ?? null,
       postal_code: newAddress.postal_code || null,
       country: newAddress.country || null,
       region: newAddress.region || null,
@@ -69,10 +71,11 @@ export default function ShippingAddressesMain({ clientId }) {
     }
 
     try {
-      const res = await axios.post("/client-shipping-addresses", payload)
-      message.success("Адрес добавлен")
-      setData(prev => [res.data, ...prev])
+      const { data: created } = await axios.post("/client-shipping-addresses", payload)
+      setData(prev => [created, ...prev])
+      message.success("Адрес доставки добавлен")
 
+      // сброс формы
       setNewAddress({
         formatted_address: "",
         place_id: null,
@@ -88,70 +91,136 @@ export default function ShippingAddressesMain({ clientId }) {
         entrance: "",
         comment: ""
       })
-      setResetCounter(prev => prev + 1)
+      setResetCounter(v => v + 1)
     } catch (err) {
-      console.error("Ошибка при добавлении адреса:", err)
+      console.error("Ошибка при добавлении адреса доставки:", err)
       message.error("Не удалось добавить адрес")
     }
   }
 
+  const filteredData = search
+    ? data.filter(a => a.formatted_address?.toLowerCase().includes(search.toLowerCase()))
+    : data
+
+  if (!clientId) return null
+
   return (
     <>
-      <TableToolbar searchPlaceholder="Поиск по адресу" />
+      <Card size="small">
+        <PlaceAddressInput
+          debugId="shipping-form"
+          resetTrigger={resetCounter}
+          value={{
+            address_line: newAddress.formatted_address,
+            lat: newAddress.lat,
+            lng: newAddress.lng,
+            place_id: newAddress.place_id,
+            postal_code: newAddress.postal_code
+          }}
+          onChange={(value) =>
+            setNewAddress((prev) => ({
+              ...prev,
+              formatted_address: value.address_line,
+              place_id: value.place_id,
+              lat: value.lat,
+              lng: value.lng,
+              postal_code: value.postal_code,
+              country: value.country,
+              region: value.region,
+              city: value.city,
+              street: value.street,
+              house: value.house,
+              building: value.building,
+              entrance: value.entrance
+            }))
+          }
+        />
 
-      <PlaceAddressInput
-        debugId="shipping-form"
-        resetTrigger={resetCounter}
-        value={{
-          address_line: newAddress.formatted_address,
-          lat: newAddress.lat,
-          lng: newAddress.lng,
-          place_id: newAddress.place_id,
-          postal_code: newAddress.postal_code
-        }}
-        onChange={(value) =>
-          setNewAddress((prev) => ({
-            ...prev,
-            formatted_address: value.address_line,
-            place_id: value.place_id,
-            lat: value.lat,
-            lng: value.lng,
-            postal_code: value.postal_code,
-            country: value.country,
-            region: value.region,
-            city: value.city,
-            street: value.street,
-            house: value.house,
-            building: value.building,
-            entrance: value.entrance
-          }))
-        }
-      />
+        <Row gutter={12} style={{ marginTop: 8 }}>
+          <Col span={6}>
+            <Input
+              placeholder="Страна"
+              value={newAddress.country}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, country: e.target.value }))}
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Регион"
+              value={newAddress.region}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, region: e.target.value }))}
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Город"
+              value={newAddress.city}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, city: e.target.value }))}
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Индекс"
+              value={newAddress.postal_code}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, postal_code: e.target.value }))}
+            />
+          </Col>
+        </Row>
 
-      <Row gutter={12} style={{ marginTop: 8 }}>
-        <Col span={6}><Input placeholder="Страна" value={newAddress.country} onChange={(e) => setNewAddress(prev => ({ ...prev, country: e.target.value }))} /></Col>
-        <Col span={6}><Input placeholder="Регион" value={newAddress.region} onChange={(e) => setNewAddress(prev => ({ ...prev, region: e.target.value }))} /></Col>
-        <Col span={6}><Input placeholder="Город" value={newAddress.city} onChange={(e) => setNewAddress(prev => ({ ...prev, city: e.target.value }))} /></Col>
-        <Col span={6}><Input placeholder="Индекс" value={newAddress.postal_code} onChange={(e) => setNewAddress(prev => ({ ...prev, postal_code: e.target.value }))} /></Col>
-      </Row>
+        <Row gutter={12} style={{ marginTop: 8 }}>
+          <Col span={12}>
+            <Input
+              placeholder="Улица"
+              value={newAddress.street}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, street: e.target.value }))}
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Дом"
+              value={newAddress.house}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, house: e.target.value }))}
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Строение"
+              value={newAddress.building}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, building: e.target.value }))}
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Подъезд"
+              value={newAddress.entrance}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, entrance: e.target.value }))}
+            />
+          </Col>
+        </Row>
 
-      <Row gutter={12} style={{ marginTop: 8 }}>
-        <Col span={12}><Input placeholder="Улица" value={newAddress.street} onChange={(e) => setNewAddress(prev => ({ ...prev, street: e.target.value }))} /></Col>
-        <Col span={4}><Input placeholder="Дом" value={newAddress.house} onChange={(e) => setNewAddress(prev => ({ ...prev, house: e.target.value }))} /></Col>
-        <Col span={4}><Input placeholder="Строение" value={newAddress.building} onChange={(e) => setNewAddress(prev => ({ ...prev, building: e.target.value }))} /></Col>
-        <Col span={4}><Input placeholder="Подъезд" value={newAddress.entrance} onChange={(e) => setNewAddress(prev => ({ ...prev, entrance: e.target.value }))} /></Col>
-      </Row>
+        <Row gutter={12} style={{ marginTop: 8 }}>
+          <Col flex="auto">
+            <Input
+              placeholder="Комментарий"
+              value={newAddress.comment}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, comment: e.target.value }))}
+            />
+          </Col>
+          <Col>
+            <Button type="primary" onClick={handleAdd}>
+              Добавить адрес
+            </Button>
+          </Col>
+        </Row>
+      </Card>
 
-      <Row gutter={12} style={{ marginTop: 8 }}>
-        <Col span={18}><Input placeholder="Комментарий" value={newAddress.comment} onChange={(e) => setNewAddress(prev => ({ ...prev, comment: e.target.value }))} /></Col>
-        <Col><Button type="primary" onClick={handleAdd}>Добавить адрес</Button></Col>
-      </Row>
+      <TableToolbar filterValue={search} onFilterChange={setSearch} />
 
-      {/* Критично! Только Table, никаких div! */}
       <ShippingAddressesTable
-        data={data}
-        loading={loading}
         clientId={clientId}
+        data={filteredData}
+        setData={setData}
+        loading={loading}
         reloadData={fetchData}
       />
     </>

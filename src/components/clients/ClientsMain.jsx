@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react"
+// src/components/clients/ClientsMain.jsx
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Card, Space, Form, Input, Button, message } from "antd"
 import axios from "@/api/axiosInstance"
 import ClientsTable from "./ClientsTable"
@@ -11,6 +12,10 @@ export default function ClientsMain() {
   const [search, setSearch] = useState("")
   const [expandedClientId, setExpandedClientId] = useState(null)
   const [showDeletedModal, setShowDeletedModal] = useState(false)
+  const [hasNew, setHasNew] = useState(false)
+
+  // baseline тега (эталон для сравнения)
+  const baselineTagRef = useRef(null)
 
   const [newClient, setNewClient] = useState({
     company_name: "",
@@ -23,6 +28,7 @@ export default function ClientsMain() {
     notes: ""
   })
 
+  // ------------------ data ------------------
   const fetchClients = async () => {
     setLoading(true)
     try {
@@ -40,6 +46,7 @@ export default function ClientsMain() {
     fetchClients()
   }, [])
 
+  // ------------------ add -------------------
   const handleAdd = async () => {
     const payload = {
       company_name: newClient.company_name.trim(),
@@ -70,22 +77,134 @@ export default function ClientsMain() {
         website: "",
         notes: ""
       })
-      fetchClients()
+      await refreshAllAndResetBaseline()
     } catch (err) {
       console.error("Ошибка при добавлении клиента:", err)
       message.error("Не удалось добавить клиента")
     }
   }
 
-  const filtered = clients.filter(
-    (r) =>
-      r.company_name?.toLowerCase().includes(search.toLowerCase()) ||
-      r.contact_person?.toLowerCase().includes(search.toLowerCase())
-  )
+  // ------------------ filter ----------------
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return clients.filter(
+      (r) =>
+        r.company_name?.toLowerCase().includes(q) ||
+        r.contact_person?.toLowerCase().includes(q)
+    )
+  }, [clients, search])
+
+  // ------------------ etags -----------------
+  const fetchClientsEtag = async () => {
+    const { data } = await axios.get("/clients/etag")
+    return data?.etag || ""
+  }
+
+  const fetchChildEtags = async (clientId) => {
+    if (!clientId) return ""
+    try {
+      const [billing, shipping, bank] = await Promise.all([
+        axios.get("/client-billing-addresses/etag", { params: { client_id: clientId } }),
+        axios.get("/client-shipping-addresses/etag", { params: { client_id: clientId } }),
+        axios.get("/client-bank-details/etag", { params: { client_id: clientId } }),
+      ])
+      return [
+        billing.data?.etag || "0:0",
+        shipping.data?.etag || "0:0",
+        bank.data?.etag || "0:0",
+      ].join("|")
+    } catch {
+      // если ошибок доступа/раскрытия — не мешаем общему тегу
+      return ""
+    }
+  }
+
+  // Считает ТЕКУЩИЙ композитный тег, НО НЕ меняет baseline
+  const getCompositeTag = async (activeId = expandedClientId) => {
+    const [cTag, child] = await Promise.all([
+      fetchClientsEtag(),
+      activeId ? fetchChildEtags(activeId) : Promise.resolve(""),
+    ])
+    return `${cTag}__${activeId || "-"}__${child}`
+  }
+
+  // Устанавливает baseline из сервера прямо сейчас
+  const setBaselineFromServer = async () => {
+    try {
+      const tag = await getCompositeTag()
+      baselineTagRef.current = tag
+      // для наглядности сбросим баннер, если был
+      setHasNew(false)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Инициализируем baseline после первичной загрузки и при смене раскрытого клиента
+  useEffect(() => {
+    if (!loading) {
+      setBaselineFromServer()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, expandedClientId])
+
+  // Лёгкий поллинг
+  useEffect(() => {
+    let t0
+    let timer
+
+    const check = async () => {
+      if (document.hidden) return
+      try {
+        const current = await getCompositeTag()
+        const baseline = baselineTagRef.current
+        // если baseline уже есть и он отличается — показываем баннер
+        if (baseline && baseline !== current) {
+          setHasNew(true)
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // первый пинг через 10с, далее каждые 30с
+    t0 = setTimeout(check, 10000)
+    timer = setInterval(check, 30000)
+
+    const onVis = () => check()
+    document.addEventListener("visibilitychange", onVis)
+
+    return () => {
+      clearTimeout(t0)
+      clearInterval(timer)
+      document.removeEventListener("visibilitychange", onVis)
+    }
+  }, [expandedClientId])
+
+  // общий ручной рефреш (перезагрузить список + сбросить baseline)
+  const refreshAllAndResetBaseline = async () => {
+    await fetchClients()
+    await setBaselineFromServer()
+  }
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Card title="Клиенты" bodyStyle={{ paddingTop: 0 }}>
+        {/* баннер про новые изменения (в любых таблицах) */}
+        {hasNew && (
+          <div style={{ margin: "8px 0" }}>
+            <Button
+              type="primary"
+              onClick={async () => {
+                await refreshAllAndResetBaseline()
+                message.success("Список и связанные данные обновлены")
+              }}
+            >
+              Появились новые изменения — Обновить
+            </Button>
+          </div>
+        )}
+
         <TableToolbar
           search={search}
           onSearch={setSearch}
@@ -144,14 +263,19 @@ export default function ClientsMain() {
           data={filtered}
           loading={loading}
           expandedClientId={expandedClientId}
-          setExpandedClientId={setExpandedClientId}
-          onReload={fetchClients}
+          setExpandedClientId={async (val) => {
+            setExpandedClientId(val)
+            // baseline обновится в useEffect, но если хочешь супер‑реактивно:
+            // небольшой defer, чтобы не срывать UX
+            setTimeout(setBaselineFromServer, 0)
+          }}
+          onReload={refreshAllAndResetBaseline}
         />
       </Card>
 
       {showDeletedModal && (
         <FullHistoryDialog
-          entityType="clients"      // ⬅️ показываем только удалённых клиентов
+          entityType="clients-combined" // удалённые клиенты + вложенные записи
           entityId={null}
           onlyDeleted={true}
           onClose={() => setShowDeletedModal(false)}

@@ -1,30 +1,46 @@
 // src/components/clients/BillingAddressesTable.jsx
 import React, { useState } from "react"
-import { Table, Input, message, Typography, Row, Col, Divider } from "antd"
+import { Table, Input, message, Typography, Row, Col, Divider, Space, Tooltip, Button } from "antd"
 import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ValueDisplay from "@/components/common/ValueDisplay"
-import logActivity from "@/utils/logActivity"
-import logFieldDiffs from "@/utils/logFieldDiffs"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
+import { CopyOutlined } from "@ant-design/icons"
 
 const { Text } = Typography
+
+// Единственный форматированный вывод адреса
+const formatFullAddress = (r = {}) => {
+  const parts = [
+    r.country,
+    r.region,
+    r.city,
+    r.street && `ул. ${r.street}`,
+    r.house && `д. ${r.house}`,
+    r.building && `стр. ${r.building}`,
+    r.entrance && `подъезд ${r.entrance}`,
+    r.postal_code && `инд. ${r.postal_code}`,
+  ].filter(Boolean)
+  return parts.join(", ")
+}
 
 export default function BillingAddressesTable({ clientId, data = [], loading, reloadData }) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
 
-  const isEditing = (record) =>
-    editingId !== null && record?.id !== undefined && record.id === editingId
+  const isEditing = (record) => editingId !== null && record?.id === editingId
 
   const cancelEdit = () => {
     setEditingId(null)
     setEditedRow(null)
   }
 
+  // --- SAVE c авто‑ретраем при 409 -----------------------------------------
+  const doPut = (id, payload) => axios.put(`/client-billing-addresses/${id}`, payload)
+
   const handleSave = async (row) => {
-    if (!clientId) return
+    if (!clientId || !row) return
     if (!row.formatted_address?.trim()) {
       message.warning("Поле 'Адрес' обязательно")
       return
@@ -33,8 +49,8 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
     const payload = {
       formatted_address: row.formatted_address.trim(),
       place_id: row.place_id || null,
-      lat: row.lat || null,
-      lng: row.lng || null,
+      lat: row.lat ?? null,
+      lng: row.lng ?? null,
       postal_code: row.postal_code || null,
       country: row.country || null,
       region: row.region || null,
@@ -43,40 +59,52 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
       house: row.house || null,
       building: row.building || null,
       entrance: row.entrance || null,
-      comment: row.comment?.trim() || null
+      comment: row.comment?.trim() || null,
+      version: row.version, // оптимистическая блокировка
     }
 
     try {
-      await axios.put(`/client-billing-addresses/${row.id}`, payload)
-
-      await logFieldDiffs({
-        oldData: row,
-        newData: payload,
-        entity_type: "client_billing_addresses",
-        entity_id: row.id,
-        client_id: clientId
-      })
-
+      await doPut(row.id, payload)
       message.success("Адрес обновлён")
       cancelEdit()
-      reloadData()
+      await reloadData?.()
     } catch (err) {
-      console.error("Ошибка при обновлении:", err)
-      message.error("Не удалось сохранить адрес")
+      // Автоматическое примирение версии и один повтор
+      if (err?.response?.status === 409 && err.response.data?.current) {
+        const current = err.response.data.current
+        try {
+          await doPut(row.id, { ...payload, version: current.version })
+          message.success("Адрес обновлён")
+          cancelEdit()
+          await reloadData?.()
+          return
+        } catch (e2) {
+          console.error("Повтор после 409 не удался:", e2)
+          message.error("Конфликт версий: запись изменилась. Обновите список.")
+        }
+      } else {
+        console.error("Ошибка при обновлении:", err)
+        message.error("Не удалось сохранить адрес")
+      }
     }
   }
 
-  const deleteRow = async (id) => {
+  const deleteRow = async (record) => {
     const { confirmed } = await confirmAction("Удалить адрес?")
     if (!confirmed) return
     try {
-      await axios.delete(`/client-billing-addresses/${id}`)
-      await logActivity("delete", "client_billing_addresses", id, { client_id: clientId })
+      await axios.delete(`/client-billing-addresses/${record.id}`, {
+        params: { version: record.version },
+      })
       message.success("Адрес удалён")
-      reloadData()
+      await reloadData?.()
     } catch (err) {
       console.error("Ошибка при удалении адреса:", err)
-      message.error("Не удалось удалить адрес")
+      if (err?.response?.status === 409) {
+        message.error("Конфликт версий: запись изменилась. Обновите список.")
+      } else {
+        message.error("Не удалось удалить адрес")
+      }
     }
   }
 
@@ -97,7 +125,7 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
                   lat: editedRow.lat,
                   lng: editedRow.lng,
                   place_id: editedRow.place_id,
-                  postal_code: editedRow.postal_code
+                  postal_code: editedRow.postal_code,
                 }}
                 onChange={(val) =>
                   setEditedRow((prev) => ({
@@ -113,7 +141,7 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
                     street: val.street,
                     house: val.house,
                     building: val.building,
-                    entrance: val.entrance
+                    entrance: val.entrance,
                   }))
                 }
               />
@@ -125,36 +153,28 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
                   <Input
                     placeholder="Страна"
                     value={editedRow.country}
-                    onChange={(e) =>
-                      setEditedRow((prev) => ({ ...prev, country: e.target.value }))
-                    }
+                    onChange={(e) => setEditedRow((p) => ({ ...p, country: e.target.value }))}
                   />
                 </Col>
                 <Col span={6}>
                   <Input
                     placeholder="Регион"
                     value={editedRow.region}
-                    onChange={(e) =>
-                      setEditedRow((prev) => ({ ...prev, region: e.target.value }))
-                    }
+                    onChange={(e) => setEditedRow((p) => ({ ...p, region: e.target.value }))}
                   />
                 </Col>
                 <Col span={6}>
                   <Input
                     placeholder="Город"
                     value={editedRow.city}
-                    onChange={(e) =>
-                      setEditedRow((prev) => ({ ...prev, city: e.target.value }))
-                    }
+                    onChange={(e) => setEditedRow((p) => ({ ...p, city: e.target.value }))}
                   />
                 </Col>
                 <Col span={6}>
                   <Input
                     placeholder="Индекс"
                     value={editedRow.postal_code}
-                    onChange={(e) =>
-                      setEditedRow((prev) => ({ ...prev, postal_code: e.target.value }))
-                    }
+                    onChange={(e) => setEditedRow((p) => ({ ...p, postal_code: e.target.value }))}
                   />
                 </Col>
               </Row>
@@ -164,75 +184,79 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
                   <Input
                     placeholder="Улица"
                     value={editedRow.street}
-                    onChange={(e) =>
-                      setEditedRow((prev) => ({ ...prev, street: e.target.value }))
-                    }
+                    onChange={(e) => setEditedRow((p) => ({ ...p, street: e.target.value }))}
                   />
                 </Col>
                 <Col span={4}>
                   <Input
                     placeholder="Дом"
                     value={editedRow.house}
-                    onChange={(e) =>
-                      setEditedRow((prev) => ({ ...prev, house: e.target.value }))
-                    }
+                    onChange={(e) => setEditedRow((p) => ({ ...p, house: e.target.value }))}
                   />
                 </Col>
-                <Col span={4}>
+                <Col span={6}>
                   <Input
                     placeholder="Строение"
                     value={editedRow.building}
-                    onChange={(e) =>
-                      setEditedRow((prev) => ({ ...prev, building: e.target.value }))
-                    }
+                    onChange={(e) => setEditedRow((p) => ({ ...p, building: e.target.value }))}
                   />
                 </Col>
-                <Col span={4}>
+                <Col span={6}>
                   <Input
                     placeholder="Подъезд"
                     value={editedRow.entrance}
-                    onChange={(e) =>
-                      setEditedRow((prev) => ({ ...prev, entrance: e.target.value }))
-                    }
+                    onChange={(e) => setEditedRow((p) => ({ ...p, entrance: e.target.value }))}
                   />
                 </Col>
               </Row>
 
-              <Input.TextArea
-                style={{ marginTop: 8 }}
-                placeholder="Комментарий"
-                value={editedRow.comment}
-                onChange={(e) =>
-                  setEditedRow((prev) => ({ ...prev, comment: e.target.value }))
-                }
-                onPressEnter={() => handleSave(editedRow)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") cancelEdit()
-                }}
-              />
+              <Row style={{ marginTop: 8 }}>
+                <Col span={24}>
+                  <Input.TextArea
+                    placeholder="Комментарий"
+                    autoSize={{ minRows: 1, maxRows: 4 }}
+                    value={editedRow.comment}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, comment: e.target.value }))}
+                  />
+                </Col>
+              </Row>
             </>
           )
         }
 
-        const parts = [
-          record.postal_code,
-          record.country,
-          record.region,
-          record.city,
-          record.street,
-          record.house,
-          record.building ? `стр. ${record.building}` : null,
-          record.entrance ? `подъезд ${record.entrance}` : null
-        ].filter(Boolean)
-
-        return <Text>{parts.length > 0 ? parts.join(", ") : <i>не указано</i>}</Text>
-      }
-    },
-    {
-      title: "Комментарий",
-      dataIndex: "comment",
-      render: (_, record) =>
-        isEditing(record) && editedRow ? null : <ValueDisplay value={record.comment} />
+        const headline = record.formatted_address || "—"
+        const line2 = formatFullAddress(record)
+        return (
+          <div
+            onDoubleClick={() => {
+              setEditingId(record.id)
+              setEditedRow({ ...record })
+            }}
+          >
+            <div style={{ fontWeight: 600 }}>
+              <ValueDisplay value={headline} />
+            </div>
+            <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
+              {line2 || "—"}
+            </div>
+            {record.comment && (
+              <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
+                Комментарий: {record.comment}
+                <Space size={6} style={{ marginLeft: 8 }}>
+                  <Tooltip title="Скопировать адрес">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<CopyOutlined />}
+                      onClick={() => navigator.clipboard.writeText(`${headline}. ${line2}`)}
+                    />
+                  </Tooltip>
+                </Space>
+              </div>
+            )}
+          </div>
+        )
+      },
     },
     {
       title: "Действия",
@@ -244,13 +268,13 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
           <ActionButtons
             onSave={editing ? () => handleSave(editedRow) : undefined}
             onCancel={editing ? cancelEdit : undefined}
-            onDelete={!editing ? () => deleteRow(record.id) : undefined}
-            confirmDelete={false} // подтверждение делаем вручную в deleteRow
+            onDelete={!editing ? () => deleteRow(record) : undefined}
+            confirmDelete={false}
             size="small"
           />
         )
-      }
-    }
+      },
+    },
   ]
 
   return (
@@ -261,14 +285,6 @@ export default function BillingAddressesTable({ clientId, data = [], loading, re
       loading={loading}
       pagination={false}
       size="small"
-      onRow={(record) => ({
-        onDoubleClick: () => {
-          if (record?.id !== undefined) {
-            setEditedRow({ ...record })
-            setEditingId(record.id)
-          }
-        }
-      })}
     />
   )
 }

@@ -13,27 +13,24 @@ export default function TnvedCodesTable({
   loading,
   onUpdate,
   onDelete,
-  // необязательные, но полезные колбэки для точечного обновления
   onReplaceRow, // (freshRow) => void
-  onRefresh, // () => void
+  onRefresh,    // () => void
 }) {
   const [editingKey, setEditingKey] = useState("")
   const [editedRow, setEditedRow] = useState(null)
   const [logId, setLogId] = useState(null)
 
-  // состояние конфликта версий
   const [conflict, setConflict] = useState({
     open: false,
-    current: null, // свежая запись с сервера
-    draft: null,   // наши несохранённые правки
+    current: null,
+    draft: null,
   })
 
   const isEditing = (record) => record.id === editingKey
 
   const startEdit = (record) => {
     setEditingKey(record.id)
-    // важно: сохраняем version
-    setEditedRow({ ...record })
+    setEditedRow({ ...record }) // важно сохранить version
   }
 
   const cancelEdit = () => {
@@ -43,15 +40,11 @@ export default function TnvedCodesTable({
 
   const saveEdit = async () => {
     try {
-      // Передаём всё, включая version — родитель в onUpdate сделает PUT с version
-      await onUpdate(editingKey, { ...editedRow })
+      await onUpdate(editingKey, { ...editedRow }) // version внутри editedRow
       message.success("Изменения сохранены")
       cancelEdit()
     } catch (err) {
-      // Специальные флаги приходят из axiosInstance
-      if (err?.isDuplicateKey) {
-        return message.error("Код уже существует")
-      }
+      if (err?.isDuplicateKey) return message.error("Код уже существует")
       if (err?.isVersionConflict) {
         setConflict({ open: true, current: err.currentRecord || null, draft: editedRow })
         return
@@ -64,18 +57,13 @@ export default function TnvedCodesTable({
   const handleDelete = async (record) => {
     const { confirmed } = await confirmAction(`Удалить код ${record.code}?`)
     if (!confirmed) return
-
     try {
-      await onDelete(record) // родитель сам передаст ?version=record.version при DELETE
+      await onDelete(record) // родитель добавит ?version=
       message.success("Запись удалена")
     } catch (err) {
       if (err?.isVersionConflict) {
-        // Обновим строку, если сервер прислал свежую
-        if (err.currentRecord && typeof onReplaceRow === "function") {
-          onReplaceRow(err.currentRecord)
-        } else if (typeof onRefresh === "function") {
-          onRefresh()
-        }
+        if (err.currentRecord && typeof onReplaceRow === "function") onReplaceRow(err.currentRecord)
+        else if (typeof onRefresh === "function") onRefresh()
         return message.warning("Запись изменилась и не была удалена. Обновили данные.")
       }
       console.error("Ошибка удаления:", err)
@@ -107,15 +95,12 @@ export default function TnvedCodesTable({
         isEditing(record) ? (
           <TextArea
             value={editedRow.description || ""}
-            onChange={(e) =>
-              setEditedRow({ ...editedRow, description: e.target.value })
-            }
+            onChange={(e) => setEditedRow({ ...editedRow, description: e.target.value })}
             autoSize={{ minRows: 2, maxRows: 6 }}
           />
         ) : (
           record.description
-            ? record.description.slice(0, 100) +
-              (record.description.length > 100 ? "…" : "")
+            ? record.description.slice(0, 100) + (record.description.length > 100 ? "…" : "")
             : ""
         ),
     },
@@ -128,9 +113,8 @@ export default function TnvedCodesTable({
           <Input
             value={editedRow.duty_rate}
             type="number"
-            onChange={(e) =>
-              setEditedRow({ ...editedRow, duty_rate: e.target.value })
-            }
+            step="0.01"
+            onChange={(e) => setEditedRow({ ...editedRow, duty_rate: e.target.value })}
             onPressEnter={saveEdit}
           />
         ) : (
@@ -149,9 +133,7 @@ export default function TnvedCodesTable({
             autoSize={{ minRows: 2, maxRows: 4 }}
           />
         ) : (
-          record.notes
-            ? record.notes.slice(0, 80) + (record.notes.length > 80 ? "…" : "")
-            : ""
+          record.notes ? record.notes.slice(0, 80) + (record.notes.length > 80 ? "…" : "") : ""
         ),
     },
     {
@@ -162,7 +144,7 @@ export default function TnvedCodesTable({
         const editing = isEditing(record)
         return (
           <ActionButtons
-            onEdit={!editing ? () => startEdit(record) : undefined}
+            // редактирование — только по двойному клику
             onSave={editing ? saveEdit : undefined}
             onCancel={editing ? cancelEdit : undefined}
             onDelete={!editing ? () => handleDelete(record) : undefined}
@@ -210,19 +192,22 @@ export default function TnvedCodesTable({
 
       <VersionConflictModal
         open={conflict.open}
+        draft={conflict.draft}         // ← показываем ваши правки
+        current={conflict.current}     // ← и что сейчас в базе
+        fields={[
+          { key: "code",        title: "Код" },
+          { key: "description", title: "Описание" },
+          { key: "duty_rate",   title: "Пошлина (%)", format: (v) => (v ?? "") === "" ? "—" : String(v) },
+          { key: "notes",       title: "Примечания" },
+        ]}
         onReload={() => {
-          if (conflict.current && typeof onReplaceRow === "function") {
-            onReplaceRow(conflict.current)
-          } else if (typeof onRefresh === "function") {
-            onRefresh()
-          } else {
-            message.info("Обновите список — запись изменилась")
-          }
+          if (conflict.current && typeof onReplaceRow === "function") onReplaceRow(conflict.current)
+          else if (typeof onRefresh === "function") onRefresh()
+          else message.info("Обновите список — запись изменилась")
           setConflict({ open: false, current: null, draft: null })
           cancelEdit()
         }}
         onManualMerge={() => {
-          // пример: перенести черновые правки в свежую запись и снова открыть редактирование
           const base = conflict.current || {}
           const draft = conflict.draft || {}
           const merged = {
@@ -230,10 +215,8 @@ export default function TnvedCodesTable({
             description: draft.description ?? base.description,
             duty_rate: draft.duty_rate ?? base.duty_rate,
             notes: draft.notes ?? base.notes,
-            // код лучше не перетирать автоматически
           }
           if (merged.id) {
-            // открыть редактирование на слитой версии
             setEditingKey(merged.id)
             setEditedRow(merged)
           }
