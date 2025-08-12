@@ -20,7 +20,7 @@ export default function BankDetailsMain({ clientId, onChanged }) {
     bank_name: "",
     correspondent_account: "",
     account_number: "",
-    currency: "RUB"
+    currency: "RUB",
   })
 
   const fetchData = async () => {
@@ -28,7 +28,7 @@ export default function BankDetailsMain({ clientId, onChanged }) {
     setLoading(true)
     try {
       const res = await axios.get("/client-bank-details", {
-        params: { client_id: clientId }
+        params: { client_id: clientId },
       })
       setData(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
@@ -52,7 +52,7 @@ export default function BankDetailsMain({ clientId, onChanged }) {
           setNewBank((prev) => ({
             ...prev,
             bank_name: bank.name,
-            correspondent_account: bank.correspondent_account || ""
+            correspondent_account: bank.correspondent_account || "",
           }))
         }
       } catch {
@@ -71,19 +71,22 @@ export default function BankDetailsMain({ clientId, onChanged }) {
     try {
       const res = await axios.post("/client-bank-details", {
         ...newBank,
-        client_id: clientId
+        client_id: clientId,
       })
-      setData(prev => [res.data, ...prev])
+      // Мгновенно добавляем в таблицу
+      setData((prev) => [res.data, ...prev])
+
+      // Сбрасываем форму
       setNewBank({
         bic: "",
         bank_name: "",
         correspondent_account: "",
         account_number: "",
-        currency: "RUB"
+        currency: "RUB",
       })
       message.success("Реквизиты добавлены")
 
-      if (onChanged) onChanged() // 🔹 сообщаем родителю об изменении
+      onChanged?.() // 🔔 сообщаем родителю об изменении (для подавления «Обновить» у себя)
     } catch (err) {
       console.error("Ошибка при добавлении:", err)
       message.error("Не удалось добавить реквизиты")
@@ -92,7 +95,7 @@ export default function BankDetailsMain({ clientId, onChanged }) {
     }
   }
 
-  // 🔹 фильтрация по поиску
+  // Фильтрация по поиску
   const filteredData = search
     ? data.filter(
         (item) =>
@@ -119,12 +122,19 @@ export default function BankDetailsMain({ clientId, onChanged }) {
             onChange={(e) => handleBicChange(e.target.value)}
           />
         </Col>
+
         <Col span={5}>
           <Input placeholder="Банк" value={newBank.bank_name} disabled />
         </Col>
+
         <Col span={5}>
-          <Input placeholder="Кор. счёт" value={newBank.correspondent_account} disabled />
+          <Input
+            placeholder="Кор. счёт"
+            value={newBank.correspondent_account}
+            disabled
+          />
         </Col>
+
         <Col span={3}>
           <div style={{ position: "relative", zIndex: 1 }}>
             <Autocomplete
@@ -132,12 +142,10 @@ export default function BankDetailsMain({ clientId, onChanged }) {
               size="small"
               options={currencyOptions}
               value={newBank.currency}
-              onChange={(_, val) => setNewBank(prev => ({ ...prev, currency: val }))}
-              slotProps={{
-                popper: {
-                  disablePortal: true
-                }
-              }}
+              onChange={(_, val) =>
+                setNewBank((prev) => ({ ...prev, currency: val }))
+              }
+              slotProps={{ popper: { disablePortal: true } }}
               renderInput={(params) => (
                 <TextField {...params} label="Валюта" variant="standard" />
               )}
@@ -145,15 +153,20 @@ export default function BankDetailsMain({ clientId, onChanged }) {
             />
           </div>
         </Col>
+
         <Col span={5}>
           <Input
             placeholder="* Расч. счёт"
             value={newBank.account_number}
             onChange={(e) =>
-              setNewBank(prev => ({ ...prev, account_number: e.target.value }))
+              setNewBank((prev) => ({
+                ...prev,
+                account_number: e.target.value,
+              }))
             }
           />
         </Col>
+
         <Col>
           <Button type="primary" onClick={handleAdd} loading={submitting}>
             Добавить
@@ -164,9 +177,10 @@ export default function BankDetailsMain({ clientId, onChanged }) {
       <BankDetailsTable
         clientId={clientId}
         data={filteredData}
-        setData={(val) => {
-          setData(val)
-          if (onChanged) onChanged() // 🔹 любое изменение в таблице → сигнал родителю
+        setData={(updater) => {
+          // перехватываем любые правки/удаления из таблицы
+          setData(updater)
+          onChanged?.() // 🔔 сигналим родителю — он сбросит baseline и не покажет баннер тебе же
         }}
         loading={loading}
       />

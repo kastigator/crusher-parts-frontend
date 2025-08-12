@@ -7,7 +7,6 @@ import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import { CopyOutlined } from "@ant-design/icons"
 
-// Человеко‑читаемая сборка адреса из полей
 const formatFullAddress = (r = {}) => {
   const parts = [
     r.country,
@@ -22,7 +21,7 @@ const formatFullAddress = (r = {}) => {
   return parts.join(", ")
 }
 
-export default function ShippingAddressesTable({ clientId, data = [], loading, reloadData }) {
+export default function ShippingAddressesTable({ clientId, data = [], loading, reloadData, onChanged }) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
 
@@ -52,14 +51,15 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
       building: row.building || null,
       entrance: row.entrance || null,
       comment: row.comment?.trim() || null,
-      version: row.version, // оптимистическая блокировка
+      version: row.version,
     }
 
     try {
       await doPut(row.id, payload)
       message.success("Адрес обновлён")
       cancelEdit()
-      reloadData()
+      await reloadData()
+      onChanged?.()
     } catch (err) {
       if (err?.response?.status === 409 && err.response.data?.current) {
         message.error("Конфликт версий: запись изменилась. Обновите список.")
@@ -78,7 +78,8 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
         params: { version: record.version },
       })
       message.success("Адрес удалён")
-      reloadData()
+      await reloadData()
+      onChanged?.()
     } catch (err) {
       console.error("Ошибка при удалении адреса:", err)
       if (err?.response?.status === 409) {
@@ -157,7 +158,6 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
           )
         }
 
-        // Просмотр — приоритет сборке из полей (есть подъезд/стр/индекс), иначе formatted_address.
         const built = formatFullAddress(record)?.trim()
         const oneLine = built && built.length > 0
           ? built

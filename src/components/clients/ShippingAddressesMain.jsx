@@ -1,3 +1,4 @@
+// src/components/clients/ShippingAddressesMain.jsx
 import React, { useEffect, useState } from "react"
 import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
@@ -5,7 +6,7 @@ import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ShippingAddressesTable from "./ShippingAddressesTable"
 import TableToolbar from "@/components/common/TableToolbar"
 
-export default function ShippingAddressesMain({ clientId }) {
+export default function ShippingAddressesMain({ clientId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [resetCounter, setResetCounter] = useState(0)
@@ -92,6 +93,9 @@ export default function ShippingAddressesMain({ clientId }) {
         comment: ""
       })
       setResetCounter(v => v + 1)
+
+      // 🔸 переснять baseline у родителя
+      onChanged?.()
     } catch (err) {
       console.error("Ошибка при добавлении адреса доставки:", err)
       message.error("Не удалось добавить адрес")
@@ -132,70 +136,21 @@ export default function ShippingAddressesMain({ clientId }) {
               house: value.house,
               building: value.building,
               entrance: value.entrance
-            }))
-          }
+            }))}
         />
 
         <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col span={6}>
-            <Input
-              placeholder="Страна"
-              value={newAddress.country}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, country: e.target.value }))}
-            />
-          </Col>
-          <Col span={6}>
-            <Input
-              placeholder="Регион"
-              value={newAddress.region}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, region: e.target.value }))}
-            />
-          </Col>
-          <Col span={6}>
-            <Input
-              placeholder="Город"
-              value={newAddress.city}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, city: e.target.value }))}
-            />
-          </Col>
-          <Col span={6}>
-            <Input
-              placeholder="Индекс"
-              value={newAddress.postal_code}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, postal_code: e.target.value }))}
-            />
-          </Col>
+          <Col span={6}><Input placeholder="Страна" value={newAddress.country} onChange={(e) => setNewAddress(prev => ({ ...prev, country: e.target.value }))} /></Col>
+          <Col span={6}><Input placeholder="Регион" value={newAddress.region} onChange={(e) => setNewAddress(prev => ({ ...prev, region: e.target.value }))} /></Col>
+          <Col span={6}><Input placeholder="Город" value={newAddress.city} onChange={(e) => setNewAddress(prev => ({ ...prev, city: e.target.value }))} /></Col>
+          <Col span={6}><Input placeholder="Индекс" value={newAddress.postal_code} onChange={(e) => setNewAddress(prev => ({ ...prev, postal_code: e.target.value }))} /></Col>
         </Row>
 
         <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col span={12}>
-            <Input
-              placeholder="Улица"
-              value={newAddress.street}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, street: e.target.value }))}
-            />
-          </Col>
-          <Col span={4}>
-            <Input
-              placeholder="Дом"
-              value={newAddress.house}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, house: e.target.value }))}
-            />
-          </Col>
-          <Col span={4}>
-            <Input
-              placeholder="Строение"
-              value={newAddress.building}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, building: e.target.value }))}
-            />
-          </Col>
-          <Col span={4}>
-            <Input
-              placeholder="Подъезд"
-              value={newAddress.entrance}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, entrance: e.target.value }))}
-            />
-          </Col>
+          <Col span={12}><Input placeholder="Улица" value={newAddress.street} onChange={(e) => setNewAddress(prev => ({ ...prev, street: e.target.value }))} /></Col>
+          <Col span={4}><Input placeholder="Дом" value={newAddress.house} onChange={(e) => setNewAddress(prev => ({ ...prev, house: e.target.value }))} /></Col>
+          <Col span={4}><Input placeholder="Строение" value={newAddress.building} onChange={(e) => setNewAddress(prev => ({ ...prev, building: e.target.value }))} /></Col>
+          <Col span={4}><Input placeholder="Подъезд" value={newAddress.entrance} onChange={(e) => setNewAddress(prev => ({ ...prev, entrance: e.target.value }))} /></Col>
         </Row>
 
         <Row gutter={12} style={{ marginTop: 8 }}>
@@ -203,14 +158,9 @@ export default function ShippingAddressesMain({ clientId }) {
             <Input
               placeholder="Комментарий"
               value={newAddress.comment}
-              onChange={(e) => setNewAddress(prev => ({ ...prev, comment: e.target.value }))}
-            />
+              onChange={(e) => setNewAddress(prev => ({ ...prev, comment: e.target.value }))} />
           </Col>
-          <Col>
-            <Button type="primary" onClick={handleAdd}>
-              Добавить адрес
-            </Button>
-          </Col>
+          <Col><Button type="primary" onClick={handleAdd}>Добавить адрес</Button></Col>
         </Row>
       </Card>
 
@@ -222,6 +172,8 @@ export default function ShippingAddressesMain({ clientId }) {
         setData={setData}
         loading={loading}
         reloadData={fetchData}
+        // 🔸 важный проп вниз
+        onChanged={onChanged}
       />
     </>
   )

@@ -15,7 +15,8 @@ export default function ClientsTable({
   loading,
   expandedClientId,
   setExpandedClientId,
-  onReload
+  onReload,
+  onChildChanged, // 👈 новый проп
 }) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
@@ -43,7 +44,8 @@ export default function ClientsTable({
       await axios.put(`/clients/${editedRow.id}`, editedRow)
       message.success("Изменения сохранены")
       cancelEdit()
-      onReload()
+      await onReload()
+      onChildChanged?.() // 👈 локальное изменение — обновим baseline
     } catch (err) {
       console.error("Ошибка сохранения:", err)
       message.error("Не удалось сохранить изменения")
@@ -60,6 +62,7 @@ export default function ClientsTable({
       })
       message.success("Клиент удалён")
       await onReload()
+      onChildChanged?.() // 👈 тоже локальное изменение
     } catch (err) {
       console.error("Ошибка при удалении клиента:", err)
       message.error("Не удалось удалить клиента")
@@ -148,17 +151,17 @@ export default function ClientsTable({
             {
               key: "billing",
               label: "Юридические адреса",
-              children: <BillingAddressesMain clientId={client.id} />
+              children: <BillingAddressesMain clientId={client.id} onChanged={onChildChanged} />
             },
             {
               key: "shipping",
               label: "Адреса доставки",
-              children: <ShippingAddressesMain clientId={client.id} />
+              children: <ShippingAddressesMain clientId={client.id} onChanged={onChildChanged} />
             },
             {
               key: "bank",
               label: "Банковские реквизиты",
-              children: <BankDetailsMain clientId={client.id} />
+              children: <BankDetailsMain clientId={client.id} onChanged={onChildChanged} />
             }
           ]}
         />

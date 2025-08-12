@@ -17,7 +17,8 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
 
   const makeEditable = (record) => {
     setEditingId(record.id)
-    setEditedRow({ ...record })
+    // Важно сохранить текущую версию в локальном editable-объекте
+    setEditedRow({ ...record, version: record.version })
   }
 
   const cancelEdit = () => {
@@ -26,15 +27,28 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
   }
 
   const saveEdit = async (record) => {
+    const payload = {
+      // Бэкенд требует как минимум bank_name, account_number, version
+      bank_name: (editedRow.bank_name ?? record.bank_name)?.trim(),
+      account_number: (editedRow.account_number ?? record.account_number)?.trim(),
+      iban: editedRow.iban ?? record.iban ?? null,
+      bic: (editedRow.bic ?? record.bic) || null,
+      currency: (editedRow.currency ?? record.currency) || "RUB",
+      correspondent_account: (editedRow.correspondent_account ?? record.correspondent_account) || null,
+      bank_address: editedRow.bank_address ?? record.bank_address ?? null,
+      additional_info: editedRow.additional_info ?? record.additional_info ?? null,
+      version: record.version
+    }
+
+    if (!payload.bank_name || !payload.account_number) {
+      message.warning("Укажите банк и расчётный счёт")
+      return
+    }
+
     try {
-      // Бэкенд требует version
-      const payload = { ...editedRow, version: record.version }
-
       const { data: fresh } = await axios.put(`/client-bank-details/${record.id}`, payload)
-
       // Обновляем строку свежими данными с бэка (включая новый version)
       setData((prev) => prev.map((r) => (r.id === record.id ? { ...fresh } : r)))
-
       message.success("Изменения сохранены")
       cancelEdit()
     } catch (err) {
@@ -84,8 +98,10 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
   const renderCurrencySelect = (record) => (
     <Autocomplete
       options={currencyOptions}
-      value={editedRow.currency ?? record.currency ?? ""}
-      onChange={(_, val) => setEditedRow((prev) => ({ ...prev, currency: val }))}
+      value={editedRow.currency ?? record.currency ?? "RUB"}
+      onChange={(_, val) =>
+        setEditedRow((prev) => ({ ...prev, currency: val || "RUB" }))
+      }
       disableClearable
       size="small"
       autoHighlight

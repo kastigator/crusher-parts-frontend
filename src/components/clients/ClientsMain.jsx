@@ -114,7 +114,6 @@ export default function ClientsMain() {
         bank.data?.etag || "0:0",
       ].join("|")
     } catch {
-      // если ошибок доступа/раскрытия — не мешаем общему тегу
       return ""
     }
   }
@@ -133,11 +132,17 @@ export default function ClientsMain() {
     try {
       const tag = await getCompositeTag()
       baselineTagRef.current = tag
-      // для наглядности сбросим баннер, если был
       setHasNew(false)
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
+  }
+
+  // 🎯 ВАЖНО: локальное изменение (этот пользователь) — обновляем baseline немедленно
+  const handleChildChanged = async () => {
+    try {
+      const tag = await getCompositeTag()
+      baselineTagRef.current = tag
+      setHasNew(false)
+    } catch { /* ignore */ }
   }
 
   // Инициализируем baseline после первичной загрузки и при смене раскрытого клиента
@@ -158,16 +163,12 @@ export default function ClientsMain() {
       try {
         const current = await getCompositeTag()
         const baseline = baselineTagRef.current
-        // если baseline уже есть и он отличается — показываем баннер
         if (baseline && baseline !== current) {
           setHasNew(true)
         }
-      } catch {
-        /* ignore */
-      }
+      } catch { /* ignore */ }
     }
 
-    // первый пинг через 10с, далее каждые 30с
     t0 = setTimeout(check, 10000)
     timer = setInterval(check, 30000)
 
@@ -190,7 +191,6 @@ export default function ClientsMain() {
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Card title="Клиенты" bodyStyle={{ paddingTop: 0 }}>
-        {/* баннер про новые изменения (в любых таблицах) */}
         {hasNew && (
           <div style={{ margin: "8px 0" }}>
             <Button
@@ -265,17 +265,16 @@ export default function ClientsMain() {
           expandedClientId={expandedClientId}
           setExpandedClientId={async (val) => {
             setExpandedClientId(val)
-            // baseline обновится в useEffect, но если хочешь супер‑реактивно:
-            // небольшой defer, чтобы не срывать UX
             setTimeout(setBaselineFromServer, 0)
           }}
           onReload={refreshAllAndResetBaseline}
+          onChildChanged={handleChildChanged} // 👈 пробрасываем колбэк
         />
       </Card>
 
       {showDeletedModal && (
         <FullHistoryDialog
-          entityType="clients-combined" // удалённые клиенты + вложенные записи
+          entityType="clients-combined"
           entityId={null}
           onlyDeleted={true}
           onClose={() => setShowDeletedModal(false)}
