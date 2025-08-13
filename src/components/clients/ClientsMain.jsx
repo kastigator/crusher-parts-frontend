@@ -14,7 +14,6 @@ export default function ClientsMain() {
   const [showDeletedModal, setShowDeletedModal] = useState(false)
   const [hasNew, setHasNew] = useState(false)
 
-  // baseline тега (эталон для сравнения)
   const baselineTagRef = useRef(null)
 
   const [newClient, setNewClient] = useState({
@@ -28,7 +27,6 @@ export default function ClientsMain() {
     notes: ""
   })
 
-  // ------------------ data ------------------
   const fetchClients = async () => {
     setLoading(true)
     try {
@@ -46,7 +44,6 @@ export default function ClientsMain() {
     fetchClients()
   }, [])
 
-  // ------------------ add -------------------
   const handleAdd = async () => {
     const payload = {
       company_name: newClient.company_name.trim(),
@@ -84,7 +81,6 @@ export default function ClientsMain() {
     }
   }
 
-  // ------------------ filter ----------------
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return clients.filter(
@@ -94,7 +90,6 @@ export default function ClientsMain() {
     )
   }, [clients, search])
 
-  // ------------------ etags -----------------
   const fetchClientsEtag = async () => {
     const { data } = await axios.get("/clients/etag")
     return data?.etag || ""
@@ -118,7 +113,6 @@ export default function ClientsMain() {
     }
   }
 
-  // Считает ТЕКУЩИЙ композитный тег, НО НЕ меняет baseline
   const getCompositeTag = async (activeId = expandedClientId) => {
     const [cTag, child] = await Promise.all([
       fetchClientsEtag(),
@@ -127,25 +121,14 @@ export default function ClientsMain() {
     return `${cTag}__${activeId || "-"}__${child}`
   }
 
-  // Устанавливает baseline из сервера прямо сейчас
   const setBaselineFromServer = async () => {
     try {
       const tag = await getCompositeTag()
       baselineTagRef.current = tag
       setHasNew(false)
-    } catch { /* ignore */ }
+    } catch {}
   }
 
-  // 🎯 ВАЖНО: локальное изменение (этот пользователь) — обновляем baseline немедленно
-  const handleChildChanged = async () => {
-    try {
-      const tag = await getCompositeTag()
-      baselineTagRef.current = tag
-      setHasNew(false)
-    } catch { /* ignore */ }
-  }
-
-  // Инициализируем baseline после первичной загрузки и при смене раскрытого клиента
   useEffect(() => {
     if (!loading) {
       setBaselineFromServer()
@@ -153,7 +136,6 @@ export default function ClientsMain() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, expandedClientId])
 
-  // Лёгкий поллинг
   useEffect(() => {
     let t0
     let timer
@@ -166,7 +148,7 @@ export default function ClientsMain() {
         if (baseline && baseline !== current) {
           setHasNew(true)
         }
-      } catch { /* ignore */ }
+      } catch {}
     }
 
     t0 = setTimeout(check, 10000)
@@ -182,9 +164,14 @@ export default function ClientsMain() {
     }
   }, [expandedClientId])
 
-  // общий ручной рефреш (перезагрузить список + сбросить baseline)
   const refreshAllAndResetBaseline = async () => {
     await fetchClients()
+    await setBaselineFromServer()
+  }
+
+  // <<< НОВОЕ: колбэк, который будем отдавать детям >>>
+  const handleChildChanged = async () => {
+    // можно без перезагрузки списка — просто обновим baseline
     await setBaselineFromServer()
   }
 
@@ -268,7 +255,7 @@ export default function ClientsMain() {
             setTimeout(setBaselineFromServer, 0)
           }}
           onReload={refreshAllAndResetBaseline}
-          onChildChanged={handleChildChanged} // 👈 пробрасываем колбэк
+          onChildChanged={handleChildChanged}   // <<< ВАЖНО
         />
       </Card>
 

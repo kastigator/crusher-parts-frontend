@@ -58,8 +58,8 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
       await doPut(row.id, payload)
       message.success("Адрес обновлён")
       cancelEdit()
-      await reloadData()
-      onChanged?.()
+      reloadData()
+      onChanged?.() // <<< СИГНАЛ ВВЕРХ
     } catch (err) {
       if (err?.response?.status === 409 && err.response.data?.current) {
         message.error("Конфликт версий: запись изменилась. Обновите список.")
@@ -78,8 +78,8 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
         params: { version: record.version },
       })
       message.success("Адрес удалён")
-      await reloadData()
-      onChanged?.()
+      reloadData()
+      onChanged?.() // <<< СИГНАЛ ВВЕРХ
     } catch (err) {
       console.error("Ошибка при удалении адреса:", err)
       if (err?.response?.status === 409) {
