@@ -14,7 +14,9 @@ export default function ClientsMain() {
   const [showDeletedModal, setShowDeletedModal] = useState(false)
   const [hasNew, setHasNew] = useState(false)
 
-  const baselineTagRef = useRef(null)
+  // baseline по «ключу состояния» (global / client:<id>)
+  const baselinesRef = useRef(new Map())
+  const lastBaselineSetAtRef = useRef(0)
 
   const [newClient, setNewClient] = useState({
     company_name: "",
@@ -90,6 +92,7 @@ export default function ClientsMain() {
     )
   }, [clients, search])
 
+  // --- etag helpers ---
   const fetchClientsEtag = async () => {
     const { data } = await axios.get("/clients/etag")
     return data?.etag || ""
@@ -113,47 +116,65 @@ export default function ClientsMain() {
     }
   }
 
-  const getCompositeTag = async (activeId = expandedClientId) => {
+  const getKey = (id) => (id ? `client:${id}` : "global")
+
+  const buildCompositeTag = async (id) => {
     const [cTag, child] = await Promise.all([
       fetchClientsEtag(),
-      activeId ? fetchChildEtags(activeId) : Promise.resolve(""),
+      id ? fetchChildEtags(id) : Promise.resolve(""),
     ])
-    return `${cTag}__${activeId || "-"}__${child}`
+    return `${cTag}__${id || "-"}__${child}`
   }
 
-  const setBaselineFromServer = async () => {
+  const setBaselineFor = async (id) => {
     try {
-      const tag = await getCompositeTag()
-      baselineTagRef.current = tag
+      const key = getKey(id)
+      const tag = await buildCompositeTag(id)
+      baselinesRef.current.set(key, tag)
+      lastBaselineSetAtRef.current = Date.now()
       setHasNew(false)
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
+  const refreshAllAndResetBaseline = async () => {
+    await fetchClients()
+    await setBaselineFor(expandedClientId)
+  }
+
+  // обновляем baseline при первом рендере данных и при смене раскрытой строки
   useEffect(() => {
     if (!loading) {
-      setBaselineFromServer()
+      setBaselineFor(expandedClientId)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, expandedClientId])
+  }, [loading])
 
+  // таймер сравнения
   useEffect(() => {
     let t0
     let timer
 
     const check = async () => {
       if (document.hidden) return
+      const key = getKey(expandedClientId)
       try {
-        const current = await getCompositeTag()
-        const baseline = baselineTagRef.current
-        if (baseline && baseline !== current) {
+        const current = await buildCompositeTag(expandedClientId)
+        const baseline = baselinesRef.current.get(key)
+        // защита от «сам только что обновил baseline»
+        if (!baseline) return
+        if (Date.now() - lastBaselineSetAtRef.current < 2000) return
+        if (baseline !== current) {
           setHasNew(true)
         }
-      } catch {}
+      } catch {
+        // ignore
+      }
     }
 
     t0 = setTimeout(check, 10000)
     timer = setInterval(check, 30000)
-
     const onVis = () => check()
     document.addEventListener("visibilitychange", onVis)
 
@@ -164,15 +185,9 @@ export default function ClientsMain() {
     }
   }, [expandedClientId])
 
-  const refreshAllAndResetBaseline = async () => {
-    await fetchClients()
-    await setBaselineFromServer()
-  }
-
-  // <<< НОВОЕ: колбэк, который будем отдавать детям >>>
+  // колбэк для детей: после успешного save/delete они зовут это
   const handleChildChanged = async () => {
-    // можно без перезагрузки списка — просто обновим baseline
-    await setBaselineFromServer()
+    await setBaselineFor(expandedClientId)
   }
 
   return (
@@ -252,10 +267,11 @@ export default function ClientsMain() {
           expandedClientId={expandedClientId}
           setExpandedClientId={async (val) => {
             setExpandedClientId(val)
-            setTimeout(setBaselineFromServer, 0)
+            // сразу перезапишем baseline под новый ключ (без таймаутов)
+            await setBaselineFor(val)
           }}
           onReload={refreshAllAndResetBaseline}
-          onChildChanged={handleChildChanged}   // <<< ВАЖНО
+          onChildChanged={handleChildChanged}
         />
       </Card>
 
