@@ -1,5 +1,4 @@
-// src/components/users/TabsTable.jsx
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState } from "react";
 import {
   Table,
   Input,
@@ -8,173 +7,196 @@ import {
   Form,
   Tooltip,
   Modal,
-  message
-} from "antd"
+  message,
+} from "antd";
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   PlusOutlined,
-  AppstoreOutlined
-} from "@ant-design/icons"
-import * as Icons from "@ant-design/icons"
-import axios from "@/api/axiosInstance"
-import { useTabs } from "@/context/TabsContext"
-import CyrillicToTranslit from "cyrillic-to-translit-js"
-import ActionButtons from "@/components/common/ActionButtons"
-import confirmAction from "@/utils/confirmAction" // ✅ добавили
+  AppstoreOutlined,
+} from "@ant-design/icons";
+import * as Icons from "@ant-design/icons";
+import {
+  FaIndustry,
+  FaCogs,
+  FaTools,
+  FaWarehouse,
+  FaWrench,
+  FaTruck,
+  FaTruckMoving,
+  FaHammer,
+  FaHardHat,
+  FaRobot,
+} from "react-icons/fa";
+import axios from "@/api/axiosInstance";
+import { useTabs } from "@/context/TabsContext";
+import CyrillicToTranslit from "cyrillic-to-translit-js";
+import ActionButtons from "@/components/common/ActionButtons";
+import confirmAction from "@/utils/confirmAction";
 
-const translit = new CyrillicToTranslit()
-const iconOptions = Object.keys(Icons).filter((key) => key.endsWith("Outlined"))
+const translit = new CyrillicToTranslit();
+const antIconsList = Object.keys(Icons).filter((key) => key.endsWith("Outlined"));
+const techIcons = {
+  FaIndustry,
+  FaCogs,
+  FaTools,
+  FaWarehouse,
+  FaWrench,
+  FaTruck,
+  FaTruckMoving,
+  FaHammer,
+  FaHardHat,
+  FaRobot,
+};
 
 export default function TabsTable() {
-  const { reloadTabs } = useTabs()
-  const [data, setData] = useState([])
-  const [editingKey, setEditingKey] = useState("")
-  const [form] = Form.useForm()
+  const { reloadTabs } = useTabs();
+  const [data, setData] = useState([]);
+  const [editingKey, setEditingKey] = useState("");
+  const [form] = Form.useForm();
   const [newRow, setNewRow] = useState({
     name: "",
     tab_name: "",
     path: "",
-    icon: ""
-  })
-  const [iconModalOpen, setIconModalOpen] = useState(false)
-  const [iconTargetKey, setIconTargetKey] = useState(null)
-  const [iconSearch, setIconSearch] = useState("")
-  const [loading, setLoading] = useState(false)
+    icon: "",
+  });
+  const [iconModalOpen, setIconModalOpen] = useState(false);
+  const [iconTargetKey, setIconTargetKey] = useState(null);
+  const [iconSearch, setIconSearch] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchTabs()
-  }, [])
+    fetchTabs();
+  }, []);
 
   const fetchTabs = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const res = await axios.get("/tabs")
-      setData(res.data.sort((a, b) => a.sort_order - b.sort_order))
+      const res = await axios.get("/tabs");
+      setData(res.data.sort((a, b) => a.sort_order - b.sort_order));
     } catch (err) {
-      console.error("Ошибка загрузки:", err)
+      console.error("Ошибка загрузки:", err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  const isEditing = (record) => record.id === editingKey
+  const isEditing = (record) => record.id === editingKey;
 
   const edit = (record) => {
-    form.setFieldsValue({ ...record })
-    setEditingKey(record.id)
-  }
+    form.setFieldsValue({ ...record });
+    setEditingKey(record.id);
+  };
 
-  const cancel = () => setEditingKey("")
+  const cancel = () => setEditingKey("");
 
   const save = async (id) => {
     try {
-      const row = await form.validateFields()
-      await axios.put(`/tabs/${id}`, row)
-      setEditingKey("")
-      fetchTabs()
-      reloadTabs()
-      message.success("Сохранено")
+      const row = await form.validateFields();
+      await axios.put(`/tabs/${id}`, row);
+      setEditingKey("");
+      fetchTabs();
+      reloadTabs();
+      message.success("Сохранено");
     } catch (err) {
-      console.error("Ошибка сохранения:", err)
-      message.error("Ошибка")
+      console.error("Ошибка сохранения:", err);
+      message.error("Ошибка");
     }
-  }
+  };
 
   const handleDelete = async (record) => {
-    const { confirmed } = await confirmAction(`Удалить вкладку "${record.name}"?`)
-    if (!confirmed) return
+    const { confirmed } = await confirmAction(`Удалить вкладку "${record.name}"?`);
+    if (!confirmed) return;
 
     try {
-      await axios.delete(`/tabs/${record.id}`)
-      fetchTabs()
-      reloadTabs()
-      message.success("Удалено")
+      await axios.delete(`/tabs/${record.id}`);
+      fetchTabs();
+      reloadTabs();
+      message.success("Удалено");
     } catch (err) {
-      console.error("Ошибка удаления:", err)
-      message.error("Не удалось удалить вкладку")
+      console.error("Ошибка удаления:", err);
+      message.error("Не удалось удалить вкладку");
     }
-  }
+  };
 
   const handleCreate = async () => {
-    if (!newRow.name) return
+    if (!newRow.name) return;
     try {
-      await axios.post("/tabs", newRow)
-      setNewRow({ name: "", tab_name: "", path: "", icon: "" })
-      fetchTabs()
-      reloadTabs()
-      message.success("Вкладка создана")
+      await axios.post("/tabs", newRow);
+      setNewRow({ name: "", tab_name: "", path: "", icon: "" });
+      fetchTabs();
+      reloadTabs();
+      message.success("Вкладка создана");
     } catch (err) {
-      console.error("Ошибка создания:", err)
-      message.error("Ошибка при добавлении")
+      console.error("Ошибка при добавлении:", err);
+      message.error("Ошибка при добавлении");
     }
-  }
+  };
 
   const handleInput = (key, value) => {
-    const name = key === "name" ? value : newRow.name
-    const slug = translit.transform(name, "_")
-    setNewRow((prev) => ({
-      ...prev,
-      [key]: value,
-      tab_name: key === "name" ? slug : prev.tab_name,
-      path: key === "name" ? "/" + slug.replace(/_/g, "-") : prev.path
-    }))
-  }
+    let updated = { ...newRow, [key]: value };
+    if (key === "name") {
+      const slug = translit.transform(value, "_");
+      updated.tab_name = slug;
+      updated.path = "/" + slug.replace(/_/g, "-");
+    }
+    if (key === "tab_name") {
+      updated.path = "/" + value.replace(/_/g, "-");
+    }
+    setNewRow(updated);
+  };
 
   const moveRow = async (id, direction) => {
-    const index = data.findIndex((r) => r.id === id)
-    const targetIndex = direction === "up" ? index - 1 : index + 1
-    if (targetIndex < 0 || targetIndex >= data.length) return
+    const index = data.findIndex((r) => r.id === id);
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= data.length) return;
 
-    const updated = [...data]
-    const [moved] = updated.splice(index, 1)
-    updated.splice(targetIndex, 0, moved)
+    const updated = [...data];
+    const [moved] = updated.splice(index, 1);
+    updated.splice(targetIndex, 0, moved);
 
     await axios.put(
       "/tabs/order",
       updated.map((r, i) => ({ id: r.id, sort_order: i + 1 }))
-    )
-    fetchTabs()
-    reloadTabs()
-  }
+    );
+    fetchTabs();
+    reloadTabs();
+  };
 
   const openIconModal = (rowKey) => {
-    setIconTargetKey(rowKey)
-    setIconSearch("")
-    setIconModalOpen(true)
-  }
+    setIconTargetKey(rowKey);
+    setIconSearch("");
+    setIconModalOpen(true);
+  };
 
   const selectIcon = async (icon) => {
     try {
       if (iconTargetKey === "new") {
-        setNewRow((prev) => ({ ...prev, icon }))
+        setNewRow((prev) => ({ ...prev, icon }));
       } else {
-        const record = data.find((r) => r.id === iconTargetKey)
-        if (!record) return
-
-        const safe = (v) => (v === undefined ? null : v)
+        const record = data.find((r) => r.id === iconTargetKey);
+        if (!record) return;
 
         await axios.put(`/tabs/${record.id}`, {
-          name: safe(record.name),
-          tab_name: safe(record.tab_name),
-          path: safe(record.path),
-          icon
-        })
-        message.success("Иконка обновлена")
-        fetchTabs()
-        reloadTabs()
+          ...record,
+          icon,
+        });
+        message.success("Иконка обновлена");
+        fetchTabs();
+        reloadTabs();
       }
     } catch (err) {
-      console.error("Ошибка при обновлении иконки:", err)
-      message.error("Не удалось обновить иконку")
+      console.error("Ошибка при обновлении иконки:", err);
+      message.error("Не удалось обновить иконку");
     } finally {
-      setIconModalOpen(false)
+      setIconModalOpen(false);
     }
-  }
+  };
 
-  const filteredIcons = iconOptions.filter((icon) =>
-    icon.toLowerCase().includes(iconSearch.toLowerCase())
-  )
+  const allIcons = [
+    ...antIconsList.map((name) => ({ name, component: Icons[name] })),
+    ...Object.entries(techIcons).map(([name, comp]) => ({ name, component: comp })),
+  ].filter((icon) => icon.name.toLowerCase().includes(iconSearch.toLowerCase()));
 
   const columns = [
     { title: "Название", dataIndex: "name", editable: true },
@@ -183,25 +205,21 @@ export default function TabsTable() {
     {
       title: "Иконка",
       dataIndex: "icon",
-      editable: true,
-      render: (value, record) => (
-        <Button
-          icon={
-            value && Icons[value]
-              ? React.createElement(Icons[value])
-              : <AppstoreOutlined />
-          }
-          onClick={() => openIconModal(record.id)}
-        >
-          {value || "Выбрать"}
-        </Button>
-      )
+      render: (value, record) => {
+        const C = Icons[value] || techIcons[value] || AppstoreOutlined;
+        const Comp = C === AppstoreOutlined ? AppstoreOutlined : C;
+        return (
+          <Button icon={React.createElement(Comp)} onClick={() => openIconModal(record.id)}>
+            {value || "Выбрать"}
+          </Button>
+        );
+      },
     },
     {
       title: "",
       dataIndex: "actions",
       render: (_, record) => {
-        const editing = isEditing(record)
+        const editing = isEditing(record);
         return (
           <Space>
             {!editing && (
@@ -229,10 +247,10 @@ export default function TabsTable() {
               size="small"
             />
           </Space>
-        )
-      }
-    }
-  ]
+        );
+      },
+    },
+  ];
 
   const mergedColumns = columns.map((col) =>
     !col.editable
@@ -241,36 +259,25 @@ export default function TabsTable() {
           ...col,
           onCell: (record) => ({
             record,
-            inputType: "text",
             dataIndex: col.dataIndex,
             title: col.title,
             editing: isEditing(record),
-            onDoubleClick: () => edit(record)
-          })
+            onDoubleClick: () => edit(record),
+          }),
         }
-  )
+  );
 
-  const EditableCell = ({
-    editing,
-    dataIndex,
-    record,
-    children,
-    ...restProps
-  }) => (
+  const EditableCell = ({ editing, dataIndex, record, children, ...restProps }) => (
     <td {...restProps}>
       {editing ? (
-        <Form.Item
-          name={dataIndex}
-          style={{ margin: 0 }}
-          initialValue={record[dataIndex]}
-        >
+        <Form.Item name={dataIndex} style={{ margin: 0 }} initialValue={record[dataIndex]}>
           <Input onPressEnter={() => save(record.id)} />
         </Form.Item>
       ) : (
         children
       )}
     </td>
-  )
+  );
 
   return (
     <div>
@@ -292,19 +299,15 @@ export default function TabsTable() {
         />
         <Button
           icon={
-            newRow.icon && Icons[newRow.icon]
-              ? React.createElement(Icons[newRow.icon])
+            newRow.icon && (Icons[newRow.icon] || techIcons[newRow.icon])
+              ? React.createElement(Icons[newRow.icon] || techIcons[newRow.icon])
               : <AppstoreOutlined />
           }
           onClick={() => openIconModal("new")}
         >
           {newRow.icon || "Выбрать"}
         </Button>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={handleCreate}
-        >
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
           Добавить
         </Button>
       </Space>
@@ -340,21 +343,24 @@ export default function TabsTable() {
             flexWrap: "wrap",
             gap: 12,
             maxHeight: "60vh",
-            overflowY: "auto"
+            overflowY: "auto",
           }}
         >
-          {filteredIcons.map((icon) => (
-            <Button
-              key={icon}
-              icon={React.createElement(Icons[icon])}
-              onClick={() => selectIcon(icon)}
-              style={{ width: 120 }}
-            >
-              {icon.replace("Outlined", "")}
-            </Button>
-          ))}
+          {allIcons.map((icon) => {
+            const Comp = icon.component;
+            return (
+              <Button
+                key={icon.name}
+                icon={React.createElement(Comp)}
+                onClick={() => selectIcon(icon.name)}
+                style={{ width: 140 }}
+              >
+                {icon.name.replace(/Outlined$/, "")}
+              </Button>
+            );
+          })}
         </div>
       </Modal>
     </div>
-  )
+  );
 }
