@@ -122,3 +122,6 @@ export const logSchemas = {
     excludeFields: ["id", "supplier_id", "version", "created_at", "updated_at"],
   },
 }
+// ---- Алиасы для совместимости имён entity_type в логах/фронте
+logSchemas.tnved_codes = logSchemas.tnved_code;   // plural -> singular
+logSchemas.part_suppliers = logSchemas.suppliers; // если где-то в логах попадётся part_suppliers

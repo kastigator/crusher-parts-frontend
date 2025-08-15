@@ -8,51 +8,75 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
 
+  const trimToNull = (v) => {
+    if (v === undefined || v === null) return null
+    const s = String(v).trim()
+    return s === "" ? null : s
+  }
+
   const isEditing = (record) => editingId !== null && record.id === editingId
-  const cancelEdit = () => { setEditingId(null); setEditedRow(null) }
+
+  const startEdit = (record) => {
+    setEditingId(record.id)
+    // сохраняем текущую версию для optimistic
+    setEditedRow({ ...record, version: record.version })
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditedRow(null)
+  }
 
   const doPut = (id, payload) => axios.put(`/supplier-contacts/${id}`, payload)
 
   const handleSave = async (row) => {
     if (!supplierId || !row) return
-    if (!row.name?.trim()) {
+    if (!row.name || !row.name.trim()) {
       message.warning("Имя контакта обязательно")
       return
     }
 
     const payload = {
-      name: row.name?.trim(),
-      role: row.role?.trim() || null,
-      email: row.email?.trim() || null,
-      phone: row.phone?.trim() || null,
+      name: row.name.trim(),
+      role: trimToNull(row.role),
+      email: trimToNull(row.email),
+      phone: trimToNull(row.phone),
       is_primary: row.is_primary ? 1 : 0,
-      notes: row.notes?.trim() || null,
+      notes: trimToNull(row.notes),
       version: row.version
     }
 
     try {
       const { data: fresh } = await doPut(row.id, payload)
-      setData(prev => prev.map(r => (r.id === row.id ? fresh : r)))
+      setData((prev) => prev.map((r) => (r.id === row.id ? fresh : r)))
       message.success("Контакт обновлён")
       cancelEdit()
       onChanged?.()
     } catch (err) {
       if (err?.response?.status === 409 && err.response.data?.current) {
         const current = err.response.data.current
+        const { confirmed } = await confirmAction({
+          title: "Конфликт версий",
+          text: "Запись изменилась на сервере. Принять новую версию и повторить сохранение?",
+          icon: "warning",
+          confirmLabel: "Да, повторить",
+          cancelLabel: "Отмена"
+        })
+        if (!confirmed) return
+
         try {
           const { data: fresh2 } = await doPut(row.id, { ...payload, version: current.version })
-          setData(prev => prev.map(r => (r.id === row.id ? fresh2 : r)))
+          setData((prev) => prev.map((r) => (r.id === row.id ? fresh2 : r)))
           message.success("Контакт обновлён")
           cancelEdit()
           onChanged?.()
-          return
         } catch (e2) {
           console.error("Повтор после 409 не удался:", e2)
-          message.error("Конфликт версий: запись изменилась. Обновите список.")
+          message.error("Не удалось сохранить: запись снова изменилась")
         }
       } else {
         console.error("Ошибка при обновлении контакта:", err)
-        message.error("Не удалось сохранить контакт")
+        message.error(err?.response?.data?.message || "Не удалось сохранить контакт")
       }
     }
   }
@@ -62,7 +86,7 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
     if (!confirmed) return
     try {
       await axios.delete(`/supplier-contacts/${record.id}`)
-      setData(prev => prev.filter(r => r.id !== record.id))
+      setData((prev) => prev.filter((r) => r.id !== record.id))
       message.success("Контакт удалён")
       onChanged?.()
     } catch (err) {
@@ -75,7 +99,7 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
     <Input
       value={editedRow?.[field] ?? ""}
       type={type}
-      onChange={(e) => setEditedRow(p => ({ ...p, [field]: e.target.value }))}
+      onChange={(e) => setEditedRow((p) => ({ ...p, [field]: e.target.value }))}
       onPressEnter={() => handleSave(editedRow)}
       onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
       autoFocus={field === "name"}
@@ -89,9 +113,7 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
       dataIndex: "name",
       render: (_, record) =>
         isEditing(record) ? renderInput("name") : (record.name || "—"),
-      onCell: (record) => ({
-        onDoubleClick: () => { setEditingId(record.id); setEditedRow({ ...record }) }
-      }),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
     },
     {
       title: "Роль",
@@ -99,9 +121,7 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
       width: 160,
       render: (_, record) =>
         isEditing(record) ? renderInput("role") : (record.role || "—"),
-      onCell: (record) => ({
-        onDoubleClick: () => { setEditingId(record.id); setEditedRow({ ...record }) }
-      }),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
     },
     {
       title: "Email",
@@ -109,9 +129,7 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
       width: 220,
       render: (_, record) =>
         isEditing(record) ? renderInput("email", "email") : (record.email || "—"),
-      onCell: (record) => ({
-        onDoubleClick: () => { setEditingId(record.id); setEditedRow({ ...record }) }
-      }),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
     },
     {
       title: "Телефон",
@@ -119,37 +137,33 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
       width: 160,
       render: (_, record) =>
         isEditing(record) ? renderInput("phone") : (record.phone || "—"),
-      onCell: (record) => ({
-        onDoubleClick: () => { setEditingId(record.id); setEditedRow({ ...record }) }
-      }),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
     },
     {
       title: "Примечания",
       dataIndex: "notes",
       render: (_, record) =>
         isEditing(record) ? renderInput("notes") : (record.notes || "—"),
-      onCell: (record) => ({
-        onDoubleClick: () => { setEditingId(record.id); setEditedRow({ ...record }) }
-      }),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
     },
     {
       title: "Статус",
       dataIndex: "is_primary",
       width: 140,
       render: (_, r) =>
-        isEditing(r)
-          ? (
-              <Checkbox
-                checked={!!(editedRow?.is_primary ?? r.is_primary)}
-                onChange={(e) => setEditedRow(p => ({ ...p, is_primary: e.target.checked }))}
-              >
-                Основной
-              </Checkbox>
-            )
-          : (r.is_primary ? <Tag color="green">Основной</Tag> : <Tag>Обычный</Tag>),
-      onCell: (record) => ({
-        onDoubleClick: () => { setEditingId(record.id); setEditedRow({ ...record }) }
-      }),
+        isEditing(r) ? (
+          <Checkbox
+            checked={!!(editedRow?.is_primary ?? r.is_primary)}
+            onChange={(e) => setEditedRow((p) => ({ ...p, is_primary: e.target.checked }))}
+          >
+            Основной
+          </Checkbox>
+        ) : r.is_primary ? (
+          <Tag color="green">Основной</Tag>
+        ) : (
+          <Tag>Обычный</Tag>
+        ),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
     },
     {
       title: "Действия",

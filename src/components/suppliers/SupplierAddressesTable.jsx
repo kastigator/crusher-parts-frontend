@@ -1,65 +1,66 @@
 // src/components/suppliers/SupplierAddressesTable.jsx
 import React, { useState } from "react"
-import { Table, Input, message, Row, Col, Divider, Space, Tooltip, Button, Checkbox, Tag } from "antd"
+import { Table, Input, message, Tag, Checkbox } from "antd"
 import axios from "@/api/axiosInstance"
-import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
+import ValueDisplay from "@/components/common/ValueDisplay"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
-import { CopyOutlined } from "@ant-design/icons"
 
-// Человеко-читаемая сборка адреса из полей
-const formatFullAddress = (r = {}) => {
-  const parts = [
-    r.country,
-    r.region,
-    r.city,
-    r.street && `ул. ${r.street}`,
-    r.house && `д. ${r.house}`,
-    r.building && `стр. ${r.building}`,
-    r.entrance && `подъезд ${r.entrance}`,
-    r.postal_code && `инд. ${r.postal_code}`,
-  ].filter(Boolean)
-  return parts.join(", ")
-}
-
-export default function SupplierAddressesTable({ supplierId, data = [], loading, setData, onChanged }) {
+export default function SupplierAddressesTable({ supplierId, data = [], setData, loading, onChanged }) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
 
-  const isEditing = (record) => editingId !== null && record?.id === editingId
+  const isEditing = (r) => editingId === r.id
+
+  const startEdit = (record) => {
+    setEditingId(record.id)
+    // сохраняем текущую версию для optimistic
+    setEditedRow({ ...record, version: record.version })
+  }
+
   const cancelEdit = () => { setEditingId(null); setEditedRow(null) }
 
-  // PUT helper
+  const trimToNull = (v) => {
+    if (v === undefined || v === null) return null
+    const s = String(v).trim()
+    return s === "" ? null : s
+  }
+
+  const toNumOrNull = (v) => {
+    if (v === undefined || v === null || v === "") return null
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+
   const doPut = (id, payload) => axios.put(`/supplier-addresses/${id}`, payload)
 
-  const handleSave = async (row) => {
+  const saveEdit = async (row) => {
     if (!supplierId || !row) return
-    if (!row.formatted_address?.trim()) {
-      message.warning("Поле 'Адрес' обязательно")
-      return
-    }
 
     const payload = {
-      // адресные поля
-      formatted_address: row.formatted_address.trim(),
-      place_id: row.place_id || null,
-      lat: row.lat ?? null,
-      lng: row.lng ?? null,
-      postal_code: row.postal_code || null,
-      country: row.country || null,
-      region: row.region || null,
-      city: row.city || null,
-      street: row.street || null,
-      house: row.house || null,
-      building: row.building || null,
-      entrance: row.entrance || null,
-      comment: row.comment?.trim() || null,
-      // специфично
-      label: row.label?.trim() || null,
-      type: row.type?.trim() || null,
+      label: trimToNull(row.label),
+      type: trimToNull(row.type),
+      formatted_address: trimToNull(row.formatted_address),
+      city: trimToNull(row.city),
+      street: trimToNull(row.street),
+      house: trimToNull(row.house),
+      building: trimToNull(row.building),
+      entrance: trimToNull(row.entrance),
+      region: trimToNull(row.region),
+      country: trimToNull(row.country),
+      is_precise_location: row.is_precise_location ? 1 : 0,
+      place_id: trimToNull(row.place_id),
+      lat: toNumOrNull(row.lat),
+      lng: toNumOrNull(row.lng),
+      postal_code: trimToNull(row.postal_code),
+      comment: trimToNull(row.comment),
       is_primary: row.is_primary ? 1 : 0,
-      // optimistic
-      version: row.version,
+      version: row.version
+    }
+
+    if (!payload.formatted_address) {
+      message.warning("Адрес обязателен")
+      return
     }
 
     try {
@@ -70,22 +71,28 @@ export default function SupplierAddressesTable({ supplierId, data = [], loading,
       onChanged?.()
     } catch (err) {
       if (err?.response?.status === 409 && err.response.data?.current) {
-        // один повтор с актуальной версией
         const current = err.response.data.current
+        const { confirmed } = await confirmAction({
+          title: "Конфликт версий",
+          text: "Адрес был изменён на сервере. Принять новую версию и повторить сохранение?",
+          icon: "warning",
+          confirmLabel: "Да, повторить",
+          cancelLabel: "Отмена"
+        })
+        if (!confirmed) return
         try {
           const { data: fresh2 } = await doPut(row.id, { ...payload, version: current.version })
           setData((prev) => prev.map((r) => (r.id === row.id ? fresh2 : r)))
           message.success("Адрес обновлён")
           cancelEdit()
           onChanged?.()
-          return
         } catch (e2) {
           console.error("Повтор после 409 не удался:", e2)
-          message.error("Конфликт версий: запись изменилась. Обновите список.")
+          message.error("Не удалось сохранить: запись снова изменилась")
         }
       } else {
-        console.error("Ошибка при обновлении:", err)
-        message.error("Не удалось сохранить адрес")
+        console.error("Ошибка сохранения адреса:", err)
+        message.error(err?.response?.data?.message || "Не удалось сохранить адрес")
       }
     }
   }
@@ -99,212 +106,126 @@ export default function SupplierAddressesTable({ supplierId, data = [], loading,
       message.success("Адрес удалён")
       onChanged?.()
     } catch (err) {
-      console.error("Ошибка при удалении адреса:", err)
+      console.error("Ошибка удаления адреса:", err)
       message.error("Не удалось удалить адрес")
     }
   }
 
+  const renderInput = (field) => (
+    <Input
+      value={editedRow?.[field] ?? ""}
+      onChange={(e) => setEditedRow((p) => ({ ...p, [field]: e.target.value }))}
+      onPressEnter={() => saveEdit(editedRow)}
+      onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+      autoFocus={field === "formatted_address"}
+      size="small"
+    />
+  )
+
   const columns = [
+    {
+      title: "Метка",
+      dataIndex: "label",
+      width: 140,
+      render: (_, r) => (isEditing(r) ? renderInput("label") : <ValueDisplay value={r.label} />),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+    },
+    {
+      title: "Тип",
+      dataIndex: "type",
+      width: 120,
+      render: (_, r) => (isEditing(r) ? renderInput("type") : <ValueDisplay value={r.type} />),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+    },
     {
       title: "Адрес",
       dataIndex: "formatted_address",
-      render: (_, record) => {
-        const editing = isEditing(record)
-
-        if (editing && editedRow) {
-          return (
-            <>
-              <PlaceAddressInput
-                debugId={`supplier-address-row-${record.id}`}
-                value={{
-                  address_line: editedRow.formatted_address,
-                  lat: editedRow.lat,
-                  lng: editedRow.lng,
-                  place_id: editedRow.place_id,
-                  postal_code: editedRow.postal_code,
-                }}
-                onChange={(val) =>
-                  setEditedRow((prev) => ({
-                    ...prev,
-                    formatted_address: val.address_line,
-                    place_id: val.place_id,
-                    lat: val.lat,
-                    lng: val.lng,
-                    postal_code: val.postal_code,
-                    country: val.country,
-                    region: val.region,
-                    city: val.city,
-                    street: val.street,
-                    house: val.house,
-                    building: val.building,
-                    entrance: val.entrance,
-                  }))
-                }
-              />
-
-              <Divider style={{ margin: "8px 0" }} />
-
-              {/* доп. поля метаданных */}
-              <Row gutter={8}>
-                <Col span={8}>
-                  <Input
-                    placeholder="Метка (label)"
-                    value={editedRow.label || ""}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, label: e.target.value }))}
-                  />
-                </Col>
-                <Col span={8}>
-                  <Input
-                    placeholder="Тип (напр., warehouse/billing)"
-                    value={editedRow.type || ""}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, type: e.target.value }))}
-                  />
-                </Col>
-                <Col span={8} style={{ display: "flex", alignItems: "center" }}>
-                  <Checkbox
-                    checked={!!editedRow.is_primary}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, is_primary: e.target.checked ? 1 : 0 }))}
-                  >
-                    Основной адрес
-                  </Checkbox>
-                </Col>
-              </Row>
-
-              <Row gutter={8} style={{ marginTop: 8 }}>
-                <Col span={6}>
-                  <Input
-                    placeholder="Страна"
-                    value={editedRow.country}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, country: e.target.value }))}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Input
-                    placeholder="Регион"
-                    value={editedRow.region}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, region: e.target.value }))}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Input
-                    placeholder="Город"
-                    value={editedRow.city}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, city: e.target.value }))}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Input
-                    placeholder="Индекс"
-                    value={editedRow.postal_code}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, postal_code: e.target.value }))}
-                  />
-                </Col>
-              </Row>
-
-              <Row gutter={8} style={{ marginTop: 8 }}>
-                <Col span={8}>
-                  <Input
-                    placeholder="Улица"
-                    value={editedRow.street}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, street: e.target.value }))}
-                  />
-                </Col>
-                <Col span={4}>
-                  <Input
-                    placeholder="Дом"
-                    value={editedRow.house}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, house: e.target.value }))}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Input
-                    placeholder="Строение"
-                    value={editedRow.building}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, building: e.target.value }))}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Input
-                    placeholder="Подъезд"
-                    value={editedRow.entrance}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, entrance: e.target.value }))}
-                  />
-                </Col>
-              </Row>
-
-              <Row style={{ marginTop: 8 }}>
-                <Col span={24}>
-                  <Input.TextArea
-                    placeholder="Комментарий"
-                    autoSize={{ minRows: 1, maxRows: 4 }}
-                    value={editedRow.comment || ""}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, comment: e.target.value }))}
-                  />
-                </Col>
-              </Row>
-            </>
-          )
-        }
-
-        // Просмотр: одна строка + подпись/теги
-        const built = formatFullAddress(record)?.trim()
-        const oneLine = built && built.length > 0 ? built : (record.formatted_address?.trim() || "—")
-
-        return (
-          <div
-            onDoubleClick={() => {
-              setEditingId(record.id)
-              setEditedRow({ ...record, version: record.version })
-            }}
+      render: (_, r) =>
+        isEditing(r) ? renderInput("formatted_address") : <ValueDisplay value={r.formatted_address} />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+    },
+    {
+      title: "Город",
+      dataIndex: "city",
+      width: 140,
+      render: (_, r) => (isEditing(r) ? renderInput("city") : <ValueDisplay value={r.city} />),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+    },
+    {
+      title: "Индекс",
+      dataIndex: "postal_code",
+      width: 120,
+      render: (_, r) => (isEditing(r) ? renderInput("postal_code") : <ValueDisplay value={r.postal_code} />),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+    },
+    {
+      title: "Страна",
+      dataIndex: "country",
+      width: 90,
+      render: (_, r) => (isEditing(r) ? renderInput("country") : <ValueDisplay value={r.country} />),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+    },
+    {
+      title: "Основной",
+      dataIndex: "is_primary",
+      width: 120,
+      render: (_, r) =>
+        isEditing(r) ? (
+          <Checkbox
+            checked={!!(editedRow?.is_primary ?? r.is_primary)}
+            onChange={(e) => setEditedRow((p) => ({ ...p, is_primary: e.target.checked }))}
           >
-            <div style={{ fontWeight: 600 }}>{oneLine}</div>
-
-            <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
-              <Space size={6} wrap>
-                {record.label ? <Tag>{record.label}</Tag> : null}
-                {record.type ? <Tag color="geekblue">{record.type}</Tag> : null}
-                {record.is_primary ? <Tag color="green">Основной</Tag> : null}
-
-                <Tooltip title="Скопировать адрес">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<CopyOutlined />}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      navigator.clipboard.writeText(oneLine)
-                    }}
-                  />
-                </Tooltip>
-              </Space>
-            </div>
-
-            {record.comment && (
-              <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
-                Комментарий: {record.comment}
-              </div>
-            )}
-          </div>
-        )
-      },
+            Да
+          </Checkbox>
+        ) : r.is_primary ? (
+          <Tag color="green">Основной</Tag>
+        ) : (
+          <Tag>Обычный</Tag>
+        ),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+    },
+    {
+      title: "Точная локация",
+      dataIndex: "is_precise_location",
+      width: 140,
+      render: (_, r) =>
+        isEditing(r) ? (
+          <Checkbox
+            checked={!!(editedRow?.is_precise_location ?? r.is_precise_location)}
+            onChange={(e) => setEditedRow((p) => ({ ...p, is_precise_location: e.target.checked }))}
+          >
+            Да
+          </Checkbox>
+        ) : r.is_precise_location ? (
+          <Tag color="blue">GPS</Tag>
+        ) : (
+          <Tag>—</Tag>
+        ),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+    },
+    {
+      title: "Комментарий",
+      dataIndex: "comment",
+      render: (_, r) => (isEditing(r) ? renderInput("comment") : <ValueDisplay value={r.comment} />),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
     },
     {
       title: "Действия",
-      dataIndex: "actions",
+      key: "actions",
       width: 140,
       render: (_, record) => {
         const editing = isEditing(record)
         return (
           <ActionButtons
-            onSave={editing ? () => handleSave(editedRow) : undefined}
+            onSave={editing ? () => saveEdit(editedRow) : undefined}
             onCancel={editing ? cancelEdit : undefined}
             onDelete={!editing ? () => deleteRow(record) : undefined}
             confirmDelete={false}
             size="small"
           />
         )
-      },
-    },
+      }
+    }
   ]
 
   return (

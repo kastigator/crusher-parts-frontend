@@ -12,7 +12,6 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
   const [search, setSearch] = useState("")
 
   const [newAddress, setNewAddress] = useState({
-    // общие поля адреса
     formatted_address: "",
     place_id: null,
     lat: null,
@@ -26,7 +25,6 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
     building: "",
     entrance: "",
     comment: "",
-    // специфичное для поставщиков
     label: "",
     type: "",
     is_primary: false,
@@ -53,6 +51,8 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supplierId])
 
+  const trimOrNull = (v) => (typeof v === "string" ? (v.trim() || null) : (v ?? null))
+
   const handleAdd = async () => {
     if (!supplierId) return
     if (!newAddress.formatted_address?.trim()) {
@@ -66,24 +66,22 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
       place_id: newAddress.place_id || null,
       lat: newAddress.lat ?? null,
       lng: newAddress.lng ?? null,
-      postal_code: newAddress.postal_code || null,
-      country: newAddress.country || null,
-      region: newAddress.region || null,
-      city: newAddress.city || null,
-      street: newAddress.street || null,
-      house: newAddress.house || null,
-      building: newAddress.building || null,
-      entrance: newAddress.entrance || null,
-      comment: newAddress.comment?.trim() || null,
-      // специфично
-      label: newAddress.label?.trim() || null,
-      type: newAddress.type?.trim() || null,
+      postal_code: trimOrNull(newAddress.postal_code),
+      country: trimOrNull(newAddress.country),
+      region: trimOrNull(newAddress.region),
+      city: trimOrNull(newAddress.city),
+      street: trimOrNull(newAddress.street),
+      house: trimOrNull(newAddress.house),
+      building: trimOrNull(newAddress.building),
+      entrance: trimOrNull(newAddress.entrance),
+      comment: trimOrNull(newAddress.comment),
+      label: trimOrNull(newAddress.label),
+      type: trimOrNull(newAddress.type),
       is_primary: newAddress.is_primary ? 1 : 0,
     }
 
     try {
       const res = await axios.post("/supplier-addresses", payload)
-      // мгновенно в таблицу
       setData(prev => [res.data, ...prev])
 
       // сброс формы
@@ -172,6 +170,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
               placeholder="Метка (label)"
               value={newAddress.label}
               onChange={(e) => setNewAddress(prev => ({ ...prev, label: e.target.value }))}
+              allowClear
             />
           </Col>
           <Col span={8}>
@@ -179,6 +178,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
               placeholder="Тип (напр., warehouse/billing)"
               value={newAddress.type}
               onChange={(e) => setNewAddress(prev => ({ ...prev, type: e.target.value }))}
+              allowClear
             />
           </Col>
           <Col span={8} style={{ display: "flex", alignItems: "center" }}>
@@ -193,17 +193,73 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
 
         {/* Поля адреса */}
         <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col span={6}><Input placeholder="Страна" value={newAddress.country} onChange={(e) => setNewAddress(prev => ({ ...prev, country: e.target.value }))} /></Col>
-          <Col span={6}><Input placeholder="Регион" value={newAddress.region} onChange={(e) => setNewAddress(prev => ({ ...prev, region: e.target.value }))} /></Col>
-          <Col span={6}><Input placeholder="Город" value={newAddress.city} onChange={(e) => setNewAddress(prev => ({ ...prev, city: e.target.value }))} /></Col>
-          <Col span={6}><Input placeholder="Индекс" value={newAddress.postal_code} onChange={(e) => setNewAddress(prev => ({ ...prev, postal_code: e.target.value }))} /></Col>
+          <Col span={6}>
+            <Input
+              placeholder="Страна"
+              value={newAddress.country}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, country: e.target.value }))}
+              allowClear
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Регион"
+              value={newAddress.region}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, region: e.target.value }))}
+              allowClear
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Город"
+              value={newAddress.city}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, city: e.target.value }))}
+              allowClear
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Индекс"
+              value={newAddress.postal_code}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, postal_code: e.target.value }))}
+              allowClear
+            />
+          </Col>
         </Row>
 
         <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col span={12}><Input placeholder="Улица" value={newAddress.street} onChange={(e) => setNewAddress(prev => ({ ...prev, street: e.target.value }))} /></Col>
-          <Col span={4}><Input placeholder="Дом" value={newAddress.house} onChange={(e) => setNewAddress(prev => ({ ...prev, house: e.target.value }))} /></Col>
-          <Col span={4}><Input placeholder="Строение" value={newAddress.building} onChange={(e) => setNewAddress(prev => ({ ...prev, building: e.target.value }))} /></Col>
-          <Col span={4}><Input placeholder="Подъезд" value={newAddress.entrance} onChange={(e) => setNewAddress(prev => ({ ...prev, entrance: e.target.value }))} /></Col>
+          <Col span={12}>
+            <Input
+              placeholder="Улица"
+              value={newAddress.street}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, street: e.target.value }))}
+              allowClear
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Дом"
+              value={newAddress.house}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, house: e.target.value }))}
+              allowClear
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Строение"
+              value={newAddress.building}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, building: e.target.value }))}
+              allowClear
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Подъезд"
+              value={newAddress.entrance}
+              onChange={(e) => setNewAddress(prev => ({ ...prev, entrance: e.target.value }))}
+              allowClear
+            />
+          </Col>
         </Row>
 
         <Row gutter={12} style={{ marginTop: 8 }}>
@@ -212,6 +268,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
               placeholder="Комментарий"
               value={newAddress.comment}
               onChange={(e) => setNewAddress(prev => ({ ...prev, comment: e.target.value }))}
+              allowClear
             />
           </Col>
           <Col>
@@ -220,7 +277,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
         </Row>
       </Card>
 
-      {/* ✅ TableToolbar с корректными пропсами */}
+      {/* единая сигнатура тулбара */}
       <TableToolbar search={search} onSearch={setSearch} />
 
       <SupplierAddressesTable

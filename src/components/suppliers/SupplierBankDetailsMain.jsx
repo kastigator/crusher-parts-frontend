@@ -14,7 +14,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
   const [newBank, setNewBank] = useState({
     bank_name: "",
     account_number: "",
-    currency: "", // ISO3: EUR, USD, ...
+    currency: "", // ISO3
     bic: "",
     iban: "",
     correspondent_account: "",
@@ -50,7 +50,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
       supplier_id: supplierId,
       bank_name: newBank.bank_name?.trim(),
       account_number: newBank.account_number?.trim(),
-      currency: newBank.currency?.trim().toUpperCase().slice(0, 3) || null,
+      currency: newBank.currency ? String(newBank.currency).trim().toUpperCase().slice(0, 3) : null,
       bic: newBank.bic?.trim() || null,
       iban: newBank.iban?.trim() || null,
       correspondent_account: newBank.correspondent_account?.trim() || null,
@@ -63,12 +63,15 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
       message.warning("Введите банк и расчётный счёт")
       return
     }
+    if (payload.is_primary_for_currency === 1 && !payload.currency) {
+      message.warning("Чтобы пометить «Основной для валюты», выберите валюту (ISO3)")
+      return
+    }
 
     setSubmitting(true)
     try {
       const { data: created } = await axios.post("/supplier-bank-details", payload)
-      // мгновенно в таблицу
-      setData((prev) => [created, ...prev])
+      setData((prev) => [created, ...prev]) // мгновенное добавление
       setNewBank({
         bank_name: "",
         account_number: "",
@@ -118,6 +121,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
               value={newBank.bank_name}
               onChange={(e) => setNewBank((p) => ({ ...p, bank_name: e.target.value }))}
               onPressEnter={handleAdd}
+              allowClear
             />
           </Col>
 
@@ -127,13 +131,14 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
               value={newBank.account_number}
               onChange={(e) => setNewBank((p) => ({ ...p, account_number: e.target.value }))}
               onPressEnter={handleAdd}
+              allowClear
             />
           </Col>
 
           <Col span={4}>
             <CurrencySelect
               value={newBank.currency}
-              onChange={(v) => setNewBank((p) => ({ ...p, currency: v || "" }))}
+              onChange={(v) => setNewBank((p) => ({ ...p, currency: v || "" }))} // компонент отдаёт ISO3
               TextFieldProps={{ size: "small", label: "Валюта" }}
             />
           </Col>
@@ -144,6 +149,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
               value={newBank.bic}
               onChange={(e) => setNewBank((p) => ({ ...p, bic: e.target.value }))}
               onPressEnter={handleAdd}
+              allowClear
             />
           </Col>
 
@@ -153,6 +159,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
               value={newBank.iban}
               onChange={(e) => setNewBank((p) => ({ ...p, iban: e.target.value }))}
               onPressEnter={handleAdd}
+              allowClear
             />
           </Col>
         </Row>
@@ -164,6 +171,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
               value={newBank.correspondent_account}
               onChange={(e) => setNewBank((p) => ({ ...p, correspondent_account: e.target.value }))}
               onPressEnter={handleAdd}
+              allowClear
             />
           </Col>
           <Col span={8}>
@@ -172,6 +180,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
               value={newBank.bank_address}
               onChange={(e) => setNewBank((p) => ({ ...p, bank_address: e.target.value }))}
               onPressEnter={handleAdd}
+              allowClear
             />
           </Col>
           <Col span={6}>
@@ -180,6 +189,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
               value={newBank.additional_info}
               onChange={(e) => setNewBank((p) => ({ ...p, additional_info: e.target.value }))}
               onPressEnter={handleAdd}
+              allowClear
             />
           </Col>
           <Col span={4}>

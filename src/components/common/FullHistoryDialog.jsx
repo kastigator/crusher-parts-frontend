@@ -5,6 +5,12 @@ import { CopyOutlined, DownloadOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import { logSchemas } from "@/utils/logSchemas"
 
+// 👇 алиасы на случаи, когда страница пробрасывает одно имя, а в логах/БД — другое
+const ENTITY_TYPE_ALIASES = {
+  tnved_codes: "tnved_code",   // таблица plural, entity_type в логах — singular
+  part_suppliers: "suppliers", // на всякий – если где-то передадим part_suppliers
+}
+
 export default function FullHistoryDialog({ entityId, entityType, onClose, onlyDeleted = false }) {
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(false)
@@ -23,19 +29,14 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
     const fetchLogs = async () => {
       setLoading(true)
       try {
+        const apiEntity = ENTITY_TYPE_ALIASES[entityType] || entityType
         let res
         if (onlyDeleted) {
-          if (entityType.endsWith("-combined")) {
-            const baseType = entityType.replace("-combined", "")
-            res = await axios.get(`/${baseType}/logs/deleted`)
-          } else {
-            res = await axios.get(`/activity-logs/deleted?entity_type=${entityType}`)
-          }
-        } else if (entityType.endsWith("-combined")) {
-          const baseType = entityType.replace("-combined", "")
-          res = await axios.get(`/${baseType}/${entityId}/logs/combined`)
+          // удалённые
+          res = await axios.get(`/activity-logs/deleted?entity_type=${apiEntity}`)
         } else {
-          res = await axios.get(`/activity-logs/${entityType}/${entityId}`)
+          // стандартная история
+          res = await axios.get(`/activity-logs/${apiEntity}/${entityId}`)
         }
         setLogs(Array.isArray(res.data) ? res.data : [])
       } catch (e) {
@@ -54,14 +55,16 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
     client_billing_addresses: "Юр. адрес",
     client_shipping_addresses: "Адрес доставки",
     client_bank_details: "Банковские реквизиты",
-    tnved_code: "ВЭД"
+    tnved_code: "ТН ВЭД",
+    tnved_codes: "ТН ВЭД",   // чтобы подпись в таблице была нормальной для обоих ключей
+    suppliers: "Поставщик",
   }
 
-  // ← добавил 'version' в техполя
+  // техполя не показываем как отдельные изменения
   const TECH_FIELDS = new Set(["id", "created_at", "updated_at", "client_id", "entity_id", "user_id", "version"])
 
   const labelForField = (record) => {
-    const schema = logSchemas[record?.entity_type]
+    const schema = logSchemas[record?.entity_type] || logSchemas[ENTITY_TYPE_ALIASES[record?.entity_type]]
     const nice = schema?.fields?.[record?.field_changed]
     if (nice) return nice
     if (!record?.field_changed) {
@@ -126,7 +129,7 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }))
     const a = document.createElement("a")
     a.href = url
-    a.download = `history_${entityType || "all"}_${Date.now()}.csv`
+    a.download = `history_${(ENTITY_TYPE_ALIASES[entityType] || entityType) || "all"}_${Date.now()}.csv`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -202,7 +205,7 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
       title={onlyDeleted ? "Удалённые записи" : "История изменений"}
       okText="Закрыть"
       cancelButtonProps={{ style: { display: "none" } }}
-      bodyStyle={{ paddingTop: 12, maxHeight: "72vh", overflow: "hidden" }}
+      styles={{ body: { paddingTop: 12, maxHeight: "72vh", overflow: "hidden" } }} // вместо bodyStyle
     >
       {loading ? (
         <div style={{ textAlign: "center", padding: "2rem" }}><Spin /></div>
@@ -214,7 +217,9 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
           <Table
             dataSource={rows}
             columns={onlyDeleted ? columnsDeleted : columnsFull}
-            rowKey={(row, i) => row.id || `${row.entity_type}-${row.entity_id}-${row.action}-${row.field_changed || "action"}-${row.created_at || i}`}
+            rowKey={(row, i) =>
+              row.id || `${row.entity_type}-${row.entity_id}-${row.action}-${row.field_changed || "action"}-${row.created_at || i}`
+            }
             size="small"
             pagination={false}
             bordered

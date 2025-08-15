@@ -28,7 +28,7 @@ export default function SuppliersMain() {
   const fetchSuppliers = async () => {
     setLoading(true)
     try {
-      const res = await axios.get("/part-suppliers") // сервер умеет q, но локального фильтра достаточно
+      const res = await axios.get("/part-suppliers")
       setSuppliers(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       console.error("Ошибка загрузки поставщиков:", err)
@@ -48,7 +48,7 @@ export default function SuppliersMain() {
       contact_person: newSupplier.contact_person?.trim() || null,
       phone: newSupplier.phone?.trim() || null,
       email: newSupplier.email?.trim() || null,
-      // ⛔ никаких active/is_oem/quality_certified
+      // ⛔ никаких active / is_oem / quality_certified / address
     }
 
     if (!payload.name) {
@@ -60,14 +60,13 @@ export default function SuppliersMain() {
     try {
       const res = await axios.post("/part-suppliers", payload)
       message.success("Поставщик добавлен")
-      // мгновенно добавляем в список без полного рефетча
+      // добавляем свежую запись в начало без полного рефетча
       setSuppliers((prev) => [res.data, ...prev])
       setNewSupplier({ name: "", contact_person: "", phone: "", email: "" })
       nameInputRef.current?.focus()
     } catch (err) {
       console.error("Ошибка при добавлении поставщика:", err)
-      const msg =
-        err?.response?.data?.message || "Не удалось добавить поставщика"
+      const msg = err?.response?.data?.message || "Не удалось добавить поставщика"
       message.error(msg)
     }
   }
@@ -94,7 +93,6 @@ export default function SuppliersMain() {
     await fetchSuppliers()
   }
 
-  // колбэк из ImportModal
   const handleImportComplete = (result) => {
     const ins = result?.inserted?.length || 0
     const upd = result?.updated?.length || 0
@@ -115,7 +113,7 @@ export default function SuppliersMain() {
           onShowDeleted={() => setShowDeleted(true)}
         />
 
-        {/* Форма добавления (как и договаривались — через Main, не в таблице) */}
+        {/* Форма добавления */}
         <Form layout="inline" style={{ marginBottom: 16 }} onFinish={handleAdd}>
           <Form.Item label="Компания" required>
             <Input
@@ -125,7 +123,6 @@ export default function SuppliersMain() {
                 setNewSupplier((prev) => ({ ...prev, name: e.target.value }))
               }
               placeholder="Название"
-              onPressEnter={handleAdd}
               allowClear
               style={{ minWidth: 220 }}
             />
@@ -192,9 +189,8 @@ export default function SuppliersMain() {
       <ImportModal
         open={importOpen}
         type="part_suppliers"
-        // templateUrl тянется из GET /import/schema/part_suppliers внутри модалки
         onClose={() => setImportOpen(false)}
-        onComplete={handleImportComplete} // модалка вернёт { inserted, updated, errors }
+        onComplete={handleImportComplete}
       />
 
       {/* Удалённые (история) */}

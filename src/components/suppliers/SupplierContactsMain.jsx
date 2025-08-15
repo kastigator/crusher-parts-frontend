@@ -48,6 +48,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
       is_primary: newContact.is_primary ? 1 : 0,
       notes: newContact.notes?.trim() || null
     }
+
     if (!payload.name) {
       message.warning("Имя контакта обязательно")
       return
@@ -55,13 +56,13 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
 
     try {
       const { data: created } = await axios.post("/supplier-contacts", payload)
-      setData(prev => [created, ...prev])
+      setData(prev => [created, ...prev]) // мгновенно в таблицу
       setNewContact({ name: "", role: "", email: "", phone: "", is_primary: false, notes: "" })
       message.success("Контакт добавлен")
       onChanged?.()
     } catch (e) {
       console.error("Ошибка добавления контакта:", e)
-      message.error("Не удалось добавить контакт")
+      message.error(e?.response?.data?.message || "Не удалось добавить контакт")
     }
   }
 
@@ -79,7 +80,10 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
 
   return (
     <>
-      <Card size="small" style={{ marginBottom: 12 }}>
+      {/* Та же сигнатура тулбара, что и в адресах */}
+      <TableToolbar filterValue={search} onFilterChange={setSearch} />
+
+      <Card size="small" style={{ marginTop: 8, marginBottom: 12 }}>
         <Row gutter={12}>
           <Col span={6}>
             <Input
@@ -87,6 +91,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
               value={newContact.name}
               onChange={(e) => setNewContact(p => ({ ...p, name: e.target.value }))}
               onPressEnter={handleAdd}
+              allowClear
             />
           </Col>
           <Col span={5}>
@@ -95,6 +100,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
               value={newContact.role}
               onChange={(e) => setNewContact(p => ({ ...p, role: e.target.value }))}
               onPressEnter={handleAdd}
+              allowClear
             />
           </Col>
           <Col span={5}>
@@ -104,6 +110,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
               onChange={(e) => setNewContact(p => ({ ...p, email: e.target.value }))}
               onPressEnter={handleAdd}
               type="email"
+              allowClear
             />
           </Col>
           <Col span={4}>
@@ -112,6 +119,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
               value={newContact.phone}
               onChange={(e) => setNewContact(p => ({ ...p, phone: e.target.value }))}
               onPressEnter={handleAdd}
+              allowClear
             />
           </Col>
           <Col span={4} style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -132,13 +140,11 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
               autoSize={{ minRows: 1, maxRows: 4 }}
               value={newContact.notes}
               onChange={(e) => setNewContact(p => ({ ...p, notes: e.target.value }))}
-              onPressEnter={handleAdd}
+              allowClear
             />
           </Col>
         </Row>
       </Card>
-
-      <TableToolbar filterValue={search} onFilterChange={setSearch} />
 
       <SupplierContactsTable
         data={filtered}
