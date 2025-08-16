@@ -143,7 +143,6 @@ export default function ClientsMain() {
     await setBaselineFor(expandedClientId)
   }
 
-  // обновляем baseline при первом рендере данных и при смене раскрытой строки
   useEffect(() => {
     if (!loading) {
       setBaselineFor(expandedClientId)
@@ -151,7 +150,6 @@ export default function ClientsMain() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading])
 
-  // таймер сравнения
   useEffect(() => {
     let t0
     let timer
@@ -162,7 +160,6 @@ export default function ClientsMain() {
       try {
         const current = await buildCompositeTag(expandedClientId)
         const baseline = baselinesRef.current.get(key)
-        // защита от «сам только что обновил baseline»
         if (!baseline) return
         if (Date.now() - lastBaselineSetAtRef.current < 2000) return
         if (baseline !== current) {
@@ -185,7 +182,6 @@ export default function ClientsMain() {
     }
   }, [expandedClientId])
 
-  // колбэк для детей: после успешного save/delete они зовут это
   const handleChildChanged = async () => {
     await setBaselineFor(expandedClientId)
   }
@@ -267,7 +263,6 @@ export default function ClientsMain() {
           expandedClientId={expandedClientId}
           setExpandedClientId={async (val) => {
             setExpandedClientId(val)
-            // сразу перезапишем baseline под новый ключ (без таймаутов)
             await setBaselineFor(val)
           }}
           onReload={refreshAllAndResetBaseline}
@@ -277,9 +272,8 @@ export default function ClientsMain() {
 
       {showDeletedModal && (
         <FullHistoryDialog
-          entityType="clients-combined"
-          entityId={null}
-          onlyDeleted={true}
+          onlyDeleted
+          endpoint="/clients/logs/deleted"   // ✅ ЯВНЫЙ URL
           onClose={() => setShowDeletedModal(false)}
         />
       )}

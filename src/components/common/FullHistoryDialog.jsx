@@ -1,46 +1,111 @@
 // src/components/common/FullHistoryDialog.jsx
 import React, { useEffect, useMemo, useState } from "react"
-import { Modal, Table, Spin, Empty, Tag, Checkbox, Space, Tooltip, Button, message } from "antd"
+import {
+  Modal, Table, Spin, Empty, Tag, Checkbox,
+  Space, Tooltip, Button, message, Alert
+} from "antd"
 import { CopyOutlined, DownloadOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import { logSchemas } from "@/utils/logSchemas"
 
-// 👇 алиасы на случаи, когда страница пробрасывает одно имя, а в логах/БД — другое
+// Алиасы entityType <-> то, как оно хранится в логах
 const ENTITY_TYPE_ALIASES = {
-  tnved_codes: "tnved_code",   // таблица plural, entity_type в логах — singular
-  part_suppliers: "suppliers", // на всякий – если где-то передадим part_suppliers
+  tnved_codes: "tnved_code",
+  tnved_code: "tnved_code",
+  part_suppliers: "suppliers",
+  suppliers: "suppliers",
+  clients: "clients",
+  client_billing_addresses: "client_billing_addresses",
+  client_shipping_addresses: "client_shipping_addresses",
+  client_bank_details: "client_bank_details",
 }
 
-export default function FullHistoryDialog({ entityId, entityType, onClose, onlyDeleted = false }) {
+// Человеческие названия
+const ENTITY_LABELS = {
+  clients: "Клиент",
+  client_billing_addresses: "Юр. адрес",
+  client_shipping_addresses: "Адрес доставки",
+  client_bank_details: "Банковские реквизиты",
+  tnved_code: "ТН ВЭД",
+  tnved_codes: "ТН ВЭД",
+  suppliers: "Поставщик",
+}
+
+// Универсальный словарь API-роутов
+const ENDPOINTS = {
+  clients: {
+    combined: (id) => `/clients/${id}/logs/combined`,
+    deleted: (id) =>
+      id != null ? `/clients/${id}/logs/deleted` : `/clients/logs/deleted`,
+  },
+  suppliers: {
+    combined: (id) => `/part-suppliers/${id}/logs/combined`,
+    deleted: (id) =>
+      id != null
+        ? `/part-suppliers/${id}/logs/deleted`
+        : `/part-suppliers/logs/deleted`,
+  },
+  default: {
+    combined: (entity, id) => `/activity-logs/${entity}/${id}`,
+    deleted: (entity) =>
+      `/activity-logs/deleted?entity_type=${encodeURIComponent(entity)}`,
+  },
+}
+
+const TECH_FIELDS = new Set([
+  "id", "created_at", "updated_at", "client_id",
+  "entity_id", "user_id", "version", "supplier_id"
+])
+
+export default function FullHistoryDialog({
+  entityId,
+  entityType,
+  onlyDeleted = false,
+  endpoint,   // опционально можно передать прямой URL
+  onClose,
+}) {
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(false)
-
+  const [errText, setErrText] = useState("")
   const [actionFilter, setActionFilter] = useState(
-    onlyDeleted ? { create: false, update: false, delete: true } : { create: true, update: true, delete: true }
+    onlyDeleted
+      ? { create: false, update: false, delete: true }
+      : { create: true, update: true, delete: true }
   )
 
   useEffect(() => {
-    setActionFilter(onlyDeleted ? { create: false, update: false, delete: true } : { create: true, update: true, delete: true })
+    setActionFilter(
+      onlyDeleted
+        ? { create: false, update: false, delete: true }
+        : { create: true, update: true, delete: true }
+    )
   }, [onlyDeleted])
 
   useEffect(() => {
-    if (!entityType || (entityId == null && !onlyDeleted)) return
+    if (!(onlyDeleted || entityId)) return
 
     const fetchLogs = async () => {
       setLoading(true)
+      setErrText("")
       try {
-        const apiEntity = ENTITY_TYPE_ALIASES[entityType] || entityType
-        let res
-        if (onlyDeleted) {
-          // удалённые
-          res = await axios.get(`/activity-logs/deleted?entity_type=${apiEntity}`)
-        } else {
-          // стандартная история
-          res = await axios.get(`/activity-logs/${apiEntity}/${entityId}`)
+        let url = endpoint
+        if (!url) {
+          const apiEntity = ENTITY_TYPE_ALIASES[entityType] || entityType
+          if (!apiEntity) throw new Error("Не указан entityType или endpoint")
+
+          const custom = ENDPOINTS[apiEntity]
+          const ep = custom || ENDPOINTS.default
+
+          url = onlyDeleted
+            ? (custom ? ep.deleted(entityId) : ep.deleted(apiEntity))
+            : (custom ? ep.combined(entityId) : ep.combined(apiEntity, entityId))
         }
+
+        const res = await axios.get(url)
         setLogs(Array.isArray(res.data) ? res.data : [])
       } catch (e) {
         console.error("Ошибка при загрузке логов:", e)
+        setErrText(e?.response?.data?.message || e?.message || "Не удалось загрузить историю")
         setLogs([])
       } finally {
         setLoading(false)
@@ -48,23 +113,12 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
     }
 
     fetchLogs()
-  }, [entityId, entityType, onlyDeleted])
-
-  const entityLabels = {
-    clients: "Клиент",
-    client_billing_addresses: "Юр. адрес",
-    client_shipping_addresses: "Адрес доставки",
-    client_bank_details: "Банковские реквизиты",
-    tnved_code: "ТН ВЭД",
-    tnved_codes: "ТН ВЭД",   // чтобы подпись в таблице была нормальной для обоих ключей
-    suppliers: "Поставщик",
-  }
-
-  // техполя не показываем как отдельные изменения
-  const TECH_FIELDS = new Set(["id", "created_at", "updated_at", "client_id", "entity_id", "user_id", "version"])
+  }, [entityId, entityType, onlyDeleted, endpoint])
 
   const labelForField = (record) => {
-    const schema = logSchemas[record?.entity_type] || logSchemas[ENTITY_TYPE_ALIASES[record?.entity_type]]
+    const schema =
+      logSchemas[record?.entity_type] ||
+      logSchemas[ENTITY_TYPE_ALIASES[record?.entity_type]]
     const nice = schema?.fields?.[record?.field_changed]
     if (nice) return nice
     if (!record?.field_changed) {
@@ -80,8 +134,7 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
     return logs.filter((l) => allowed.has(l?.action))
   }, [logs, actionFilter])
 
-  const base = onlyDeleted ? filteredByAction.filter((l) => l.action === "delete") : filteredByAction
-  const rows = base.filter((log) => {
+  const rows = filteredByAction.filter((log) => {
     if (!log) return false
     if (log.action === "create" || log.action === "delete") return true
     if (!log.field_changed) return false
@@ -105,12 +158,13 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
   }
 
   const exportCSV = () => {
+    const effectiveType = (ENTITY_TYPE_ALIASES[entityType] || entityType) || "all"
     const header = onlyDeleted
       ? ["Сущность","Действие","Детали","Комментарий","Пользователь","Дата"]
       : ["Сущность","Действие","Поле","Было","Стало","Комментарий","Пользователь","Дата"]
 
     const lines = rows.map((r) => {
-      const h = entityLabels[r.entity_type] || r.entity_type
+      const h = ENTITY_LABELS[r.entity_type] || r.entity_type
       const action = r.action
       const user = r.user_name || r.user_id || "—"
       const date = r.created_at ? new Date(r.created_at).toLocaleString("ru-RU") : "—"
@@ -129,7 +183,7 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }))
     const a = document.createElement("a")
     a.href = url
-    a.download = `history_${(ENTITY_TYPE_ALIASES[entityType] || entityType) || "all"}_${Date.now()}.csv`
+    a.download = `history_${effectiveType}_${Date.now()}.csv`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -137,7 +191,8 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
   }
 
   const leftCols = [
-    { title: "Сущность", dataIndex: "entity_type", width: 150, fixed: "left", render: (val) => entityLabels[val] || val },
+    { title: "Сущность", dataIndex: "entity_type", width: 150, fixed: "left",
+      render: (val) => ENTITY_LABELS[val] || val },
     { title: "Действие", dataIndex: "action", width: 110, fixed: "left",
       render: (val) => <Tag color={{create:"green",update:"blue",delete:"red"}[val] || "default"}>{val}</Tag> }
   ]
@@ -196,17 +251,29 @@ export default function FullHistoryDialog({ entityId, entityType, onClose, onlyD
     </div>
   )
 
+  const opened = onlyDeleted || !!entityId
+
   return (
     <Modal
-      open={onlyDeleted || !!entityId}
+      open={opened}
       onCancel={onClose}
       onOk={onClose}
       width={1280}
       title={onlyDeleted ? "Удалённые записи" : "История изменений"}
       okText="Закрыть"
       cancelButtonProps={{ style: { display: "none" } }}
-      styles={{ body: { paddingTop: 12, maxHeight: "72vh", overflow: "hidden" } }} // вместо bodyStyle
+      bodyStyle={{ paddingTop: 12, maxHeight: "72vh", overflow: "hidden" }}
     >
+      {errText && (
+        <Alert
+          type="error"
+          message="Не удалось загрузить историю"
+          description={errText}
+          showIcon
+          style={{ marginBottom: 12 }}
+        />
+      )}
+
       {loading ? (
         <div style={{ textAlign: "center", padding: "2rem" }}><Spin /></div>
       ) : rows.length === 0 ? (

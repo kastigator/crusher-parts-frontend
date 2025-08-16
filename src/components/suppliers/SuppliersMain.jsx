@@ -7,6 +7,9 @@ import TableToolbar from "@/components/common/TableToolbar"
 import ImportModal from "@/components/common/ImportModal"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 
+const SUPPLIERS_TEMPLATE_URL =
+  "https://storage.googleapis.com/shared-parts-bucket/templates/suppliers_template.xlsx"
+
 export default function SuppliersMain() {
   const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(false)
@@ -48,7 +51,6 @@ export default function SuppliersMain() {
       contact_person: newSupplier.contact_person?.trim() || null,
       phone: newSupplier.phone?.trim() || null,
       email: newSupplier.email?.trim() || null,
-      // ⛔ никаких active / is_oem / quality_certified / address
     }
 
     if (!payload.name) {
@@ -60,7 +62,6 @@ export default function SuppliersMain() {
     try {
       const res = await axios.post("/part-suppliers", payload)
       message.success("Поставщик добавлен")
-      // добавляем свежую запись в начало без полного рефетча
       setSuppliers((prev) => [res.data, ...prev])
       setNewSupplier({ name: "", contact_person: "", phone: "", email: "" })
       nameInputRef.current?.focus()
@@ -75,15 +76,7 @@ export default function SuppliersMain() {
     const q = search.trim().toLowerCase()
     if (!q) return suppliers
     return suppliers.filter((r) =>
-      [
-        r.name,
-        r.contact_person,
-        r.phone,
-        r.email,
-        r.vat_number,
-        r.country,
-        r.preferred_currency,
-      ]
+      [r.name, r.contact_person, r.phone, r.email, r.vat_number, r.country, r.preferred_currency]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
     )
@@ -91,16 +84,6 @@ export default function SuppliersMain() {
 
   const handleChildChanged = async () => {
     await fetchSuppliers()
-  }
-
-  const handleImportComplete = (result) => {
-    const ins = result?.inserted?.length || 0
-    const upd = result?.updated?.length || 0
-    const err = result?.errors?.length || 0
-    if (ins || upd) message.success(`Импорт: добавлено ${ins}, обновлено ${upd}`)
-    if (err) message.warning(`Импорт: ошибок ${err}`)
-    setImportOpen(false)
-    fetchSuppliers()
   }
 
   return (
@@ -119,9 +102,7 @@ export default function SuppliersMain() {
             <Input
               ref={nameInputRef}
               value={newSupplier.name}
-              onChange={(e) =>
-                setNewSupplier((prev) => ({ ...prev, name: e.target.value }))
-              }
+              onChange={(e) => setNewSupplier((p) => ({ ...p, name: e.target.value }))}
               placeholder="Название"
               allowClear
               style={{ minWidth: 220 }}
@@ -131,12 +112,7 @@ export default function SuppliersMain() {
           <Form.Item label="Контакт">
             <Input
               value={newSupplier.contact_person}
-              onChange={(e) =>
-                setNewSupplier((prev) => ({
-                  ...prev,
-                  contact_person: e.target.value,
-                }))
-              }
+              onChange={(e) => setNewSupplier((p) => ({ ...p, contact_person: e.target.value }))}
               placeholder="ФИО"
               allowClear
               style={{ minWidth: 180 }}
@@ -146,9 +122,7 @@ export default function SuppliersMain() {
           <Form.Item label="Телефон">
             <Input
               value={newSupplier.phone}
-              onChange={(e) =>
-                setNewSupplier((prev) => ({ ...prev, phone: e.target.value }))
-              }
+              onChange={(e) => setNewSupplier((p) => ({ ...p, phone: e.target.value }))}
               placeholder="+358..."
               allowClear
               style={{ minWidth: 160 }}
@@ -158,9 +132,7 @@ export default function SuppliersMain() {
           <Form.Item label="Email">
             <Input
               value={newSupplier.email}
-              onChange={(e) =>
-                setNewSupplier((prev) => ({ ...prev, email: e.target.value }))
-              }
+              onChange={(e) => setNewSupplier((p) => ({ ...p, email: e.target.value }))}
               placeholder="example@mail.com"
               allowClear
               style={{ minWidth: 220 }}
@@ -190,14 +162,19 @@ export default function SuppliersMain() {
         open={importOpen}
         type="part_suppliers"
         onClose={() => setImportOpen(false)}
-        onComplete={handleImportComplete}
+        templateUrl={SUPPLIERS_TEMPLATE_URL}  // ✅ появится кнопка «Скачать шаблон Excel»
+        onSuccess={() => {                    // ✅ корректный колбэк для ImportModal
+          setImportOpen(false)
+          fetchSuppliers()
+          message.success("Импорт выполнен")
+        }}
       />
 
       {/* Удалённые (история) */}
       {showDeleted && (
         <FullHistoryDialog
           onlyDeleted
-          entityType="suppliers"
+          endpoint="/part-suppliers/logs/deleted"
           onClose={() => setShowDeleted(false)}
         />
       )}

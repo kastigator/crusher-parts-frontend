@@ -16,7 +16,7 @@ export default function ClientsTable({
   expandedClientId,
   setExpandedClientId,
   onReload,
-  onChildChanged, // <<< НОВОЕ
+  onChildChanged,
 }) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
@@ -40,14 +40,23 @@ export default function ClientsTable({
       message.error("Нет версии записи для сохранения")
       return
     }
+    const trim = (v) => (typeof v === "string" ? v.trim() : v)
+    const payload = {
+      company_name: trim(editedRow.company_name) || null,
+      contact_person: trim(editedRow.contact_person) || null,
+      phone: trim(editedRow.phone) || null,
+      email: trim(editedRow.email) || null,
+      version: editedRow.version,
+    }
+
     try {
-      await axios.put(`/clients/${editedRow.id}`, editedRow)
+      await axios.put(`/clients/${editedRow.id}`, payload)
       message.success("Изменения сохранены")
       cancelEdit()
-      onReload()
+      await onReload?.()
     } catch (err) {
       console.error("Ошибка сохранения:", err)
-      message.error("Не удалось сохранить изменения")
+      message.error(err?.response?.data?.message || "Не удалось сохранить изменения")
     }
   }
 
@@ -57,10 +66,10 @@ export default function ClientsTable({
 
     try {
       await axios.delete(`/clients/${client.id}`, {
-        params: { version: client.version }
+        params: { version: client.version },
       })
       message.success("Клиент удалён")
-      await onReload()
+      await onReload?.()
     } catch (err) {
       console.error("Ошибка при удалении клиента:", err)
       message.error("Не удалось удалить клиента")
@@ -87,37 +96,29 @@ export default function ClientsTable({
       title: "Компания",
       dataIndex: "company_name",
       render: (_, record) =>
-        isEditing(record)
-          ? renderInput("company_name")
-          : <ValueDisplay value={record.company_name} />,
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+        isEditing(record) ? renderInput("company_name") : <ValueDisplay value={record.company_name} />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Контакт",
       dataIndex: "contact_person",
       render: (_, record) =>
-        isEditing(record)
-          ? renderInput("contact_person")
-          : <ValueDisplay value={record.contact_person} />,
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+        isEditing(record) ? renderInput("contact_person") : <ValueDisplay value={record.contact_person} />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Телефон",
       dataIndex: "phone",
       render: (_, record) =>
-        isEditing(record)
-          ? renderInput("phone")
-          : <ValueDisplay value={record.phone} />,
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+        isEditing(record) ? renderInput("phone") : <ValueDisplay value={record.phone} />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Email",
       dataIndex: "email",
       render: (_, record) =>
-        isEditing(record)
-          ? renderInput("email")
-          : <ValueDisplay value={record.email} type="email" />,
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+        isEditing(record) ? renderInput("email") : <ValueDisplay value={record.email} type="email" />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Действия",
@@ -134,8 +135,8 @@ export default function ClientsTable({
             size="small"
           />
         )
-      }
-    }
+      },
+    },
   ]
 
   const expandedRowRender = (client) => {
@@ -149,18 +150,18 @@ export default function ClientsTable({
             {
               key: "billing",
               label: "Юридические адреса",
-              children: <BillingAddressesMain clientId={client.id} onChanged={onChildChanged} /> // <<<
+              children: <BillingAddressesMain clientId={client.id} onChanged={onChildChanged} />,
             },
             {
               key: "shipping",
               label: "Адреса доставки",
-              children: <ShippingAddressesMain clientId={client.id} onChanged={onChildChanged} /> // <<<
+              children: <ShippingAddressesMain clientId={client.id} onChanged={onChildChanged} />,
             },
             {
               key: "bank",
               label: "Банковские реквизиты",
-              children: <BankDetailsMain clientId={client.id} onChanged={onChildChanged} /> // <<<
-            }
+              children: <BankDetailsMain clientId={client.id} onChanged={onChildChanged} />,
+            },
           ]}
         />
       </div>
@@ -178,7 +179,7 @@ export default function ClientsTable({
           expandedRowRender,
           expandedRowKeys: expandedClientId ? [expandedClientId] : [],
           onExpand: (expanded, record) =>
-            setExpandedClientId(expanded ? record.id : null)
+            setExpandedClientId(expanded ? record.id : null),
         }}
         pagination={{ pageSize: 10 }}
         size="middle"
@@ -186,7 +187,7 @@ export default function ClientsTable({
 
       {historyForId && (
         <FullHistoryDialog
-          entityType="clients-combined"
+          entityType="clients"
           entityId={historyForId}
           onlyDeleted={false}
           onClose={() => setHistoryForId(null)}

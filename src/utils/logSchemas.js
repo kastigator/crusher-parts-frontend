@@ -1,7 +1,7 @@
 // src/utils/logSchemas.js
 
 export const logSchemas = {
-  tnved_code: {
+  tnved_codes: {
     fields: {
       code: "Код",
       description: "Описание",
@@ -77,7 +77,6 @@ export const logSchemas = {
       contact_person: "Контактное лицо",
       email: "Email",
       phone: "Телефон",
-      // address — удалён из схемы мастера
       payment_terms: "Условия оплаты",
       preferred_currency: "Валюта (ISO3)",
       incoterms: "Инкотермс",
@@ -99,13 +98,11 @@ export const logSchemas = {
       place_id: "Place ID",
       lat: "Широта",
       lng: "Долгота",
-      // универсальная метка: и для адресов, и для контактов
       is_primary: "Основной",
       comment: "Комментарий",
 
       // контакты (supplier_contacts)
       role: "Роль",
-      // alias на случай старых логов
       is_primary_contact: "Основной контакт",
 
       // банки (supplier_bank_details)
@@ -122,6 +119,7 @@ export const logSchemas = {
     excludeFields: ["id", "supplier_id", "version", "created_at", "updated_at"],
   },
 }
-// ---- Алиасы для совместимости имён entity_type в логах/фронте
-logSchemas.tnved_codes = logSchemas.tnved_code;   // plural -> singular
-logSchemas.part_suppliers = logSchemas.suppliers; // если где-то в логах попадётся part_suppliers
+
+// ---- Алиасы для совместимости старых логов ----
+logSchemas.tnved_code = logSchemas.tnved_codes   // старые записи с singular
+logSchemas.part_suppliers = logSchemas.suppliers // старые записи с part_suppliers
