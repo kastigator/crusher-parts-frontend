@@ -73,10 +73,7 @@ export default function BankDetailsMain({ clientId, onChanged }) {
         ...newBank,
         client_id: clientId,
       })
-      // Мгновенно добавляем в таблицу
       setData((prev) => [res.data, ...prev])
-
-      // Сбрасываем форму
       setNewBank({
         bic: "",
         bank_name: "",
@@ -85,8 +82,7 @@ export default function BankDetailsMain({ clientId, onChanged }) {
         currency: "RUB",
       })
       message.success("Реквизиты добавлены")
-
-      onChanged?.() // 🔔 сообщаем родителю об изменении (для подавления «Обновить» у себя)
+      onChanged?.()
     } catch (err) {
       console.error("Ошибка при добавлении:", err)
       message.error("Не удалось добавить реквизиты")
@@ -95,7 +91,54 @@ export default function BankDetailsMain({ clientId, onChanged }) {
     }
   }
 
-  // Фильтрация по поиску
+  // --- optimistic update/delete ---
+  const replaceRow = (fresh) =>
+    setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+  const removeRow = (id) =>
+    setData((prev) => prev.filter((r) => r.id !== id))
+
+  const onUpdate = async (id, row) => {
+    try {
+      const { data: fresh } = await axios.put(`/client-bank-details/${id}`, {
+        ...row,
+        version: row.version,
+      })
+      replaceRow(fresh)
+      message.success("Изменения сохранены")
+      onChanged?.()
+    } catch (err) {
+      if (err?.response?.status === 409 && err?.response?.data?.type === "version_conflict") {
+        const e = new Error("Version conflict")
+        e.isVersionConflict = true
+        e.currentRecord = err.response.data.current
+        throw e
+      }
+      throw err
+    }
+  }
+
+  const onDelete = async (record) => {
+    try {
+      await axios.delete(`/client-bank-details/${record.id}`, {
+        params: { version: record.version },
+      })
+      removeRow(record.id)
+      message.success("Реквизиты удалены")
+      onChanged?.()
+    } catch (err) {
+      if (err?.response?.status === 409 && err?.response?.data?.type === "version_conflict") {
+        const current = err.response.data.current
+        if (current) replaceRow(current)
+        const e = new Error("Version conflict")
+        e.isVersionConflict = true
+        e.currentRecord = current
+        throw e
+      }
+      throw err
+    }
+  }
+  // ---
+
   const filteredData = search
     ? data.filter(
         (item) =>
@@ -177,12 +220,11 @@ export default function BankDetailsMain({ clientId, onChanged }) {
       <BankDetailsTable
         clientId={clientId}
         data={filteredData}
-        setData={(updater) => {
-          // перехватываем любые правки/удаления из таблицы
-          setData(updater)
-          onChanged?.() // 🔔 сигналим родителю — он сбросит baseline и не покажет баннер тебе же
-        }}
         loading={loading}
+        onUpdate={onUpdate}
+        onDelete={onDelete}
+        onReplaceRow={replaceRow}
+        onRefresh={fetchData}
       />
     </>
   )

@@ -14,6 +14,9 @@ export default function ClientsMain() {
   const [showDeletedModal, setShowDeletedModal] = useState(false)
   const [hasNew, setHasNew] = useState(false)
 
+  // 🔑 ключ для форс-перемонтирования дочерних вкладок (billing/shipping/bank)
+  const [reloadKey, setReloadKey] = useState(0)
+
   // baseline по «ключу состояния» (global / client:<id>)
   const baselinesRef = useRef(new Map())
   const lastBaselineSetAtRef = useRef(0)
@@ -26,8 +29,57 @@ export default function ClientsMain() {
     registration_number: "",
     tax_id: "",
     website: "",
-    notes: ""
+    notes: "",
   })
+
+  // ===== CRUD клиентов (родитель даёт их в таблицу) =====
+  const replaceRow = (fresh) =>
+    setClients((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+
+  const onUpdate = async (id, row) => {
+    const trim = (v) => (typeof v === "string" ? v.trim() : v)
+    const payload = {
+      company_name: trim(row.company_name) || null,
+      contact_person: trim(row.contact_person) || null,
+      phone: trim(row.phone) || null,
+      email: trim(row.email) || null,
+      version: row.version,
+    }
+    try {
+      const { data: fresh } = await axios.put(`/clients/${id}`, payload)
+      replaceRow(fresh)
+      message.success("Изменения сохранены")
+    } catch (err) {
+      if (err?.response?.status === 409 && err?.response?.data?.current) {
+        const e = new Error("Version conflict")
+        e.isVersionConflict = true
+        e.currentRecord = err.response.data.current
+        throw e
+      }
+      if (err?.response?.status === 409 && err?.response?.data?.code === "duplicate") {
+        const e = new Error("Duplicate")
+        e.isDuplicateKey = true
+        throw e
+      }
+      throw err
+    }
+  }
+
+  const onDelete = async (client) => {
+    try {
+      await axios.delete(`/clients/${client.id}`, { params: { version: client.version } })
+      message.success("Клиент удалён")
+    } catch (err) {
+      if (err?.response?.status === 409 && err?.response?.data?.current) {
+        const e = new Error("Version conflict")
+        e.isVersionConflict = true
+        e.currentRecord = err.response.data.current
+        throw e
+      }
+      throw err
+    }
+  }
+  // ======================================================
 
   const fetchClients = async () => {
     setLoading(true)
@@ -55,14 +107,12 @@ export default function ClientsMain() {
       registration_number: newClient.registration_number?.trim() || "",
       tax_id: newClient.tax_id?.trim() || "",
       website: newClient.website?.trim() || "",
-      notes: newClient.notes?.trim() || ""
+      notes: newClient.notes?.trim() || "",
     }
-
     if (!payload.company_name) {
       message.warning("Название компании обязательно")
       return
     }
-
     try {
       await axios.post("/clients", payload)
       message.success("Клиент добавлен")
@@ -74,7 +124,7 @@ export default function ClientsMain() {
         registration_number: "",
         tax_id: "",
         website: "",
-        notes: ""
+        notes: "",
       })
       await refreshAllAndResetBaseline()
     } catch (err) {
@@ -92,7 +142,7 @@ export default function ClientsMain() {
     )
   }, [clients, search])
 
-  // --- etag helpers ---
+  // --- etag helpers (для баннера "Появились новые изменения") ---
   const fetchClientsEtag = async () => {
     const { data } = await axios.get("/clients/etag")
     return data?.etag || ""
@@ -140,13 +190,12 @@ export default function ClientsMain() {
 
   const refreshAllAndResetBaseline = async () => {
     await fetchClients()
+    setReloadKey((k) => k + 1) // 👈 форсим перемонтирование дочерних вкладок
     await setBaselineFor(expandedClientId)
   }
 
   useEffect(() => {
-    if (!loading) {
-      setBaselineFor(expandedClientId)
-    }
+    if (!loading) setBaselineFor(expandedClientId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading])
 
@@ -162,9 +211,7 @@ export default function ClientsMain() {
         const baseline = baselinesRef.current.get(key)
         if (!baseline) return
         if (Date.now() - lastBaselineSetAtRef.current < 2000) return
-        if (baseline !== current) {
-          setHasNew(true)
-        }
+        if (baseline !== current) setHasNew(true)
       } catch {
         // ignore
       }
@@ -183,6 +230,7 @@ export default function ClientsMain() {
   }, [expandedClientId])
 
   const handleChildChanged = async () => {
+    // когда внутри дочерней вкладки что-то поменяли — сбрасываем baseline
     await setBaselineFor(expandedClientId)
   }
 
@@ -241,7 +289,7 @@ export default function ClientsMain() {
           </Form.Item>
 
           <Form.Item label="Email">
-            <Input
+          <Input
               value={newClient.email}
               onChange={(e) =>
                 setNewClient((prev) => ({ ...prev, email: e.target.value }))
@@ -267,13 +315,17 @@ export default function ClientsMain() {
           }}
           onReload={refreshAllAndResetBaseline}
           onChildChanged={handleChildChanged}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+          onReplaceRow={replaceRow}
+          reloadKey={reloadKey}
         />
       </Card>
 
       {showDeletedModal && (
         <FullHistoryDialog
           onlyDeleted
-          endpoint="/clients/logs/deleted"   // ✅ ЯВНЫЙ URL
+          endpoint="/clients/logs/deleted"
           onClose={() => setShowDeletedModal(false)}
         />
       )}

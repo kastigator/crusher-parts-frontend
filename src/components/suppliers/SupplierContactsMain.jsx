@@ -1,3 +1,4 @@
+// src/components/suppliers/SupplierContactsMain.jsx
 import React, { useEffect, useState } from "react"
 import { Card, Button, Input, Row, Col, Checkbox, message } from "antd"
 import axios from "@/api/axiosInstance"
@@ -15,7 +16,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
     email: "",
     phone: "",
     is_primary: false,
-    notes: ""
+    notes: "",
   })
 
   const fetchData = async () => {
@@ -46,7 +47,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
       email: newContact.email?.trim() || null,
       phone: newContact.phone?.trim() || null,
       is_primary: newContact.is_primary ? 1 : 0,
-      notes: newContact.notes?.trim() || null
+      notes: newContact.notes?.trim() || null,
     }
 
     if (!payload.name) {
@@ -56,7 +57,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
 
     try {
       const { data: created } = await axios.post("/supplier-contacts", payload)
-      setData(prev => [created, ...prev]) // мгновенно в таблицу
+      setData((prev) => [created, ...prev]) // мгновенно в таблицу
       setNewContact({ name: "", role: "", email: "", phone: "", is_primary: false, notes: "" })
       message.success("Контакт добавлен")
       onChanged?.()
@@ -67,7 +68,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
   }
 
   const filtered = search
-    ? data.filter(c =>
+    ? data.filter((c) =>
         [c.name, c.role, c.email, c.phone, c.notes]
           .filter(Boolean)
           .join(" ")
@@ -80,8 +81,8 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
 
   return (
     <>
-      {/* Та же сигнатура тулбара, что и в адресах */}
-      <TableToolbar filterValue={search} onFilterChange={setSearch} />
+      {/* унифицированная сигнатура тулбара */}
+      <TableToolbar search={search} onSearch={setSearch} />
 
       <Card size="small" style={{ marginTop: 8, marginBottom: 12 }}>
         <Row gutter={12}>
@@ -89,7 +90,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
             <Input
               placeholder="Имя*"
               value={newContact.name}
-              onChange={(e) => setNewContact(p => ({ ...p, name: e.target.value }))}
+              onChange={(e) => setNewContact((p) => ({ ...p, name: e.target.value }))}
               onPressEnter={handleAdd}
               allowClear
             />
@@ -98,7 +99,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
             <Input
               placeholder="Роль"
               value={newContact.role}
-              onChange={(e) => setNewContact(p => ({ ...p, role: e.target.value }))}
+              onChange={(e) => setNewContact((p) => ({ ...p, role: e.target.value }))}
               onPressEnter={handleAdd}
               allowClear
             />
@@ -106,10 +107,10 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
           <Col span={5}>
             <Input
               placeholder="Email"
-              value={newContact.email}
-              onChange={(e) => setNewContact(p => ({ ...p, email: e.target.value }))}
-              onPressEnter={handleAdd}
               type="email"
+              value={newContact.email}
+              onChange={(e) => setNewContact((p) => ({ ...p, email: e.target.value }))}
+              onPressEnter={handleAdd}
               allowClear
             />
           </Col>
@@ -117,7 +118,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
             <Input
               placeholder="Телефон"
               value={newContact.phone}
-              onChange={(e) => setNewContact(p => ({ ...p, phone: e.target.value }))}
+              onChange={(e) => setNewContact((p) => ({ ...p, phone: e.target.value }))}
               onPressEnter={handleAdd}
               allowClear
             />
@@ -125,7 +126,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
           <Col span={4} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Checkbox
               checked={newContact.is_primary}
-              onChange={(e) => setNewContact(p => ({ ...p, is_primary: e.target.checked }))}
+              onChange={(e) => setNewContact((p) => ({ ...p, is_primary: e.target.checked }))}
             >
               Основной
             </Checkbox>
@@ -139,7 +140,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
               placeholder="Заметки"
               autoSize={{ minRows: 1, maxRows: 4 }}
               value={newContact.notes}
-              onChange={(e) => setNewContact(p => ({ ...p, notes: e.target.value }))}
+              onChange={(e) => setNewContact((p) => ({ ...p, notes: e.target.value }))}
               allowClear
             />
           </Col>

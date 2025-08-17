@@ -1,24 +1,31 @@
 // src/components/clients/BankDetailsTable.jsx
 import React, { useState } from "react"
 import { Table, Input, message } from "antd"
-import axios from "@/api/axiosInstance"
-import ValueDisplay from "@/components/common/ValueDisplay"
 import { Autocomplete, TextField } from "@mui/material"
+import ValueDisplay from "@/components/common/ValueDisplay"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
+import VersionConflictModal from "@/components/common/VersionConflictModal"
 
 const currencyOptions = ["RUB", "USD", "EUR", "CNY"]
 
-export default function BankDetailsTable({ data, loading, clientId, setData }) {
+export default function BankDetailsTable({
+  data,
+  loading,
+  onUpdate,
+  onDelete,
+  onReplaceRow,
+  onRefresh,
+}) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState({})
+  const [conflict, setConflict] = useState({ open: false, current: null, draft: null })
 
   const isEditing = (record) => editingId === record.id
 
   const makeEditable = (record) => {
     setEditingId(record.id)
-    // Важно сохранить текущую версию в локальном editable-объекте
-    setEditedRow({ ...record, version: record.version })
+    setEditedRow({ ...record }) // version внутри
   }
 
   const cancelEdit = () => {
@@ -27,37 +34,20 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
   }
 
   const saveEdit = async (record) => {
-    const payload = {
-      // Бэкенд требует как минимум bank_name, account_number, version
-      bank_name: (editedRow.bank_name ?? record.bank_name)?.trim(),
-      account_number: (editedRow.account_number ?? record.account_number)?.trim(),
-      iban: editedRow.iban ?? record.iban ?? null,
-      bic: (editedRow.bic ?? record.bic) || null,
-      currency: (editedRow.currency ?? record.currency) || "RUB",
-      correspondent_account: (editedRow.correspondent_account ?? record.correspondent_account) || null,
-      bank_address: editedRow.bank_address ?? record.bank_address ?? null,
-      additional_info: editedRow.additional_info ?? record.additional_info ?? null,
-      version: record.version
+    if (!editedRow?.version && editedRow?.version !== 0) {
+      return message.error("Нет версии записи")
     }
-
-    if (!payload.bank_name || !payload.account_number) {
-      message.warning("Укажите банк и расчётный счёт")
-      return
-    }
-
     try {
-      const { data: fresh } = await axios.put(`/client-bank-details/${record.id}`, payload)
-      // Обновляем строку свежими данными с бэка (включая новый version)
-      setData((prev) => prev.map((r) => (r.id === record.id ? { ...fresh } : r)))
-      message.success("Изменения сохранены")
+      await onUpdate(record.id, { ...editedRow })
       cancelEdit()
     } catch (err) {
-      console.error("Ошибка при сохранении:", err)
-      if (err?.response?.status === 409) {
-        message.error("Конфликт версий: запись изменилась. Обновите список.")
-      } else {
-        message.error("Не удалось сохранить изменения")
+      if (err?.isDuplicateKey) return message.error("Такие реквизиты уже существуют")
+      if (err?.isVersionConflict) {
+        setConflict({ open: true, current: err.currentRecord || null, draft: editedRow })
+        return
       }
+      console.error("Ошибка сохранения:", err)
+      message.error("Не удалось сохранить изменения")
     }
   }
 
@@ -65,27 +55,22 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
     const { confirmed } = await confirmAction("Удалить реквизиты?")
     if (!confirmed) return
     try {
-      await axios.delete(`/client-bank-details/${record.id}`, {
-        params: { version: record.version }
-      })
-      setData((prev) => prev.filter((r) => r.id !== record.id))
-      message.success("Реквизиты удалены")
+      await onDelete(record)
     } catch (err) {
-      console.error("Ошибка удаления:", err)
-      if (err?.response?.status === 409) {
-        message.error("Конфликт версий: запись изменилась. Обновите список.")
-      } else {
-        message.error("Не удалось удалить")
+      if (err?.isVersionConflict) {
+        if (err.currentRecord && typeof onReplaceRow === "function") onReplaceRow(err.currentRecord)
+        else if (typeof onRefresh === "function") await onRefresh()
+        return message.warning("Запись изменилась и не была удалена. Данные обновлены.")
       }
+      console.error("Ошибка удаления:", err)
+      message.error("Не удалось удалить")
     }
   }
 
   const renderInput = (field, record) => (
     <Input
       value={editedRow?.[field] ?? ""}
-      onChange={(e) =>
-        setEditedRow((prev) => ({ ...prev, [field]: e.target.value }))
-      }
+      onChange={(e) => setEditedRow((prev) => ({ ...prev, [field]: e.target.value }))}
       size="small"
       autoFocus
       onKeyDown={(e) => {
@@ -99,20 +84,13 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
     <Autocomplete
       options={currencyOptions}
       value={editedRow.currency ?? record.currency ?? "RUB"}
-      onChange={(_, val) =>
-        setEditedRow((prev) => ({ ...prev, currency: val || "RUB" }))
-      }
+      onChange={(_, val) => setEditedRow((prev) => ({ ...prev, currency: val || "RUB" }))}
       disableClearable
       size="small"
       autoHighlight
       slotProps={{ popper: { disablePortal: true } }}
       renderInput={(params) => (
-        <TextField
-          {...params}
-          label="Валюта"
-          variant="standard"
-          InputProps={{ ...params.InputProps, style: { padding: 0 } }}
-        />
+        <TextField {...params} label="Валюта" variant="standard" />
       )}
       sx={{ minWidth: 100 }}
     />
@@ -175,7 +153,6 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
             onSave={editing ? () => saveEdit(record) : undefined}
             onCancel={editing ? cancelEdit : undefined}
             onDelete={!editing ? () => deleteRow(record) : undefined}
-            confirmDelete={false}
             size="small"
           />
         )
@@ -184,13 +161,49 @@ export default function BankDetailsTable({ data, loading, clientId, setData }) {
   ]
 
   return (
-    <Table
-      rowKey="id"
-      columns={columns}
-      dataSource={data}
-      loading={loading}
-      pagination={false}
-      size="small"
-    />
+    <>
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={data}
+        loading={loading}
+        pagination={false}
+        size="small"
+      />
+
+      <VersionConflictModal
+        open={conflict.open}
+        draft={conflict.draft}
+        current={conflict.current}
+        fields={[
+          { key: "bank_name", title: "Банк" },
+          { key: "bic", title: "BIC" },
+          { key: "correspondent_account", title: "Кор. счёт" },
+          { key: "currency", title: "Валюта" },
+          { key: "account_number", title: "Расч. счёт" },
+        ]}
+        onReload={async () => {
+          if (conflict.current && typeof onReplaceRow === "function") onReplaceRow(conflict.current)
+          await onRefresh?.()
+          setConflict({ open: false, current: null, draft: null })
+          cancelEdit()
+        }}
+        onManualMerge={() => {
+          const base = conflict.current || {}
+          const draft = conflict.draft || {}
+          const merged = {
+            ...base,
+            bank_name: draft.bank_name ?? base.bank_name,
+            bic: draft.bic ?? base.bic,
+            correspondent_account: draft.correspondent_account ?? base.correspondent_account,
+            currency: draft.currency ?? base.currency,
+            account_number: draft.account_number ?? base.account_number,
+          }
+          if (merged.id) { setEditingId(merged.id); setEditedRow(merged) }
+          setConflict({ open: false, current: null, draft: null })
+        }}
+        onCancel={() => setConflict({ open: false, current: null, draft: null })}
+      />
+    </>
   )
 }

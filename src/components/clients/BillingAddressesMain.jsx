@@ -1,15 +1,18 @@
-import React, { useState, useEffect } from "react"
+// src/components/clients/BillingAddressesMain.jsx
+import React, { useEffect, useState } from "react"
 import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import BillingAddressesTable from "./BillingAddressesTable"
 import TableToolbar from "@/components/common/TableToolbar"
+import VersionConflictModal from "@/components/common/VersionConflictModal"
 
 export default function BillingAddressesMain({ clientId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [resetCounter, setResetCounter] = useState(0)
   const [search, setSearch] = useState("")
+  const [conflict, setConflict] = useState(null)
 
   const [newAddress, setNewAddress] = useState({
     formatted_address: "",
@@ -45,7 +48,6 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
 
   useEffect(() => {
     fetchData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId])
 
   const handleAdd = async () => {
@@ -73,10 +75,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
 
     try {
       const res = await axios.post("/client-billing-addresses", payload)
-      // мгновенно добавляем в таблицу
       setData(prev => [res.data, ...prev])
-
-      // сброс формы
       setNewAddress({
         formatted_address: "",
         place_id: null,
@@ -94,13 +93,58 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
       })
       setResetCounter(prev => prev + 1)
       message.success("Адрес добавлен")
-
-      onChanged?.() // оповещаем родителя (для глобального слежения, если нужно)
+      onChanged?.()
     } catch (err) {
       console.error("Ошибка при добавлении адреса:", err)
       message.error("Не удалось добавить адрес")
     }
   }
+
+  // --- optimistic update/delete ---
+  const replaceRow = (fresh) =>
+    setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+  const removeRow = (id) =>
+    setData((prev) => prev.filter((r) => r.id !== id))
+
+  const onUpdate = async (id, row) => {
+    try {
+      const { data: fresh } = await axios.put(`/client-billing-addresses/${id}`, {
+        ...row,
+        version: row.version,
+      })
+      replaceRow(fresh)
+      message.success("Изменения сохранены")
+      onChanged?.()
+    } catch (err) {
+      if (err?.response?.status === 409 && err?.response?.data?.current) {
+        setConflict({ id, current: err.response.data.current, draft: row })
+        return
+      }
+      console.error("Ошибка при обновлении адреса:", err)
+      message.error("Не удалось сохранить адрес")
+    }
+  }
+
+  const onDelete = async (record) => {
+    try {
+      await axios.delete(`/client-billing-addresses/${record.id}`, {
+        params: { version: record.version },
+      })
+      removeRow(record.id)
+      message.success("Адрес удалён")
+      onChanged?.()
+    } catch (err) {
+      if (err?.response?.status === 409 && err?.response?.data?.current) {
+        const current = err.response.data.current
+        if (current) replaceRow(current)
+        setConflict({ id: record.id, current, draft: record })
+        return
+      }
+      console.error("Ошибка при удалении адреса:", err)
+      message.error("Не удалось удалить адрес")
+    }
+  }
+  // ---
 
   const filteredData = search
     ? data.filter(addr =>
@@ -144,7 +188,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
           }
         />
 
-        {/* Поля адреса */}
+        {/* поля ввода */}
         <Row gutter={12} style={{ marginTop: 8 }}>
           <Col span={6}><Input placeholder="Страна" value={newAddress.country} onChange={(e) => setNewAddress(prev => ({ ...prev, country: e.target.value }))} /></Col>
           <Col span={6}><Input placeholder="Регион" value={newAddress.region} onChange={(e) => setNewAddress(prev => ({ ...prev, region: e.target.value }))} /></Col>
@@ -177,9 +221,56 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
         data={filteredData}
         loading={loading}
         clientId={clientId}
-        setData={setData}
-        onChanged={onChanged}
+        onUpdate={onUpdate}
+        onDelete={onDelete}
+        onReplaceRow={replaceRow}
+        onRefresh={fetchData}
       />
+
+      {conflict && (
+        <VersionConflictModal
+          open={!!conflict}
+          draft={conflict.draft}
+          current={conflict.current}
+          fields={[
+            { key: "formatted_address", title: "Адрес" },
+            { key: "country",  title: "Страна" },
+            { key: "region",   title: "Регион" },
+            { key: "city",     title: "Город" },
+            { key: "street",   title: "Улица" },
+            { key: "house",    title: "Дом" },
+            { key: "building", title: "Строение" },
+            { key: "entrance", title: "Подъезд" },
+            { key: "postal_code", title: "Индекс" },
+            { key: "comment",  title: "Комментарий" },
+          ]}
+          onReload={async () => {
+            await fetchData()
+            setConflict(null)
+          }}
+          onManualMerge={async () => {
+            const base = conflict.current || {}
+            const draft = conflict.draft || {}
+            const merged = {
+              ...base,
+              formatted_address: draft.formatted_address ?? base.formatted_address,
+              country:  draft.country  ?? base.country,
+              region:   draft.region   ?? base.region,
+              city:     draft.city     ?? base.city,
+              street:   draft.street   ?? base.street,
+              house:    draft.house    ?? base.house,
+              building: draft.building ?? base.building,
+              entrance: draft.entrance ?? base.entrance,
+              postal_code: draft.postal_code ?? base.postal_code,
+              comment:  draft.comment  ?? base.comment,
+              version:  base.version,
+            }
+            await onUpdate(conflict.id, merged)
+            setConflict(null)
+          }}
+          onCancel={() => setConflict(null)}
+        />
+      )}
     </>
   )
 }

@@ -5,12 +5,14 @@ import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ShippingAddressesTable from "./ShippingAddressesTable"
 import TableToolbar from "@/components/common/TableToolbar"
+import VersionConflictModal from "@/components/common/VersionConflictModal"
 
 export default function ShippingAddressesMain({ clientId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [resetCounter, setResetCounter] = useState(0)
   const [search, setSearch] = useState("")
+  const [conflict, setConflict] = useState(null)
 
   const [newAddress, setNewAddress] = useState({
     formatted_address: "",
@@ -94,10 +96,45 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
       })
       setResetCounter(v => v + 1)
 
-      onChanged?.() // <<< СИГНАЛ ВВЕРХ
+      onChanged?.()
     } catch (err) {
       console.error("Ошибка при добавлении адреса доставки:", err)
       message.error("Не удалось добавить адрес")
+    }
+  }
+
+  // ==== Update / Delete для таблицы ====
+  const handleUpdate = async (id, values) => {
+    try {
+      const { data: fresh } = await axios.put(`/client-shipping-addresses/${id}`, values)
+      setData(prev => prev.map(r => (r.id === id ? fresh : r)))
+      message.success("Адрес доставки обновлён")
+      onChanged?.()
+    } catch (err) {
+      if (err?.response?.status === 409 && err.response.data?.current) {
+        setConflict({ id, current: err.response.data.current, draft: values })
+      } else {
+        console.error("Ошибка при обновлении адреса:", err)
+        message.error("Не удалось сохранить адрес")
+      }
+    }
+  }
+
+  const handleDelete = async (record) => {
+    try {
+      await axios.delete(`/client-shipping-addresses/${record.id}`, {
+        params: { version: record.version }
+      })
+      setData(prev => prev.filter(r => r.id !== record.id))
+      message.success("Адрес доставки удалён")
+      onChanged?.()
+    } catch (err) {
+      if (err?.response?.status === 409 && err.response.data?.current) {
+        setConflict({ id: record.id, current: err.response.data.current, draft: record })
+      } else {
+        console.error("Ошибка при удалении адреса:", err)
+        message.error("Не удалось удалить адрес")
+      }
     }
   }
 
@@ -220,13 +257,56 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
       <TableToolbar filterValue={search} onFilterChange={setSearch} />
 
       <ShippingAddressesTable
-        clientId={clientId}
         data={filteredData}
-        setData={setData}
         loading={loading}
-        reloadData={fetchData}
-        onChanged={onChanged}  // <<< ПРОКИНУЛИ В ТАБЛИЦУ
+        onUpdate={handleUpdate}
+        onDelete={handleDelete}
       />
+
+      {conflict && (
+        <VersionConflictModal
+          open={!!conflict}
+          draft={conflict.draft}
+          current={conflict.current}
+          fields={[
+            { key: "formatted_address", title: "Адрес" },
+            { key: "country",  title: "Страна" },
+            { key: "region",   title: "Регион" },
+            { key: "city",     title: "Город" },
+            { key: "street",   title: "Улица" },
+            { key: "house",    title: "Дом" },
+            { key: "building", title: "Строение" },
+            { key: "entrance", title: "Подъезд" },
+            { key: "postal_code", title: "Индекс" },
+            { key: "comment",  title: "Комментарий" },
+          ]}
+          onReload={async () => {
+            await fetchData()
+            setConflict(null)
+          }}
+          onManualMerge={async () => {
+            const base = conflict.current || {}
+            const draft = conflict.draft || {}
+            const merged = {
+              ...base,
+              formatted_address: draft.formatted_address ?? base.formatted_address,
+              country:  draft.country  ?? base.country,
+              region:   draft.region   ?? base.region,
+              city:     draft.city     ?? base.city,
+              street:   draft.street   ?? base.street,
+              house:    draft.house    ?? base.house,
+              building: draft.building ?? base.building,
+              entrance: draft.entrance ?? base.entrance,
+              postal_code: draft.postal_code ?? base.postal_code,
+              comment:  draft.comment  ?? base.comment,
+              version:  base.version, // важный момент: перезаписываем на актуальную версию
+            }
+            await handleUpdate(conflict.id, merged)
+            setConflict(null)
+          }}
+          onCancel={() => setConflict(null)}
+        />
+      )}
     </>
   )
 }

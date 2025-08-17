@@ -41,7 +41,7 @@ export default function TnvedCodesTable({
   const saveEdit = async () => {
     try {
       await onUpdate(editingKey, { ...editedRow }) // version внутри editedRow
-      message.success("Изменения сохранены")
+      // успех показывается родителем (TnvedCodesMain)
       cancelEdit()
     } catch (err) {
       if (err?.isDuplicateKey) return message.error("Код уже существует")
@@ -58,8 +58,7 @@ export default function TnvedCodesTable({
     const { confirmed } = await confirmAction(`Удалить код ${record.code}?`)
     if (!confirmed) return
     try {
-      await onDelete(record) // родитель добавит ?version=
-      message.success("Запись удалена")
+      await onDelete(record) // родитель добавит ?version= и покажет сообщение об успехе
     } catch (err) {
       if (err?.isVersionConflict) {
         if (err.currentRecord && typeof onReplaceRow === "function") onReplaceRow(err.currentRecord)
@@ -192,8 +191,8 @@ export default function TnvedCodesTable({
 
       <VersionConflictModal
         open={conflict.open}
-        draft={conflict.draft}         // ← показываем ваши правки
-        current={conflict.current}     // ← и что сейчас в базе
+        draft={conflict.draft}
+        current={conflict.current}
         fields={[
           { key: "code",        title: "Код" },
           { key: "description", title: "Описание" },

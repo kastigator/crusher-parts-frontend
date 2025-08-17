@@ -1,7 +1,6 @@
 // src/components/clients/ShippingAddressesTable.jsx
 import React, { useState } from "react"
-import { Table, Input, message, Row, Col, Divider, Space, Tooltip, Button } from "antd"
-import axios from "@/api/axiosInstance"
+import { Table, Input, Row, Col, Divider, Space, Tooltip, Button } from "antd"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
@@ -21,72 +20,38 @@ const formatFullAddress = (r = {}) => {
   return parts.join(", ")
 }
 
-export default function ShippingAddressesTable({ clientId, data = [], loading, reloadData, onChanged }) {
+export default function ShippingAddressesTable({
+  data = [],
+  loading,
+  onUpdate,      // из ShippingAddressesMain.jsx
+  onDelete,      // из ShippingAddressesMain.jsx
+}) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
 
   const isEditing = (record) => editingId !== null && record?.id === editingId
   const cancelEdit = () => { setEditingId(null); setEditedRow(null) }
 
-  const doPut = (id, payload) => axios.put(`/client-shipping-addresses/${id}`, payload)
-
-  const handleSave = async (row) => {
-    if (!clientId || !row) return
-    if (!row.formatted_address?.trim()) {
-      message.warning("Поле 'Адрес' обязательно")
-      return
-    }
-
-    const payload = {
-      formatted_address: row.formatted_address.trim(),
-      place_id: row.place_id || null,
-      lat: row.lat ?? null,
-      lng: row.lng ?? null,
-      postal_code: row.postal_code || null,
-      country: row.country || null,
-      region: row.region || null,
-      city: row.city || null,
-      street: row.street || null,
-      house: row.house || null,
-      building: row.building || null,
-      entrance: row.entrance || null,
-      comment: row.comment?.trim() || null,
-      version: row.version,
-    }
-
+  const handleSave = async () => {
+    if (!editedRow?.formatted_address?.trim()) return
     try {
-      await doPut(row.id, payload)
-      message.success("Адрес обновлён")
+      await onUpdate(editingId, { ...editedRow })
+      // успех и baseline — в Main
       cancelEdit()
-      reloadData()
-      onChanged?.() // <<< СИГНАЛ ВВЕРХ
     } catch (err) {
-      if (err?.response?.status === 409 && err.response.data?.current) {
-        message.error("Конфликт версий: запись изменилась. Обновите список.")
-      } else {
-        console.error("Ошибка при обновлении:", err)
-        message.error("Не удалось сохранить адрес")
-      }
+      // конфликты/ошибки обрабатываются в Main (VersionConflictModal)
+      console.error("Ошибка при сохранении адреса доставки:", err)
     }
   }
 
-  const deleteRow = async (record) => {
+  const handleDelete = async (record) => {
     const { confirmed } = await confirmAction("Удалить адрес?")
     if (!confirmed) return
     try {
-      await axios.delete(`/client-shipping-addresses/${record.id}`, {
-        params: { version: record.version },
-      })
-      message.success("Адрес удалён")
-      reloadData()
-      onChanged?.() // <<< СИГНАЛ ВВЕРХ
+      await onDelete(record)
+      // успех и baseline — в Main
     } catch (err) {
-      console.error("Ошибка при удалении адреса:", err)
-      if (err?.response?.status === 409) {
-        message.error("Конфликт версий: запись изменилась. Обновите список.")
-      } else {
-        message.error("Не удалось удалить адрес")
-      }
+      console.error("Ошибка при удалении адреса доставки:", err)
     }
   }
 
@@ -167,7 +132,7 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
           <div
             onDoubleClick={() => {
               setEditingId(record.id)
-              setEditedRow({ ...record, version: record.version })
+              setEditedRow({ ...record }) // version остаётся внутри
             }}
           >
             <div style={{ fontWeight: 600 }}>{oneLine}</div>
@@ -201,9 +166,9 @@ export default function ShippingAddressesTable({ clientId, data = [], loading, r
         const editing = isEditing(record)
         return (
           <ActionButtons
-            onSave={editing ? () => handleSave(editedRow) : undefined}
+            onSave={editing ? handleSave : undefined}
             onCancel={editing ? cancelEdit : undefined}
-            onDelete={!editing ? () => deleteRow(record) : undefined}
+            onDelete={!editing ? () => handleDelete(record) : undefined}
             confirmDelete={false}
             size="small"
           />

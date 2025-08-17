@@ -1,3 +1,4 @@
+// src/components/suppliers/SupplierContactsTable.jsx
 import React, { useState } from "react"
 import { Table, Input, message, Tag, Checkbox } from "antd"
 import axios from "@/api/axiosInstance"
@@ -85,13 +86,23 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
     const { confirmed } = await confirmAction("Удалить контакт?")
     if (!confirmed) return
     try {
-      await axios.delete(`/supplier-contacts/${record.id}`)
+      // передаём version, чтобы не удалить устаревшую запись
+      await axios.delete(`/supplier-contacts/${record.id}`, {
+        params: { version: record.version }
+      })
       setData((prev) => prev.filter((r) => r.id !== record.id))
       message.success("Контакт удалён")
       onChanged?.()
     } catch (err) {
-      console.error("Ошибка при удалении контакта:", err)
-      message.error("Не удалось удалить контакт")
+      if (err?.response?.status === 409 && err.response.data?.current) {
+        const current = err.response.data.current
+        // подменим строку актуальной, чтобы пользователь видел реальное состояние
+        setData((prev) => prev.map((r) => (r.id === record.id ? current : r)))
+        message.warning("Запись изменилась и не была удалена. Данные обновлены.")
+      } else {
+        console.error("Ошибка при удалении контакта:", err)
+        message.error("Не удалось удалить контакт")
+      }
     }
   }
 

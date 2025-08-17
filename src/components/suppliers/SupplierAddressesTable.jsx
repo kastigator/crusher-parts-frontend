@@ -1,23 +1,26 @@
 // src/components/suppliers/SupplierAddressesTable.jsx
 import React, { useState } from "react"
-import { Table, Input, message, Tag, Checkbox } from "antd"
-import axios from "@/api/axiosInstance"
+import { Table, Input, Tag, Checkbox } from "antd"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 
-export default function SupplierAddressesTable({ supplierId, data = [], setData, loading, onChanged }) {
+export default function SupplierAddressesTable({
+  data = [],
+  loading,
+  onUpdate,      // (id, values) => Promise<void>
+  onDelete,      // (record) => Promise<void>
+  onReplaceRow,  // (freshRow) => void  (опционально, на будущее)
+  onRefresh      // () => Promise<void> (опционально, на будущее)
+}) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
 
   const isEditing = (r) => editingId === r.id
-
   const startEdit = (record) => {
     setEditingId(record.id)
-    // сохраняем текущую версию для optimistic
-    setEditedRow({ ...record, version: record.version })
+    setEditedRow({ ...record, version: record.version }) // важно сохранить version
   }
-
   const cancelEdit = () => { setEditingId(null); setEditedRow(null) }
 
   const trimToNull = (v) => {
@@ -25,18 +28,14 @@ export default function SupplierAddressesTable({ supplierId, data = [], setData,
     const s = String(v).trim()
     return s === "" ? null : s
   }
-
   const toNumOrNull = (v) => {
     if (v === undefined || v === null || v === "") return null
     const n = Number(v)
     return Number.isFinite(n) ? n : null
   }
 
-  const doPut = (id, payload) => axios.put(`/supplier-addresses/${id}`, payload)
-
   const saveEdit = async (row) => {
-    if (!supplierId || !row) return
-
+    if (!row) return
     const payload = {
       label: trimToNull(row.label),
       type: trimToNull(row.type),
@@ -54,61 +53,24 @@ export default function SupplierAddressesTable({ supplierId, data = [], setData,
       lng: toNumOrNull(row.lng),
       postal_code: trimToNull(row.postal_code),
       comment: trimToNull(row.comment),
-      is_primary: row.is_primary ? 1 : 0,
+      // is_primary — удалено из схемы
       version: row.version
     }
 
     if (!payload.formatted_address) {
-      message.warning("Адрес обязателен")
+      // просто не сохраняем пустой адрес
       return
     }
 
-    try {
-      const { data: fresh } = await doPut(row.id, payload)
-      setData((prev) => prev.map((r) => (r.id === row.id ? fresh : r)))
-      message.success("Адрес обновлён")
-      cancelEdit()
-      onChanged?.()
-    } catch (err) {
-      if (err?.response?.status === 409 && err.response.data?.current) {
-        const current = err.response.data.current
-        const { confirmed } = await confirmAction({
-          title: "Конфликт версий",
-          text: "Адрес был изменён на сервере. Принять новую версию и повторить сохранение?",
-          icon: "warning",
-          confirmLabel: "Да, повторить",
-          cancelLabel: "Отмена"
-        })
-        if (!confirmed) return
-        try {
-          const { data: fresh2 } = await doPut(row.id, { ...payload, version: current.version })
-          setData((prev) => prev.map((r) => (r.id === row.id ? fresh2 : r)))
-          message.success("Адрес обновлён")
-          cancelEdit()
-          onChanged?.()
-        } catch (e2) {
-          console.error("Повтор после 409 не удался:", e2)
-          message.error("Не удалось сохранить: запись снова изменилась")
-        }
-      } else {
-        console.error("Ошибка сохранения адреса:", err)
-        message.error(err?.response?.data?.message || "Не удалось сохранить адрес")
-      }
-    }
+    await onUpdate?.(row.id, payload)
+    cancelEdit()
   }
 
   const deleteRow = async (record) => {
     const { confirmed } = await confirmAction("Удалить адрес?")
     if (!confirmed) return
-    try {
-      await axios.delete(`/supplier-addresses/${record.id}`)
-      setData((prev) => prev.filter((r) => r.id !== record.id))
-      message.success("Адрес удалён")
-      onChanged?.()
-    } catch (err) {
-      console.error("Ошибка удаления адреса:", err)
-      message.error("Не удалось удалить адрес")
-    }
+    await onDelete?.(record) // родитель сам обновит список и/или покажет конфликт
+    if (isEditing(record)) cancelEdit()
   }
 
   const renderInput = (field) => (
@@ -163,25 +125,6 @@ export default function SupplierAddressesTable({ supplierId, data = [], setData,
       dataIndex: "country",
       width: 90,
       render: (_, r) => (isEditing(r) ? renderInput("country") : <ValueDisplay value={r.country} />),
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
-    },
-    {
-      title: "Основной",
-      dataIndex: "is_primary",
-      width: 120,
-      render: (_, r) =>
-        isEditing(r) ? (
-          <Checkbox
-            checked={!!(editedRow?.is_primary ?? r.is_primary)}
-            onChange={(e) => setEditedRow((p) => ({ ...p, is_primary: e.target.checked }))}
-          >
-            Да
-          </Checkbox>
-        ) : r.is_primary ? (
-          <Tag color="green">Основной</Tag>
-        ) : (
-          <Tag>Обычный</Tag>
-        ),
       onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
     },
     {

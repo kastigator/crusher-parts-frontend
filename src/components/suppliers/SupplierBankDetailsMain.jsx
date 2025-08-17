@@ -1,15 +1,18 @@
+// src/components/suppliers/SupplierBankDetailsMain.jsx
 import React, { useEffect, useState } from "react"
 import { Row, Col, Input, Button, Checkbox, message, Card } from "antd"
 import axios from "@/api/axiosInstance"
 import SupplierBankDetailsTable from "./SupplierBankDetailsTable"
 import TableToolbar from "@/components/common/TableToolbar"
 import CurrencySelect from "@/components/inputs/CurrencySelect"
+import VersionConflictModal from "@/components/common/VersionConflictModal"
 
 export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [conflict, setConflict] = useState(null) // { id, current, draft }
 
   const [newBank, setNewBank] = useState({
     bank_name: "",
@@ -71,7 +74,14 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
     setSubmitting(true)
     try {
       const { data: created } = await axios.post("/supplier-bank-details", payload)
-      setData((prev) => [created, ...prev]) // мгновенное добавление
+      // мгновенно добавляем
+      setData((prev) => [created, ...prev])
+
+      // если отметили «основной», на бэке снялись флаги у других — подтянем список
+      if (created.is_primary_for_currency && created.currency) {
+        await fetchData()
+      }
+
       setNewBank({
         bank_name: "",
         account_number: "",
@@ -90,6 +100,62 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
       message.error(err?.response?.data?.message || "Не удалось добавить реквизиты")
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // ——— helpers для локального списка ———
+  const replaceRow = (fresh) =>
+    setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+
+  const removeRow = (id) =>
+    setData((prev) => prev.filter((r) => r.id !== id))
+
+  // ——— UPDATE/DELETE для таблицы ———
+  const handleUpdate = async (id, values) => {
+    try {
+      const { data: fresh } = await axios.put(`/supplier-bank-details/${id}`, values)
+      replaceRow(fresh)
+
+      // если эта запись стала «основной» — обновим список, чтобы снять флаги у других
+      if (fresh.is_primary_for_currency && fresh.currency) {
+        await fetchData()
+      }
+
+      message.success("Реквизиты обновлены")
+      onChanged?.()
+    } catch (err) {
+      if (err?.response?.status === 409 && err.response.data?.current) {
+        setConflict({
+          id,
+          current: err.response.data.current,
+          draft: values,
+        })
+      } else {
+        console.error("Ошибка при обновлении реквизитов:", err)
+        message.error("Не удалось сохранить изменения")
+      }
+    }
+  }
+
+  const handleDelete = async (record) => {
+    try {
+      await axios.delete(`/supplier-bank-details/${record.id}`, {
+        params: { version: record.version },
+      })
+      removeRow(record.id)
+      message.success("Реквизиты удалены")
+      onChanged?.()
+    } catch (err) {
+      if (err?.response?.status === 409 && err.response.data?.current) {
+        setConflict({
+          id: record.id,
+          current: err.response.data.current,
+          draft: record,
+        })
+      } else {
+        console.error("Ошибка при удалении реквизитов:", err)
+        message.error("Не удалось удалить реквизиты")
+      }
     }
   }
 
@@ -138,7 +204,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
           <Col span={4}>
             <CurrencySelect
               value={newBank.currency}
-              onChange={(v) => setNewBank((p) => ({ ...p, currency: v || "" }))} // компонент отдаёт ISO3
+              onChange={(v) => setNewBank((p) => ({ ...p, currency: v || "" }))}
               TextFieldProps={{ size: "small", label: "Валюта" }}
             />
           </Col>
@@ -214,12 +280,32 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
       </Card>
 
       <SupplierBankDetailsTable
-        supplierId={supplierId}
         data={filtered}
-        setData={setData}
         loading={loading}
-        onChanged={onChanged}
+        onUpdate={handleUpdate}
+        onDelete={handleDelete}
+        onReplaceRow={replaceRow}
+        onRefresh={fetchData}
       />
+
+      {conflict && (
+        <VersionConflictModal
+          open={!!conflict}
+          entityLabel="Банковские реквизиты поставщика"
+          current={conflict.current}
+          draft={conflict.draft}
+          onResolve={async (choice) => {
+            if (choice === "overwrite") {
+              await handleUpdate(conflict.id, {
+                ...conflict.draft,
+                version: conflict.current.version,
+              })
+            }
+            setConflict(null)
+          }}
+          onCancel={() => setConflict(null)}
+        />
+      )}
     </>
   )
 }
