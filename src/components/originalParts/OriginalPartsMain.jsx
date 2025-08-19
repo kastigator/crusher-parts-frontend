@@ -8,52 +8,52 @@ import ImportModal from "@/components/common/ImportModal"
 import OriginalPartsTable from "./OriginalPartsTable"
 
 import { Autocomplete, TextField, CircularProgress } from "@mui/material"
-import { createFilterOptions } from "@mui/material/Autocomplete"
 
 const TEMPLATE_URL = "https://storage.googleapis.com/shared-parts-bucket/templates/original_parts_template.xlsx"
-const mfFilter = createFilterOptions()
-const mdFilter = createFilterOptions()
 
 export default function OriginalPartsMain() {
-  // ---- справочники
+  // --- справочники
   const [manufacturers, setManufacturers] = useState([])
   const [models, setModels] = useState([])
 
-  // ---- фильтры
+  // --- выбор
   const [manufacturerId, setManufacturerId] = useState(null)
   const [modelId, setModelId] = useState(null)
-  const [search, setSearch] = useState("")
-  const [onlyAssemblies, setOnlyAssemblies] = useState(false)
-  const [onlyParts, setOnlyParts] = useState(false)
 
-  // ---- данные
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(false)
+  // --- ввод в выпадашках (контролируем)
+  const [mfInput, setMfInput] = useState("")
+  const [mdInput, setMdInput] = useState("")
 
-  // ---- импорт
-  const [importOpen, setImportOpen] = useState(false)
-
-  // ---- inline форма новой детали
-  const [newCat, setNewCat] = useState("")
-  const [newDescRu, setNewDescRu] = useState("")
-
-  // ТН ВЭД — асинхронный автокомплит
-  const [tnvedOptions, setTnvedOptions] = useState([])
-  const [tnvedLoading, setTnvedLoading] = useState(false)
-  const [tnvedSelected, setTnvedSelected] = useState(null)
-
-  // Popover «создать производителя/модель»
+  // --- поповеры для создания (fallback, когда поле пустое)
   const [mfPopoverOpen, setMfPopoverOpen] = useState(false)
   const [mdPopoverOpen, setMdPopoverOpen] = useState(false)
   const [mfNewName, setMfNewName] = useState("")
   const [mdNewName, setMdNewName] = useState("")
-  // контролируемый ввод в автокомплитах
-  const [mfInput, setMfInput] = useState("")
-  const [mdInput, setMdInput] = useState("")
 
-  // =========================
-  // загрузка справочников
-  // =========================
+  // --- флаги создания, чтобы не отправлять повторно
+  const [mfCreating, setMfCreating] = useState(false)
+  const [mdCreating, setMdCreating] = useState(false)
+
+  // --- фильтры списка деталей
+  const [search, setSearch] = useState("")
+  const [onlyAssemblies, setOnlyAssemblies] = useState(false)
+  const [onlyParts, setOnlyParts] = useState(false)
+
+  // --- данные деталей
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  // --- импорт
+  const [importOpen, setImportOpen] = useState(false)
+
+  // --- inline добавление детали
+  const [newCat, setNewCat] = useState("")
+  const [newDescRu, setNewDescRu] = useState("")
+  const [tnvedOptions, setTnvedOptions] = useState([])
+  const [tnvedLoading, setTnvedLoading] = useState(false)
+  const [tnvedSelected, setTnvedSelected] = useState(null)
+
+  // ===== справочники
   const loadRefs = async () => {
     try {
       const [mf, md] = await Promise.all([
@@ -68,31 +68,25 @@ export default function OriginalPartsMain() {
   }
   useEffect(() => { loadRefs() }, [])
 
+  // модели выбранного производителя
   const filteredModels = useMemo(() => {
-    if (!manufacturerId) return models
+    if (!manufacturerId) return []
     return models.filter(m => m.manufacturer_id === manufacturerId)
   }, [models, manufacturerId])
 
-  // =========================
-  // загрузка списка деталей (с отменой гонок)
-  // =========================
+  // ===== загрузка деталей (только после выбора модели)
   const abortRef = useRef(null)
   const fetchParts = async () => {
     if (!modelId) { setRows([]); setLoading(false); return }
     abortRef.current?.abort()
     abortRef.current = new AbortController()
-
     setLoading(true)
     try {
       const params = { equipment_model_id: modelId }
       if (search?.trim()) params.q = search.trim()
       if (onlyAssemblies) params.only_assemblies = 1
       if (onlyParts) params.only_parts = 1
-
-      const { data } = await axios.get("/original-parts", {
-        params,
-        signal: abortRef.current.signal,
-      })
+      const { data } = await axios.get("/original-parts", { params, signal: abortRef.current.signal })
       setRows(Array.isArray(data) ? data : [])
     } catch (e) {
       const name = e?.name || e?.code
@@ -103,7 +97,6 @@ export default function OriginalPartsMain() {
       setLoading(false)
     }
   }
-
   useEffect(() => {
     if (!modelId) { setRows([]); setLoading(false); return }
     const t = setTimeout(fetchParts, 250)
@@ -111,54 +104,74 @@ export default function OriginalPartsMain() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId, search, onlyAssemblies, onlyParts])
 
-  // =========================
-  // создание производителя/модели
-  // =========================
-  const doCreateManufacturer = async (nm) => {
-    const name = String(nm || "").trim()
+  // ===== создание производителя
+  const doCreateManufacturer = async (nameRaw) => {
+    const name = String(nameRaw || "").trim()
     if (!name) return
-    const exists = (manufacturers || []).find(m => (m.name || "").toLowerCase() === name.toLowerCase())
-    if (exists) {
-      setManufacturerId(exists.id); setModelId(null); setMfInput("")
+    const dup = manufacturers.find(m => (m.name || "").toLowerCase() === name.toLowerCase())
+    if (dup) {
+      setManufacturerId(dup.id); setModelId(null)
+      setMfInput(""); setMfNewName(""); setMfPopoverOpen(false)
       message.info("Такой производитель уже есть")
       return
     }
     try {
+      setMfCreating(true)
       const { data } = await axios.post("/equipment-manufacturers", { name })
       setManufacturers(prev => [data, ...prev])
       setManufacturerId(data.id)
       setModelId(null)
-      setMfInput("")       // СБРАСЫВАЕМ ВВОД
       message.success("Производитель создан")
     } catch (e) {
       console.error(e); message.error("Не удалось создать производителя")
+    } finally {
+      setMfCreating(false)
+      setMfInput(""); setMfNewName(""); setMfPopoverOpen(false)
     }
   }
 
-  const doCreateModel = async (nm) => {
+  // быстрый плюс у производителя
+  const handleMfPlus = () => {
+    const txt = (mfInput || "").trim()
+    if (txt) doCreateManufacturer(txt)
+    else setMfPopoverOpen(true)
+  }
+
+  // ===== создание модели
+  const doCreateModel = async (modelRaw) => {
     if (!manufacturerId) { message.warning("Сначала выберите производителя"); return }
-    const model_name = String(nm || "").trim()
+    const model_name = String(modelRaw || "").trim()
     if (!model_name) return
-    const exists = (filteredModels || []).find(m => (m.model_name || "").toLowerCase() === model_name.toLowerCase())
-    if (exists) {
-      setModelId(exists.id); setMdInput("")
+    const dup = filteredModels.find(m => (m.model_name || "").toLowerCase() === model_name.toLowerCase())
+    if (dup) {
+      setModelId(dup.id)
+      setMdInput(""); setMdNewName(""); setMdPopoverOpen(false)
       message.info("Такая модель уже есть")
       return
     }
     try {
+      setMdCreating(true)
       const { data } = await axios.post("/equipment-models", { manufacturer_id: manufacturerId, model_name })
       setModels(prev => [data, ...prev])
       setModelId(data.id)
-      setMdInput("")       // СБРАСЫВАЕМ ВВОД
       message.success("Модель создана")
     } catch (e) {
       console.error(e); message.error("Не удалось создать модель")
+    } finally {
+      setMdCreating(false)
+      setMdInput(""); setMdNewName(""); setMdPopoverOpen(false)
     }
   }
 
-  // =========================
-  // ТН ВЭД — асинхронный поиск
-  // =========================
+  // быстрый плюс у модели
+  const handleMdPlus = () => {
+    if (!manufacturerId) { message.warning("Сначала выберите производителя"); return }
+    const txt = (mdInput || "").trim()
+    if (txt) doCreateModel(txt)
+    else setMdPopoverOpen(true)
+  }
+
+  // ===== ТН ВЭД
   const tnvedAbortRef = useRef(null)
   const fetchTnved = async (q) => {
     tnvedAbortRef.current?.abort()
@@ -167,7 +180,7 @@ export default function OriginalPartsMain() {
     try {
       const { data } = await axios.get("/tnved-codes", {
         params: q?.trim() ? { q: q.trim() } : {},
-        signal: tnvedAbortRef.current.signal,
+        signal: tnvedAbortRef.current.signal
       })
       setTnvedOptions(Array.isArray(data) ? data : [])
     } catch (e) {
@@ -182,12 +195,10 @@ export default function OriginalPartsMain() {
   }
   useEffect(() => { fetchTnved("") }, [])
 
-  // =========================
-  // добавление детали из шапки
-  // =========================
+  // ===== добавление детали
   const addPartInline = async () => {
     if (!modelId) { message.warning("Сначала выберите модель"); return }
-    const cat = String(newCat || "").trim()
+    const cat = (newCat || "").trim()
     if (!cat) { message.warning("Укажите Cat #"); return }
     try {
       const payload = {
@@ -201,103 +212,83 @@ export default function OriginalPartsMain() {
       setNewCat(""); setNewDescRu(""); setTnvedSelected(null)
       fetchParts()
     } catch (e) {
-      if (e?.response?.status === 409) {
-        message.error("Такая деталь уже есть для этой модели")
-      } else if (e?.response?.data?.message) {
-        message.error(e.response.data.message)
-      } else {
-        console.error(e); message.error("Не удалось создать деталь")
-      }
+      if (e?.response?.status === 409) message.error("Такая деталь уже есть для этой модели")
+      else if (e?.response?.data?.message) message.error(e.response.data.message)
+      else { console.error(e); message.error("Не удалось создать деталь") }
     }
   }
-
-  // открыть поповеры с текущим вводом
-  const openMfPopover = () => { setMfNewName(mfInput || ""); setMfPopoverOpen(true) }
-  const openMdPopover = () => { setMdNewName(mdInput || ""); setMdPopoverOpen(true) }
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Card title="Оригинальные детали" styles={{ body: { paddingTop: 8 } }}>
-        {/* Ряд 1: производитель, модель, фильтры, импорт/шаблон */}
+        {/* Ряд 1: производитель, модель, фильтры, импорт */}
         <Row gutter={[12, 12]} align="middle">
+          {/* Производитель */}
           <Col xs={24} md={8}>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <Autocomplete
-                options={manufacturers || []}
-                value={(manufacturers || []).find(m => m.id === manufacturerId) ?? null}
-                inputValue={mfInput}                       // КОНТРОЛИРУЕМ ВВОД
+                disablePortal
+                options={manufacturers}
+                value={manufacturers.find(m => m.id === manufacturerId) ?? null}
+                inputValue={mfInput}
                 onInputChange={(_, v) => setMfInput(v || "")}
                 onChange={(_, v) => {
-                  if (v?.__create) doCreateManufacturer(v.inputValue)
-                  else { setManufacturerId(v?.id ?? null); setModelId(null) }
+                  setManufacturerId(v?.id ?? null)
+                  setModelId(null)     // сброс модели
+                  setMdInput("")       // очистка поля модели
                 }}
-                filterOptions={(options, params) => {
-                  const filtered = mfFilter(options, { ...params, getOptionLabel: (o) => o?.name || "" })
-                  const { inputValue } = params
-                  const exists = options.some(o => (o?.name || "").toLowerCase() === (inputValue || "").toLowerCase())
-                  if (inputValue && !exists) filtered.push({ inputValue, name: `Добавить "${inputValue}"`, __create: true })
-                  return filtered
-                }}
-                getOptionLabel={(o) => (o?.__create ? o.name : (o?.name || ""))}
+                getOptionLabel={(o) => (o?.name ?? "")}
                 isOptionEqualToValue={(a, b) => (a?.id ?? null) === (b?.id ?? null)}
-                renderInput={(params) => <TextField {...params} size="small" label="Производитель" />}
-                disablePortal
+                renderInput={(p) => <TextField {...p} size="small" label="Производитель" />}
                 sx={{ flex: 1 }}
               />
               <Popover
                 title="Новый производитель"
                 open={mfPopoverOpen}
                 onOpenChange={setMfPopoverOpen}
+                trigger="click"
                 content={
                   <Space.Compact style={{ width: 260 }}>
                     <Input
                       placeholder="Название"
-                      value={mfNewName}
+                      value={mfNewName || mfInput}
                       onChange={(e) => setMfNewName(e.target.value)}
-                      onPressEnter={() => { doCreateManufacturer(mfNewName); setMfPopoverOpen(false) }}
+                      onPressEnter={doCreateManufacturer}
                       autoFocus
                     />
-                    <Button type="primary" onClick={() => { doCreateManufacturer(mfNewName); setMfPopoverOpen(false) }}>
+                    <Button type="primary" loading={mfCreating} onClick={() => doCreateManufacturer(mfNewName || mfInput)}>
                       Создать
                     </Button>
                   </Space.Compact>
                 }
-                trigger="click"
               >
-                <Button icon={<PlusOutlined />} onClick={openMfPopover} />
+                <Button icon={<PlusOutlined />} loading={mfCreating} onClick={handleMfPlus} />
               </Popover>
             </div>
           </Col>
 
+          {/* Модель */}
           <Col xs={24} md={8}>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <Autocomplete
-                options={filteredModels || []}
-                value={(filteredModels || []).find(m => m.id === modelId) ?? null}
-                inputValue={mdInput}                       // КОНТРОЛИРУЕМ ВВОД
-                onInputChange={(_, v) => setMdInput(v || "")}
-                onChange={(_, v) => {
-                  if (v?.__create) doCreateModel(v.inputValue)
-                  else setModelId(v?.id ?? null)
-                }}
-                filterOptions={(options, params) => {
-                  const filtered = mdFilter(options, { ...params, getOptionLabel: (o) => o?.model_name || "" })
-                  const { inputValue } = params
-                  const exists = options.some(o => (o?.model_name || "").toLowerCase() === (inputValue || "").toLowerCase())
-                  if (inputValue && !exists) filtered.push({ inputValue, model_name: `Добавить "${inputValue}"`, __create: true })
-                  return filtered
-                }}
-                getOptionLabel={(o) => (o?.__create ? o.model_name : (o?.model_name || ""))}
-                isOptionEqualToValue={(a, b) => (a?.id ?? null) === (b?.id ?? null)}
-                renderInput={(params) => <TextField {...params} size="small" label="Модель" />}
+                key={`model-${manufacturerId || 0}`}     // принудительный ремоунт при смене производителя
                 disablePortal
-                sx={{ flex: 1 }}
+                options={filteredModels}
+                value={filteredModels.find(m => m.id === modelId) ?? null}
+                inputValue={mdInput}
+                onInputChange={(_, v) => setMdInput(v || "")}
+                onChange={(_, v) => { setModelId(v?.id ?? null); setMdInput("") }}
+                getOptionLabel={(o) => (o?.model_name ?? "")}
+                isOptionEqualToValue={(a, b) => (a?.id ?? null) === (b?.id ?? null)}
+                renderInput={(p) => <TextField {...p} size="small" label="Модель" />}
                 disabled={!manufacturerId}
+                sx={{ flex: 1 }}
               />
               <Popover
                 title="Новая модель"
                 open={mdPopoverOpen}
                 onOpenChange={setMdPopoverOpen}
+                trigger="click"
                 content={
                   <Space direction="vertical" style={{ width: 300 }}>
                     <div style={{ fontSize: 12, color: "#888" }}>
@@ -306,29 +297,30 @@ export default function OriginalPartsMain() {
                     <Space.Compact>
                       <Input
                         placeholder="Название модели"
-                        value={mdNewName}
+                        value={mdNewName || mdInput}
                         onChange={(e) => setMdNewName(e.target.value)}
-                        onPressEnter={() => { doCreateModel(mdNewName); setMdPopoverOpen(false) }}
+                        onPressEnter={doCreateModel}
                         disabled={!manufacturerId}
                         autoFocus
                       />
-                      <Button type="primary" onClick={() => { doCreateModel(mdNewName); setMdPopoverOpen(false) }} disabled={!manufacturerId}>
+                      <Button type="primary" loading={mdCreating} onClick={() => doCreateModel(mdNewName || mdInput)} disabled={!manufacturerId}>
                         Создать
                       </Button>
                     </Space.Compact>
                   </Space>
                 }
-                trigger="click"
               >
-                <Button icon={<PlusOutlined />} disabled={!manufacturerId} onClick={openMdPopover} />
+                <Button icon={<PlusOutlined />} loading={mdCreating} disabled={!manufacturerId} onClick={handleMdPlus} />
               </Popover>
             </div>
           </Col>
 
+          {/* Фильтры + импорт */}
           <Col xs={24} md={4} style={{ display: "flex", alignItems: "center" }}>
             <Checkbox
               checked={onlyAssemblies}
               onChange={(e) => { setOnlyAssemblies(e.target.checked); if (e.target.checked) setOnlyParts(false) }}
+              disabled={!modelId}
             >
               Только сборки
             </Checkbox>
@@ -337,25 +329,19 @@ export default function OriginalPartsMain() {
             <Checkbox
               checked={onlyParts}
               onChange={(e) => { setOnlyParts(e.target.checked); if (e.target.checked) setOnlyAssemblies(false) }}
+              disabled={!modelId}
             >
               Только детали
             </Checkbox>
-            <Button
-              onClick={() => {
-                if (!modelId) { message.warning("Выберите модель для импорта каталога"); return }
-                setImportOpen(true)
-              }}
-            >
-              Импорт
-            </Button>
+            <Button onClick={() => setImportOpen(true)} disabled={!modelId}>Импорт</Button>
             <Button onClick={() => window.open(TEMPLATE_URL, "_blank")}>Шаблон</Button>
           </Col>
         </Row>
 
         {/* Поиск */}
-        <TableToolbar search={search} onSearch={setSearch} />
+        <TableToolbar search={search} onSearch={setSearch} disabled={!modelId} />
 
-        {/* Ряд 2: Новая деталь (inline) */}
+        {/* Ряд 2: Новая деталь */}
         <Row gutter={[8, 8]} align="middle" style={{ marginTop: 4 }}>
           <Col xs={24} md={6}>
             <Input
@@ -377,11 +363,12 @@ export default function OriginalPartsMain() {
           </Col>
           <Col xs={24} md={6}>
             <Autocomplete
+              disablePortal
               options={tnvedOptions}
               loading={tnvedLoading}
               value={tnvedSelected}
               onChange={(_, v) => setTnvedSelected(v)}
-              onInputChange={(_, v) => { fetchTnved(v) }}
+              onInputChange={(_, v) => { if (modelId) fetchTnved(v) }}
               getOptionLabel={(o) => (o?.code ? `${o.code} — ${o.description || ""}` : "")}
               isOptionEqualToValue={(a, b) => (a?.code ?? null) === (b?.code ?? null)}
               renderInput={(params) => (
@@ -400,7 +387,6 @@ export default function OriginalPartsMain() {
                   }}
                 />
               )}
-              disablePortal
               disabled={!modelId}
             />
           </Col>
