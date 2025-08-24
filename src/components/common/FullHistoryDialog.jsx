@@ -8,7 +8,6 @@ import { CopyOutlined, DownloadOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import { logSchemas } from "@/utils/logSchemas"
 
-// Алиасы entityType <-> то, как оно хранится в логах
 const ENTITY_TYPE_ALIASES = {
   tnved_codes: "tnved_code",
   tnved_code: "tnved_code",
@@ -20,7 +19,6 @@ const ENTITY_TYPE_ALIASES = {
   client_bank_details: "client_bank_details",
 }
 
-// Человеческие названия
 const ENTITY_LABELS = {
   clients: "Клиент",
   client_billing_addresses: "Юр. адрес",
@@ -31,94 +29,76 @@ const ENTITY_LABELS = {
   suppliers: "Поставщик",
 }
 
-// Универсальный словарь API-роутов
 const ENDPOINTS = {
   clients: {
     combined: (id) => `/clients/${id}/logs/combined`,
-    deleted: (id) =>
-      id != null ? `/clients/${id}/logs/deleted` : `/clients/logs/deleted`,
+    deleted:  (id) => (id != null ? `/clients/${id}/logs/deleted` : `/clients/logs/deleted`),
   },
   suppliers: {
     combined: (id) => `/part-suppliers/${id}/logs/combined`,
-    deleted: (id) =>
-      id != null
-        ? `/part-suppliers/${id}/logs/deleted`
-        : `/part-suppliers/logs/deleted`,
+    deleted:  (id) => (id != null ? `/part-suppliers/${id}/logs/deleted` : `/part-suppliers/logs/deleted`),
   },
   default: {
     combined: (entity, id) => `/activity-logs/${entity}/${id}`,
-    deleted: (entity) =>
-      `/activity-logs/deleted?entity_type=${encodeURIComponent(entity)}`,
+    deleted:  (entity) => `/activity-logs/deleted?entity_type=${encodeURIComponent(entity)}`,
   },
 }
 
 const TECH_FIELDS = new Set([
-  "id", "created_at", "updated_at", "client_id",
-  "entity_id", "user_id", "version", "supplier_id"
+  "id","created_at","updated_at","client_id","entity_id","user_id","version","supplier_id"
 ])
 
 export default function FullHistoryDialog({
   entityId,
   entityType,
   onlyDeleted = false,
-  endpoint,   // опционально можно передать прямой URL
+  endpoint,
   onClose,
 }) {
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(false)
   const [errText, setErrText] = useState("")
   const [actionFilter, setActionFilter] = useState(
-    onlyDeleted
-      ? { create: false, update: false, delete: true }
-      : { create: true, update: true, delete: true }
+    onlyDeleted ? { create:false, update:false, delete:true }
+                : { create:true,  update:true,  delete:true }
   )
 
+  // универсальные подсказки: { [field]: { [value]: tip } }
+  const [valueHints, setValueHints] = useState({})
+
   useEffect(() => {
-    setActionFilter(
-      onlyDeleted
-        ? { create: false, update: false, delete: true }
-        : { create: true, update: true, delete: true }
-    )
+    setActionFilter(onlyDeleted ? { create:false, update:false, delete:true }
+                                : { create:true,  update:true,  delete:true })
   }, [onlyDeleted])
 
+  // загрузка логов
   useEffect(() => {
     if (!(onlyDeleted || entityId)) return
-
-    const fetchLogs = async () => {
-      setLoading(true)
-      setErrText("")
+    const load = async () => {
+      setLoading(true); setErrText("")
       try {
         let url = endpoint
         if (!url) {
           const apiEntity = ENTITY_TYPE_ALIASES[entityType] || entityType
-          if (!apiEntity) throw new Error("Не указан entityType или endpoint")
-
-          const custom = ENDPOINTS[apiEntity]
-          const ep = custom || ENDPOINTS.default
-
+          const custom = ENDPOINTS[apiEntity] || ENDPOINTS.default
           url = onlyDeleted
-            ? (custom ? ep.deleted(entityId) : ep.deleted(apiEntity))
-            : (custom ? ep.combined(entityId) : ep.combined(apiEntity, entityId))
+            ? (ENDPOINTS[apiEntity] ? custom.deleted(entityId) : custom.deleted(apiEntity))
+            : (ENDPOINTS[apiEntity] ? custom.combined(entityId) : custom.combined(apiEntity, entityId))
         }
-
-        const res = await axios.get(url)
-        setLogs(Array.isArray(res.data) ? res.data : [])
+        const { data } = await axios.get(url)
+        setLogs(Array.isArray(data) ? data : [])
       } catch (e) {
-        console.error("Ошибка при загрузке логов:", e)
+        console.error(e)
         setErrText(e?.response?.data?.message || e?.message || "Не удалось загрузить историю")
         setLogs([])
-      } finally {
-        setLoading(false)
-      }
+      } finally { setLoading(false) }
     }
-
-    fetchLogs()
+    load()
   }, [entityId, entityType, onlyDeleted, endpoint])
 
+  // сахара для лейблов полей
   const labelForField = (record) => {
-    const schema =
-      logSchemas[record?.entity_type] ||
-      logSchemas[ENTITY_TYPE_ALIASES[record?.entity_type]]
+    const schema = logSchemas[record?.entity_type] || logSchemas[ENTITY_TYPE_ALIASES[record?.entity_type]]
     const nice = schema?.fields?.[record?.field_changed]
     if (nice) return nice
     if (!record?.field_changed) {
@@ -129,8 +109,9 @@ export default function FullHistoryDialog({
     return record.field_changed
   }
 
+  // фильтры
   const filteredByAction = useMemo(() => {
-    const allowed = new Set(Object.entries(actionFilter).filter(([, v]) => v).map(([k]) => k))
+    const allowed = new Set(Object.entries(actionFilter).filter(([,v]) => v).map(([k])=>k))
     return logs.filter((l) => allowed.has(l?.action))
   }, [logs, actionFilter])
 
@@ -142,13 +123,75 @@ export default function FullHistoryDialog({
     return true
   })
 
+  // универсальная подгрузка подсказок по схеме
+  useEffect(() => {
+    const needFetch = []
+    for (const r of rows) {
+      const schema = logSchemas[r?.entity_type] || logSchemas[ENTITY_TYPE_ALIASES[r?.entity_type]]
+      const hintCfg = schema?.valueHints?.[r?.field_changed]
+      if (!hintCfg) continue
+
+      const check = (val) => {
+        const s = String(val ?? "").trim()
+        if (!s) return false
+        return typeof hintCfg.match === "function" ? !!hintCfg.match(s) : true
+      }
+
+      const ensure = (val) => {
+        const s = String(val ?? "").trim()
+        if (!check(s)) return
+        if (!valueHints[r.field_changed] || valueHints[r.field_changed][s] === undefined) {
+          needFetch.push({ field: r.field_changed, value: s, cfg: hintCfg })
+        }
+      }
+
+      ensure(r.old_value)
+      ensure(r.new_value)
+    }
+
+    if (needFetch.length === 0) return
+
+    const run = async () => {
+      // по одному запросу на значение (без оптимизации; просто, надёжно)
+      const updates = {}
+      for (const { field, value, cfg } of needFetch) {
+        try {
+          const params = { [cfg.param || "q"]: (cfg.query ? cfg.query(value) : value) }
+          const { data } = await axios.get(cfg.endpoint, { params })
+          const tip = cfg.pick ? cfg.pick(data, value) : null
+          if (tip != null) {
+            if (!updates[field]) updates[field] = {}
+            updates[field][value] = tip
+          } else {
+            if (!updates[field]) updates[field] = {}
+            updates[field][value] = null
+          }
+        } catch {
+          if (!updates[field]) updates[field] = {}
+          updates[field][value] = null
+        }
+      }
+      if (Object.keys(updates).length) {
+        setValueHints((prev) => {
+          const merged = { ...prev }
+          for (const f of Object.keys(updates)) {
+            merged[f] = { ...(prev[f] || {}), ...updates[f] }
+          }
+          return merged
+        })
+      }
+    }
+    run()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows])
+
+  // отрисовка
   const cellWrap = { whiteSpace: "pre-wrap", wordBreak: "break-word" }
   const bgOld = "#fff1f0"
   const bgNew = "#f6ffed"
   const formatValue = (v) =>
-    v == null || v === ""
-      ? "—"
-      : typeof v === "object"
+    v == null || v === "" ? "—"
+    : typeof v === "object"
       ? (() => { try { return JSON.stringify(v, null, 2) } catch { return String(v) } })()
       : String(v)
 
@@ -184,10 +227,38 @@ export default function FullHistoryDialog({
     const a = document.createElement("a")
     a.href = url
     a.download = `history_${effectiveType}_${Date.now()}.csv`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
     URL.revokeObjectURL(url)
+  }
+
+  const ValueCell = (value, record, isNew) => {
+    const text = formatValue(value)
+    const schema = logSchemas[record?.entity_type] || logSchemas[ENTITY_TYPE_ALIASES[record?.entity_type]]
+    const hintCfg = schema?.valueHints?.[record?.field_changed]
+    const tip = hintCfg ? valueHints?.[record.field_changed]?.[String(value ?? "").trim()] : null
+
+    const content = (
+      <div
+        style={{
+          ...cellWrap,
+          background: record.action === "update" ? (isNew ? bgNew : bgOld) : undefined,
+          padding: record.action === "update" ? "4px 6px" : 0
+        }}
+      >
+        {text}
+      </div>
+    )
+
+    return (
+      <Space size={6} align="start">
+        {tip ? <Tooltip title={tip}>{content}</Tooltip> : content}
+        {text !== "—" && (
+          <Tooltip title="Скопировать">
+            <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copyText(text)} />
+          </Tooltip>
+        )}
+      </Space>
+    )
   }
 
   const leftCols = [
@@ -200,22 +271,8 @@ export default function FullHistoryDialog({
   const columnsFull = [
     ...leftCols,
     { title: "Поле", dataIndex: "field_changed", width: 180, render: (_v, r) => <div style={cellWrap}>{labelForField(r)}</div> },
-    {
-      title: "Было", dataIndex: "old_value", width: 520,
-      render: (v, r) => {
-        const text = formatValue(v)
-        const content = <div style={{ ...cellWrap, background: r.action === "update" ? bgOld : undefined, padding: r.action === "update" ? "4px 6px" : 0 }}>{text}</div>
-        return <Space size={6} align="start">{content}{text !== "—" && <Tooltip title="Скопировать"><Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copyText(text)} /></Tooltip>}</Space>
-      }
-    },
-    {
-      title: "Стало", dataIndex: "new_value", width: 520,
-      render: (v, r) => {
-        const text = formatValue(v)
-        const content = <div style={{ ...cellWrap, background: r.action === "update" ? bgNew : undefined, padding: r.action === "update" ? "4px 6px" : 0 }}>{text}</div>
-        return <Space size={6} align="start">{content}{text !== "—" && <Tooltip title="Скопировать"><Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copyText(text)} /></Tooltip>}</Space>
-      }
-    },
+    { title: "Было", dataIndex: "old_value", width: 520, render: (v, r) => ValueCell(v, r, false) },
+    { title: "Стало", dataIndex: "new_value", width: 520, render: (v, r) => ValueCell(v, r, true) },
     { title: "Комментарий", dataIndex: "comment", width: 240, render: (v) => <div style={cellWrap}>{v || "—"}</div> },
     { title: "Пользователь", dataIndex: "user_name", width: 170, render: (v, r) => v || r.user_id || "—" },
     { title: "Дата", dataIndex: "created_at", width: 170, render: (v) => (v ? new Date(v).toLocaleString("ru-RU") : "—") }
@@ -225,15 +282,7 @@ export default function FullHistoryDialog({
     ...leftCols,
     {
       title: "Детали", dataIndex: "old_value", width: 820,
-      render: (v) => {
-        const text = formatValue(v)
-        return (
-          <Space size={6} align="start">
-            <div style={cellWrap}>{text}</div>
-            {text !== "—" && <Tooltip title="Скопировать"><Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copyText(text)} /></Tooltip>}
-          </Space>
-        )
-      }
+      render: (v, r) => ValueCell(v, r, false)
     },
     { title: "Комментарий", dataIndex: "comment", width: 260, render: (v) => <div style={cellWrap}>{v || "—"}</div> },
     { title: "Пользователь", dataIndex: "user_name", width: 170, render: (v, r) => v || r.user_id || "—" },
@@ -243,9 +292,9 @@ export default function FullHistoryDialog({
   const Controls = (
     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, gap: 12 }}>
       <Space wrap>
-        <Checkbox checked={actionFilter.create} onChange={(e) => setActionFilter((s) => ({ ...s, create: e.target.checked }))}>create</Checkbox>
-        <Checkbox checked={actionFilter.update} onChange={(e) => setActionFilter((s) => ({ ...s, update: e.target.checked }))}>update</Checkbox>
-        <Checkbox checked={actionFilter.delete} onChange={(e) => setActionFilter((s) => ({ ...s, delete: e.target.checked }))}>delete</Checkbox>
+        <Checkbox checked={actionFilter.create} onChange={(e)=>setActionFilter(s=>({ ...s, create:e.target.checked }))}>create</Checkbox>
+        <Checkbox checked={actionFilter.update} onChange={(e)=>setActionFilter(s=>({ ...s, update:e.target.checked }))}>update</Checkbox>
+        <Checkbox checked={actionFilter.delete} onChange={(e)=>setActionFilter(s=>({ ...s, delete:e.target.checked }))}>delete</Checkbox>
       </Space>
       <Space><Button icon={<DownloadOutlined />} onClick={exportCSV}>Скачать CSV</Button></Space>
     </div>

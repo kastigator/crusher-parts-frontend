@@ -1,29 +1,26 @@
+// src/components/common/ImportModal.jsx
 import React, { useState } from "react"
-import {
-  Modal,
-  Button,
-  Alert,
-  Upload,
-  Typography,
-  Spin,
-  Space
-} from "antd"
-import {
-  UploadOutlined,
-  FileExcelOutlined
-} from "@ant-design/icons"
+import { Modal, Button, Alert, Upload, Typography, Spin, Space } from "antd"
+import { UploadOutlined, FileExcelOutlined } from "@ant-design/icons"
 import readXlsxFile from "read-excel-file"
 import axios from "@/api/axiosInstance"
 
 const { Text } = Typography
 
-export default function ImportModal({ open, onClose, type, onSuccess, templateUrl }) {
+export default function ImportModal({
+  open,
+  onClose,
+  type,                 // имя сущности из /import/schema/:type и /import/:type
+  onSuccess,
+  templateUrl,          // ссылка на XLSX-шаблон
+  extraParams = {},     // 👈 ВАЖНО: сюда прокидываем { equipment_model_id: ... } и т.п.
+}) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [errors, setErrors] = useState([])
   const [imported, setImported] = useState(0)
 
-  const handleUpload = async ({ file }) => {
+  const handleUpload = async ({ file, onSuccess: markOk, onError: markErr }) => {
     if (!file || !type) return
 
     try {
@@ -32,83 +29,110 @@ export default function ImportModal({ open, onClose, type, onSuccess, templateUr
       setErrors([])
       setImported(0)
 
-      const schemaRes = await axios.get(`/import/schema/${type}`)
-      const schema = schemaRes.data
+      // 1) тянем схему
+      const { data: schema } = await axios.get(`/import/schema/${type}`)
       if (!schema) throw new Error("Схема импорта не найдена")
 
+      const {
+        requiredFields = [],
+        headerMap = {},
+        transform,          // может прийти как строка функции
+        uniqueField,
+      } = schema
+
+      // 2) читаем файл
       const rows = await readXlsxFile(file)
-      const header = rows[0]
+      if (!rows?.length) throw new Error("Файл пустой или не распознан")
+
+      const headerRow = rows[0].map((h) => String(h ?? "").trim())
       const dataRows = rows.slice(1)
 
-      const { requiredFields = [], headerMap = {}, transform, uniqueField } = schema
+      // 3) проверяем наличие обязательных ЗАГОЛОВКОВ (показываем человеку понятные имена)
+      const present = new Set(headerRow)
+      const techToHuman = (tech) =>
+        Object.entries(headerMap).find(([, k]) => k === tech)?.[0] || tech
 
-      const presentHeaders = new Set(header)
-      const missing = requiredFields.filter((techField) => {
-        const humanHeader = Object.keys(headerMap).find(
-          (label) => headerMap[label] === techField
-        )
-        return humanHeader && !presentHeaders.has(humanHeader)
-      })
+      const missingHuman = requiredFields
+        .map(techToHuman)
+        .filter((label) => !present.has(label))
 
-      if (missing.length) {
-        setError(`Отсутствуют обязательные поля: ${missing.join(", ")}`)
+      if (missingHuman.length) {
+        setError(`Отсутствуют обязательные поля: ${missingHuman.join(", ")}`)
+        markErr?.("missing headers")
         return
       }
 
-      const seenKeys = new Set()
+      // 4) маппим строки -> объект по headerMap
       const clientErrors = []
+      const seenKeys = new Set()
 
       const transformedData = dataRows.map((row, idx) => {
-        const mappedRow = {}
-        header.forEach((label, index) => {
+        const obj = {}
+        headerRow.forEach((label, colIdx) => {
           const key = headerMap[label]
-          if (key) mappedRow[key] = row[index]
+          if (key) obj[key] = row[colIdx]
         })
 
-        if (transform) {
-          try {
-            const fn = new Function("row", `return (${transform})(row)`)
-            Object.assign(mappedRow, fn(mappedRow))
-          } catch (e) {
-            console.warn("Ошибка в transform функции:", e)
-          }
-        }
-
+        // локальная валидация обязательных полей по содержимому
         requiredFields.forEach((field) => {
-          if (!mappedRow[field]) {
-            clientErrors.push(`Строка ${idx + 2}: поле "${field}" обязательно`)
+          const v = obj[field]
+          if (v === undefined || v === null || String(v).trim() === "") {
+            clientErrors.push(
+              `Строка ${idx + 2}: поле "${techToHuman(field)}" обязательно`
+            )
           }
         })
 
+        // проверка дубликатов по uniqueField (внутри файла)
         if (uniqueField) {
-          const key = mappedRow[uniqueField]?.toString().trim()
-          if (key) {
-            if (seenKeys.has(key)) {
-              clientErrors.push(`Строка ${idx + 2}: дубликат значения "${key}" в поле "${uniqueField}"`)
+          const keyVal = (obj[uniqueField] ?? "").toString().trim()
+          if (keyVal) {
+            if (seenKeys.has(keyVal)) {
+              clientErrors.push(
+                `Строка ${idx + 2}: дубликат "${keyVal}" в поле "${techToHuman(uniqueField)}"`
+              )
             } else {
-              seenKeys.add(key)
+              seenKeys.add(keyVal)
             }
           }
         }
 
-        return mappedRow
+        // 5) применяем schema.transform, если backend прислал её как строку
+        try {
+          if (typeof transform === "string" && transform.trim()) {
+            const fn = new Function("row", `return (${transform})(row)`)
+            const extra = fn(obj) || {}
+            Object.assign(obj, extra)
+          }
+        } catch (e) {
+          // не падаем — просто лог
+          console.warn("Ошибка в transform:", e)
+        }
+
+        return obj
       })
 
-      if (clientErrors.length > 0) {
+      if (clientErrors.length) {
         setErrors(clientErrors)
+        markErr?.("client validation")
         return
       }
 
-      const res = await axios.post(`/import/${type}`, transformedData)
-      setImported(res.data.inserted?.length || 0)
-      setErrors(res.data.errors || [])
+      // 6) отправляем на сервер
+      //    👇 КЛЮЧЕВОЕ: прокидываем контекст как query-параметры (например, equipment_model_id)
+      const res = await axios.post(`/import/${type}`, transformedData, {
+        params: extraParams,
+      })
 
-      if (res.data.inserted?.length && typeof onSuccess === "function") {
-        onSuccess()
-      }
+      setImported(res.data?.inserted?.length || 0)
+      setErrors(res.data?.errors || [])
+      if (res.data?.inserted?.length && typeof onSuccess === "function") onSuccess()
+      markOk?.("ok")
     } catch (e) {
-      console.error("Импорт не удался:", e)
-      setError("Ошибка при импорте файла")
+      // покажем текст от сервера, если есть
+      const serverMsg = e?.response?.data?.message
+      setError(serverMsg || "Ошибка при импорте файла")
+      markErr?.(serverMsg || e?.message || "import error")
     } finally {
       setLoading(false)
     }
@@ -127,9 +151,7 @@ export default function ImportModal({ open, onClose, type, onSuccess, templateUr
       onCancel={handleClose}
       title="Импорт из Excel"
       footer={[
-        <Button key="close" onClick={handleClose}>
-          Закрыть
-        </Button>
+        <Button key="close" onClick={handleClose}>Закрыть</Button>
       ]}
       width={600}
     >
@@ -167,9 +189,7 @@ export default function ImportModal({ open, onClose, type, onSuccess, templateUr
             type="error"
             message={
               <ul style={{ margin: 0, paddingLeft: 20 }}>
-                {errors.map((e, i) => (
-                  <li key={i}>{e}</li>
-                ))}
+                {errors.map((e, i) => <li key={i}>{e}</li>)}
               </ul>
             }
           />

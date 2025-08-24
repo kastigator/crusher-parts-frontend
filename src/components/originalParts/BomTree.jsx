@@ -1,39 +1,119 @@
-import React, { useEffect, useState } from "react"
-import { Table, message } from "antd"
-import axios from "@/api/axiosInstance"
+// src/components/originalParts/BomTree.jsx
+import React, { useEffect, useMemo, useState } from "react";
+import { Table, message } from "antd";
+import axios from "@/api/axiosInstance";
 
-export default function BomTree({ root }) {
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(false)
+// аккуратно форматируем числа
+const fmt = (n) =>
+  n == null || Number.isNaN(Number(n)) ? "—" : Number(n).toFixed(4);
 
-  const load = async () => {
-    if (!root?.id) return
-    setLoading(true)
-    try {
-      const { data } = await axios.get(`/original-part-bom/tree/${root.id}`)
-      setRows(Array.isArray(data) ? data : [])
-    } catch (e) {
-      console.error(e); message.error("Не удалось загрузить дерево BOM")
-    } finally {
-      setLoading(false)
+// из плоского списка (с level, path, mult_qty) собираем дерево
+function buildTree(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  // path делаем ключом, чтобы одинаковая деталь могла встречаться в разных ветках
+  const byPath = new Map();
+
+  // вспомогательная функция: создаёт узел
+  const makeNode = (r) => ({
+    key: r.path,                     // уникален в рамках дерева
+    partId: r.node_id,
+    cat_number: r.cat_number,
+    description: r.description_ru || r.description_en || "—",
+    level: r.level,
+    totalQty: Number(r.mult_qty || 1), // итоговое (перемноженное) количество по пути
+    directQty: 1,                      // выставим ниже
+    children: [],
+  });
+
+  // первым всегда идёт корень (level = 0, mult_qty = 1.0)
+  const rootRow = rows[0];
+  const root = makeNode(rootRow);
+  byPath.set(rootRow.path, root);
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const node = makeNode(r);
+
+    // родитель — это path без последнего id
+    const parts = String(r.path).split(">");
+    const parentPath = parts.slice(0, -1).join(">");
+    const parent = byPath.get(parentPath);
+
+    // прямое кол-во = total(child) / total(parent)
+    const parentTotal = parent ? parent.totalQty || 1 : 1;
+    node.directQty =
+      parentTotal && Number.isFinite(parentTotal)
+        ? Number(node.totalQty) / Number(parentTotal)
+        : node.totalQty;
+
+    if (parent) {
+      parent.children.push(node);
     }
+    byPath.set(r.path, node);
   }
 
-  useEffect(() => { load() }, [root?.id]) // eslint-disable-line
+  return [root];
+}
+
+export default function BomTree({ rootId }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!rootId) return;
+    let ignore = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const { data } = await axios.get(`/original-part-bom/tree/${rootId}`);
+        if (!ignore) setRows(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error(e);
+        message.error("Не удалось загрузить дерево BOM");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      ignore = true;
+    };
+  }, [rootId]);
+
+  const treeData = useMemo(() => buildTree(rows), [rows]);
+
+  const columns = [
+    { title: "Part number", dataIndex: "cat_number", key: "cat", width: 200 },
+    { title: "Описание", dataIndex: "description", key: "desc" },
+    {
+      title: "Кол-во в родителе",
+      key: "direct",
+      width: 160,
+      align: "right",
+      render: (_, r) => fmt(r.directQty),
+    },
+    {
+      title: "Итоговое кол-во",
+      key: "total",
+      width: 160,
+      align: "right",
+      render: (_, r) => fmt(r.totalQty),
+    },
+  ];
 
   return (
     <Table
-      rowKey={(r) => r.path}
-      size="small"
+      rowKey="key"
+      columns={columns}
       loading={loading}
+      dataSource={treeData}
       pagination={false}
-      dataSource={rows}
-      columns={[
-        { title: "Уровень", dataIndex: "level", width: 90 },
-        { title: "Cat #", dataIndex: "cat_number", width: 160 },
-        { title: "Описание", render: (_, r) => r.description_ru || r.description_en || "—" },
-        { title: "Mult.Qty", dataIndex: "mult_qty", width: 120 }
-      ]}
+      size="small"
+      expandable={{
+        defaultExpandAllRows: true,
+        childrenColumnName: "children",
+      }}
     />
-  )
+  );
 }

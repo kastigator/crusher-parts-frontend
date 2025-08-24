@@ -1,10 +1,11 @@
-/* ===================== */
-/*  Ant Design Table UI  */
-/* ===================== */
+/* ============================
+   Ant Design Table — scoped UI
+   Применяется только внутри .op-table
+   ============================ */
 
 /* Базовая таблица */
-.ant-table {
-  table-layout: auto;            /* ✅ ширина колонок по содержимому */
+.op-table .ant-table {
+  table-layout: auto;          /* ширина колонок по содержимому */
   width: 100%;
   font-size: 13px;
   font-family: 'Inter', sans-serif;
@@ -14,56 +15,95 @@
 }
 
 /* Заголовок */
-.ant-table-thead > tr > th {
+.op-table .ant-table-thead > tr > th {
   background-color: #f9fafb;
   font-weight: 600;
   padding: 8px;
   color: #1f2937;
-  white-space: nowrap;          /* ❗️заголовок без переноса */
+  white-space: nowrap;          /* без переноса */
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Ячейки таблицы */
-.ant-table-tbody > tr > td {
+/* Ячейки */
+.op-table .ant-table-tbody > tr > td {
   padding: 8px;
   color: #1f2937;
-  white-space: pre-wrap;        /* ✅ перенос строк */
+  white-space: pre-wrap;        /* перенос строк внутри ячеек */
   word-break: break-word;
   vertical-align: top;
 }
 
 /* Hover строки */
-.ant-table-tbody > tr:hover > td {
+.op-table .ant-table-tbody > tr:hover > td {
   background-color: #f0f8ff;
 }
 
-/* Раскрытая строка */
-.ant-table-expanded-row > td {
+/* Раскрытая строка (контейнер для вложенного блока) */
+.op-table .ant-table-expanded-row > td {
+  /* убираем внутренний паддинг, чтобы вложенная таблица легла ровно */
+  padding: 0 !important;
+  background-color: #fcfcfc;
   white-space: pre-wrap !important;
   word-break: break-word;
-  background-color: #fcfcfc;
 }
 
-/* Инлайн-редактирование */
-.ant-input,
-.ant-input-affix-wrapper {
+/* Вложенный блок внутри раскрытой строки */
+.op-table .op-embedded {
+  /* немного «воздуха», чтобы не сливалось со строками сверху/снизу */
+  margin: 8px 12px 12px;
+}
+
+/* Сама вложенная таблица — лёгкая рамка */
+.op-table .op-embedded .ant-table {
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+}
+
+/* Инлайн-редактирование внутри таблицы */
+.op-table .ant-input,
+.op-table .ant-input-affix-wrapper {
   font-size: 13px;
   padding: 4px 8px;
 }
 
-/* Кнопки действий */
-.ant-btn {
+/* Кнопки действий в таблице */
+.op-table .ant-btn {
   font-size: 13px;
   border-radius: 6px;
 }
 
-/* Для пометки длинных строк */
-.tr-long-text td {
+/* Пометка длинных строк (опционально используйте класс на <tr>) */
+.op-table .tr-long-text td {
   background-color: #f9f9f9;
 }
+/* ===== Original Parts — выравнивание вложенных таблиц ===== */
+/* Никакой глобальной магии — только на странице деталей. */
 
-/* Глобально — разрешаем горизонтальный скролл body */
-body {
-  overflow-x: auto;
+.parts-table .ant-table-expanded-row > .ant-table-cell {
+  /* убираем внутренний отступ ячейки раскрытой строки, чтобы
+     левая/правая кромки совпадали с основной таблицей */
+  padding: 0 !important;
+  background: transparent;
 }
+
+/* «Карточка» для вложенных вкладок/таблиц */
+.parts-subtable {
+  margin: 10px 0 12px;              /* небольшой отступ сверху/снизу */
+  padding: 12px;                     /* воздух внутри, чтобы не слипалось */
+  background: #fff;
+  border: 1px solid #e5e7eb;         /* как на поставщиках */
+  border-radius: 8px;
+}
+
+/* внутри карточки лишняя рамка таблицы не нужна */
+.parts-subtable .ant-table {
+  border: 0;
+  box-shadow: none;
+}
+
+/* слегка притираем контент к краям карточки */
+.parts-subtable .ant-table-thead > tr > th:first-child,
+.parts-subtable .ant-table-tbody > tr > td:first-child { padding-left: 12px; }
+.parts-subtable .ant-table-thead > tr > th:last-child,
+.parts-subtable .ant-table-tbody > tr > td:last-child  { padding-right: 12px; }

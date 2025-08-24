@@ -10,6 +10,8 @@ import TnvedCodesPage from '../pages/TnvedCodesPage'
 import ClientsPage from '../pages/ClientsPage'
 import SuppliersPage from '../pages/SuppliersPage'
 import OriginalPartsPage from '../pages/OriginalPartsPage' // ← добавили
+import SupplierPartsPage from "@/pages/SupplierPartsPage";
+
 
 const AppRouter = () => (
   <Suspense fallback={<div>Загрузка...</div>}>
@@ -29,6 +31,7 @@ const AppRouter = () => (
         <Route path="clients" element={<ClientsPage />} />
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="original-parts" element={<OriginalPartsPage />} /> {/* ← новый роут */}
+        <Route path="/supplier-parts" element={<SupplierPartsPage />} />
         <Route path="*" element={<div style={{ padding: 32 }}>Страница не найдена</div>} />
       </Route>
     </Routes>
