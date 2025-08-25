@@ -1,9 +1,10 @@
-// src/components/clients/ClientsTable.jsx
 import React, { useState } from "react"
 import { Table, Input, message, Tabs } from "antd"
+
 import BillingAddressesMain from "./BillingAddressesMain"
 import ShippingAddressesMain from "./ShippingAddressesMain"
 import BankDetailsMain from "./BankDetailsMain"
+
 import ValueDisplay from "@/components/common/ValueDisplay"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import ActionButtons from "@/components/common/ActionButtons"
@@ -21,14 +22,13 @@ export default function ClientsTable({
   // из ClientsMain
   onUpdate,
   onDelete,
-  onReplaceRow, // (freshRow) => void
-  reloadKey,    // 👈 ключ для принудительного ремонта дочерних табов
+  onReplaceRow,
+  reloadKey,
 }) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
   const [historyForId, setHistoryForId] = useState(null)
 
-  // для модалки конфликта
   const [conflict, setConflict] = useState({
     open: false,
     current: null,
@@ -54,7 +54,6 @@ export default function ClientsTable({
     }
     try {
       await onUpdate?.(editedRow.id, { ...editedRow })
-      // успех показывает родитель
       cancelEdit()
       await onReload?.()
     } catch (err) {
@@ -72,7 +71,7 @@ export default function ClientsTable({
     const { confirmed } = await confirmAction("Удалить клиента?")
     if (!confirmed) return
     try {
-      await onDelete?.(client) // успех показывает родитель
+      await onDelete?.(client)
       await onReload?.()
     } catch (err) {
       if (err?.isVersionConflict) {
@@ -147,7 +146,8 @@ export default function ClientsTable({
   const expandedRowRender = (client) => {
     if (!client?.id) return null
     return (
-      <div style={{ paddingInline: 0 }}>
+      // якорь для попапов + «карточка» под строкой
+      <div className="parts-table-wrap parts-subtable">
         <Tabs
           defaultActiveKey="billing"
           destroyInactiveTabPane
@@ -157,7 +157,7 @@ export default function ClientsTable({
               label: "Юридические адреса",
               children: (
                 <BillingAddressesMain
-                  key={`billing-${client.id}-${reloadKey}`}   // 👈 форс ремоунт при reloadKey
+                  key={`billing-${client.id}-${reloadKey}`}
                   clientId={client.id}
                   onChanged={onChildChanged}
                 />
@@ -168,7 +168,7 @@ export default function ClientsTable({
               label: "Адреса доставки",
               children: (
                 <ShippingAddressesMain
-                  key={`shipping-${client.id}-${reloadKey}`}  // 👈
+                  key={`shipping-${client.id}-${reloadKey}`}
                   clientId={client.id}
                   onChanged={onChildChanged}
                 />
@@ -179,7 +179,7 @@ export default function ClientsTable({
               label: "Банковские реквизиты",
               children: (
                 <BankDetailsMain
-                  key={`bank-${client.id}-${reloadKey}`}      // 👈
+                  key={`bank-${client.id}-${reloadKey}`}
                   clientId={client.id}
                   onChanged={onChildChanged}
                 />
@@ -194,6 +194,7 @@ export default function ClientsTable({
   return (
     <>
       <Table
+        className="op-table parts-table"  // ← включает нужные CSS-правки
         rowKey="id"
         dataSource={data}
         columns={columns}
@@ -216,7 +217,6 @@ export default function ClientsTable({
         />
       )}
 
-      {/* Модалка конфликта по РОДИТЕЛЮ-клиенту */}
       <VersionConflictModal
         open={conflict.open}
         draft={conflict.draft}

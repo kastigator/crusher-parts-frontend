@@ -1,13 +1,10 @@
-// src/components/clients/BankDetailsMain.jsx
 import React, { useEffect, useState } from "react"
 import { Row, Col, Input, Button, message } from "antd"
-import { Autocomplete, TextField } from "@mui/material"
 import axios from "@/api/axiosInstance"
 import fetchBankByBic from "@/utils/fetchBankByBic"
 import BankDetailsTable from "./BankDetailsTable"
 import TableToolbar from "@/components/common/TableToolbar"
-
-const currencyOptions = ["RUB", "USD", "EUR", "CNY"]
+import CurrencySelect from "@/components/inputs/CurrencySelect"
 
 export default function BankDetailsMain({ clientId, onChanged }) {
   const [data, setData] = useState([])
@@ -24,56 +21,52 @@ export default function BankDetailsMain({ clientId, onChanged }) {
   })
 
   const fetchData = async () => {
-    if (!clientId) return
     setLoading(true)
     try {
-      const res = await axios.get("/client-bank-details", {
-        params: { client_id: clientId },
-      })
-      setData(Array.isArray(res.data) ? res.data : [])
-    } catch (err) {
-      console.error("Ошибка загрузки банковских реквизитов:", err)
-      message.error("Не удалось загрузить реквизиты")
+      const { data } = await axios.get("/client-bank-details", { params: { client_id: clientId } })
+      setData(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось загрузить банковские реквизиты")
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    if (!clientId) return
     fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId])
 
-  const handleBicChange = async (bic) => {
-    setNewBank((prev) => ({ ...prev, bic }))
-    if (bic.length === 9) {
-      try {
-        const bank = await fetchBankByBic(bic)
-        if (bank?.name) {
-          setNewBank((prev) => ({
-            ...prev,
-            bank_name: bank.name,
-            correspondent_account: bank.correspondent_account || "",
-          }))
-        }
-      } catch {
-        message.warning("Банк по БИК не найден")
-      }
-    }
-  }
+  const filtered = data.filter((r) => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    return (
+      String(r.bank_name || "").toLowerCase().includes(q) ||
+      String(r.bic || "").toLowerCase().includes(q) ||
+      String(r.account_number || "").toLowerCase().includes(q) ||
+      String(r.correspondent_account || "").toLowerCase().includes(q)
+    )
+  })
 
   const handleAdd = async () => {
+    if (!clientId) return
     if (!newBank.account_number?.trim()) {
-      message.warning("Введите расчётный счёт")
+      message.warning("Укажите расчётный счёт")
       return
     }
-
     setSubmitting(true)
     try {
-      const res = await axios.post("/client-bank-details", {
-        ...newBank,
+      await axios.post("/client-bank-details", {
         client_id: clientId,
+        bank_name: newBank.bank_name || null,
+        bic: newBank.bic || null,
+        correspondent_account: newBank.correspondent_account || null,
+        account_number: newBank.account_number || null,
+        currency: newBank.currency || null,
       })
-      setData((prev) => [res.data, ...prev])
+      message.success("Реквизиты добавлены")
       setNewBank({
         bic: "",
         bank_name: "",
@@ -81,88 +74,82 @@ export default function BankDetailsMain({ clientId, onChanged }) {
         account_number: "",
         currency: "RUB",
       })
-      message.success("Реквизиты добавлены")
+      fetchData()
       onChanged?.()
-    } catch (err) {
-      console.error("Ошибка при добавлении:", err)
-      message.error("Не удалось добавить реквизиты")
+    } catch (e) {
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось добавить реквизиты")
     } finally {
       setSubmitting(false)
     }
   }
 
-  // --- optimistic update/delete ---
-  const replaceRow = (fresh) =>
-    setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
-  const removeRow = (id) =>
-    setData((prev) => prev.filter((r) => r.id !== id))
-
-  const onUpdate = async (id, row) => {
+  const onUpdate = async (id, updated) => {
     try {
-      const { data: fresh } = await axios.put(`/client-bank-details/${id}`, {
-        ...row,
-        version: row.version,
-      })
-      replaceRow(fresh)
+      const { data: fresh } = await axios.put(`/client-bank-details/${id}`, updated)
+      setData((prev) => prev.map((r) => (r.id === id ? fresh : r)))
       message.success("Изменения сохранены")
       onChanged?.()
-    } catch (err) {
-      if (err?.response?.status === 409 && err?.response?.data?.type === "version_conflict") {
-        const e = new Error("Version conflict")
-        e.isVersionConflict = true
-        e.currentRecord = err.response.data.current
-        throw e
-      }
+    } catch (e) {
+      const err = new Error("update failed")
+      err.original = e
+      err.isVersionConflict = e?.response?.status === 409
+      err.currentRecord = e?.response?.data?.current || null
       throw err
     }
   }
 
   const onDelete = async (record) => {
     try {
-      await axios.delete(`/client-bank-details/${record.id}`, {
-        params: { version: record.version },
-      })
-      removeRow(record.id)
+      await axios.delete(`/client-bank-details/${record.id}`, { params: { version: record.version } })
+      setData((prev) => prev.filter((r) => r.id !== record.id))
       message.success("Реквизиты удалены")
       onChanged?.()
-    } catch (err) {
-      if (err?.response?.status === 409 && err?.response?.data?.type === "version_conflict") {
-        const current = err.response.data.current
-        if (current) replaceRow(current)
-        const e = new Error("Version conflict")
-        e.isVersionConflict = true
-        e.currentRecord = current
-        throw e
+    } catch (e) {
+      const status = e?.response?.status
+      if (status === 409) {
+        const current = e?.response?.data?.current
+        const err = new Error("version conflict")
+        err.isVersionConflict = true
+        err.currentRecord = current
+        throw err
       }
-      throw err
+      throw e
     }
   }
-  // ---
 
-  const filteredData = search
-    ? data.filter(
-        (item) =>
-          item.bic?.toLowerCase().includes(search.toLowerCase()) ||
-          item.bank_name?.toLowerCase().includes(search.toLowerCase())
-      )
-    : data
+  const replaceRow = (fresh) => {
+    if (!fresh?.id) return
+    setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+  }
 
-  if (!clientId) return null
+  const onBicChange = async (bic) => {
+    setNewBank((p) => ({ ...p, bic }))
+    if (!bic || bic.length < 6) return
+    try {
+      const info = await fetchBankByBic(bic)
+      if (info) {
+        setNewBank((p) => ({
+          ...p,
+          bank_name: info.bank_name || p.bank_name,
+          correspondent_account: info.correspondent_account || p.correspondent_account,
+        }))
+      }
+    } catch { /* noop */ }
+  }
 
   return (
     <>
-      <TableToolbar
-        placeholder="Поиск по БИК или банку"
-        search={search}
-        onSearch={setSearch}
-      />
+      <TableToolbar search={search} onSearch={setSearch} onImport={null} onShowDeleted={null} />
 
-      <Row gutter={12} style={{ marginBottom: 8, marginTop: 8 }}>
+      {/* Форма быстрого добавления */}
+      <Row gutter={[8, 8]} wrap align="middle" style={{ marginBottom: 12 }}>
         <Col span={4}>
           <Input
-            placeholder="BIC"
+            placeholder="БИК"
             value={newBank.bic}
-            onChange={(e) => handleBicChange(e.target.value)}
+            onChange={(e) => onBicChange(e.target.value)}
+            maxLength={11}
           />
         </Col>
 
@@ -171,42 +158,23 @@ export default function BankDetailsMain({ clientId, onChanged }) {
         </Col>
 
         <Col span={5}>
-          <Input
-            placeholder="Кор. счёт"
-            value={newBank.correspondent_account}
-            disabled
-          />
+          <Input placeholder="Кор. счёт" value={newBank.correspondent_account} disabled />
         </Col>
 
         <Col span={3}>
-          <div style={{ position: "relative", zIndex: 1 }}>
-            <Autocomplete
-              disableClearable
-              size="small"
-              options={currencyOptions}
-              value={newBank.currency}
-              onChange={(_, val) =>
-                setNewBank((prev) => ({ ...prev, currency: val }))
-              }
-              slotProps={{ popper: { disablePortal: true } }}
-              renderInput={(params) => (
-                <TextField {...params} label="Валюта" variant="standard" />
-              )}
-              sx={{ minWidth: 100 }}
-            />
-          </div>
+          <CurrencySelect
+            value={newBank.currency}
+            onChange={(val) => setNewBank((prev) => ({ ...prev, currency: val }))}
+            getPopupContainer={(trigger) => trigger?.parentElement || document.body}
+            style={{ minWidth: 160 }}
+          />
         </Col>
 
         <Col span={5}>
           <Input
             placeholder="* Расч. счёт"
             value={newBank.account_number}
-            onChange={(e) =>
-              setNewBank((prev) => ({
-                ...prev,
-                account_number: e.target.value,
-              }))
-            }
+            onChange={(e) => setNewBank((prev) => ({ ...prev, account_number: e.target.value }))}
           />
         </Col>
 
@@ -217,15 +185,18 @@ export default function BankDetailsMain({ clientId, onChanged }) {
         </Col>
       </Row>
 
-      <BankDetailsTable
-        clientId={clientId}
-        data={filteredData}
-        loading={loading}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-        onReplaceRow={replaceRow}
-        onRefresh={fetchData}
-      />
+      {/* Якорь для корректной работы выпадашек + применение табличного скоуп-стиля */}
+      <div className="parts-table-wrap">
+        <BankDetailsTable
+          clientId={clientId}
+          data={filtered}
+          loading={loading}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+          onReplaceRow={replaceRow}
+          onRefresh={fetchData}
+        />
+      </div>
     </>
   )
 }

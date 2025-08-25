@@ -1,6 +1,5 @@
-// src/components/tnved/TnvedCodesMain.jsx
 import React, { useState, useEffect } from "react"
-import { Card, Space, message, Button, Input, Form } from "antd"
+import { Card, Space, message, Button, Input, InputNumber, Form } from "antd"
 import axios from "@/api/axiosInstance"
 import TnvedCodesTable from "./TnvedCodesTable"
 import ImportModal from "@/components/common/ImportModal"
@@ -240,12 +239,12 @@ export default function TnvedCodesMain() {
           </Form.Item>
 
           <Form.Item label="Пошлина">
-            <Input
-              type="number"
-              value={newRecord?.duty_rate ?? ""}
-              onChange={(e) => setNewRecord((prev) => ({ ...prev, duty_rate: e.target.value }))}
+            <InputNumber
+              value={newRecord?.duty_rate ?? null}
+              step={0.01}
               placeholder="%"
-              style={{ width: 100 }}
+              style={{ width: 120 }}
+              onChange={(v) => setNewRecord((prev) => ({ ...prev, duty_rate: v }))}
             />
           </Form.Item>
 

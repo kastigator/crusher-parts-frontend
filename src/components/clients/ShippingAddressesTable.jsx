@@ -1,5 +1,5 @@
 // src/components/clients/ShippingAddressesTable.jsx
-import React, { useState } from "react"
+import React, { useRef, useState } from "react"
 import { Table, Input, Row, Col, Divider, Space, Tooltip, Button } from "antd"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ActionButtons from "@/components/common/ActionButtons"
@@ -28,6 +28,7 @@ export default function ShippingAddressesTable({
 }) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
+  const wrapRef = useRef(null) // якорь для всех dropdown/overlay внутри таблицы
 
   const isEditing = (record) => editingId !== null && record?.id === editingId
   const cancelEdit = () => { setEditingId(null); setEditedRow(null) }
@@ -36,7 +37,6 @@ export default function ShippingAddressesTable({
     if (!editedRow?.formatted_address?.trim()) return
     try {
       await onUpdate(editingId, { ...editedRow })
-      // успех и baseline — в Main
       cancelEdit()
     } catch (err) {
       // конфликты/ошибки обрабатываются в Main (VersionConflictModal)
@@ -49,7 +49,6 @@ export default function ShippingAddressesTable({
     if (!confirmed) return
     try {
       await onDelete(record)
-      // успех и baseline — в Main
     } catch (err) {
       console.error("Ошибка при удалении адреса доставки:", err)
     }
@@ -74,6 +73,7 @@ export default function ShippingAddressesTable({
                   place_id: editedRow.place_id,
                   postal_code: editedRow.postal_code,
                 }}
+                getPopupContainer={() => wrapRef.current || document.body}
                 onChange={(val) =>
                   setEditedRow((prev) => ({
                     ...prev,
@@ -96,17 +96,81 @@ export default function ShippingAddressesTable({
               <Divider style={{ margin: "8px 0" }} />
 
               <Row gutter={8}>
-                <Col span={6}><Input placeholder="Страна" value={editedRow.country} onChange={(e) => setEditedRow((p) => ({ ...p, country: e.target.value }))} /></Col>
-                <Col span={6}><Input placeholder="Регион" value={editedRow.region} onChange={(e) => setEditedRow((p) => ({ ...p, region: e.target.value }))} /></Col>
-                <Col span={6}><Input placeholder="Город" value={editedRow.city} onChange={(e) => setEditedRow((p) => ({ ...p, city: e.target.value }))} /></Col>
-                <Col span={6}><Input placeholder="Индекс" value={editedRow.postal_code} onChange={(e) => setEditedRow((p) => ({ ...p, postal_code: e.target.value }))} /></Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Страна"
+                    value={editedRow.country}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, country: e.target.value }))}
+                    onPressEnter={handleSave}
+                    onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Регион"
+                    value={editedRow.region}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, region: e.target.value }))}
+                    onPressEnter={handleSave}
+                    onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Город"
+                    value={editedRow.city}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, city: e.target.value }))}
+                    onPressEnter={handleSave}
+                    onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Индекс"
+                    value={editedRow.postal_code}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, postal_code: e.target.value }))}
+                    onPressEnter={handleSave}
+                    onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+                  />
+                </Col>
               </Row>
 
               <Row gutter={8} style={{ marginTop: 8 }}>
-                <Col span={8}><Input placeholder="Улица" value={editedRow.street} onChange={(e) => setEditedRow((p) => ({ ...p, street: e.target.value }))} /></Col>
-                <Col span={4}><Input placeholder="Дом" value={editedRow.house} onChange={(e) => setEditedRow((p) => ({ ...p, house: e.target.value }))} /></Col>
-                <Col span={6}><Input placeholder="Строение" value={editedRow.building} onChange={(e) => setEditedRow((p) => ({ ...p, building: e.target.value }))} /></Col>
-                <Col span={6}><Input placeholder="Подъезд" value={editedRow.entrance} onChange={(e) => setEditedRow((p) => ({ ...p, entrance: e.target.value }))} /></Col>
+                <Col span={8}>
+                  <Input
+                    placeholder="Улица"
+                    value={editedRow.street}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, street: e.target.value }))}
+                    onPressEnter={handleSave}
+                    onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+                  />
+                </Col>
+                <Col span={4}>
+                  <Input
+                    placeholder="Дом"
+                    value={editedRow.house}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, house: e.target.value }))}
+                    onPressEnter={handleSave}
+                    onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Строение"
+                    value={editedRow.building}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, building: e.target.value }))}
+                    onPressEnter={handleSave}
+                    onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Подъезд"
+                    value={editedRow.entrance}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, entrance: e.target.value }))}
+                    onPressEnter={handleSave}
+                    onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+                  />
+                </Col>
               </Row>
 
               <Row style={{ marginTop: 8 }}>
@@ -116,6 +180,8 @@ export default function ShippingAddressesTable({
                     autoSize={{ minRows: 1, maxRows: 4 }}
                     value={editedRow.comment}
                     onChange={(e) => setEditedRow((p) => ({ ...p, comment: e.target.value }))}
+                    onPressEnter={handleSave}
+                    onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
                   />
                 </Col>
               </Row>
@@ -178,13 +244,16 @@ export default function ShippingAddressesTable({
   ]
 
   return (
-    <Table
-      rowKey="id"
-      columns={columns}
-      dataSource={data}
-      loading={loading}
-      pagination={false}
-      size="small"
-    />
+    <div className="parts-table-wrap" ref={wrapRef}>
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={data}
+        loading={loading}
+        pagination={false}
+        size="small"
+        className="op-table parts-table"
+      />
+    </div>
   )
 }

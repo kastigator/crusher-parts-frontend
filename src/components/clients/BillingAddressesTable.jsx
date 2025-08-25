@@ -33,14 +33,12 @@ export default function BillingAddressesTable({
   const cancelEdit = () => { setEditingId(null); setEditedRow(null) }
 
   const handleSave = async () => {
-    if (!editedRow?.formatted_address?.trim()) {
-      return
-    }
+    if (!editedRow?.formatted_address?.trim()) return
     try {
       await onUpdate(editingId, editedRow)
       cancelEdit()
     } catch (err) {
-      // ⚠️ ошибки (409) обрабатываются наверху в Main через VersionConflictModal
+      // конфликты/ошибки ловятся в Main через VersionConflictModal
       console.error("Ошибка при сохранении адреса:", err)
     }
   }
@@ -51,6 +49,11 @@ export default function BillingAddressesTable({
     } catch (err) {
       console.error("Ошибка при удалении:", err)
     }
+  }
+
+  const onKey = (e) => {
+    if (e.key === "Enter") handleSave()
+    if (e.key === "Escape") cancelEdit()
   }
 
   const columns = [
@@ -65,6 +68,10 @@ export default function BillingAddressesTable({
             <>
               <PlaceAddressInput
                 debugId={`billing-table-row-${record.id}`}
+                // якорим выпадашки k .parts-table-wrap (если инпут поддерживает)
+                getPopupContainer={(trigger) =>
+                  trigger?.closest(".parts-table-wrap") || document.body
+                }
                 value={{
                   address_line: editedRow.formatted_address,
                   lat: editedRow.lat,
@@ -94,17 +101,73 @@ export default function BillingAddressesTable({
               <Divider style={{ margin: "8px 0" }} />
 
               <Row gutter={8}>
-                <Col span={6}><Input placeholder="Страна" value={editedRow.country} onChange={(e) => setEditedRow((p) => ({ ...p, country: e.target.value }))} /></Col>
-                <Col span={6}><Input placeholder="Регион" value={editedRow.region} onChange={(e) => setEditedRow((p) => ({ ...p, region: e.target.value }))} /></Col>
-                <Col span={6}><Input placeholder="Город" value={editedRow.city} onChange={(e) => setEditedRow((p) => ({ ...p, city: e.target.value }))} /></Col>
-                <Col span={6}><Input placeholder="Индекс" value={editedRow.postal_code} onChange={(e) => setEditedRow((p) => ({ ...p, postal_code: e.target.value }))} /></Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Страна"
+                    value={editedRow.country}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, country: e.target.value }))}
+                    onKeyDown={onKey}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Регион"
+                    value={editedRow.region}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, region: e.target.value }))}
+                    onKeyDown={onKey}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Город"
+                    value={editedRow.city}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, city: e.target.value }))}
+                    onKeyDown={onKey}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Индекс"
+                    value={editedRow.postal_code}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, postal_code: e.target.value }))}
+                    onKeyDown={onKey}
+                  />
+                </Col>
               </Row>
 
               <Row gutter={8} style={{ marginTop: 8 }}>
-                <Col span={8}><Input placeholder="Улица" value={editedRow.street} onChange={(e) => setEditedRow((p) => ({ ...p, street: e.target.value }))} /></Col>
-                <Col span={4}><Input placeholder="Дом" value={editedRow.house} onChange={(e) => setEditedRow((p) => ({ ...p, house: e.target.value }))} /></Col>
-                <Col span={6}><Input placeholder="Строение" value={editedRow.building} onChange={(e) => setEditedRow((p) => ({ ...p, building: e.target.value }))} /></Col>
-                <Col span={6}><Input placeholder="Подъезд" value={editedRow.entrance} onChange={(e) => setEditedRow((p) => ({ ...p, entrance: e.target.value }))} /></Col>
+                <Col span={8}>
+                  <Input
+                    placeholder="Улица"
+                    value={editedRow.street}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, street: e.target.value }))}
+                    onKeyDown={onKey}
+                  />
+                </Col>
+                <Col span={4}>
+                  <Input
+                    placeholder="Дом"
+                    value={editedRow.house}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, house: e.target.value }))}
+                    onKeyDown={onKey}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Строение"
+                    value={editedRow.building}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, building: e.target.value }))}
+                    onKeyDown={onKey}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Input
+                    placeholder="Подъезд"
+                    value={editedRow.entrance}
+                    onChange={(e) => setEditedRow((p) => ({ ...p, entrance: e.target.value }))}
+                    onKeyDown={onKey}
+                  />
+                </Col>
               </Row>
 
               <Row style={{ marginTop: 8 }}>
@@ -114,6 +177,7 @@ export default function BillingAddressesTable({
                     autoSize={{ minRows: 1, maxRows: 4 }}
                     value={editedRow.comment}
                     onChange={(e) => setEditedRow((p) => ({ ...p, comment: e.target.value }))}
+                    onKeyDown={onKey}
                   />
                 </Col>
               </Row>
@@ -131,7 +195,7 @@ export default function BillingAddressesTable({
               setEditedRow({ ...record })
             }}
           >
-            <div style={{ fontWeight: 600 }}>{oneLine}</div>
+            <div style={{ fontWeight: 600 }} className="cell-ellipsis">{oneLine}</div>
             {record.comment && (
               <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
                 Комментарий: {record.comment}
@@ -175,6 +239,7 @@ export default function BillingAddressesTable({
 
   return (
     <Table
+      className="op-table parts-table"
       rowKey="id"
       columns={columns}
       dataSource={data}

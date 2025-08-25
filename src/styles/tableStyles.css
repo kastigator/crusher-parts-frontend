@@ -12,22 +12,31 @@
   vertical-align: bottom;
 }
 
-/* Якорь для выпадающих списков (AntD Select, pagination size-changer и др.)
+/* Якорь для выпадающих списков (AntD Select/DatePicker/Dropdown/size-changer).
    Оборачивай таблицу в <div class="parts-table-wrap">...</div> */
 .parts-table-wrap {
-  position: relative;          /* чтобы popup позиционировался внутри контейнера */
-  isolation: isolate;          /* изолирует контекст наложения для корректного z-index */
-  overflow: visible;           /* важно: чтобы дропдауны не обрезались родителем */
+  position: relative;     /* чтобы popup крепился внутри контейнера */
+  isolation: isolate;     /* свой контекст наложения для z-index */
+  overflow: visible;      /* дропдауны не обрезаются родителем */
+}
+
+/* Вложенный якорь внутри раскрытой строки (Tabs/формы под строкой) */
+.parts-subtable {
+  position: relative;     /* локальный якорь для попапов внутри вкладок */
+  margin: 10px 0 12px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: visible;
 }
 
 /* =========================================
-   Ant Design Table — scoped UI
-   Применяется только внутри .op-table
+   Ant Design Table — scoped UI (только внутри .op-table)
    ========================================= */
 
-/* Базовая таблица */
 .op-table .ant-table {
-  table-layout: auto;          /* ширина колонок по содержимому */
+  table-layout: auto;
   width: 100%;
   font-size: 13px;
   font-family: 'Inter', sans-serif;
@@ -42,7 +51,7 @@
   font-weight: 600;
   padding: 8px;
   color: #1f2937;
-  white-space: nowrap;          /* без переноса */
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -51,7 +60,7 @@
 .op-table .ant-table-tbody > tr > td {
   padding: 8px;
   color: #1f2937;
-  white-space: pre-wrap;        /* перенос строк внутри ячеек */
+  white-space: pre-wrap;
   word-break: break-word;
   vertical-align: top;
 }
@@ -63,13 +72,14 @@
 
 /* Раскрытая строка (контейнер для вложенного блока) */
 .op-table .ant-table-expanded-row > td {
-  padding: 0 !important;        /* убираем внутренний паддинг */
+  padding: 0 !important;
   background-color: #fcfcfc;
   white-space: pre-wrap !important;
   word-break: break-word;
+  overflow: visible; /* важно для попапов внутри раскрытой строки */
 }
 
-/* Вложенный блок внутри раскрытой строки (если потребуется) */
+/* Вложенная «карточка» содержимого под строкой */
 .op-table .op-embedded {
   margin: 8px 12px 12px;
 }
@@ -79,6 +89,18 @@
   border: 1px solid #e9ecef;
   border-radius: 6px;
 }
+
+/* Убираем лишнюю рамку у таблицы внутри .parts-subtable */
+.parts-subtable .ant-table {
+  border: 0;
+  box-shadow: none;
+}
+
+/* Слегка притираем контент к краям карточки */
+.parts-subtable .ant-table-thead > tr > th:first-child,
+.parts-subtable .ant-table-tbody > tr > td:first-child { padding-left: 12px; }
+.parts-subtable .ant-table-thead > tr > th:last-child,
+.parts-subtable .ant-table-tbody > tr > td:last-child  { padding-right: 12px; }
 
 /* Инлайн-редактирование */
 .op-table .ant-input,
@@ -99,42 +121,9 @@
 }
 
 /* =========================================
-   Original Parts / Supplier Parts — выравнивание
-   ========================================= */
-
-/* убираем отступ ячейки раскрытой строки, чтобы
-   левая/правая кромки совпадали с основной таблицей */
-.parts-table .ant-table-expanded-row > .ant-table-cell {
-  padding: 0 !important;
-  background: transparent;
-}
-
-/* «Карточка» для вложенных вкладок/таблиц под строкой */
-.parts-subtable {
-  margin: 10px 0 12px;
-  padding: 12px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-}
-
-/* внутри карточки лишняя рамка таблицы не нужна */
-.parts-subtable .ant-table {
-  border: 0;
-  box-shadow: none;
-}
-
-/* слегка притираем контент к краям карточки */
-.parts-subtable .ant-table-thead > tr > th:first-child,
-.parts-subtable .ant-table-tbody > tr > td:first-child { padding-left: 12px; }
-.parts-subtable .ant-table-thead > tr > th:last-child,
-.parts-subtable .ant-table-tbody > tr > td:last-child  { padding-right: 12px; }
-
-/* =========================================
    Пагинация и всплывающие элементы
    ========================================= */
 
-/* Компактнее подписи пагинации */
 .op-table .ant-pagination {
   margin: 12px 0;
   font-size: 13px;
@@ -155,4 +144,17 @@
 .parts-table-wrap .ant-picker-dropdown,
 .parts-table-wrap .ant-dropdown {
   z-index: 1000;
+}
+
+/* На всякий случай повышаем z-index для попапов внутри .parts-subtable */
+.parts-subtable .ant-select-dropdown,
+.parts-subtable .ant-picker-dropdown,
+.parts-subtable .ant-dropdown {
+  z-index: 1050;
+}
+
+/* Выравнивание кромок основной и вложенной таблиц */
+.parts-table .ant-table-expanded-row > .ant-table-cell {
+  padding: 0 !important;
+  background: transparent;
 }

@@ -94,9 +94,7 @@ export default function ClientsMain() {
     }
   }
 
-  useEffect(() => {
-    fetchClients()
-  }, [])
+  useEffect(() => { fetchClients() }, [])
 
   const handleAdd = async () => {
     const payload = {
@@ -142,7 +140,7 @@ export default function ClientsMain() {
     )
   }, [clients, search])
 
-  // --- etag helpers (для баннера "Появились новые изменения") ---
+  // --- etag helpers (баннер "Появились новые изменения") ---
   const fetchClientsEtag = async () => {
     const { data } = await axios.get("/clients/etag")
     return data?.etag || ""
@@ -152,9 +150,9 @@ export default function ClientsMain() {
     if (!clientId) return ""
     try {
       const [billing, shipping, bank] = await Promise.all([
-        axios.get("/client-billing-addresses/etag", { params: { client_id: clientId } }),
+        axios.get("/client-billing-addresses/etag",  { params: { client_id: clientId } }),
         axios.get("/client-shipping-addresses/etag", { params: { client_id: clientId } }),
-        axios.get("/client-bank-details/etag", { params: { client_id: clientId } }),
+        axios.get("/client-bank-details/etag",      { params: { client_id: clientId } }),
       ])
       return [
         billing.data?.etag || "0:0",
@@ -183,14 +181,12 @@ export default function ClientsMain() {
       baselinesRef.current.set(key, tag)
       lastBaselineSetAtRef.current = Date.now()
       setHasNew(false)
-    } catch {
-      // ignore
-    }
+    } catch { /* noop */ }
   }
 
   const refreshAllAndResetBaseline = async () => {
     await fetchClients()
-    setReloadKey((k) => k + 1) // 👈 форсим перемонтирование дочерних вкладок
+    setReloadKey((k) => k + 1)           // форсим перемонтирование дочерних вкладок
     await setBaselineFor(expandedClientId)
   }
 
@@ -200,9 +196,7 @@ export default function ClientsMain() {
   }, [loading])
 
   useEffect(() => {
-    let t0
-    let timer
-
+    let t0, timer
     const check = async () => {
       if (document.hidden) return
       const key = getKey(expandedClientId)
@@ -212,16 +206,12 @@ export default function ClientsMain() {
         if (!baseline) return
         if (Date.now() - lastBaselineSetAtRef.current < 2000) return
         if (baseline !== current) setHasNew(true)
-      } catch {
-        // ignore
-      }
+      } catch { /* noop */ }
     }
-
     t0 = setTimeout(check, 10000)
     timer = setInterval(check, 30000)
     const onVis = () => check()
     document.addEventListener("visibilitychange", onVis)
-
     return () => {
       clearTimeout(t0)
       clearInterval(timer)
@@ -230,7 +220,6 @@ export default function ClientsMain() {
   }, [expandedClientId])
 
   const handleChildChanged = async () => {
-    // когда внутри дочерней вкладки что-то поменяли — сбрасываем baseline
     await setBaselineFor(expandedClientId)
   }
 
@@ -261,9 +250,7 @@ export default function ClientsMain() {
           <Form.Item label="Компания">
             <Input
               value={newClient.company_name}
-              onChange={(e) =>
-                setNewClient((prev) => ({ ...prev, company_name: e.target.value }))
-              }
+              onChange={(e) => setNewClient((prev) => ({ ...prev, company_name: e.target.value }))}
               placeholder="Название"
             />
           </Form.Item>
@@ -271,9 +258,7 @@ export default function ClientsMain() {
           <Form.Item label="Контактное лицо">
             <Input
               value={newClient.contact_person}
-              onChange={(e) =>
-                setNewClient((prev) => ({ ...prev, contact_person: e.target.value }))
-              }
+              onChange={(e) => setNewClient((prev) => ({ ...prev, contact_person: e.target.value }))}
               placeholder="ФИО"
             />
           </Form.Item>
@@ -281,45 +266,42 @@ export default function ClientsMain() {
           <Form.Item label="Телефон">
             <Input
               value={newClient.phone}
-              onChange={(e) =>
-                setNewClient((prev) => ({ ...prev, phone: e.target.value }))
-              }
+              onChange={(e) => setNewClient((prev) => ({ ...prev, phone: e.target.value }))}
               placeholder="+7..."
             />
           </Form.Item>
 
           <Form.Item label="Email">
-          <Input
+            <Input
               value={newClient.email}
-              onChange={(e) =>
-                setNewClient((prev) => ({ ...prev, email: e.target.value }))
-              }
+              onChange={(e) => setNewClient((prev) => ({ ...prev, email: e.target.value }))}
               placeholder="example@mail.com"
             />
           </Form.Item>
 
           <Form.Item>
-            <Button type="primary" htmlType="submit">
-              Добавить
-            </Button>
+            <Button type="primary" htmlType="submit">Добавить</Button>
           </Form.Item>
         </Form>
 
-        <ClientsTable
-          data={filtered}
-          loading={loading}
-          expandedClientId={expandedClientId}
-          setExpandedClientId={async (val) => {
-            setExpandedClientId(val)
-            await setBaselineFor(val)
-          }}
-          onReload={refreshAllAndResetBaseline}
-          onChildChanged={handleChildChanged}
-          onUpdate={onUpdate}
-          onDelete={onDelete}
-          onReplaceRow={replaceRow}
-          reloadKey={reloadKey}
-        />
+        {/* Якорь для всех вложенных выпадашек/календарей + правильная ширина */}
+        <div className="parts-table-wrap">
+          <ClientsTable
+            data={filtered}
+            loading={loading}
+            expandedClientId={expandedClientId}
+            setExpandedClientId={async (val) => {
+              setExpandedClientId(val)
+              await setBaselineFor(val)
+            }}
+            onReload={refreshAllAndResetBaseline}
+            onChildChanged={handleChildChanged}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            onReplaceRow={replaceRow}
+            reloadKey={reloadKey}
+          />
+        </div>
       </Card>
 
       {showDeletedModal && (

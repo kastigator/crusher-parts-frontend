@@ -1,6 +1,5 @@
-// src/components/tnved/TnvedCodesTable.jsx
 import React, { useState } from "react"
-import { Table, Input, message } from "antd"
+import { Table, Input, InputNumber, message } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
@@ -81,6 +80,7 @@ export default function TnvedCodesTable({
             value={editedRow.code}
             onChange={(e) => setEditedRow({ ...editedRow, code: e.target.value })}
             onPressEnter={saveEdit}
+            onBlur={saveEdit}
           />
         ) : (
           record.code || ""
@@ -96,6 +96,7 @@ export default function TnvedCodesTable({
             value={editedRow.description || ""}
             onChange={(e) => setEditedRow({ ...editedRow, description: e.target.value })}
             autoSize={{ minRows: 2, maxRows: 6 }}
+            onBlur={saveEdit}
           />
         ) : (
           record.description
@@ -109,12 +110,13 @@ export default function TnvedCodesTable({
       width: 140,
       render: (_, record) =>
         isEditing(record) ? (
-          <Input
+          <InputNumber
             value={editedRow.duty_rate}
-            type="number"
-            step="0.01"
-            onChange={(e) => setEditedRow({ ...editedRow, duty_rate: e.target.value })}
+            step={0.01}
+            style={{ width: "100%" }}
+            onChange={(v) => setEditedRow({ ...editedRow, duty_rate: v })}
             onPressEnter={saveEdit}
+            onBlur={saveEdit}
           />
         ) : (
           record.duty_rate ?? ""
@@ -130,6 +132,7 @@ export default function TnvedCodesTable({
             value={editedRow.notes || ""}
             onChange={(e) => setEditedRow({ ...editedRow, notes: e.target.value })}
             autoSize={{ minRows: 2, maxRows: 4 }}
+            onBlur={saveEdit}
           />
         ) : (
           record.notes ? record.notes.slice(0, 80) + (record.notes.length > 80 ? "…" : "") : ""
@@ -159,6 +162,7 @@ export default function TnvedCodesTable({
     <>
       <div style={{ overflowX: "auto" }}>
         <Table
+          className="op-table"
           dataSource={data}
           columns={columns}
           rowKey="id"

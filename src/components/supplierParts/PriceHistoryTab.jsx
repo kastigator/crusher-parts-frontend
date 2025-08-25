@@ -1,7 +1,13 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { Table, Form, Input, InputNumber, DatePicker, Button, Space, message } from "antd";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { Table, Form, InputNumber, DatePicker, Button, Input, Select, Space, message } from "antd";
 import dayjs from "dayjs";
 import axios from "@/api/axiosInstance";
+import cc from "currency-codes";
+
+const CURRENCY_OPTIONS = cc.codes().map(code => {
+  const info = cc.code(code);
+  return { value: code, label: `${code} — ${info?.currency || code}` };
+});
 
 export default function PriceHistoryTab({ supplierPartId }) {
   const [rows, setRows] = useState([]);
@@ -63,12 +69,25 @@ export default function PriceHistoryTab({ supplierPartId }) {
     }
   };
 
-  const columns = [
-    { title: "Дата", dataIndex: "date", width: 160, render: v => v ? dayjs(v).format("YYYY-MM-DD HH:mm") : "—" },
-    { title: "Цена", dataIndex: "price", width: 140 },
-    { title: "Валюта", dataIndex: "currency", width: 100, render: v => v || "—" },
+  const quickToday = () => {
+    const price = form.getFieldValue("price");
+    if (!price && price !== 0) {
+      message.info("Сначала укажите цену");
+      return;
+    }
+    form.setFieldsValue({ date: dayjs() });
+    addPrice();
+  };
+
+  const columns = useMemo(() => ([
+    { title: "Дата", dataIndex: "date", width: 170, render: v => v ? dayjs(v).format("YYYY-MM-DD HH:mm") : "—" },
+    { title: "Цена", dataIndex: "price", width: 120 },
+    { title: "Валюта", dataIndex: "currency", width: 110, render: v => v || "—" },
     { title: "Комментарий", dataIndex: "comment" },
-  ];
+  ]), []);
+
+  const selectFilter = (input, option) =>
+    (option?.label ?? "").toLowerCase().includes(input.toLowerCase());
 
   return (
     <div>
@@ -86,14 +105,26 @@ export default function PriceHistoryTab({ supplierPartId }) {
         </Form.Item>
 
         <Form.Item name="currency" label="Валюта (ISO3)">
-          <Input placeholder="USD" maxLength={3} style={{ width: 120 }} onChange={e => {
-            const v = e.target.value?.toUpperCase().slice(0, 3);
-            form.setFieldsValue({ currency: v });
-          }} />
+          <Select
+            allowClear
+            showSearch
+            options={CURRENCY_OPTIONS}
+            optionFilterProp="label"
+            filterOption={selectFilter}
+            placeholder="Выберите валюту"
+            style={{ width: 200 }}
+            dropdownMatchSelectWidth={false}
+            getPopupContainer={() => document.body}
+          />
         </Form.Item>
 
         <Form.Item name="date" label="Дата">
-          <DatePicker showTime allowClear style={{ width: 200 }} />
+          <DatePicker
+            showTime
+            allowClear
+            style={{ width: 210 }}
+            getPopupContainer={() => document.body}
+          />
         </Form.Item>
 
         <Form.Item name="comment" label="Комментарий" style={{ flex: 1 }}>
@@ -101,9 +132,14 @@ export default function PriceHistoryTab({ supplierPartId }) {
         </Form.Item>
 
         <Form.Item>
-          <Button type="primary" onClick={addPrice} loading={adding}>
-            Добавить
-          </Button>
+          <Space>
+            <Button type="primary" onClick={addPrice} loading={adding}>
+              Добавить
+            </Button>
+            <Button onClick={quickToday} loading={adding}>
+              Обновить (сегодня)
+            </Button>
+          </Space>
         </Form.Item>
       </Form>
 
