@@ -1,28 +1,31 @@
+// src/components/supplierParts/SupplierPickerDrawer.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Drawer, Table, Space, Button, Input, message } from "antd"
+import { Drawer, Table, Button, Input, Space, Tooltip, Empty, message } from "antd"
 import axios from "@/api/axiosInstance"
 
-export default function SupplierPickerDrawer({ open, onClose, onPick }) {
+export default function SupplierPickerDrawer({
+  open,
+  onClose,
+  onPick,
+  initialSupplierId = null,
+}) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
+  const [selectedId, setSelectedId] = useState(initialSupplierId)
   const [search, setSearch] = useState("")
-  const [selectedRowKeys, setSelectedRowKeys] = useState([])
-  const [selectedRow, setSelectedRow] = useState(null)
   const abortRef = useRef(null)
-  const timerRef = useRef(null)
 
-  const load = async (q) => {
+  useEffect(() => { setSelectedId(initialSupplierId ?? null) }, [initialSupplierId])
+
+  const load = async () => {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
-
     setLoading(true)
     try {
-      // ВАЖНО: правильный путь — /part-suppliers
-      const { data } = await axios.get("/part-suppliers", {
-        params: q ? { q } : {},
-        signal: controller.signal,
-      })
+      const params = {}
+      if (search?.trim()) params.q = search.trim()
+      const { data } = await axios.get("/part-suppliers", { params, signal: controller.signal })
       setRows(Array.isArray(data) ? data : [])
     } catch (e) {
       const name = e?.name || e?.code
@@ -36,84 +39,81 @@ export default function SupplierPickerDrawer({ open, onClose, onPick }) {
   }
 
   useEffect(() => {
-    if (!open) return
-    load("")
-    setSelectedRowKeys([])
-    setSelectedRow(null)
-    setSearch("")
-    return () => abortRef.current?.abort()
-  }, [open])
-
-  // debounce поиска
-  useEffect(() => {
-    if (!open) return
-    clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => load(search.trim()), 300)
-    return () => clearTimeout(timerRef.current)
-  }, [search, open])
+    const t = setTimeout(load, 300)
+    return () => { clearTimeout(t); abortRef.current?.abort() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
 
   const columns = useMemo(() => [
-    { title: "Компания", dataIndex: "name", ellipsis: true },
-    { title: "Страна", dataIndex: "country", width: 90 },
-    { title: "Контакт", dataIndex: "contact_person", ellipsis: true },
-    { title: "Телефон", dataIndex: "phone", width: 140, ellipsis: true },
-    { title: "Email", dataIndex: "email", width: 180, ellipsis: true },
+    {
+      title: "Компания",
+      dataIndex: "name",
+      render: (text) => (
+        <Tooltip title={text}>
+          <span className="cell-ellipsis" style={{ display: "inline-block", maxWidth: 380 }}>
+            {text}
+          </span>
+        </Tooltip>
+      ),
+    },
+    { title: "Страна", dataIndex: "country", width: 80 },
+    {
+      title: "Контакт",
+      dataIndex: "contact_person",
+      render: (v) => v || "—",
+      width: 180,
+      ellipsis: true,
+    },
+    { title: "Телефон", dataIndex: "phone", render: (v) => v || "—", width: 150 },
+    { title: "Email", dataIndex: "email", render: (v) => v || "—", width: 220, ellipsis: true },
   ], [])
 
-  const onRowSelect = (keys, [row]) => {
-    setSelectedRowKeys(keys)
-    setSelectedRow(row || null)
+  const pickSelected = () => {
+    const picked = rows.find(r => r.id === selectedId)
+    if (picked) onPick?.(picked)
   }
 
   return (
     <Drawer
+      width={900}
       title="Выбрать поставщика"
       open={open}
       onClose={onClose}
-      width={760}
-      destroyOnClose
+      // Кнопка «Выбрать» в правой части заголовка — как в других наших модалках
       extra={
-        <Input
-          allowClear
-          placeholder="Найти поставщика по названию..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ width: 280 }}
-        />
-      }
-      footer={
-        <Space style={{ display: "flex", justifyContent: "flex-end" }}>
+        <Space>
           <Button onClick={onClose}>Отмена</Button>
-          <Button
-            type="primary"
-            disabled={!selectedRow}
-            onClick={() => {
-              if (selectedRow) onPick?.(selectedRow)
-              onClose?.()
-            }}
-          >
+          <Button type="primary" disabled={!selectedId} onClick={pickSelected}>
             Выбрать
           </Button>
         </Space>
       }
+      footer={null}
     >
+      <Space style={{ width: "100%", marginBottom: 12 }}>
+        <Input
+          allowClear
+          placeholder="Найти поставщика по названию…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </Space>
+
       <Table
         rowKey="id"
         dataSource={rows}
-        columns={columns}
         loading={loading}
-        size="middle"
+        columns={columns}
+        locale={{ emptyText: <Empty description="Поставщики не найдены" /> }}
         pagination={{ pageSize: 10 }}
         rowSelection={{
           type: "radio",
-          selectedRowKeys,
-          onChange: onRowSelect,
+          selectedRowKeys: selectedId ? [selectedId] : [],
+          onChange: (keys) => setSelectedId(keys?.[0]),
         }}
-        onRow={(r) => ({
-          onDoubleClick: () => {
-            onPick?.(r)
-            onClose?.()
-          },
+        onRow={(record) => ({
+          onClick: () => setSelectedId(record.id),
+          onDoubleClick: () => { setSelectedId(record.id); pickSelected() },
         })}
       />
     </Drawer>

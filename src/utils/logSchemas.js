@@ -36,9 +36,7 @@ export const logSchemas = {
       tnved_code_id: {
         endpoint: "/tnved-codes/search",
         param: "q",
-        // под «код» понимаем строку из ≥4 цифр (старые короткие числовые id не трогаем)
         match: (v) => /^\d{4,}$/.test(String(v || "").trim()),
-        // из ответа берём элемент с точным совпадением кода и собираем подпись
         pick: (data, value) => {
           const arr = Array.isArray(data) ? data : []
           const hit = arr.find((x) => String(x.code) === String(value))
@@ -135,12 +133,14 @@ export const logSchemas = {
       place_id: "Place ID",
       lat: "Широта",
       lng: "Долгота",
-      is_primary: "Основной",
+      is_primary: "Основной", // адрес
+
       comment: "Комментарий",
 
       // контакты (supplier_contacts)
       role: "Роль",
-      is_primary_contact: "Основной контакт",
+      is_primary: "Основной контакт",         // ⬅ добавить для совпадения с полем таблицы
+      is_primary_contact: "Основной контакт", // на случай старых логов
 
       // банки (supplier_bank_details)
       bank_name: "Банк",
@@ -155,8 +155,54 @@ export const logSchemas = {
     },
     excludeFields: ["id", "supplier_id", "version", "created_at", "updated_at"],
   },
+
+  // === Детали поставщиков ===
+  supplier_parts: {
+    fields: {
+      supplier_part_number: "Номер у поставщика",
+      description: "Описание",
+      currency: "Валюта (ISO3)",
+      lead_time_days: "Срок поставки, дни",
+      min_order_qty: "Мин. партия",
+      packaging: "Упаковка",
+      active: "Активна",
+      original_part_cat_number: "Ориг. номер (текст)",
+
+      // события/служебные поля для истории (из роутов цен/связей)
+      latest_price: "Последняя цена",
+      original_link_added: "Добавлена привязка к оригиналу",
+      original_link_removed: "Удалена привязка к оригиналу",
+      price_entry: "Запись цены",
+      price_entry_updated: "Запись цены (изменена)",
+      price_entry_removed: "Запись цены (удалена)",
+      // supplier_id не показываем — он в exclude
+    },
+    excludeFields: ["id", "supplier_id", "created_at", "updated_at"],
+  },
+
+  // === История цен деталей поставщиков ===
+  supplier_part_prices: {
+    fields: {
+      supplier_part_id: "Деталь поставщика",
+      price: "Цена",
+      currency: "Валюта (ISO3)",
+      date: "Дата",
+      comment: "Комментарий",
+    },
+    excludeFields: ["id"],
+  },
+
+  // === Связи «деталь поставщика ↔ оригинальная деталь» ===
+  supplier_part_originals: {
+    fields: {
+      supplier_part_id: "Деталь поставщика",
+      original_part_id: "Оригинальная деталь",
+    },
+    excludeFields: [],
+  },
 }
 
 // ---- Алиасы для совместимости старых логов ----
-logSchemas.tnved_code = logSchemas.tnved_codes   // старые записи с singular
-logSchemas.part_suppliers = logSchemas.suppliers // старые записи с part_suppliers
+logSchemas.tnved_code     = logSchemas.tnved_codes;      // старые записи с singular
+logSchemas.part_suppliers = logSchemas.suppliers;        // старые записи с part_suppliers
+logSchemas.supplier_part  = logSchemas.supplier_parts;   // единичная форма

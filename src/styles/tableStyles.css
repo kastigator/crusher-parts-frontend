@@ -1,7 +1,29 @@
-/* ============================
+/* =========================================
+   Общие утилиты
+   ========================================= */
+
+/* Однострочный текст с троеточием (для длинных названий) */
+.cell-ellipsis {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* Якорь для выпадающих списков (AntD Select, pagination size-changer и др.)
+   Оборачивай таблицу в <div class="parts-table-wrap">...</div> */
+.parts-table-wrap {
+  position: relative;          /* чтобы popup позиционировался внутри контейнера */
+  isolation: isolate;          /* изолирует контекст наложения для корректного z-index */
+  overflow: visible;           /* важно: чтобы дропдауны не обрезались родителем */
+}
+
+/* =========================================
    Ant Design Table — scoped UI
    Применяется только внутри .op-table
-   ============================ */
+   ========================================= */
 
 /* Базовая таблица */
 .op-table .ant-table {
@@ -41,16 +63,14 @@
 
 /* Раскрытая строка (контейнер для вложенного блока) */
 .op-table .ant-table-expanded-row > td {
-  /* убираем внутренний паддинг, чтобы вложенная таблица легла ровно */
-  padding: 0 !important;
+  padding: 0 !important;        /* убираем внутренний паддинг */
   background-color: #fcfcfc;
   white-space: pre-wrap !important;
   word-break: break-word;
 }
 
-/* Вложенный блок внутри раскрытой строки */
+/* Вложенный блок внутри раскрытой строки (если потребуется) */
 .op-table .op-embedded {
-  /* немного «воздуха», чтобы не сливалось со строками сверху/снизу */
   margin: 8px 12px 12px;
 }
 
@@ -60,7 +80,7 @@
   border-radius: 6px;
 }
 
-/* Инлайн-редактирование внутри таблицы */
+/* Инлайн-редактирование */
 .op-table .ant-input,
 .op-table .ant-input-affix-wrapper {
   font-size: 13px;
@@ -73,26 +93,28 @@
   border-radius: 6px;
 }
 
-/* Пометка длинных строк (опционально используйте класс на <tr>) */
+/* Пометка длинных строк (опционально на <tr>) */
 .op-table .tr-long-text td {
   background-color: #f9f9f9;
 }
-/* ===== Original Parts — выравнивание вложенных таблиц ===== */
-/* Никакой глобальной магии — только на странице деталей. */
 
+/* =========================================
+   Original Parts / Supplier Parts — выравнивание
+   ========================================= */
+
+/* убираем отступ ячейки раскрытой строки, чтобы
+   левая/правая кромки совпадали с основной таблицей */
 .parts-table .ant-table-expanded-row > .ant-table-cell {
-  /* убираем внутренний отступ ячейки раскрытой строки, чтобы
-     левая/правая кромки совпадали с основной таблицей */
   padding: 0 !important;
   background: transparent;
 }
 
-/* «Карточка» для вложенных вкладок/таблиц */
+/* «Карточка» для вложенных вкладок/таблиц под строкой */
 .parts-subtable {
-  margin: 10px 0 12px;              /* небольшой отступ сверху/снизу */
-  padding: 12px;                     /* воздух внутри, чтобы не слипалось */
+  margin: 10px 0 12px;
+  padding: 12px;
   background: #fff;
-  border: 1px solid #e5e7eb;         /* как на поставщиках */
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
 }
 
@@ -107,3 +129,30 @@
 .parts-subtable .ant-table-tbody > tr > td:first-child { padding-left: 12px; }
 .parts-subtable .ant-table-thead > tr > th:last-child,
 .parts-subtable .ant-table-tbody > tr > td:last-child  { padding-right: 12px; }
+
+/* =========================================
+   Пагинация и всплывающие элементы
+   ========================================= */
+
+/* Компактнее подписи пагинации */
+.op-table .ant-pagination {
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+/* Чуть меньше отступов у size changer */
+.op-table .ant-pagination-options {
+  margin-left: 8px;
+}
+
+/* Убираем паразитные переносы в total */
+.op-table .ant-pagination-total-text {
+  white-space: nowrap;
+}
+
+/* Z-index дропдаунов в пределах якоря */
+.parts-table-wrap .ant-select-dropdown,
+.parts-table-wrap .ant-picker-dropdown,
+.parts-table-wrap .ant-dropdown {
+  z-index: 1000;
+}

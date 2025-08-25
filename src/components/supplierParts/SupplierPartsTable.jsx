@@ -1,108 +1,233 @@
 // src/components/supplierParts/SupplierPartsTable.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Table, Empty, message, Tabs } from "antd"
+import { Table, Empty, Tabs, message, Input } from "antd"
 import axios from "@/api/axiosInstance"
 
-// ВАЖНО: файлы лежат в той же папке
+import ValueDisplay from "@/components/common/ValueDisplay"
+import ActionButtons from "@/components/common/ActionButtons"
+import FullHistoryDialog from "@/components/common/FullHistoryDialog"
+import confirmAction from "@/utils/confirmAction"
+
 import PriceHistoryTab from "./PriceHistoryTab"
 import OriginalsLinkTab from "./OriginalsLinkTab"
 
 export default function SupplierPartsTable({ supplierId, search, version, onReload }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
+
+  // инлайн-редактирование
+  const [editing, setEditing] = useState(null) // { id, field } | null
+  const [draft, setDraft] = useState(null)     // копия редактируемой строки
+
+  // пагинация
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
+
+  // история
+  const [historyForId, setHistoryForId] = useState(null)
+  const openHistory = (id) => setHistoryForId(id)
+  const closeHistory = () => setHistoryForId(null)
+
   const abortRef = useRef(null)
+  const wrapRef = useRef(null) // якорь для попапов
 
   const load = useCallback(async () => {
     if (!supplierId) { setRows([]); setTotal(0); return }
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
-
     setLoading(true)
     try {
       const params = { supplier_id: supplierId, page, page_size: pageSize }
       if (search?.trim()) params.q = search.trim()
       const { data } = await axios.get("/supplier-parts", { params, signal: controller.signal })
-
-      // Поддерживаем оба формата ответа: [{...}] или { items, total }
-      const items = Array.isArray(data) ? data : (Array.isArray(data?.items) ? data.items : [])
+      const items = Array.isArray(data?.items) ? data.items : []
       setRows(items)
-      setTotal(Array.isArray(data) ? items.length : (Number(data?.total) || items.length))
+      setTotal(Number(data?.total || 0))
     } catch (e) {
       const name = e?.name || e?.code
       if (name !== "AbortError" && name !== "ERR_CANCELED") {
-        console.error(e); message.error("Не удалось загрузить детали поставщика")
+        console.error(e)
+        message.error("Не удалось загрузить детали поставщика")
       }
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }, [supplierId, search, page, pageSize])
 
   useEffect(() => {
-    const t = setTimeout(load, 250)
+    const t = setTimeout(load, 200)
     return () => { clearTimeout(t); abortRef.current?.abort() }
   }, [load, version])
 
-  // Колонки
-  const columns = useMemo(() => [
-    { title: "Номер у поставщика", dataIndex: "supplier_part_number", width: 220 },
-    { title: "Описание", dataIndex: "description" },
-    { title: "Оригинальные номера", dataIndex: "original_cat_numbers", width: 240, render: v => v || "—" },
-    { title: "Последняя цена", dataIndex: "latest_price", width: 140, render: v => (v ?? "—") },
-    { title: "Дата цены", dataIndex: "latest_price_date", width: 160, render: v => v ? String(v).slice(0, 10) : "—" },
-  ], [])
+  useEffect(() => { setPage(1) }, [supplierId, search])
 
-  // Вложенные вкладки
-  const expandedRowRender = (record) => {
-    if (!record?.id) return null
-    return (
-      <div className="op-embedded">
-        <Tabs
-          defaultActiveKey="prices"
-          destroyInactiveTabPane
-          items={[
-            {
-              key: "prices",
-              label: "История цен",
-              children: <PriceHistoryTab supplierPartId={record.id} />
-            },
-            {
-              key: "originals",
-              label: "Оригинальные детали",
-              children: <OriginalsLinkTab supplierPartId={record.id} onChanged={load} />
-            }
-          ]}
-        />
-      </div>
+  // ===== редактирование
+  const isEditingCell = (record, field) =>
+    editing && editing.id === record.id && editing.field === field
+
+  const startEditCell = (record, field) => {
+    setEditing({ id: record.id, field })
+    setDraft({ ...record })
+  }
+
+  const cancelEdit = () => {
+    setEditing(null)
+    setDraft(null)
+  }
+
+  const norm = (v) => (v === "" || v === undefined) ? null : (typeof v === "string" ? v.trim() : v)
+
+  const saveField = async (record, field, rawValue) => {
+    const value = norm(rawValue)
+    const current = norm(record[field])
+    if (value === current) { cancelEdit(); return }
+
+    try {
+      await axios.put(`/supplier-parts/${record.id}`, { [field]: value })
+      message.success("Сохранено")
+      cancelEdit()
+      await load()
+    } catch (err) {
+      message.error(err?.response?.data?.message || "Не удалось сохранить")
+      cancelEdit()
+    }
+  }
+
+  const renderTextInput = (record, field, { multiline = false } = {}) =>
+    multiline ? (
+      <Input.TextArea
+        rows={3}
+        value={draft?.[field] ?? ""}
+        onChange={(e) => setDraft((p) => ({ ...p, [field]: e.target.value }))}
+        onBlur={() => saveField(record, field, draft?.[field] ?? "")}
+        onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+        autoSize={{ minRows: 2, maxRows: 6 }}
+        autoFocus
+      />
+    ) : (
+      <Input
+        value={draft?.[field] ?? ""}
+        onChange={(e) => setDraft((p) => ({ ...p, [field]: e.target.value }))}
+        onPressEnter={() => saveField(record, field, draft?.[field] ?? "")}
+        onBlur={() => saveField(record, field, draft?.[field] ?? "")}
+        onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+        autoFocus
+      />
     )
+
+  // ===== удаление
+  const handleDelete = async (id) => {
+    const { confirmed } = await confirmAction("Удалить деталь поставщика?")
+    if (!confirmed) return
+    await axios.delete(`/supplier-parts/${id}`)
+    message.success("Удалено")
+    if (onReload) onReload(); else load()
   }
 
-  if (!supplierId) {
-    return <Empty description="Выберите поставщика, чтобы увидеть его детали" />
-  }
+  /* eslint-disable react-hooks/exhaustive-deps */
+  const columns = useMemo(() => [
+    {
+      title: <>Номер у поставщика <span style={{opacity:.5,fontWeight:400}}>— двойной клик для редактирования</span></>,
+      dataIndex: "supplier_part_number",
+      width: 220,
+      onCell: (record) => ({ onDoubleClick: () => startEditCell(record, "supplier_part_number") }),
+      render: (_, record) =>
+        isEditingCell(record, "supplier_part_number")
+          ? renderTextInput(record, "supplier_part_number")
+          : <ValueDisplay value={record.supplier_part_number} copyable />,
+    },
+    {
+      title: <>Описание <span style={{opacity:.5,fontWeight:400}}>— двойной клик для редактирования</span></>,
+      dataIndex: "description",
+      onCell: (record) => ({ onDoubleClick: () => startEditCell(record, "description") }),
+      render: (_, record) =>
+        isEditingCell(record, "description")
+          ? renderTextInput(record, "description", { multiline: true })
+          : <ValueDisplay value={record.description} />,
+    },
+    {
+      title: "Последняя цена",
+      dataIndex: "latest_price",
+      width: 140,
+      align: "right",
+      render: (v) => <ValueDisplay value={v} />,
+    },
+    {
+      title: "Дата цены",
+      dataIndex: "latest_price_date",
+      width: 160,
+      render: (v) => <ValueDisplay value={v && new Date(v).toLocaleDateString()} />,
+    },
+    {
+      title: "Действия",
+      key: "actions",
+      fixed: "right",
+      width: 110,
+      render: (_, row) => (
+        <ActionButtons
+          onHistory={() => openHistory(row.id)}  // ← иконка истории только на верхнем уровне
+          onDelete={() => handleDelete(row.id)}
+        />
+      ),
+    },
+  ], [editing, draft])
+  /* eslint-enable react-hooks/exhaustive-deps */
+
+  // пагинация: привязываем Select-попап к обёртке, чтобы он не «мигал»
+  const pagination = useMemo(() => ({
+    current: page,
+    pageSize,
+    total,
+    showSizeChanger: true,
+    pageSizeOptions: [10, 20, 50, 100],
+    selectProps: {
+      getPopupContainer: () => wrapRef.current || document.body, // ключ к стабильному дропдауну
+    },
+    onChange: (nextPage, nextSize) => {
+      const sizeNum = Number(nextSize)
+      if (sizeNum !== pageSize) { setPage(1); setPageSize(sizeNum) }
+      else { setPage(nextPage) }
+    },
+    showTotal: (t, [from, to]) => `Всего: ${t} · Показано: ${from}–${to}`,
+  }), [page, pageSize, total])
+
+  const expandedRowRender = (record) => (
+    <div className="parts-subtable">
+      <Tabs
+        defaultActiveKey="prices"
+        destroyInactiveTabPane
+        items={[
+          { key: "prices",   label: "История цен",          children: <PriceHistoryTab supplierPartId={record.id} /> },
+          { key: "originals",label: "Оригинальные детали",  children: <OriginalsLinkTab supplierPartId={record.id} /> },
+        ]}
+      />
+    </div>
+  )
+
+  if (!supplierId) return <Empty description="Выберите поставщика, чтобы увидеть его детали" />
 
   return (
-    <Table
-      rowKey="id"
-      dataSource={rows}
-      columns={columns}
-      loading={loading}
-      expandable={{ expandedRowRender }}
-      pagination={{
-        current: page,
-        pageSize,
-        total,
-        showSizeChanger: true,
-        pageSizeOptions: [10, 20, 50, 100],
-      }}
-      onChange={(p) => {
-        setPage(p.current)
-        setPageSize(p.pageSize)
-      }}
-      size="middle"
-    />
+    <>
+      <div ref={wrapRef} className="parts-table-wrap">
+        <Table
+          rowKey="id"
+          className="op-table parts-table"
+          dataSource={rows}
+          columns={columns}
+          loading={loading}
+          expandable={{ expandedRowRender }}
+          pagination={pagination}
+          size="middle"
+        />
+      </div>
+
+      {historyForId && (
+        <FullHistoryDialog
+          entityType="supplier_parts"
+          entityId={historyForId}
+          onClose={closeHistory}
+        />
+      )}
+    </>
   )
 }
