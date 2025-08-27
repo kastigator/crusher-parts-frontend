@@ -89,7 +89,9 @@ export default function ClientsTable({
       value={editedRow?.[field] ?? ""}
       onChange={(e) => setEditedRow((prev) => ({ ...prev, [field]: e.target.value }))}
       onPressEnter={saveEdit}
-      onKeyDown={(e) => { if (e.key === "Escape") cancelEdit() }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") cancelEdit()
+      }}
       autoFocus
       size="small"
     />
@@ -143,11 +145,14 @@ export default function ClientsTable({
     },
   ]
 
+  // ширина колонки с «+» (экспандер) — должна совпадать с CSS-переменной
+  const EXPAND_COL_W = 48
+
   const expandedRowRender = (client) => {
     if (!client?.id) return null
     return (
-      // якорь для попапов + «карточка» под строкой
-      <div className="parts-table-wrap parts-subtable">
+      // ВАЖНО: эта обёртка «вдвигает» контент на ширину колонки экспандера
+      <div className="parts-table-wrap parts-subtable subtable-inset">
         <Tabs
           defaultActiveKey="billing"
           destroyInactiveTabPane
@@ -194,7 +199,7 @@ export default function ClientsTable({
   return (
     <>
       <Table
-        className="op-table parts-table"  // ← включает нужные CSS-правки
+        className="op-table parts-table"
         rowKey="id"
         dataSource={data}
         columns={columns}
@@ -203,9 +208,12 @@ export default function ClientsTable({
           expandedRowRender,
           expandedRowKeys: expandedClientId ? [expandedClientId] : [],
           onExpand: (expanded, record) => setExpandedClientId(expanded ? record.id : null),
+          columnWidth: EXPAND_COL_W, // ← фиксируем ширину колонки «+»
         }}
         pagination={{ pageSize: 10 }}
         size="middle"
+        // пробрасываем ширину экспандера в CSS-переменную
+        style={{ "--op-expand-w": `${EXPAND_COL_W}px` }}
       />
 
       {historyForId && (
@@ -222,10 +230,10 @@ export default function ClientsTable({
         draft={conflict.draft}
         current={conflict.current}
         fields={[
-          { key: "company_name",   title: "Компания" },
+          { key: "company_name", title: "Компания" },
           { key: "contact_person", title: "Контактное лицо" },
-          { key: "phone",          title: "Телефон" },
-          { key: "email",          title: "Email" },
+          { key: "phone", title: "Телефон" },
+          { key: "email", title: "Email" },
         ]}
         onReload={async () => {
           if (conflict.current && typeof onReplaceRow === "function") onReplaceRow(conflict.current)
@@ -234,16 +242,19 @@ export default function ClientsTable({
           cancelEdit()
         }}
         onManualMerge={() => {
-          const base  = conflict.current || {}
-          const draft = conflict.draft   || {}
+          const base = conflict.current || {}
+          const draft = conflict.draft || {}
           const merged = {
             ...base,
-            company_name:   draft.company_name   ?? base.company_name,
+            company_name: draft.company_name ?? base.company_name,
             contact_person: draft.contact_person ?? base.contact_person,
-            phone:          draft.phone          ?? base.phone,
-            email:          draft.email          ?? base.email,
+            phone: draft.phone ?? base.phone,
+            email: draft.email ?? base.email,
           }
-          if (merged.id) { setEditingId(merged.id); setEditedRow(merged) }
+          if (merged.id) {
+            setEditingId(merged.id)
+            setEditedRow(merged)
+          }
           setConflict({ open: false, current: null, draft: null })
         }}
         onCancel={() => setConflict({ open: false, current: null, draft: null })}

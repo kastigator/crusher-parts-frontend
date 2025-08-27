@@ -2,7 +2,12 @@
    Общие утилиты
    ========================================= */
 
-/* Однострочный текст с троеточием (для длинных названий) */
+:root {
+  /* дефолт ширины колонки экспандера; перезаписывается инлайном из Table */
+  --op-expand-w: 48px;
+}
+
+/* Однострочный текст с троеточием */
 .cell-ellipsis {
   display: inline-block;
   max-width: 100%;
@@ -12,27 +17,34 @@
   vertical-align: bottom;
 }
 
-/* Якорь для выпадающих списков (AntD Select/DatePicker/Dropdown/size-changer).
-   Оборачивай таблицу в <div class="parts-table-wrap">...</div> */
+/* Якорь для выпадающих списков */
 .parts-table-wrap {
-  position: relative;     /* чтобы popup крепился внутри контейнера */
-  isolation: isolate;     /* свой контекст наложения для z-index */
-  overflow: visible;      /* дропдауны не обрезаются родителем */
-}
-
-/* Вложенный якорь внутри раскрытой строки (Tabs/формы под строкой) */
-.parts-subtable {
-  position: relative;     /* локальный якорь для попапов внутри вкладок */
-  margin: 10px 0 12px;
-  padding: 12px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  position: relative;
+  isolation: isolate;
   overflow: visible;
 }
 
+/* Каркас подраскрытой области */
+.parts-subtable {
+  position: relative;
+  margin: 8px 0 12px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+
+/* КЛЮЧ: «вдвигаем» раскрытый контент на ширину колонки «+»
+   и не даём ему вылезти вправо */
+.subtable-inset {
+  margin-left: var(--op-expand-w);
+  width: calc(100% - var(--op-expand-w));
+  max-width: 100%;
+}
+
 /* =========================================
-   Ant Design Table — scoped UI (только внутри .op-table)
+   Ant Design Table — только внутри .op-table
    ========================================= */
 
 .op-table .ant-table {
@@ -70,37 +82,26 @@
   background-color: #f0f8ff;
 }
 
-/* Раскрытая строка (контейнер для вложенного блока) */
+/* ВАЖНО: у раскрытой ячейки не должно быть внутренних отступов */
 .op-table .ant-table-expanded-row > td {
   padding: 0 !important;
   background-color: #fcfcfc;
   white-space: pre-wrap !important;
   word-break: break-word;
-  overflow: visible; /* важно для попапов внутри раскрытой строки */
+  overflow: visible;
 }
 
-/* Вложенная «карточка» содержимого под строкой */
-.op-table .op-embedded {
-  margin: 8px 12px 12px;
+/* (на всякий случай) если где-то используется кастомный класс на expanded-row */
+.op-table .parts-expanded-row > td {
+  padding: 0 !important;
 }
 
-/* Сама вложенная таблица — лёгкая рамка */
-.op-table .op-embedded .ant-table {
-  border: 1px solid #e9ecef;
-  border-radius: 6px;
-}
-
-/* Убираем лишнюю рамку у таблицы внутри .parts-subtable */
+/* Вложенная таблица без лишних рамок */
 .parts-subtable .ant-table {
   border: 0;
   box-shadow: none;
+  width: 100%;
 }
-
-/* Слегка притираем контент к краям карточки */
-.parts-subtable .ant-table-thead > tr > th:first-child,
-.parts-subtable .ant-table-tbody > tr > td:first-child { padding-left: 12px; }
-.parts-subtable .ant-table-thead > tr > th:last-child,
-.parts-subtable .ant-table-tbody > tr > td:last-child  { padding-right: 12px; }
 
 /* Инлайн-редактирование */
 .op-table .ant-input,
@@ -109,15 +110,10 @@
   padding: 4px 8px;
 }
 
-/* Кнопки действий в таблице */
+/* Кнопки действий */
 .op-table .ant-btn {
   font-size: 13px;
   border-radius: 6px;
-}
-
-/* Пометка длинных строк (опционально на <tr>) */
-.op-table .tr-long-text td {
-  background-color: #f9f9f9;
 }
 
 /* =========================================
@@ -129,31 +125,28 @@
   font-size: 13px;
 }
 
-/* Чуть меньше отступов у size changer */
 .op-table .ant-pagination-options {
   margin-left: 8px;
 }
 
-/* Убираем паразитные переносы в total */
 .op-table .ant-pagination-total-text {
   white-space: nowrap;
 }
 
-/* Z-index дропдаунов в пределах якоря */
+/* Z-index для popup'ов внутри якоря */
 .parts-table-wrap .ant-select-dropdown,
 .parts-table-wrap .ant-picker-dropdown,
 .parts-table-wrap .ant-dropdown {
   z-index: 1000;
 }
 
-/* На всякий случай повышаем z-index для попапов внутри .parts-subtable */
 .parts-subtable .ant-select-dropdown,
 .parts-subtable .ant-picker-dropdown,
 .parts-subtable .ant-dropdown {
   z-index: 1050;
 }
 
-/* Выравнивание кромок основной и вложенной таблиц */
+/* Страховка: выравниваем кромки основной и вложенной таблиц */
 .parts-table .ant-table-expanded-row > .ant-table-cell {
   padding: 0 !important;
   background: transparent;
