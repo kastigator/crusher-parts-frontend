@@ -1,3 +1,4 @@
+// src/components/clients/ClientsTable.jsx
 import React, { useState } from "react"
 import { Table, Input, message, Tabs } from "antd"
 
@@ -145,49 +146,50 @@ export default function ClientsTable({
     },
   ]
 
-  // ширина колонки с «+» (экспандер) — должна совпадать с CSS-переменной
-  const EXPAND_COL_W = 48
-
   const expandedRowRender = (client) => {
     if (!client?.id) return null
     return (
-      // ВАЖНО: эта обёртка «вдвигает» контент на ширину колонки экспандера
-      <div className="parts-table-wrap parts-subtable subtable-inset">
+      <div className="subtable-shell">
         <Tabs
-          defaultActiveKey="billing"
           destroyInactiveTabPane
           items={[
             {
               key: "billing",
               label: "Юридические адреса",
               children: (
-                <BillingAddressesMain
-                  key={`billing-${client.id}-${reloadKey}`}
-                  clientId={client.id}
-                  onChanged={onChildChanged}
-                />
+                <div className="subtable parts-table-wrap">
+                  <BillingAddressesMain
+                    key={`billing-${client.id}-${reloadKey}`}
+                    clientId={client.id}
+                    onChanged={onChildChanged}
+                  />
+                </div>
               ),
             },
             {
               key: "shipping",
               label: "Адреса доставки",
               children: (
-                <ShippingAddressesMain
-                  key={`shipping-${client.id}-${reloadKey}`}
-                  clientId={client.id}
-                  onChanged={onChildChanged}
-                />
+                <div className="subtable parts-table-wrap">
+                  <ShippingAddressesMain
+                    key={`shipping-${client.id}-${reloadKey}`}
+                    clientId={client.id}
+                    onChanged={onChildChanged}
+                  />
+                </div>
               ),
             },
             {
               key: "bank",
               label: "Банковские реквизиты",
               children: (
-                <BankDetailsMain
-                  key={`bank-${client.id}-${reloadKey}`}
-                  clientId={client.id}
-                  onChanged={onChildChanged}
-                />
+                <div className="subtable parts-table-wrap">
+                  <BankDetailsMain
+                    key={`bank-${client.id}-${reloadKey}`}
+                    clientId={client.id}
+                    onChanged={onChildChanged}
+                  />
+                </div>
               ),
             },
           ]}
@@ -199,7 +201,7 @@ export default function ClientsTable({
   return (
     <>
       <Table
-        className="op-table parts-table"
+        className="op-table"
         rowKey="id"
         dataSource={data}
         columns={columns}
@@ -208,12 +210,9 @@ export default function ClientsTable({
           expandedRowRender,
           expandedRowKeys: expandedClientId ? [expandedClientId] : [],
           onExpand: (expanded, record) => setExpandedClientId(expanded ? record.id : null),
-          columnWidth: EXPAND_COL_W, // ← фиксируем ширину колонки «+»
         }}
         pagination={{ pageSize: 10 }}
         size="middle"
-        // пробрасываем ширину экспандера в CSS-переменную
-        style={{ "--op-expand-w": `${EXPAND_COL_W}px` }}
       />
 
       {historyForId && (
@@ -246,15 +245,12 @@ export default function ClientsTable({
           const draft = conflict.draft || {}
           const merged = {
             ...base,
-            company_name: draft.company_name ?? base.company_name,
+            company_name:   draft.company_name   ?? base.company_name,
             contact_person: draft.contact_person ?? base.contact_person,
-            phone: draft.phone ?? base.phone,
-            email: draft.email ?? base.email,
+            phone:          draft.phone          ?? base.phone,
+            email:          draft.email          ?? base.email,
           }
-          if (merged.id) {
-            setEditingId(merged.id)
-            setEditedRow(merged)
-          }
+          if (merged.id) { setEditingId(merged.id); setEditedRow(merged) }
           setConflict({ open: false, current: null, draft: null })
         }}
         onCancel={() => setConflict({ open: false, current: null, draft: null })}

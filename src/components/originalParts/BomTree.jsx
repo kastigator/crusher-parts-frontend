@@ -16,13 +16,13 @@ function buildTree(rows) {
 
   // вспомогательная функция: создаёт узел
   const makeNode = (r) => ({
-    key: r.path,                     // уникален в рамках дерева
+    key: r.path, // уникален в рамках дерева
     partId: r.node_id,
     cat_number: r.cat_number,
     description: r.description_ru || r.description_en || "—",
     level: r.level,
-    totalQty: Number(r.mult_qty || 1), // итоговое (перемноженное) количество по пути
-    directQty: 1,                      // выставим ниже
+    totalQty: Number(r.mult_qty ?? 1), // итоговое (перемноженное) количество по пути
+    directQty: null,                   // вычислим ниже; для корня оставим null
     children: [],
   });
 
@@ -41,15 +41,13 @@ function buildTree(rows) {
     const parent = byPath.get(parentPath);
 
     // прямое кол-во = total(child) / total(parent)
-    const parentTotal = parent ? parent.totalQty || 1 : 1;
+    const parentTotal = parent ? Number(parent.totalQty) || 1 : 1;
     node.directQty =
       parentTotal && Number.isFinite(parentTotal)
-        ? Number(node.totalQty) / Number(parentTotal)
-        : node.totalQty;
+        ? Number(node.totalQty) / parentTotal
+        : Number(node.totalQty);
 
-    if (parent) {
-      parent.children.push(node);
-    }
+    if (parent) parent.children.push(node);
     byPath.set(r.path, node);
   }
 
@@ -76,22 +74,20 @@ export default function BomTree({ rootId }) {
       }
     };
     load();
-    return () => {
-      ignore = true;
-    };
+    return () => { ignore = true; };
   }, [rootId]);
 
   const treeData = useMemo(() => buildTree(rows), [rows]);
 
   const columns = [
     { title: "Part number", dataIndex: "cat_number", key: "cat", width: 200 },
-    { title: "Описание", dataIndex: "description", key: "desc" },
+    { title: "Описание", dataIndex: "description", key: "desc", ellipsis: true },
     {
       title: "Кол-во в родителе",
       key: "direct",
       width: 160,
       align: "right",
-      render: (_, r) => fmt(r.directQty),
+      render: (_, r) => fmt(r.level === 0 ? null : r.directQty),
     },
     {
       title: "Итоговое кол-во",
@@ -103,17 +99,20 @@ export default function BomTree({ rootId }) {
   ];
 
   return (
-    <Table
-      rowKey="key"
-      columns={columns}
-      loading={loading}
-      dataSource={treeData}
-      pagination={false}
-      size="small"
-      expandable={{
-        defaultExpandAllRows: true,
-        childrenColumnName: "children",
-      }}
-    />
+    <div className="op-table parts-table">
+      <Table
+        rowKey="key"
+        columns={columns}
+        loading={loading}
+        dataSource={treeData}
+        pagination={false}
+        size="small"
+        expandable={{
+          defaultExpandAllRows: true,
+          childrenColumnName: "children",
+        }}
+        scroll={{ x: true }}
+      />
+    </div>
   );
 }

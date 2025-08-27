@@ -19,9 +19,9 @@ export default function SuppliersMain() {
   const [importOpen, setImportOpen] = useState(false)
   const [showDeleted, setShowDeleted] = useState(false)
 
-  // --- баннер новых изменений ---
+  // баннер новых изменений
   const [hasNew, setHasNew] = useState(false)
-  const baselinesRef = useRef(new Map())          // ключ: global | supplier:<id>  → etag
+  const baselinesRef = useRef(new Map())
   const lastBaselineSetAtRef = useRef(0)
 
   const nameInputRef = useRef(null)
@@ -33,7 +33,6 @@ export default function SuppliersMain() {
     email: "",
   })
 
-  // ---------- загрузка списка ----------
   const fetchSuppliers = async () => {
     setLoading(true)
     try {
@@ -47,11 +46,8 @@ export default function SuppliersMain() {
     }
   }
 
-  useEffect(() => {
-    fetchSuppliers()
-  }, [])
+  useEffect(() => { fetchSuppliers() }, [])
 
-  // ---------- добавление ----------
   const handleAdd = async () => {
     const payload = {
       name: newSupplier.name.trim(),
@@ -59,13 +55,11 @@ export default function SuppliersMain() {
       phone: newSupplier.phone?.trim() || null,
       email: newSupplier.email?.trim() || null,
     }
-
     if (!payload.name) {
       message.warning("Название компании обязательно")
       nameInputRef.current?.focus()
       return
     }
-
     try {
       const { data: created } = await axios.post("/part-suppliers", payload)
       setSuppliers((prev) => [created, ...prev])
@@ -80,7 +74,6 @@ export default function SuppliersMain() {
     }
   }
 
-  // ---------- клиентская фильтрация ----------
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return suppliers
@@ -91,14 +84,11 @@ export default function SuppliersMain() {
     )
   }, [suppliers, search])
 
-  // =======================
-  // ETag / baseline tracking
-  // =======================
+  // ===== ETag / baseline tracking =====
   const fetchSuppliersEtag = async () => {
     const { data } = await axios.get("/part-suppliers/etag")
     return data?.etag || ""
   }
-
   const fetchChildEtags = async (supplierId) => {
     if (!supplierId) return ""
     try {
@@ -112,13 +102,9 @@ export default function SuppliersMain() {
         bank.data?.etag || "0:0",
         contacts.data?.etag || "0:0",
       ].join("|")
-    } catch {
-      return ""
-    }
+    } catch { return "" }
   }
-
   const getKey = (id) => (id ? `supplier:${id}` : "global")
-
   const buildCompositeTag = async (id) => {
     const [sTag, child] = await Promise.all([
       fetchSuppliersEtag(),
@@ -126,7 +112,6 @@ export default function SuppliersMain() {
     ])
     return `${sTag}__${id || "-"}__${child}`
   }
-
   const setBaselineFor = async (id) => {
     try {
       const key = getKey(id)
@@ -134,27 +119,15 @@ export default function SuppliersMain() {
       baselinesRef.current.set(key, tag)
       lastBaselineSetAtRef.current = Date.now()
       setHasNew(false)
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
-
   const refreshAllAndResetBaseline = async () => {
     await fetchSuppliers()
     await setBaselineFor(expandedSupplierId)
   }
-
-  // при первой загрузке/перезагрузке списка пересчёт baseline
+  useEffect(() => { if (!loading) setBaselineFor(expandedSupplierId) }, [loading])
   useEffect(() => {
-    if (!loading) setBaselineFor(expandedSupplierId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading])
-
-  // периодическая проверка изменений
-  useEffect(() => {
-    let t0
-    let timer
-
+    let t0, timer
     const check = async () => {
       if (document.hidden) return
       try {
@@ -164,29 +137,17 @@ export default function SuppliersMain() {
         if (!baseline) return
         if (Date.now() - lastBaselineSetAtRef.current < 2000) return
         if (baseline !== current) setHasNew(true)
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
-
     t0 = setTimeout(check, 10000)
     timer = setInterval(check, 30000)
     const onVis = () => check()
     document.addEventListener("visibilitychange", onVis)
-
-    return () => {
-      clearTimeout(t0)
-      clearInterval(timer)
-      document.removeEventListener("visibilitychange", onVis)
-    }
+    return () => { clearTimeout(t0); clearInterval(timer); document.removeEventListener("visibilitychange", onVis) }
   }, [expandedSupplierId])
 
-  // дочерние вкладки (адреса/банк/контакты) сигналят об изменениях
-  const handleChildChanged = async () => {
-    await setBaselineFor(expandedSupplierId)
-  }
+  const handleChildChanged = async () => { await setBaselineFor(expandedSupplierId) }
 
-  // ========= операции над родителем (таблица их вызывает) =========
   const replaceRow = (fresh) =>
     setSuppliers((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
 
@@ -199,15 +160,10 @@ export default function SuppliersMain() {
       return fresh
     } catch (err) {
       if (err?.response?.data?.type === "duplicate_key") {
-        const e = new Error("Duplicate key")
-        e.isDuplicateKey = true
-        throw e
+        const e = new Error("Duplicate key"); e.isDuplicateKey = true; throw e
       }
       if (err?.response?.status === 409 && err?.response?.data?.type === "version_conflict") {
-        const e = new Error("Version conflict")
-        e.isVersionConflict = true
-        e.currentRecord = err.response.data.current
-        throw e
+        const e = new Error("Version conflict"); e.isVersionConflict = true; e.currentRecord = err.response.data.current; throw e
       }
       throw err
     }
@@ -221,10 +177,7 @@ export default function SuppliersMain() {
       await setBaselineFor(expandedSupplierId)
     } catch (err) {
       if (err?.response?.status === 409 && err?.response?.data?.type === "version_conflict") {
-        const e = new Error("Version conflict")
-        e.isVersionConflict = true
-        e.currentRecord = err.response.data.current
-        throw e
+        const e = new Error("Version conflict"); e.isVersionConflict = true; e.currentRecord = err.response.data.current; throw e
       }
       throw err
     }
@@ -235,13 +188,7 @@ export default function SuppliersMain() {
       <Card title="Поставщики" bodyStyle={{ paddingTop: 0 }}>
         {hasNew && (
           <div style={{ margin: "8px 0" }}>
-            <Button
-              type="primary"
-              onClick={async () => {
-                await refreshAllAndResetBaseline()
-                message.success("Список и связанные данные обновлены")
-              }}
-            >
+            <Button type="primary" onClick={async () => { await refreshAllAndResetBaseline(); message.success("Список и связанные данные обновлены") }}>
               Появились новые изменения — Обновить
             </Button>
           </div>
@@ -254,7 +201,6 @@ export default function SuppliersMain() {
           onShowDeleted={() => setShowDeleted(true)}
         />
 
-        {/* Форма добавления */}
         <Form layout="inline" style={{ marginBottom: 16 }} onFinish={handleAdd}>
           <Form.Item label="Компания" required>
             <Input
@@ -266,42 +212,17 @@ export default function SuppliersMain() {
               style={{ minWidth: 220 }}
             />
           </Form.Item>
-
           <Form.Item label="Контакт">
-            <Input
-              value={newSupplier.contact_person}
-              onChange={(e) => setNewSupplier((p) => ({ ...p, contact_person: e.target.value }))}
-              placeholder="ФИО"
-              allowClear
-              style={{ minWidth: 180 }}
-            />
+            <Input value={newSupplier.contact_person} onChange={(e) => setNewSupplier((p) => ({ ...p, contact_person: e.target.value }))} placeholder="ФИО" allowClear style={{ minWidth: 180 }}/>
           </Form.Item>
-
           <Form.Item label="Телефон">
-            <Input
-              value={newSupplier.phone}
-              onChange={(e) => setNewSupplier((p) => ({ ...p, phone: e.target.value }))}
-              placeholder="+358..."
-              allowClear
-              style={{ minWidth: 160 }}
-            />
+            <Input value={newSupplier.phone} onChange={(e) => setNewSupplier((p) => ({ ...p, phone: e.target.value }))} placeholder="+358..." allowClear style={{ minWidth: 160 }}/>
           </Form.Item>
-
           <Form.Item label="Email">
-            <Input
-              value={newSupplier.email}
-              onChange={(e) => setNewSupplier((p) => ({ ...p, email: e.target.value }))}
-              placeholder="example@mail.com"
-              allowClear
-              style={{ minWidth: 220 }}
-              type="email"
-            />
+            <Input value={newSupplier.email} onChange={(e) => setNewSupplier((p) => ({ ...p, email: e.target.value }))} placeholder="example@mail.com" allowClear style={{ minWidth: 220 }} type="email"/>
           </Form.Item>
-
           <Form.Item>
-            <Button type="primary" htmlType="submit">
-              Добавить
-            </Button>
+            <Button type="primary" htmlType="submit">Добавить</Button>
           </Form.Item>
         </Form>
 
@@ -309,33 +230,23 @@ export default function SuppliersMain() {
           data={filtered}
           loading={loading}
           expandedSupplierId={expandedSupplierId}
-          setExpandedSupplierId={async (val) => {
-            setExpandedSupplierId(val)
-            await setBaselineFor(val)
-          }}
+          setExpandedSupplierId={async (val) => { setExpandedSupplierId(val); await setBaselineFor(val) }}
           onReload={refreshAllAndResetBaseline}
           onChildChanged={handleChildChanged}
-          // ↓↓↓ централизованные обработчики для модалки конфликта и удаления
           onUpdate={onUpdate}
           onDelete={onDelete}
           onReplaceRow={replaceRow}
         />
       </Card>
 
-      {/* Импорт */}
       <ImportModal
         open={importOpen}
         type="part_suppliers"
         onClose={() => setImportOpen(false)}
         templateUrl={SUPPLIERS_TEMPLATE_URL}
-        onSuccess={() => {
-          setImportOpen(false)
-          fetchSuppliers()
-          message.success("Импорт выполнен")
-        }}
+        onSuccess={() => { setImportOpen(false); fetchSuppliers(); message.success("Импорт выполнен") }}
       />
 
-      {/* Удалённые (история по верхней сущности) */}
       {showDeleted && (
         <FullHistoryDialog
           onlyDeleted

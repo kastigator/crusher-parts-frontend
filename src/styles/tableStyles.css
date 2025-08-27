@@ -1,50 +1,60 @@
 /* =========================================
-   Общие утилиты
+   Общие утилиты для таблиц/всплывашек
    ========================================= */
 
-:root {
-  /* дефолт ширины колонки экспандера; перезаписывается инлайном из Table */
-  --op-expand-w: 48px;
-}
-
-/* Однострочный текст с троеточием */
-.cell-ellipsis {
-  display: inline-block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: bottom;
-}
-
-/* Якорь для выпадающих списков */
+/* Якорь для выпадающих (Select/DatePicker/Dropdown/size-changer) */
 .parts-table-wrap {
   position: relative;
   isolation: isolate;
   overflow: visible;
 }
 
-/* Каркас подраскрытой области */
-.parts-subtable {
+/* Оболочка контента под раскрытой строкой:
+   - аккуратные отступы
+   - свой stacking-context для попапов
+   - НЕ двигаем margin-left! (смещение даёт сама ячейка)
+*/
+.subtable-shell {
+  padding: 12px 16px;
+  background: #fff;
   position: relative;
-  margin: 8px 0 12px;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  overflow: visible;
+  isolation: isolate;
 }
 
-/* КЛЮЧ: «вдвигаем» раскрытый контент на ширину колонки «+»
-   и не даём ему вылезти вправо */
-.subtable-inset {
-  margin-left: var(--op-expand-w);
-  width: calc(100% - var(--op-expand-w));
-  max-width: 100%;
+/* Вложенные таблицы — лёгкая рамка, радиус, горизонтальный скролл при необходимости */
+.subtable .ant-table {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.subtable .ant-table-container { overflow-x: auto; }
+
+.subtable .ant-table-thead > tr > th,
+.subtable .ant-table-tbody > tr > td {
+  padding: 8px 12px;
+}
+
+/* Попапы внутри оболочки */
+.subtable-shell :where(.ant-select-dropdown, .ant-picker-dropdown, .ant-dropdown) {
+  z-index: 1000;
 }
 
 /* =========================================
-   Ant Design Table — только внутри .op-table
+   Анти-смещение раскрытой строки
+   ========================================= */
+
+/* КЛЮЧ: убираем внутренний padding у ячейки expanded-row, чтобы края совпадали */
+.ant-table .ant-table-expanded-row > .ant-table-cell {
+  padding: 0 !important;
+  background: transparent;
+}
+
+/* Дополнительная страховка для некоторых скинов */
+.op-table .ant-table-expanded-row > td {
+  padding: 0 !important;
+}
+
+/* =========================================
+   Scoped оформление внутри .op-table (если используете)
    ========================================= */
 
 .op-table .ant-table {
@@ -57,7 +67,6 @@
   background-color: #fff;
 }
 
-/* Заголовок */
 .op-table .ant-table-thead > tr > th {
   background-color: #f9fafb;
   font-weight: 600;
@@ -68,7 +77,6 @@
   text-overflow: ellipsis;
 }
 
-/* Ячейки */
 .op-table .ant-table-tbody > tr > td {
   padding: 8px;
   color: #1f2937;
@@ -77,31 +85,7 @@
   vertical-align: top;
 }
 
-/* Hover строки */
-.op-table .ant-table-tbody > tr:hover > td {
-  background-color: #f0f8ff;
-}
-
-/* ВАЖНО: у раскрытой ячейки не должно быть внутренних отступов */
-.op-table .ant-table-expanded-row > td {
-  padding: 0 !important;
-  background-color: #fcfcfc;
-  white-space: pre-wrap !important;
-  word-break: break-word;
-  overflow: visible;
-}
-
-/* (на всякий случай) если где-то используется кастомный класс на expanded-row */
-.op-table .parts-expanded-row > td {
-  padding: 0 !important;
-}
-
-/* Вложенная таблица без лишних рамок */
-.parts-subtable .ant-table {
-  border: 0;
-  box-shadow: none;
-  width: 100%;
-}
+.op-table .ant-table-tbody > tr:hover > td { background-color: #f0f8ff; }
 
 /* Инлайн-редактирование */
 .op-table .ant-input,
@@ -109,45 +93,14 @@
   font-size: 13px;
   padding: 4px 8px;
 }
+.op-table .ant-btn { font-size: 13px; border-radius: 6px; }
 
-/* Кнопки действий */
-.op-table .ant-btn {
-  font-size: 13px;
-  border-radius: 6px;
-}
+/* Пагинация */
+.op-table .ant-pagination { margin: 12px 0; font-size: 13px; }
+.op-table .ant-pagination-options { margin-left: 8px; }
+.op-table .ant-pagination-total-text { white-space: nowrap; }
 
-/* =========================================
-   Пагинация и всплывающие элементы
-   ========================================= */
-
-.op-table .ant-pagination {
-  margin: 12px 0;
-  font-size: 13px;
-}
-
-.op-table .ant-pagination-options {
-  margin-left: 8px;
-}
-
-.op-table .ant-pagination-total-text {
-  white-space: nowrap;
-}
-
-/* Z-index для popup'ов внутри якоря */
+/* Всплывающие элементы внутри якоря */
 .parts-table-wrap .ant-select-dropdown,
 .parts-table-wrap .ant-picker-dropdown,
-.parts-table-wrap .ant-dropdown {
-  z-index: 1000;
-}
-
-.parts-subtable .ant-select-dropdown,
-.parts-subtable .ant-picker-dropdown,
-.parts-subtable .ant-dropdown {
-  z-index: 1050;
-}
-
-/* Страховка: выравниваем кромки основной и вложенной таблиц */
-.parts-table .ant-table-expanded-row > .ant-table-cell {
-  padding: 0 !important;
-  background: transparent;
-}
+.parts-table-wrap .ant-dropdown { z-index: 1000; }

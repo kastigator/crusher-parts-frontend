@@ -1,6 +1,3 @@
-
-// src/theme/antdTheme.js
-
 export const antdTheme = {
   token: {
     colorPrimary: '#1677ff',
