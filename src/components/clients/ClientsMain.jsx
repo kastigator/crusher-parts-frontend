@@ -240,13 +240,20 @@ export default function ClientsMain() {
           </div>
         )}
 
+        {/* 🔹 тулбар всегда с единым отступом */}
         <TableToolbar
+          className="table-section"
           search={search}
           onSearch={setSearch}
           onShowDeleted={() => setShowDeletedModal(true)}
         />
 
-        <Form layout="inline" style={{ marginBottom: 16 }} onFinish={handleAdd}>
+        {/* 🔹 форма добавления клиента также с единым отступом */}
+        <Form
+          layout="inline"
+          className="table-section"
+          onFinish={handleAdd}
+        >
           <Form.Item label="Компания">
             <Input
               value={newClient.company_name}

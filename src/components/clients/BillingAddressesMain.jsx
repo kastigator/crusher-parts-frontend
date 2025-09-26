@@ -154,7 +154,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
   return (
     // якорь для выпадающих (поля адреса, подсказки и т.п.)
     <div className="parts-table-wrap">
-      <Card size="small">
+      <Card size="small" className="table-section">
         <PlaceAddressInput
           debugId="billing-main-form"
           resetTrigger={resetCounter}
@@ -185,7 +185,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
         />
 
         {/* поля ввода */}
-        <Row gutter={12} style={{ marginTop: 8 }}>
+        <Row gutter={12} className="table-section">
           <Col span={6}>
             <Input
               placeholder="Страна"
@@ -216,7 +216,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
           </Col>
         </Row>
 
-        <Row gutter={12} style={{ marginTop: 8 }}>
+        <Row gutter={12} className="table-section">
           <Col span={12}>
             <Input
               placeholder="Улица"
@@ -247,7 +247,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
           </Col>
         </Row>
 
-        <Row gutter={12} style={{ marginTop: 8 }}>
+        <Row gutter={12} className="table-section">
           <Col flex="auto">
             <Input
               placeholder="Комментарий"
@@ -264,7 +264,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
       </Card>
 
       {/* Единый тулбар фильтра */}
-      <TableToolbar search={search} onSearch={setSearch} />
+      <TableToolbar className="table-section" search={search} onSearch={setSearch} />
 
       <BillingAddressesTable
         data={filteredData}

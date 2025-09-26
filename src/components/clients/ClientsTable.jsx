@@ -149,7 +149,7 @@ export default function ClientsTable({
   const expandedRowRender = (client) => {
     if (!client?.id) return null
     return (
-      <div className="subtable-shell">
+      <div className="subtable-shell parts-table-wrap">
         <Tabs
           destroyInactiveTabPane
           items={[
@@ -157,39 +157,33 @@ export default function ClientsTable({
               key: "billing",
               label: "Юридические адреса",
               children: (
-                <div className="subtable parts-table-wrap">
-                  <BillingAddressesMain
-                    key={`billing-${client.id}-${reloadKey}`}
-                    clientId={client.id}
-                    onChanged={onChildChanged}
-                  />
-                </div>
+                <BillingAddressesMain
+                  key={`billing-${client.id}-${reloadKey}`}
+                  clientId={client.id}
+                  onChanged={onChildChanged}
+                />
               ),
             },
             {
               key: "shipping",
               label: "Адреса доставки",
               children: (
-                <div className="subtable parts-table-wrap">
-                  <ShippingAddressesMain
-                    key={`shipping-${client.id}-${reloadKey}`}
-                    clientId={client.id}
-                    onChanged={onChildChanged}
-                  />
-                </div>
+                <ShippingAddressesMain
+                  key={`shipping-${client.id}-${reloadKey}`}
+                  clientId={client.id}
+                  onChanged={onChildChanged}
+                />
               ),
             },
             {
               key: "bank",
               label: "Банковские реквизиты",
               children: (
-                <div className="subtable parts-table-wrap">
-                  <BankDetailsMain
-                    key={`bank-${client.id}-${reloadKey}`}
-                    clientId={client.id}
-                    onChanged={onChildChanged}
-                  />
-                </div>
+                <BankDetailsMain
+                  key={`bank-${client.id}-${reloadKey}`}
+                  clientId={client.id}
+                  onChanged={onChildChanged}
+                />
               ),
             },
           ]}

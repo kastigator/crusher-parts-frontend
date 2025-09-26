@@ -6,43 +6,37 @@
 .parts-table-wrap {
   position: relative;
   isolation: isolate;
-  overflow: visible;
+  overflow: visible; /* важно: попапы должны "видеть" якорь */
 }
 
 /* Оболочка контента под раскрытой строкой:
    - аккуратные отступы
-   - свой stacking-context для попапов
-   - НЕ двигаем margin-left! (смещение даёт сама ячейка)
+   - белый фон
+   - новый stacking-context для попапов
+   - НЕ двигаем margin-left (смещение даёт expand-ячейка)
 */
 .subtable-shell {
   padding: 12px 16px;
   background: #fff;
   position: relative;
   isolation: isolate;
-}
-
-/* Вложенные таблицы — лёгкая рамка, радиус, горизонтальный скролл при необходимости */
-.subtable .ant-table {
-  border: 1px solid #e5e7eb;
   border-radius: 8px;
-}
-.subtable .ant-table-container { overflow-x: auto; }
-
-.subtable .ant-table-thead > tr > th,
-.subtable .ant-table-tbody > tr > td {
-  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  margin: 8px 0;
 }
 
-/* Попапы внутри оболочки */
-.subtable-shell :where(.ant-select-dropdown, .ant-picker-dropdown, .ant-dropdown) {
-  z-index: 1000;
+/* Алиасы для совместимости (чтоб не ломать старый код) */
+.parts-subtable,
+.subtable-inset {
+  padding: 0;
+  background: transparent;
 }
 
 /* =========================================
    Анти-смещение раскрытой строки
    ========================================= */
 
-/* КЛЮЧ: убираем внутренний padding у ячейки expanded-row, чтобы края совпадали */
+/* КЛЮЧ: убираем внутренний padding у ячейки expanded-row */
 .ant-table .ant-table-expanded-row > .ant-table-cell {
   padding: 0 !important;
   background: transparent;
@@ -54,7 +48,7 @@
 }
 
 /* =========================================
-   Scoped оформление внутри .op-table (если используете)
+   Scoped оформление внутри .op-table
    ========================================= */
 
 .op-table .ant-table {
@@ -85,7 +79,9 @@
   vertical-align: top;
 }
 
-.op-table .ant-table-tbody > tr:hover > td { background-color: #f0f8ff; }
+.op-table .ant-table-tbody > tr:hover > td {
+  background-color: #f0f8ff;
+}
 
 /* Инлайн-редактирование */
 .op-table .ant-input,
@@ -93,14 +89,33 @@
   font-size: 13px;
   padding: 4px 8px;
 }
-.op-table .ant-btn { font-size: 13px; border-radius: 6px; }
+.op-table .ant-btn {
+  font-size: 13px;
+  border-radius: 6px;
+}
 
 /* Пагинация */
-.op-table .ant-pagination { margin: 12px 0; font-size: 13px; }
-.op-table .ant-pagination-options { margin-left: 8px; }
-.op-table .ant-pagination-total-text { white-space: nowrap; }
+.op-table .ant-pagination {
+  margin: 12px 0;
+  font-size: 13px;
+}
+.op-table .ant-pagination-options {
+  margin-left: 8px;
+}
+.op-table .ant-pagination-total-text {
+  white-space: nowrap;
+}
 
 /* Всплывающие элементы внутри якоря */
 .parts-table-wrap .ant-select-dropdown,
 .parts-table-wrap .ant-picker-dropdown,
-.parts-table-wrap .ant-dropdown { z-index: 1000; }
+.parts-table-wrap .ant-dropdown {
+  z-index: 1000;
+}
+
+/* =========================================
+   Утилита «воздух» между формами и таблицей
+   ========================================= */
+.table-section {
+  margin-bottom: 12px;
+}

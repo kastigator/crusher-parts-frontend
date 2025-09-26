@@ -1,9 +1,9 @@
-import React, { useState } from "react";
-import { Table, Input, Divider, Row, Col, Space, Tooltip, Button } from "antd";
-import PlaceAddressInput from "@/components/inputs/PlaceAddressInput";
-import ActionButtons from "@/components/common/ActionButtons";
-import confirmAction from "@/utils/confirmAction";
-import { CopyOutlined } from "@ant-design/icons";
+import React, { useState } from "react"
+import { Table, Input, Divider, Row, Col, Space, Tooltip, Button } from "antd"
+import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
+import ActionButtons from "@/components/common/ActionButtons"
+import confirmAction from "@/utils/confirmAction"
+import { CopyOutlined } from "@ant-design/icons"
 
 const formatFull = (r = {}) =>
   [
@@ -17,49 +17,49 @@ const formatFull = (r = {}) =>
     r.postal_code && `инд. ${r.postal_code}`,
   ]
     .filter(Boolean)
-    .join(", ");
+    .join(", ")
 
 export default function ShippingAddressesTable({ data = [], loading, onUpdate, onDelete }) {
-  const [editingId, setEditingId] = useState(null);
-  const [editedRow, setEditedRow] = useState(null);
+  const [editingId, setEditingId] = useState(null)
+  const [editedRow, setEditedRow] = useState(null)
 
-  const isEditing = (r) => editingId !== null && r?.id === editingId;
+  const isEditing = (r) => editingId !== null && r?.id === editingId
   const cancelEdit = () => {
-    setEditingId(null);
-    setEditedRow(null);
-  };
+    setEditingId(null)
+    setEditedRow(null)
+  }
 
   const onKey = (e) => {
-    if (e.key === "Enter") handleSave();
-    if (e.key === "Escape") cancelEdit();
-  };
+    if (e.key === "Enter") handleSave()
+    if (e.key === "Escape") cancelEdit()
+  }
 
   const handleSave = async () => {
-    if (!editedRow?.formatted_address?.trim()) return;
+    if (!editedRow?.formatted_address?.trim()) return
     try {
-      await onUpdate(editingId, { ...editedRow });
-      cancelEdit();
+      await onUpdate(editingId, { ...editedRow })
+      cancelEdit()
     } catch (e) {
-      console.error(e);
+      console.error(e)
     }
-  };
+  }
 
   const handleDelete = async (record) => {
-    const { confirmed } = await confirmAction("Удалить адрес?");
-    if (!confirmed) return;
+    const { confirmed } = await confirmAction("Удалить адрес?")
+    if (!confirmed) return
     try {
-      await onDelete(record);
+      await onDelete(record)
     } catch (e) {
-      console.error(e);
+      console.error(e)
     }
-  };
+  }
 
   const columns = [
     {
       title: "Адрес доставки",
       dataIndex: "formatted_address",
       render: (_, r) => {
-        const editing = isEditing(r);
+        const editing = isEditing(r)
         if (editing && editedRow) {
           return (
             <>
@@ -72,7 +72,7 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                   place_id: editedRow.place_id,
                   postal_code: editedRow.postal_code,
                 }}
-                // якорим попапы к ближайшей обёртке раскрытой строки
+                // якорим попапы к .parts-table-wrap
                 getPopupContainer={(trigger) =>
                   trigger?.closest(".parts-table-wrap") || document.body
                 }
@@ -97,7 +97,7 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
 
               <Divider style={{ margin: "8px 0" }} />
 
-              <Row gutter={8}>
+              <Row gutter={8} className="table-section">
                 <Col span={6}>
                   <Input
                     placeholder="Страна"
@@ -132,7 +132,7 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                 </Col>
               </Row>
 
-              <Row gutter={8} style={{ marginTop: 8 }}>
+              <Row gutter={8} className="table-section">
                 <Col span={8}>
                   <Input
                     placeholder="Улица"
@@ -167,15 +167,15 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                 </Col>
               </Row>
             </>
-          );
+          )
         }
 
-        const oneLine = formatFull(r) || r.formatted_address?.trim() || "—";
+        const oneLine = formatFull(r) || r.formatted_address?.trim() || "—"
         return (
           <div
             onDoubleClick={() => {
-              setEditingId(r.id);
-              setEditedRow({ ...r });
+              setEditingId(r.id)
+              setEditedRow({ ...r })
             }}
           >
             <div className="cell-ellipsis" style={{ fontWeight: 600 }}>
@@ -191,8 +191,8 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                       size="small"
                       icon={<CopyOutlined />}
                       onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(oneLine);
+                        e.stopPropagation()
+                        navigator.clipboard.writeText(oneLine)
                       }}
                     />
                   </Tooltip>
@@ -200,7 +200,7 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
               </div>
             )}
           </div>
-        );
+        )
       },
     },
     {
@@ -208,7 +208,7 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
       dataIndex: "actions",
       width: 140,
       render: (_, r) => {
-        const editing = isEditing(r);
+        const editing = isEditing(r)
         return (
           <ActionButtons
             onSave={editing ? handleSave : undefined}
@@ -217,10 +217,10 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
             confirmDelete={false}
             size="small"
           />
-        );
+        )
       },
     },
-  ];
+  ]
 
   return (
     <Table
@@ -232,5 +232,5 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
       pagination={false}
       size="small"
     />
-  );
+  )
 }

@@ -1,20 +1,20 @@
-import React, { useState } from "react";
-import { Table, Input, Select, Space } from "antd";
-import ActionButtons from "@/components/common/ActionButtons";
+import React, { useState } from "react"
+import { Table, Input, Select } from "antd"
+import ActionButtons from "@/components/common/ActionButtons"
 
 const CURRENCY_OPTIONS = [
   { value: "RUB", label: "RUB — Russian Ruble" },
   { value: "USD", label: "USD — US Dollar" },
   { value: "EUR", label: "EUR — Euro" },
-];
+]
 
 export default function BankDetailsTable({ data = [], loading, onUpdate, onDelete }) {
-  const [editingId, setEditingId] = useState(null);
-  const [edited, setEdited] = useState(null);
+  const [editingId, setEditingId] = useState(null)
+  const [edited, setEdited] = useState(null)
 
-  const isEditing = (r) => r.id === editingId;
-  const cancel = () => { setEditingId(null); setEdited(null); };
-  const save   = async () => { await onUpdate(editingId, edited); cancel(); };
+  const isEditing = (r) => r.id === editingId
+  const cancel = () => { setEditingId(null); setEdited(null) }
+  const save = async () => { await onUpdate(editingId, edited); cancel() }
 
   const columns = [
     {
@@ -22,25 +22,43 @@ export default function BankDetailsTable({ data = [], loading, onUpdate, onDelet
       dataIndex: "bank_name",
       render: (_, r) =>
         isEditing(r)
-          ? <Input value={edited.bank_name} onChange={e=>setEdited(p=>({ ...p, bank_name:e.target.value }))} onPressEnter={save}/>
+          ? (
+            <Input
+              value={edited.bank_name}
+              onChange={e => setEdited(p => ({ ...p, bank_name: e.target.value }))}
+              onPressEnter={save}
+            />
+          )
           : r.bank_name || "—",
     },
     {
       title: "БИК",
-      dataIndex: "bik",
+      dataIndex: "bic",
       width: 150,
       render: (_, r) =>
         isEditing(r)
-          ? <Input value={edited.bik} onChange={e=>setEdited(p=>({ ...p, bik:e.target.value }))} onPressEnter={save}/>
-          : r.bik || "—",
+          ? (
+            <Input
+              value={edited.bic}
+              onChange={e => setEdited(p => ({ ...p, bic: e.target.value }))}
+              onPressEnter={save}
+            />
+          )
+          : r.bic || "—",
     },
     {
       title: "Кор. счёт",
-      dataIndex: "corr_account",
+      dataIndex: "correspondent_account",
       render: (_, r) =>
         isEditing(r)
-          ? <Input value={edited.corr_account} onChange={e=>setEdited(p=>({ ...p, corr_account:e.target.value }))} onPressEnter={save}/>
-          : r.corr_account || "—",
+          ? (
+            <Input
+              value={edited.correspondent_account}
+              onChange={e => setEdited(p => ({ ...p, correspondent_account: e.target.value }))}
+              onPressEnter={save}
+            />
+          )
+          : r.correspondent_account || "—",
     },
     {
       title: "Валюта",
@@ -48,13 +66,17 @@ export default function BankDetailsTable({ data = [], loading, onUpdate, onDelet
       width: 200,
       render: (_, r) =>
         isEditing(r)
-          ? <Select
+          ? (
+            <Select
               options={CURRENCY_OPTIONS}
               value={edited.currency || "RUB"}
-              onChange={(v)=>setEdited(p=>({ ...p, currency:v }))}
+              onChange={(v) => setEdited(p => ({ ...p, currency: v }))}
               style={{ width: "100%" }}
-              getPopupContainer={(trigger)=>trigger?.closest(".parts-table-wrap") || document.body}
+              getPopupContainer={(trigger) =>
+                trigger?.closest(".parts-table-wrap") || document.body
+              }
             />
+          )
           : (r.currency || "RUB"),
     },
     {
@@ -62,7 +84,13 @@ export default function BankDetailsTable({ data = [], loading, onUpdate, onDelet
       dataIndex: "account_number",
       render: (_, r) =>
         isEditing(r)
-          ? <Input value={edited.account_number} onChange={e=>setEdited(p=>({ ...p, account_number:e.target.value }))} onPressEnter={save}/>
+          ? (
+            <Input
+              value={edited.account_number}
+              onChange={e => setEdited(p => ({ ...p, account_number: e.target.value }))}
+              onPressEnter={save}
+            />
+          )
           : r.account_number || "—",
     },
     {
@@ -70,7 +98,7 @@ export default function BankDetailsTable({ data = [], loading, onUpdate, onDelet
       dataIndex: "actions",
       width: 140,
       render: (_, r) => {
-        const editing = isEditing(r);
+        const editing = isEditing(r)
         return (
           <ActionButtons
             onSave={editing ? save : undefined}
@@ -78,12 +106,14 @@ export default function BankDetailsTable({ data = [], loading, onUpdate, onDelet
             onDelete={!editing ? () => onDelete(r) : undefined}
             confirmDelete={false}
             size="small"
-            onEdit={!editing ? () => { setEditingId(r.id); setEdited({ ...r }); } : undefined}
+            onEdit={
+              !editing ? () => { setEditingId(r.id); setEdited({ ...r }) } : undefined
+            }
           />
-        );
+        )
       },
     },
-  ];
+  ]
 
   return (
     <Table
@@ -95,5 +125,5 @@ export default function BankDetailsTable({ data = [], loading, onUpdate, onDelet
       pagination={false}
       size="small"
     />
-  );
+  )
 }

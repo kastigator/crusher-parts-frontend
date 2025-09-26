@@ -80,10 +80,11 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
   if (!supplierId) return null
 
   return (
-    <>
-      {/* унифицированная сигнатура тулбара */}
+    <div className="parts-table-wrap">
+      {/* Унифицированный тулбар */}
       <TableToolbar search={search} onSearch={setSearch} />
 
+      {/* Форма добавления */}
       <Card size="small" style={{ marginTop: 8, marginBottom: 12 }}>
         <Row gutter={12}>
           <Col span={6}>
@@ -147,6 +148,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
         </Row>
       </Card>
 
+      {/* Таблица */}
       <SupplierContactsTable
         data={filtered}
         loading={loading}
@@ -154,6 +156,6 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
         setData={setData}
         onChanged={onChanged}
       />
-    </>
+    </div>
   )
 }

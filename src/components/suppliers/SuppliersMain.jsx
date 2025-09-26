@@ -19,7 +19,6 @@ export default function SuppliersMain() {
   const [importOpen, setImportOpen] = useState(false)
   const [showDeleted, setShowDeleted] = useState(false)
 
-  // баннер новых изменений
   const [hasNew, setHasNew] = useState(false)
   const baselinesRef = useRef(new Map())
   const lastBaselineSetAtRef = useRef(0)
@@ -33,6 +32,9 @@ export default function SuppliersMain() {
     email: "",
   })
 
+  // ========================
+  // CRUD
+  // ========================
   const fetchSuppliers = async () => {
     setLoading(true)
     try {
@@ -45,7 +47,6 @@ export default function SuppliersMain() {
       setLoading(false)
     }
   }
-
   useEffect(() => { fetchSuppliers() }, [])
 
   const handleAdd = async () => {
@@ -63,28 +64,54 @@ export default function SuppliersMain() {
     try {
       const { data: created } = await axios.post("/part-suppliers", payload)
       setSuppliers((prev) => [created, ...prev])
-      message.success("Поставщик добавлен")
       setNewSupplier({ name: "", contact_person: "", phone: "", email: "" })
+      message.success("Поставщик добавлен")
       nameInputRef.current?.focus()
       await refreshAllAndResetBaseline()
     } catch (err) {
       console.error("Ошибка при добавлении поставщика:", err)
-      const msg = err?.response?.data?.message || "Не удалось добавить поставщика"
-      message.error(msg)
+      message.error(err?.response?.data?.message || "Не удалось добавить поставщика")
     }
   }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return suppliers
-    return suppliers.filter((r) =>
-      [r.name, r.contact_person, r.phone, r.email, r.vat_number, r.country, r.preferred_currency]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(q))
-    )
-  }, [suppliers, search])
+  const replaceRow = (fresh) =>
+    setSuppliers((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
 
-  // ===== ETag / baseline tracking =====
+  const onUpdate = async (id, row) => {
+    try {
+      const { data: fresh } = await axios.put(`/part-suppliers/${id}`, row)
+      replaceRow(fresh)
+      message.success("Изменения сохранены")
+      await setBaselineFor(expandedSupplierId)
+      return fresh
+    } catch (err) {
+      if (err?.response?.data?.type === "duplicate_key") {
+        const e = new Error("Duplicate key"); e.isDuplicateKey = true; throw e
+      }
+      if (err?.response?.status === 409 && err?.response?.data?.type === "version_conflict") {
+        const e = new Error("Version conflict"); e.isVersionConflict = true; e.currentRecord = err.response.data.current; throw e
+      }
+      throw err
+    }
+  }
+
+  const onDelete = async (record) => {
+    try {
+      await axios.delete(`/part-suppliers/${record.id}`, { params: { version: record.version } })
+      setSuppliers((prev) => prev.filter((r) => r.id !== record.id))
+      message.success("Поставщик удалён")
+      await setBaselineFor(expandedSupplierId)
+    } catch (err) {
+      if (err?.response?.status === 409 && err?.response?.data?.type === "version_conflict") {
+        const e = new Error("Version conflict"); e.isVersionConflict = true; e.currentRecord = err.response.data.current; throw e
+      }
+      throw err
+    }
+  }
+
+  // ========================
+  // ETag / baseline tracking
+  // ========================
   const fetchSuppliersEtag = async () => {
     const { data } = await axios.get("/part-suppliers/etag")
     return data?.etag || ""
@@ -97,11 +124,7 @@ export default function SuppliersMain() {
         axios.get("/supplier-bank-details/etag", { params: { supplier_id: supplierId } }),
         axios.get("/supplier-contacts/etag", { params: { supplier_id: supplierId } }),
       ])
-      return [
-        addr.data?.etag || "0:0",
-        bank.data?.etag || "0:0",
-        contacts.data?.etag || "0:0",
-      ].join("|")
+      return [addr.data?.etag || "0:0", bank.data?.etag || "0:0", contacts.data?.etag || "0:0"].join("|")
     } catch { return "" }
   }
   const getKey = (id) => (id ? `supplier:${id}` : "global")
@@ -148,41 +171,19 @@ export default function SuppliersMain() {
 
   const handleChildChanged = async () => { await setBaselineFor(expandedSupplierId) }
 
-  const replaceRow = (fresh) =>
-    setSuppliers((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return suppliers
+    return suppliers.filter((r) =>
+      [r.name, r.contact_person, r.phone, r.email, r.vat_number, r.country, r.preferred_currency]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
+    )
+  }, [suppliers, search])
 
-  const onUpdate = async (id, row) => {
-    try {
-      const { data: fresh } = await axios.put(`/part-suppliers/${id}`, row)
-      replaceRow(fresh)
-      message.success("Изменения сохранены")
-      await setBaselineFor(expandedSupplierId)
-      return fresh
-    } catch (err) {
-      if (err?.response?.data?.type === "duplicate_key") {
-        const e = new Error("Duplicate key"); e.isDuplicateKey = true; throw e
-      }
-      if (err?.response?.status === 409 && err?.response?.data?.type === "version_conflict") {
-        const e = new Error("Version conflict"); e.isVersionConflict = true; e.currentRecord = err.response.data.current; throw e
-      }
-      throw err
-    }
-  }
-
-  const onDelete = async (record) => {
-    try {
-      await axios.delete(`/part-suppliers/${record.id}`, { params: { version: record.version } })
-      setSuppliers((prev) => prev.filter((r) => r.id !== record.id))
-      message.success("Поставщик удалён")
-      await setBaselineFor(expandedSupplierId)
-    } catch (err) {
-      if (err?.response?.status === 409 && err?.response?.data?.type === "version_conflict") {
-        const e = new Error("Version conflict"); e.isVersionConflict = true; e.currentRecord = err.response.data.current; throw e
-      }
-      throw err
-    }
-  }
-
+  // ========================
+  // Render
+  // ========================
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Card title="Поставщики" bodyStyle={{ paddingTop: 0 }}>
@@ -226,17 +227,19 @@ export default function SuppliersMain() {
           </Form.Item>
         </Form>
 
-        <SuppliersTable
-          data={filtered}
-          loading={loading}
-          expandedSupplierId={expandedSupplierId}
-          setExpandedSupplierId={async (val) => { setExpandedSupplierId(val); await setBaselineFor(val) }}
-          onReload={refreshAllAndResetBaseline}
-          onChildChanged={handleChildChanged}
-          onUpdate={onUpdate}
-          onDelete={onDelete}
-          onReplaceRow={replaceRow}
-        />
+        <div className="parts-table-wrap">
+          <SuppliersTable
+            data={filtered}
+            loading={loading}
+            expandedSupplierId={expandedSupplierId}
+            setExpandedSupplierId={async (val) => { setExpandedSupplierId(val); await setBaselineFor(val) }}
+            onReload={refreshAllAndResetBaseline}
+            onChildChanged={handleChildChanged}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            onReplaceRow={replaceRow}
+          />
+        </div>
       </Card>
 
       <ImportModal

@@ -13,19 +13,18 @@ export default function SupplierBankDetailsTable({
   onDelete,   // (record) => Promise<void>
 }) {
   const [editingId, setEditingId] = useState(null)
-  const [editedRow, setEditedRow] = useState({})
+  const [editedRow, setEditedRow] = useState(null)
 
   const isEditing = (r) => editingId === r.id
 
-  const makeEditable = (record) => {
+  const startEdit = (record) => {
     setEditingId(record.id)
-    // сохраняем текущую версию для optimistic
     setEditedRow({ ...record, version: record.version })
   }
 
   const cancelEdit = () => {
     setEditingId(null)
-    setEditedRow({})
+    setEditedRow(null)
   }
 
   const trimToNull = (v) => {
@@ -34,24 +33,19 @@ export default function SupplierBankDetailsTable({
     return s === "" ? null : s
   }
 
-  const saveEdit = async (record) => {
+  const saveEdit = async () => {
+    if (!editedRow) return
     const payload = {
-      bank_name: trimToNull(editedRow.bank_name ?? record.bank_name),
-      account_number: trimToNull(editedRow.account_number ?? record.account_number),
-      iban: trimToNull(editedRow.iban ?? record.iban),
-      bic: trimToNull(editedRow.bic ?? record.bic),
-      currency: (() => {
-        const v = editedRow.currency ?? record.currency
-        return v ? String(v).trim().toUpperCase().slice(0, 3) : null
-      })(),
-      correspondent_account: trimToNull(editedRow.correspondent_account ?? record.correspondent_account),
-      bank_address: trimToNull(editedRow.bank_address ?? record.bank_address),
-      additional_info: trimToNull(editedRow.additional_info ?? record.additional_info),
-      is_primary_for_currency:
-        editedRow.is_primary_for_currency != null
-          ? (editedRow.is_primary_for_currency ? 1 : 0)
-          : (record.is_primary_for_currency ? 1 : 0),
-      version: editedRow.version ?? record.version,
+      bank_name: trimToNull(editedRow.bank_name),
+      account_number: trimToNull(editedRow.account_number),
+      iban: trimToNull(editedRow.iban),
+      bic: trimToNull(editedRow.bic),
+      currency: editedRow.currency ? String(editedRow.currency).trim().toUpperCase().slice(0, 3) : null,
+      correspondent_account: trimToNull(editedRow.correspondent_account),
+      bank_address: trimToNull(editedRow.bank_address),
+      additional_info: trimToNull(editedRow.additional_info),
+      is_primary_for_currency: editedRow.is_primary_for_currency ? 1 : 0,
+      version: editedRow.version,
     }
 
     if (!payload.bank_name || !payload.account_number) {
@@ -64,12 +58,11 @@ export default function SupplierBankDetailsTable({
     }
 
     try {
-      await onUpdate?.(record.id, payload)
+      await onUpdate?.(editedRow.id, payload)
       cancelEdit()
     } catch (err) {
-      // Родитель уже показывает модалку конфликтов/ошибки; здесь просто не закрываем редактирование.
-      // Если нужно — можно добавить message.error на непредвиденные ошибки.
-      console.error("onUpdate failed:", err)
+      console.error("Ошибка при сохранении реквизитов:", err)
+      // Родитель покажет модалку конфликта
     }
   }
 
@@ -78,8 +71,9 @@ export default function SupplierBankDetailsTable({
     if (!confirmed) return
     try {
       await onDelete?.(record)
+      if (isEditing(record)) cancelEdit()
     } catch (err) {
-      console.error("onDelete failed:", err)
+      console.error("Ошибка при удалении реквизитов:", err)
     }
   }
 
@@ -89,19 +83,22 @@ export default function SupplierBankDetailsTable({
       type={type}
       onChange={(e) => setEditedRow((p) => ({ ...p, [field]: e.target.value }))}
       size="small"
-      autoFocus={field === "bank_name"}
       onKeyDown={(e) => {
-        if (e.key === "Enter") saveEdit({ ...editedRow })
+        if (e.key === "Enter") saveEdit()
         if (e.key === "Escape") cancelEdit()
       }}
     />
   )
 
-  const renderCurrencySelect = (record) => (
+  const renderCurrencySelect = () => (
     <CurrencySelect
-      value={editedRow.currency ?? record.currency ?? ""}
+      value={editedRow?.currency ?? ""}
       onChange={(val) => setEditedRow((p) => ({ ...p, currency: val || "" }))}
-      TextFieldProps={{ size: "small" }}
+      TextFieldProps={{
+        size: "small",
+        getPopupContainer: (trigger) =>
+          trigger?.closest(".parts-table-wrap") || document.body,
+      }}
     />
   )
 
@@ -109,65 +106,63 @@ export default function SupplierBankDetailsTable({
     {
       title: "Банк",
       dataIndex: "bank_name",
-      render: (_, record) =>
-        isEditing(record) ? renderInput("bank_name") : <ValueDisplay value={record.bank_name} />,
-      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) }),
+      render: (_, r) =>
+        isEditing(r) ? renderInput("bank_name") : <ValueDisplay value={r.bank_name} />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "BIC",
       dataIndex: "bic",
       width: 120,
-      render: (_, record) =>
-        isEditing(record) ? renderInput("bic") : <ValueDisplay value={record.bic} />,
-      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) }),
+      render: (_, r) =>
+        isEditing(r) ? renderInput("bic") : <ValueDisplay value={r.bic} />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "IBAN",
       dataIndex: "iban",
       width: 180,
-      render: (_, record) =>
-        isEditing(record) ? renderInput("iban") : <ValueDisplay value={record.iban} />,
-      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) }),
+      render: (_, r) =>
+        isEditing(r) ? renderInput("iban") : <ValueDisplay value={r.iban} />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Корр. счёт",
       dataIndex: "correspondent_account",
       width: 160,
-      render: (_, record) =>
-        isEditing(record)
-          ? renderInput("correspondent_account")
-          : <ValueDisplay value={record.correspondent_account} />,
-      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) }),
+      render: (_, r) =>
+        isEditing(r) ? renderInput("correspondent_account") : <ValueDisplay value={r.correspondent_account} />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Валюта",
       dataIndex: "currency",
       width: 120,
-      render: (_, record) =>
-        isEditing(record) ? renderCurrencySelect(record) : <ValueDisplay value={record.currency} />,
-      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) }),
+      render: (_, r) =>
+        isEditing(r) ? renderCurrencySelect() : <ValueDisplay value={r.currency} />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Расч. счёт",
       dataIndex: "account_number",
       width: 200,
-      render: (_, record) =>
-        isEditing(record) ? renderInput("account_number") : <ValueDisplay value={record.account_number} />,
-      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) }),
+      render: (_, r) =>
+        isEditing(r) ? renderInput("account_number") : <ValueDisplay value={r.account_number} />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Адрес банка",
       dataIndex: "bank_address",
-      render: (_, record) =>
-        isEditing(record) ? renderInput("bank_address") : <ValueDisplay value={record.bank_address} />,
-      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) }),
+      render: (_, r) =>
+        isEditing(r) ? renderInput("bank_address") : <ValueDisplay value={r.bank_address} />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Доп. инфо",
       dataIndex: "additional_info",
-      render: (_, record) =>
-        isEditing(record) ? renderInput("additional_info") : <ValueDisplay value={record.additional_info} />,
-      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) }),
+      render: (_, r) =>
+        isEditing(r) ? renderInput("additional_info") : <ValueDisplay value={r.additional_info} />,
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Статус",
@@ -186,19 +181,19 @@ export default function SupplierBankDetailsTable({
         ) : (
           <Tag>Обычный</Tag>
         ),
-      onCell: (record) => ({ onDoubleClick: () => makeEditable(record) }),
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Действия",
-      dataIndex: "actions",
+      key: "actions",
       width: 140,
-      render: (_, record) => {
-        const editing = isEditing(record)
+      render: (_, r) => {
+        const editing = isEditing(r)
         return (
           <ActionButtons
-            onSave={editing ? () => saveEdit(record) : undefined}
+            onSave={editing ? saveEdit : undefined}
             onCancel={editing ? cancelEdit : undefined}
-            onDelete={!editing ? () => deleteRow(record) : undefined}
+            onDelete={!editing ? () => deleteRow(r) : undefined}
             confirmDelete={false}
             size="small"
           />
@@ -210,6 +205,7 @@ export default function SupplierBankDetailsTable({
   return (
     <Table
       rowKey="id"
+      className="op-table parts-table"
       columns={columns}
       dataSource={data}
       loading={loading}

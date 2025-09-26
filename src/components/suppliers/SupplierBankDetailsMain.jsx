@@ -74,12 +74,10 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
     setSubmitting(true)
     try {
       const { data: created } = await axios.post("/supplier-bank-details", payload)
-      // мгновенно добавляем
       setData((prev) => [created, ...prev])
 
-      // если отметили «основной», на бэке снялись флаги у других — подтянем список
       if (created.is_primary_for_currency && created.currency) {
-        await fetchData()
+        await fetchData() // чтобы снять флаги у остальных
       }
 
       setNewBank({
@@ -103,20 +101,17 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
     }
   }
 
-  // ——— helpers для локального списка ———
   const replaceRow = (fresh) =>
     setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
 
   const removeRow = (id) =>
     setData((prev) => prev.filter((r) => r.id !== id))
 
-  // ——— UPDATE/DELETE для таблицы ———
   const handleUpdate = async (id, values) => {
     try {
       const { data: fresh } = await axios.put(`/supplier-bank-details/${id}`, values)
       replaceRow(fresh)
 
-      // если эта запись стала «основной» — обновим список, чтобы снять флаги у других
       if (fresh.is_primary_for_currency && fresh.currency) {
         await fetchData()
       }
@@ -205,7 +200,10 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
             <CurrencySelect
               value={newBank.currency}
               onChange={(v) => setNewBank((p) => ({ ...p, currency: v || "" }))}
-              TextFieldProps={{ size: "small", label: "Валюта" }}
+              // 👇 якорим выпадашку к раскрытой строке (обёртка у родителя)
+              getPopupContainer={(trigger) =>
+                trigger?.closest(".parts-table-wrap") || document.body
+              }
             />
           </Col>
 

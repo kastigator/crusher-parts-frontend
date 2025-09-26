@@ -236,7 +236,8 @@ export default function SuppliersTable({
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // ===== вкладка «Профиль» (остальные поля мастера) =====
-  const ProfileTab = ({ supplier }) => {
+  // ВАЖНО: function-declaration (хоистится), чтобы не ловить ReferenceError
+  function ProfileTab({ supplier }) {
     const [form] = Form.useForm()
     const [submitting, setSubmitting] = useState(false)
 
@@ -300,6 +301,7 @@ export default function SuppliersTable({
               options={CURRENCIES.map((c) => ({ value: c, label: c }))}
               value={form.getFieldValue("preferred_currency") || undefined}
               onChange={(v) => form.setFieldsValue({ preferred_currency: v || "" })}
+              getPopupContainer={(t) => t?.closest(".parts-subtable") || document.body}
             />
           </Form.Item>
 
@@ -311,6 +313,7 @@ export default function SuppliersTable({
               options={INCOTERMS.map((c) => ({ value: c, label: c }))}
               value={form.getFieldValue("incoterms") || undefined}
               onChange={(v) => form.setFieldsValue({ incoterms: v || "" })}
+              getPopupContainer={(t) => t?.closest(".parts-subtable") || document.body}
             />
           </Form.Item>
 
@@ -405,21 +408,21 @@ export default function SuppliersTable({
         }}
         onManualMerge={() => {
           const base  = conflict.current || {}
-          const draft = conflict.draft   || {}
+          const dr    = conflict.draft   || {}
           const merged = {
             ...base,
-            name: draft.name ?? base.name,
-            vat_number: draft.vat_number ?? base.vat_number,
-            country: draft.country ?? base.country,
-            contact_person: draft.contact_person ?? base.contact_person,
-            phone: draft.phone ?? base.phone,
-            email: draft.email ?? base.email,
-            website: draft.website ?? base.website,
-            payment_terms: draft.payment_terms ?? base.payment_terms,
-            preferred_currency: draft.preferred_currency ?? base.preferred_currency,
-            incoterms: draft.incoterms ?? base.incoterms,
-            default_lead_time_days: draft.default_lead_time_days ?? base.default_lead_time_days,
-            notes: draft.notes ?? base.notes,
+            name: dr.name ?? base.name,
+            vat_number: dr.vat_number ?? base.vat_number,
+            country: dr.country ?? base.country,
+            contact_person: dr.contact_person ?? base.contact_person,
+            phone: dr.phone ?? base.phone,
+            email: dr.email ?? base.email,
+            website: dr.website ?? base.website,
+            payment_terms: dr.payment_terms ?? base.payment_terms,
+            preferred_currency: dr.preferred_currency ?? base.preferred_currency,
+            incoterms: dr.incoterms ?? base.incoterms,
+            default_lead_time_days: dr.default_lead_time_days ?? base.default_lead_time_days,
+            notes: dr.notes ?? base.notes,
           }
           if (merged.id) {
             const field = editing?.field || "name"

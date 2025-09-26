@@ -1,4 +1,3 @@
-// src/components/clients/BillingAddressesTable.jsx
 import React, { useState } from "react"
 import { Table, Input, Row, Col, Divider, Space, Tooltip, Button } from "antd"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
@@ -38,7 +37,6 @@ export default function BillingAddressesTable({
       await onUpdate(editingId, editedRow)
       cancelEdit()
     } catch (err) {
-      // конфликты/ошибки ловятся в Main через VersionConflictModal
       console.error("Ошибка при сохранении адреса:", err)
     }
   }
@@ -68,7 +66,7 @@ export default function BillingAddressesTable({
             <>
               <PlaceAddressInput
                 debugId={`billing-table-row-${record.id}`}
-                // якорим выпадашки k .parts-table-wrap (если инпут поддерживает)
+                // якорим выпадашки к .parts-table-wrap
                 getPopupContainer={(trigger) =>
                   trigger?.closest(".parts-table-wrap") || document.body
                 }
@@ -100,7 +98,7 @@ export default function BillingAddressesTable({
 
               <Divider style={{ margin: "8px 0" }} />
 
-              <Row gutter={8}>
+              <Row gutter={8} className="table-section">
                 <Col span={6}>
                   <Input
                     placeholder="Страна"
@@ -135,7 +133,7 @@ export default function BillingAddressesTable({
                 </Col>
               </Row>
 
-              <Row gutter={8} style={{ marginTop: 8 }}>
+              <Row gutter={8} className="table-section">
                 <Col span={8}>
                   <Input
                     placeholder="Улица"
@@ -170,7 +168,7 @@ export default function BillingAddressesTable({
                 </Col>
               </Row>
 
-              <Row style={{ marginTop: 8 }}>
+              <Row className="table-section">
                 <Col span={24}>
                   <Input.TextArea
                     placeholder="Комментарий"

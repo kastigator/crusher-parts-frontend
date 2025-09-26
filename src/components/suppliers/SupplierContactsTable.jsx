@@ -19,7 +19,6 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
 
   const startEdit = (record) => {
     setEditingId(record.id)
-    // сохраняем текущую версию для optimistic
     setEditedRow({ ...record, version: record.version })
   }
 
@@ -44,7 +43,7 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
       phone: trimToNull(row.phone),
       is_primary: row.is_primary ? 1 : 0,
       notes: trimToNull(row.notes),
-      version: row.version
+      version: row.version,
     }
 
     try {
@@ -61,7 +60,7 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
           text: "Запись изменилась на сервере. Принять новую версию и повторить сохранение?",
           icon: "warning",
           confirmLabel: "Да, повторить",
-          cancelLabel: "Отмена"
+          cancelLabel: "Отмена",
         })
         if (!confirmed) return
 
@@ -86,17 +85,13 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
     const { confirmed } = await confirmAction("Удалить контакт?")
     if (!confirmed) return
     try {
-      // передаём version, чтобы не удалить устаревшую запись
-      await axios.delete(`/supplier-contacts/${record.id}`, {
-        params: { version: record.version }
-      })
+      await axios.delete(`/supplier-contacts/${record.id}`, { params: { version: record.version } })
       setData((prev) => prev.filter((r) => r.id !== record.id))
       message.success("Контакт удалён")
       onChanged?.()
     } catch (err) {
       if (err?.response?.status === 409 && err.response.data?.current) {
         const current = err.response.data.current
-        // подменим строку актуальной, чтобы пользователь видел реальное состояние
         setData((prev) => prev.map((r) => (r.id === record.id ? current : r)))
         message.warning("Запись изменилась и не была удалена. Данные обновлены.")
       } else {
@@ -123,39 +118,39 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
       title: "Имя",
       dataIndex: "name",
       render: (_, record) =>
-        isEditing(record) ? renderInput("name") : (record.name || "—"),
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+        isEditing(record) ? renderInput("name") : record.name || "—",
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Роль",
       dataIndex: "role",
       width: 160,
       render: (_, record) =>
-        isEditing(record) ? renderInput("role") : (record.role || "—"),
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+        isEditing(record) ? renderInput("role") : record.role || "—",
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Email",
       dataIndex: "email",
       width: 220,
       render: (_, record) =>
-        isEditing(record) ? renderInput("email", "email") : (record.email || "—"),
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+        isEditing(record) ? renderInput("email", "email") : record.email || "—",
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Телефон",
       dataIndex: "phone",
       width: 160,
       render: (_, record) =>
-        isEditing(record) ? renderInput("phone") : (record.phone || "—"),
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+        isEditing(record) ? renderInput("phone") : record.phone || "—",
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Примечания",
       dataIndex: "notes",
       render: (_, record) =>
-        isEditing(record) ? renderInput("notes") : (record.notes || "—"),
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+        isEditing(record) ? renderInput("notes") : record.notes || "—",
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Статус",
@@ -174,7 +169,7 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
         ) : (
           <Tag>Обычный</Tag>
         ),
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) })
+      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Действия",
@@ -191,12 +186,13 @@ export default function SupplierContactsTable({ supplierId, data = [], loading, 
             size="small"
           />
         )
-      }
-    }
+      },
+    },
   ]
 
   return (
     <Table
+      className="op-table parts-table"
       rowKey="id"
       columns={columns}
       dataSource={data}
