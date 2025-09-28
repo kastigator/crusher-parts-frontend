@@ -12,12 +12,11 @@ const SUPPLIER_TEMPLATE_URL = "https://storage.googleapis.com/shared-parts-bucke
 
 export default function SupplierPartsMain() {
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [supplier, setSupplier] = useState(null)   // { id, name/company, ... }
+  const [supplier, setSupplier] = useState(null)
   const [search, setSearch] = useState("")
-  const [version, setVersion] = useState(0)        // форсим перезагрузку таблицы
+  const [version, setVersion] = useState(0)
   const [importOpen, setImportOpen] = useState(false)
 
-  // inline-форма добавления
   const [form] = Form.useForm()
   const [adding, setAdding] = useState(false)
 
@@ -41,12 +40,18 @@ export default function SupplierPartsMain() {
   }, [supplier])
 
   const handleImportClick = () => {
-    if (!supplier?.id) { message.warning("Сначала выберите поставщика"); return }
+    if (!supplier?.id) {
+      message.warning("Сначала выберите поставщика")
+      return
+    }
     setImportOpen(true)
   }
 
   const handleAdd = async () => {
-    if (!supplier?.id) { message.warning("Сначала выберите поставщика"); return }
+    if (!supplier?.id) {
+      message.warning("Сначала выберите поставщика")
+      return
+    }
     try {
       const v = await form.validateFields()
       setAdding(true)
@@ -57,10 +62,13 @@ export default function SupplierPartsMain() {
       })
       message.success("Деталь поставщика создана")
       form.resetFields()
-      setVersion(x => x + 1) // обновим таблицу
+      setVersion(x => x + 1)
     } catch (e) {
       if (e?.response?.data?.message) message.error(e.response.data.message)
-      else if (!e?.errorFields) { console.error(e); message.error("Не удалось создать деталь") }
+      else if (!e?.errorFields) {
+        console.error(e)
+        message.error("Не удалось создать деталь")
+      }
     } finally {
       setAdding(false)
     }
@@ -68,7 +76,7 @@ export default function SupplierPartsMain() {
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
-      <Card title="Детали поставщиков" bodyStyle={{ paddingTop: 8 }}>
+      <Card bodyStyle={{ paddingTop: 8 }}>
         {/* Ряд 1: выбор поставщика и действия */}
         <Row gutter={[12, 12]} align="middle">
           <Col xs={24} md={12}>
@@ -87,47 +95,46 @@ export default function SupplierPartsMain() {
           </Col>
         </Row>
 
-        {/* Поиск по каталогу поставщика */}
-        <TableToolbar
-          placeholder="Поиск по номеру/описанию…"
-          search={search}
-          onSearch={setSearch}
-          disabled={!supplier}
-        />
+        {/* Поиск */}
+        <div className="table-section">
+          <TableToolbar
+            placeholder="Поиск по номеру/описанию…"
+            search={search}
+            onSearch={setSearch}
+            disabled={!supplier}
+          />
+        </div>
 
-        {/* Ряд 2: добавление новой позиции */}
-        <Form
-          form={form}
-          layout="inline"
-          style={{ marginBottom: 12 }}
-          disabled={!supplier}
-        >
-          <Form.Item
-            name="supplier_part_number"
-            label="№ у поставщика"
-            rules={[{ required: true, message: "Укажите номер" }]}
-          >
-            <Input placeholder="например, P-12345" style={{ width: 240 }} />
-          </Form.Item>
-
-          <Form.Item name="description" label="Описание" style={{ flex: 1 }}>
-            <Input placeholder="Короткое описание" style={{ minWidth: 260 }} />
-          </Form.Item>
-
-          <Form.Item>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleAdd}
-              loading={adding}
-              disabled={!supplier}
+        {/* Форма добавления */}
+        <div className="table-section">
+          <Form form={form} layout="inline" disabled={!supplier}>
+            <Form.Item
+              name="supplier_part_number"
+              label="№ у поставщика"
+              rules={[{ required: true, message: "Укажите номер" }]}
             >
-              Добавить деталь
-            </Button>
-          </Form.Item>
-        </Form>
+              <Input placeholder="например, P-12345" style={{ width: 240 }} />
+            </Form.Item>
 
-        {/* Таблица каталога поставщика */}
+            <Form.Item name="description" label="Описание" style={{ flex: 1 }}>
+              <Input placeholder="Короткое описание" style={{ minWidth: 260 }} />
+            </Form.Item>
+
+            <Form.Item>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleAdd}
+                loading={adding}
+                disabled={!supplier}
+              >
+                Добавить деталь
+              </Button>
+            </Form.Item>
+          </Form>
+        </div>
+
+        {/* Таблица */}
         <SupplierPartsTable
           supplierId={supplier?.id || null}
           search={search}
@@ -144,14 +151,18 @@ export default function SupplierPartsMain() {
         initialSupplierId={supplier?.id ?? null}
       />
 
-      {/* Импорт каталога поставщика */}
+      {/* Импорт */}
       <ImportModal
         open={importOpen}
         type="supplier_parts"
         templateUrl={SUPPLIER_TEMPLATE_URL}
         extraParams={{ supplier_id: supplier?.id }}
         onClose={() => setImportOpen(false)}
-        onSuccess={() => { setImportOpen(false); setVersion(v => v + 1); message.success("Импорт выполнен") }}
+        onSuccess={() => {
+          setImportOpen(false)
+          setVersion(v => v + 1)
+          message.success("Импорт выполнен")
+        }}
       />
     </Space>
   )

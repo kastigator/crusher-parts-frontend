@@ -1,4 +1,3 @@
-// src/components/originalParts/BomTable.jsx
 import React, { useEffect, useMemo, useState, useRef } from "react"
 import { Table, Space, Button, InputNumber, message } from "antd"
 import axios from "@/api/axiosInstance"
@@ -6,24 +5,17 @@ import confirmAction from "@/utils/confirmAction"
 import { PlusOutlined } from "@ant-design/icons"
 import BomChildPickerDrawer from "./BomChildPickerDrawer"
 
-export default function BomTable(props) {
-  // Поддерживаем оба формата пропсов:
-  // 1) { parent: { id, equipment_model_id, ... }, onReload }
-  // 2) { parentId, modelId, onReload } (старый onChanged тоже поддерживаем)
-  const parentObj = props.parent || null
-  const parentId = parentObj?.id ?? props.parentId ?? null
-  const modelIdProp = props.modelId ?? parentObj?.equipment_model_id ?? null
-  const onReload = props.onReload || props.onChanged
+export default function BomTable({ parent, parentId: propParentId, modelId: propModelId, onReload }) {
+  const parentId = parent?.id ?? propParentId ?? null
+  const modelIdProp = propModelId ?? parent?.equipment_model_id ?? null
 
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [modelId, setModelId] = useState(modelIdProp) // эффективный modelId
+  const [modelId, setModelId] = useState(modelIdProp)
 
-  // Чтобы не делать двойные сохранения при Enter+Blur:
   const lastSaveRef = useRef({ key: null, value: null })
 
-  // Если modelId не передан — подтянуть его по parentId
   useEffect(() => {
     let ignore = false
     const fetchModelId = async () => {
@@ -31,15 +23,12 @@ export default function BomTable(props) {
       try {
         const { data } = await axios.get(`/original-parts/${parentId}`)
         if (!ignore) setModelId(data?.equipment_model_id ?? null)
-      } catch {
-        /* игнорируем — кнопка "Добавить позиции" будет disabled */
-      }
+      } catch { }
     }
     fetchModelId()
     return () => { ignore = true }
   }, [parentId, modelIdProp])
 
-  // Если извне пришёл новый modelId — обновим локальный
   useEffect(() => { setModelId(modelIdProp ?? null) }, [modelIdProp])
 
   const load = async () => {
@@ -56,26 +45,17 @@ export default function BomTable(props) {
     }
   }
 
-  useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parentId])
+  useEffect(() => { load() }, [parentId])
 
   const trySaveQty = async (childId, rawNext, qOrig) => {
-    // надёжный парсинг числа
     const q = Number(rawNext)
     if (!Number.isFinite(q) || q <= 0) return
-    // защита от одинаковых значений и двойного вызова (Enter + Blur)
     const saveKey = `${childId}:${q}`
     if (q === Number(qOrig) || (lastSaveRef.current.key === saveKey && lastSaveRef.current.value === q)) return
 
     try {
       lastSaveRef.current = { key: saveKey, value: q }
-      await axios.put("/original-part-bom", {
-        parent_part_id: parentId,
-        child_part_id: childId,
-        quantity: q,
-      })
+      await axios.put("/original-part-bom", { parent_part_id: parentId, child_part_id: childId, quantity: q })
       message.success("Количество обновлено")
       await load()
       onReload?.()
@@ -89,9 +69,7 @@ export default function BomTable(props) {
     const { confirmed } = await confirmAction("Удалить строку BOM?")
     if (!confirmed) return
     try {
-      await axios.delete("/original-part-bom", {
-        data: { parent_part_id: parentId, child_part_id: childId },
-      })
+      await axios.delete("/original-part-bom", { data: { parent_part_id: parentId, child_part_id: childId } })
       message.success("Строка удалена")
       await load()
       onReload?.()
@@ -101,17 +79,11 @@ export default function BomTable(props) {
     }
   }
 
-  // Массовое добавление выбранных
   const addMany = async (list) => {
     if (!Array.isArray(list) || !list.length) return
-    if (!parentId) {
-      message.warning("Нет родителя для BOM")
-      return
-    }
+    if (!parentId) { message.warning("Нет родителя для BOM"); return }
 
-    let ok = 0
-    const errors = []
-
+    let ok = 0, errors = []
     for (const item of list) {
       try {
         await axios.post("/original-part-bom", {
@@ -134,14 +106,13 @@ export default function BomTable(props) {
     onReload?.()
   }
 
-  // Исключаем родителя и уже добавленных детей из списка выбора
   const excludeIds = useMemo(
     () => [parentId, ...items.map((r) => r.child_part_id)].filter(Boolean),
     [parentId, items]
   )
 
   return (
-    <div className="op-table parts-table">
+    <div className="subtable-shell">
       <Table
         rowKey={(r) => `${r.parent_part_id}:${r.child_part_id}`}
         dataSource={items}
@@ -151,11 +122,7 @@ export default function BomTable(props) {
         scroll={{ x: true }}
         columns={[
           { title: "Part number", dataIndex: "child_cat_number", width: 180 },
-          {
-            title: "Описание",
-            ellipsis: true,
-            render: (_, r) => r.child_description_ru || r.child_description_en || "—",
-          },
+          { title: "Описание", ellipsis: true, render: (_, r) => r.child_description_ru || r.child_description_en || "—" },
           {
             title: "Кол-во",
             dataIndex: "quantity",
@@ -170,9 +137,7 @@ export default function BomTable(props) {
                   onPressEnter={(e) => trySaveQty(r.child_part_id, e.target.value, q)}
                   onBlur={(e) => trySaveQty(r.child_part_id, e.target.value, q)}
                 />
-                <Button danger onClick={() => removeChild(r.child_part_id)}>
-                  Удалить
-                </Button>
+                <Button danger onClick={() => removeChild(r.child_part_id)}>Удалить</Button>
               </Space.Compact>
             ),
           },
@@ -191,17 +156,13 @@ export default function BomTable(props) {
         )}
       />
 
-      {/* Передаём excludeIds, чтобы скрыть родителя и уже добавленных детей */}
       <BomChildPickerDrawer
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         parentPartId={parentId}
         modelId={modelId}
         excludeIds={excludeIds}
-        onPick={(picked) => {
-          setPickerOpen(false)
-          addMany(picked)
-        }}
+        onPick={(picked) => { setPickerOpen(false); addMany(picked) }}
       />
     </div>
   )

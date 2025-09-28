@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Table, message } from "antd";
+import { Table, message, Empty } from "antd";
 import axios from "@/api/axiosInstance";
 
 const fmt4 = new Intl.NumberFormat("ru-RU", {
@@ -18,19 +18,22 @@ export default function BomExploded({ root }) {
       const { data } = await axios.get(`/original-part-bom/tree/${root.id}`);
       setTree(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.error(e);
+      console.error("Ошибка загрузки Exploded:", e);
       message.error("Не удалось загрузить данные для Exploded");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [root?.id]);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [root?.id]);
 
   const exploded = useMemo(() => {
     const map = new Map();
     for (const r of tree) {
-      if (r.node_id === root?.id) continue;     // пропускаем корень
+      if (r.node_id === root?.id) continue;
       const key = r.node_id;
       const current = map.get(key) || {
         node_id: key,
@@ -47,6 +50,22 @@ export default function BomExploded({ root }) {
     );
   }, [tree, root?.id]);
 
+  const columns = [
+    { title: "Cat #", dataIndex: "cat_number", width: 160 },
+    { title: "Описание", render: (_, r) => r.description_ru || r.description_en || "—" },
+    {
+      title: "Итого кол-во",
+      dataIndex: "total_qty",
+      width: 160,
+      align: "right",
+      render: (v) => fmt4.format(Number(v ?? 0)),
+    },
+  ];
+
+  if (!loading && exploded.length === 0) {
+    return <Empty description="Нет дочерних позиций" style={{ margin: 12 }} />;
+  }
+
   return (
     <Table
       rowKey="node_id"
@@ -54,18 +73,8 @@ export default function BomExploded({ root }) {
       loading={loading}
       pagination={false}
       dataSource={exploded}
-      columns={[
-        { title: "Cat #", dataIndex: "cat_number", width: 160 },
-        { title: "Описание", render: (_, r) => r.description_ru || r.description_en || "—" },
-        {
-          title: "Итого кол-во",
-          dataIndex: "total_qty",
-          width: 160,
-          align: "right",
-          render: (v) => fmt4.format(Number(v ?? 0)),
-        },
-      ]}
-      locale={{ emptyText: "Нет дочерних позиций" }}
+      columns={columns}
+      scroll={{ x: true }}
     />
   );
 }

@@ -1,53 +1,50 @@
-// src/components/originalParts/SubstitutionsTable.jsx
-import React, { useEffect, useMemo, useState } from "react"
-import { Table, message, Empty, Tooltip } from "antd"
-import axios from "@/api/axiosInstance"
-import ValueDisplay from "@/components/common/ValueDisplay"
+import React, { useEffect, useMemo, useState } from "react";
+import { Table, message, Empty, Tooltip } from "antd";
+import axios from "@/api/axiosInstance";
+import ValueDisplay from "@/components/common/ValueDisplay";
 
 export default function SubstitutionsTable({ part, originalPartId }) {
-  // поддерживаем оба варианта: либо прокидывают объект part, либо просто id
   const partId = useMemo(() => {
-    if (originalPartId) return originalPartId
-    return part?.id
-  }, [originalPartId, part?.id])
+    if (originalPartId) return originalPartId;
+    return part?.id;
+  }, [originalPartId, part?.id]);
 
-  const [rows, setRows] = useState(null) // null — ещё не грузили
-  const [loading, setLoading] = useState(false)
+  const [rows, setRows] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   const load = async () => {
-    if (!partId) return
-    setLoading(true)
+    if (!partId) return;
+    setLoading(true);
     try {
       const { data } = await axios.get("/original-part-substitutions", {
         params: { part_id: partId },
-      })
-      setRows(Array.isArray(data) ? data : [])
+      });
+      setRows(Array.isArray(data) ? data : []);
     } catch (e) {
       if (e?.response?.status === 404) {
-        setRows([])
+        setRows([]);
       } else {
-        console.error("Ошибка загрузки замен:", e)
-        message.error("Не удалось загрузить замены")
-        setRows([])
+        console.error("Ошибка загрузки замен:", e);
+        message.error("Не удалось загрузить замены");
+        setRows([]);
       }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    setRows(null) // сброс при смене детали
-    load()
+    setRows(null);
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partId])
+  }, [partId]);
 
-  // Пусто (и это уже не загрузка) — показываем Empty в том же стилевом контуре
   if (!loading && rows && rows.length === 0) {
     return (
-      <div className="op-table parts-table" style={{ padding: 12 }}>
+      <div className="subtable-shell">
         <Empty description="Замен пока нет" />
       </div>
-    )
+    );
   }
 
   const columns = [
@@ -79,7 +76,6 @@ export default function SubstitutionsTable({ part, originalPartId }) {
     {
       title: "Описание",
       dataIndex: "description",
-      // компактный вывод с тултипом
       render: (v) =>
         v ? (
           <Tooltip title={v}>
@@ -99,10 +95,10 @@ export default function SubstitutionsTable({ part, originalPartId }) {
           <ValueDisplay value={null} />
         ),
     },
-  ]
+  ];
 
   return (
-    <div className="op-table parts-table">
+    <div className="subtable-shell">
       <Table
         rowKey="id"
         size="small"
@@ -110,9 +106,8 @@ export default function SubstitutionsTable({ part, originalPartId }) {
         pagination={false}
         dataSource={rows || []}
         columns={columns}
-        // на узких экранах не будет «вылезать»
         scroll={{ x: true }}
       />
     </div>
-  )
+  );
 }

@@ -1,7 +1,7 @@
 /* ==== Base Layout ======================================================= */
 html, body, #root {
   height: 100%;
-  overflow-x: hidden;        /* не допускаем горизонтальный скролл */
+  overflow-x: hidden;        /* убираем горизонтальный скролл */
   overflow-y: auto;
   margin: 0;
   padding: 0;
@@ -12,10 +12,9 @@ html, body, #root {
   color: #1f2937;
 }
 
-/* никаких transition: all на * */
 * { box-sizing: border-box; }
 
-/* Умеренные переходы */
+/* Умеренные transition (без all!) */
 .ant-btn,
 .ant-input,
 .ant-select .ant-select-selector,
@@ -31,23 +30,6 @@ html, body, #root {
 .swal2-cancel.sweet-cancel   { background-color: #e0e0e0 !important; color: #333 !important; border-radius: 6px !important; padding: .6em 1.6em !important; font-size: 14px !important; font-family: 'Inter', sans-serif; }
 
 /* ==== Ant Design — общий тон =========================================== */
-.ant-table {
-  font-size: 13px;
-  font-family: 'Inter', sans-serif;
-  border-radius: 8px;
-  background-color: #fff;
-  border: 1px solid #e0e0e0;
-}
-.ant-table-thead > tr > th {
-  background-color: #f3f4f6;
-  font-weight: 600;
-  color: #1f2937;
-  padding: 8px;
-  font-size: 13px;
-}
-.ant-table-tbody > tr > td { padding: 8px; font-size: 13px; color: #1f2937; }
-.ant-table-tbody > tr:hover > td { background-color: #f5faff; }
-
 .ant-btn { border-radius: 8px; font-size: 13px; font-weight: 500; font-family: 'Inter', sans-serif; }
 .ant-btn-primary { background-color: #2563eb; border-color: #2563eb; }
 .ant-input, .ant-select-selector { border-radius: 6px !important; font-size: 13px; font-family: 'Inter', sans-serif; }

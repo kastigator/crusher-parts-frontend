@@ -1,40 +1,40 @@
-// src/components/originalParts/UsedInTable.jsx
-import React, { useEffect, useMemo, useState } from "react"
-import { Table, message, Tooltip, Empty } from "antd"
-import axios from "@/api/axiosInstance"
-import ValueDisplay from "@/components/common/ValueDisplay"
+import React, { useEffect, useMemo, useState } from "react";
+import { Table, message, Tooltip, Empty } from "antd";
+import axios from "@/api/axiosInstance";
+import ValueDisplay from "@/components/common/ValueDisplay";
 
 const fmtQty = (v) =>
-  new Intl.NumberFormat(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 4 }).format(
-    Number.isFinite(Number(v)) ? Number(v) : 0
-  )
+  new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+  }).format(Number.isFinite(Number(v)) ? Number(v) : 0);
 
 export default function UsedInTable({ partId }) {
-  const [rows, setRows] = useState(null) // null — ещё не грузили
-  const [loading, setLoading] = useState(false)
+  const [rows, setRows] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   const load = async () => {
-    if (!partId) return
-    setLoading(true)
+    if (!partId) return;
+    setLoading(true);
     try {
       const { data } = await axios.get("/original-part-bom/used-in", {
         params: { child_id: partId },
-      })
-      setRows(Array.isArray(data) ? data : [])
+      });
+      setRows(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.error("Ошибка загрузки UsedIn:", e)
-      message.error("Не удалось загрузить список родителей (где используется)")
-      setRows([])
+      console.error("Ошибка загрузки UsedIn:", e);
+      message.error("Не удалось загрузить список родителей (где используется)");
+      setRows([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    setRows(null)
-    load()
+    setRows(null);
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partId])
+  }, [partId]);
 
   const columns = useMemo(
     () => [
@@ -47,10 +47,9 @@ export default function UsedInTable({ partId }) {
       {
         title: "Родитель",
         dataIndex: "parent_description_ru",
-        // компактный вывод (RU приоритетно, если нет — EN)
         render: (_, r) => {
-          const text = r.parent_description_ru || r.parent_description_en || null
-          if (!text) return <ValueDisplay value={null} />
+          const text = r.parent_description_ru || r.parent_description_en || null;
+          if (!text) return <ValueDisplay value={null} />;
           return (
             <Tooltip title={text}>
               <span
@@ -65,7 +64,7 @@ export default function UsedInTable({ partId }) {
                 {text}
               </span>
             </Tooltip>
-          )
+          );
         },
       },
       {
@@ -77,19 +76,18 @@ export default function UsedInTable({ partId }) {
       },
     ],
     []
-  )
+  );
 
-  // Пустой список (и не идёт загрузка) — аккуратная заглушка в том же стилевом контуре
   if (!loading && rows && rows.length === 0) {
     return (
-      <div className="op-table parts-table" style={{ padding: 12 }}>
+      <div className="subtable-shell">
         <Empty description="Не используется ни в одной сборке" />
       </div>
-    )
+    );
   }
 
   return (
-    <div className="op-table parts-table">
+    <div className="subtable-shell">
       <Table
         rowKey={(r) => `${r.parent_id}:${r.child_id}`}
         size="small"
@@ -100,5 +98,5 @@ export default function UsedInTable({ partId }) {
         scroll={{ x: true }}
       />
     </div>
-  )
+  );
 }

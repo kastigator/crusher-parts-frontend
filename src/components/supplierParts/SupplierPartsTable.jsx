@@ -15,9 +15,9 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
-  // инлайн-редактирование
-  const [editing, setEditing] = useState(null) // { id, field } | null
-  const [draft, setDraft] = useState(null)     // копия редактируемой строки
+  // редактирование
+  const [editing, setEditing] = useState(null)
+  const [draft, setDraft] = useState(null)
 
   // пагинация
   const [page, setPage] = useState(1)
@@ -26,11 +26,9 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
 
   // история
   const [historyForId, setHistoryForId] = useState(null)
-  const openHistory = (id) => setHistoryForId(id)
-  const closeHistory = () => setHistoryForId(null)
 
   const abortRef = useRef(null)
-  const wrapRef = useRef(null) // якорь для попапов
+  const wrapRef = useRef(null)
 
   const load = useCallback(async () => {
     if (!supplierId) { setRows([]); setTotal(0); return }
@@ -42,16 +40,16 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
       const params = { supplier_id: supplierId, page, page_size: pageSize }
       if (search?.trim()) params.q = search.trim()
       const { data } = await axios.get("/supplier-parts", { params, signal: controller.signal })
-      const items = Array.isArray(data?.items) ? data.items : []
-      setRows(items)
+      setRows(Array.isArray(data?.items) ? data.items : [])
       setTotal(Number(data?.total || 0))
     } catch (e) {
-      const name = e?.name || e?.code
-      if (name !== "AbortError" && name !== "ERR_CANCELED") {
+      if (e?.name !== "AbortError" && e?.code !== "ERR_CANCELED") {
         console.error(e)
         message.error("Не удалось загрузить детали поставщика")
       }
-    } finally { setLoading(false) }
+    } finally {
+      setLoading(false)
+    }
   }, [supplierId, search, page, pageSize])
 
   useEffect(() => {
@@ -61,7 +59,7 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
 
   useEffect(() => { setPage(1) }, [supplierId, search])
 
-  // ===== редактирование
+  // ===== редактирование =====
   const isEditingCell = (record, field) =>
     editing && editing.id === record.id && editing.field === field
 
@@ -70,10 +68,7 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
     setDraft({ ...record })
   }
 
-  const cancelEdit = () => {
-    setEditing(null)
-    setDraft(null)
-  }
+  const cancelEdit = () => { setEditing(null); setDraft(null) }
 
   const norm = (v) => (v === "" || v === undefined) ? null : (typeof v === "string" ? v.trim() : v)
 
@@ -88,6 +83,7 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
       cancelEdit()
       await load()
     } catch (err) {
+      console.error(err)
       message.error(err?.response?.data?.message || "Не удалось сохранить")
       cancelEdit()
     }
@@ -115,19 +111,24 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
       />
     )
 
-  // ===== удаление
+  // ===== удаление =====
   const handleDelete = async (id) => {
     const { confirmed } = await confirmAction("Удалить деталь поставщика?")
     if (!confirmed) return
-    await axios.delete(`/supplier-parts/${id}`)
-    message.success("Удалено")
-    if (onReload) onReload(); else load()
+    try {
+      await axios.delete(`/supplier-parts/${id}`)
+      message.success("Удалено")
+      if (onReload) onReload(); else load()
+    } catch (err) {
+      console.error(err)
+      message.error("Не удалось удалить деталь")
+    }
   }
 
-  /* eslint-disable react-hooks/exhaustive-deps */
+  // ===== колонки =====
   const columns = useMemo(() => [
     {
-      title: <>Номер у поставщика <span style={{opacity:.5,fontWeight:400}}>— двойной клик для редактирования</span></>,
+      title: "Номер у поставщика",
       dataIndex: "supplier_part_number",
       width: 220,
       onCell: (record) => ({ onDoubleClick: () => startEditCell(record, "supplier_part_number") }),
@@ -137,7 +138,7 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
           : <ValueDisplay value={record.supplier_part_number} copyable />,
     },
     {
-      title: <>Описание <span style={{opacity:.5,fontWeight:400}}>— двойной клик для редактирования</span></>,
+      title: "Описание",
       dataIndex: "description",
       onCell: (record) => ({ onDoubleClick: () => startEditCell(record, "description") }),
       render: (_, record) =>
@@ -161,19 +162,18 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
     {
       title: "Действия",
       key: "actions",
-      fixed: "right",
-      width: 110,
+      width: 120,
       render: (_, row) => (
         <ActionButtons
-          onHistory={() => openHistory(row.id)}  // ← иконка истории только на верхнем уровне
+          onHistory={() => setHistoryForId(row.id)}
           onDelete={() => handleDelete(row.id)}
+          size="small"
         />
       ),
     },
   ], [editing, draft])
-  /* eslint-enable react-hooks/exhaustive-deps */
 
-  // пагинация: привязываем Select-попап к обёртке, чтобы он не «мигал»
+  // ===== пагинация =====
   const pagination = useMemo(() => ({
     current: page,
     pageSize,
@@ -181,7 +181,7 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
     showSizeChanger: true,
     pageSizeOptions: [10, 20, 50, 100],
     selectProps: {
-      getPopupContainer: () => wrapRef.current || document.body, // ключ к стабильному дропдауну
+      getPopupContainer: () => wrapRef.current || document.body,
     },
     onChange: (nextPage, nextSize) => {
       const sizeNum = Number(nextSize)
@@ -191,14 +191,15 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
     showTotal: (t, [from, to]) => `Всего: ${t} · Показано: ${from}–${to}`,
   }), [page, pageSize, total])
 
+  // ===== раскрытые строки =====
   const expandedRowRender = (record) => (
-    <div className="parts-subtable">
+    <div className="subtable-shell">
       <Tabs
         defaultActiveKey="prices"
         destroyInactiveTabPane
         items={[
-          { key: "prices",   label: "История цен",          children: <PriceHistoryTab supplierPartId={record.id} /> },
-          { key: "originals",label: "Оригинальные детали",  children: <OriginalsLinkTab supplierPartId={record.id} /> },
+          { key: "prices", label: "История цен", children: <PriceHistoryTab supplierPartId={record.id} /> },
+          { key: "originals", label: "Оригинальные детали", children: <OriginalsLinkTab supplierPartId={record.id} /> },
         ]}
       />
     </div>
@@ -225,7 +226,7 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
         <FullHistoryDialog
           entityType="supplier_parts"
           entityId={historyForId}
-          onClose={closeHistory}
+          onClose={() => setHistoryForId(null)}
         />
       )}
     </>

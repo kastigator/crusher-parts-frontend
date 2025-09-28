@@ -156,131 +156,133 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
   if (!supplierId) return null
 
   return (
-    <div className="parts-table-wrap">
-      <Card size="small">
-        <PlaceAddressInput
-          debugId="supplier-addresses-main-form"
-          resetTrigger={resetCounter}
-          value={{
-            address_line: newAddress.formatted_address,
-            lat: newAddress.lat,
-            lng: newAddress.lng,
-            place_id: newAddress.place_id,
-            postal_code: newAddress.postal_code,
-          }}
-          onChange={(value) =>
-            setNewAddress((prev) => ({
-              ...prev,
-              formatted_address: value.address_line,
-              place_id: value.place_id,
-              lat: value.lat,
-              lng: value.lng,
-              postal_code: value.postal_code,
-              country: value.country,
-              region: value.region,
-              city: value.city,
-              street: value.street,
-              house: value.house,
-              building: value.building,
-              entrance: value.entrance,
-            }))
-          }
-        />
-
-        {/* спец. поля */}
-        <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col span={8}>
-            <Input
-              placeholder="Метка (label)"
-              value={newAddress.label}
-              onChange={(e) => setNewAddress((prev) => ({ ...prev, label: e.target.value }))}
-              allowClear
-            />
-          </Col>
-          <Col span={8}>
-            <Input
-              placeholder="Тип (warehouse/billing)"
-              value={newAddress.type}
-              onChange={(e) => setNewAddress((prev) => ({ ...prev, type: e.target.value }))}
-              allowClear
-            />
-          </Col>
-        </Row>
-
-        {/* адрес */}
-        <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col span={6}><Input placeholder="Страна" value={newAddress.country} onChange={(e) => setNewAddress((prev) => ({ ...prev, country: e.target.value }))} allowClear /></Col>
-          <Col span={6}><Input placeholder="Регион" value={newAddress.region} onChange={(e) => setNewAddress((prev) => ({ ...prev, region: e.target.value }))} allowClear /></Col>
-          <Col span={6}><Input placeholder="Город" value={newAddress.city} onChange={(e) => setNewAddress((prev) => ({ ...prev, city: e.target.value }))} allowClear /></Col>
-          <Col span={6}><Input placeholder="Индекс" value={newAddress.postal_code} onChange={(e) => setNewAddress((prev) => ({ ...prev, postal_code: e.target.value }))} allowClear /></Col>
-        </Row>
-
-        <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col span={12}><Input placeholder="Улица" value={newAddress.street} onChange={(e) => setNewAddress((prev) => ({ ...prev, street: e.target.value }))} allowClear /></Col>
-          <Col span={4}><Input placeholder="Дом" value={newAddress.house} onChange={(e) => setNewAddress((prev) => ({ ...prev, house: e.target.value }))} allowClear /></Col>
-          <Col span={4}><Input placeholder="Строение" value={newAddress.building} onChange={(e) => setNewAddress((prev) => ({ ...prev, building: e.target.value }))} allowClear /></Col>
-          <Col span={4}><Input placeholder="Подъезд" value={newAddress.entrance} onChange={(e) => setNewAddress((prev) => ({ ...prev, entrance: e.target.value }))} allowClear /></Col>
-        </Row>
-
-        <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col flex="auto">
-            <Input placeholder="Комментарий" value={newAddress.comment} onChange={(e) => setNewAddress((prev) => ({ ...prev, comment: e.target.value }))} allowClear />
-          </Col>
-          <Col>
-            <Button type="primary" onClick={handleAdd}>Добавить адрес</Button>
-          </Col>
-        </Row>
-      </Card>
-
-      <TableToolbar search={search} onSearch={setSearch} />
-
-      <SupplierAddressesTable
-        data={filteredData}
-        loading={loading}
-        supplierId={supplierId}
-        onUpdate={handleUpdate}
-        onDelete={handleDelete}
-        onReplaceRow={replaceRow}
-        onRefresh={fetchData}
-      />
-
-      {conflict && (
-        <VersionConflictModal
-          open={!!conflict}
-          entityLabel={conflict.entityLabel || "Адрес"}
-          current={conflict.current}
-          draft={conflict.draft}
-          fields={[
-            { key: "formatted_address", title: "Адрес" },
-            { key: "label", title: "Метка" },
-            { key: "type", title: "Тип" },
-            { key: "country", title: "Страна" },
-            { key: "region", title: "Регион" },
-            { key: "city", title: "Город" },
-            { key: "street", title: "Улица" },
-            { key: "house", title: "Дом" },
-            { key: "building", title: "Строение" },
-            { key: "entrance", title: "Подъезд" },
-            { key: "postal_code", title: "Индекс" },
-            { key: "comment", title: "Комментарий" },
-          ]}
-          onResolve={async (choice) => {
-            if (choice === "overwrite" && conflict?.current && conflict?.draft) {
-              await handleUpdate(conflict.id, {
-                ...conflict.draft,
-                version: conflict.current.version,
-              })
+    <div className="subtable-shell">
+      <div className="parts-table-wrap">
+        <Card size="small">
+          <PlaceAddressInput
+            debugId="supplier-addresses-main-form"
+            resetTrigger={resetCounter}
+            value={{
+              address_line: newAddress.formatted_address,
+              lat: newAddress.lat,
+              lng: newAddress.lng,
+              place_id: newAddress.place_id,
+              postal_code: newAddress.postal_code,
+            }}
+            onChange={(value) =>
+              setNewAddress((prev) => ({
+                ...prev,
+                formatted_address: value.address_line,
+                place_id: value.place_id,
+                lat: value.lat,
+                lng: value.lng,
+                postal_code: value.postal_code,
+                country: value.country,
+                region: value.region,
+                city: value.city,
+                street: value.street,
+                house: value.house,
+                building: value.building,
+                entrance: value.entrance,
+              }))
             }
-            setConflict(null)
-          }}
-          onReload={async () => {
-            if (conflict?.current) replaceRow(conflict.current)
-            await fetchData()
-            setConflict(null)
-          }}
-          onCancel={() => setConflict(null)}
+          />
+
+          {/* спец. поля */}
+          <Row gutter={12} style={{ marginTop: 8 }}>
+            <Col span={8}>
+              <Input
+                placeholder="Метка (label)"
+                value={newAddress.label}
+                onChange={(e) => setNewAddress((prev) => ({ ...prev, label: e.target.value }))}
+                allowClear
+              />
+            </Col>
+            <Col span={8}>
+              <Input
+                placeholder="Тип (warehouse/billing)"
+                value={newAddress.type}
+                onChange={(e) => setNewAddress((prev) => ({ ...prev, type: e.target.value }))}
+                allowClear
+              />
+            </Col>
+          </Row>
+
+          {/* адрес */}
+          <Row gutter={12} style={{ marginTop: 8 }}>
+            <Col span={6}><Input placeholder="Страна" value={newAddress.country} onChange={(e) => setNewAddress((prev) => ({ ...prev, country: e.target.value }))} allowClear /></Col>
+            <Col span={6}><Input placeholder="Регион" value={newAddress.region} onChange={(e) => setNewAddress((prev) => ({ ...prev, region: e.target.value }))} allowClear /></Col>
+            <Col span={6}><Input placeholder="Город" value={newAddress.city} onChange={(e) => setNewAddress((prev) => ({ ...prev, city: e.target.value }))} allowClear /></Col>
+            <Col span={6}><Input placeholder="Индекс" value={newAddress.postal_code} onChange={(e) => setNewAddress((prev) => ({ ...prev, postal_code: e.target.value }))} allowClear /></Col>
+          </Row>
+
+          <Row gutter={12} style={{ marginTop: 8 }}>
+            <Col span={12}><Input placeholder="Улица" value={newAddress.street} onChange={(e) => setNewAddress((prev) => ({ ...prev, street: e.target.value }))} allowClear /></Col>
+            <Col span={4}><Input placeholder="Дом" value={newAddress.house} onChange={(e) => setNewAddress((prev) => ({ ...prev, house: e.target.value }))} allowClear /></Col>
+            <Col span={4}><Input placeholder="Строение" value={newAddress.building} onChange={(e) => setNewAddress((prev) => ({ ...prev, building: e.target.value }))} allowClear /></Col>
+            <Col span={4}><Input placeholder="Подъезд" value={newAddress.entrance} onChange={(e) => setNewAddress((prev) => ({ ...prev, entrance: e.target.value }))} allowClear /></Col>
+          </Row>
+
+          <Row gutter={12} style={{ marginTop: 8 }}>
+            <Col flex="auto">
+              <Input placeholder="Комментарий" value={newAddress.comment} onChange={(e) => setNewAddress((prev) => ({ ...prev, comment: e.target.value }))} allowClear />
+            </Col>
+            <Col>
+              <Button type="primary" onClick={handleAdd}>Добавить адрес</Button>
+            </Col>
+          </Row>
+        </Card>
+
+        <TableToolbar search={search} onSearch={setSearch} />
+
+        <SupplierAddressesTable
+          data={filteredData}
+          loading={loading}
+          supplierId={supplierId}
+          onUpdate={handleUpdate}
+          onDelete={handleDelete}
+          onReplaceRow={replaceRow}
+          onRefresh={fetchData}
         />
-      )}
+
+        {conflict && (
+          <VersionConflictModal
+            open={!!conflict}
+            entityLabel={conflict.entityLabel || "Адрес"}
+            current={conflict.current}
+            draft={conflict.draft}
+            fields={[
+              { key: "formatted_address", title: "Адрес" },
+              { key: "label", title: "Метка" },
+              { key: "type", title: "Тип" },
+              { key: "country", title: "Страна" },
+              { key: "region", title: "Регион" },
+              { key: "city", title: "Город" },
+              { key: "street", title: "Улица" },
+              { key: "house", title: "Дом" },
+              { key: "building", title: "Строение" },
+              { key: "entrance", title: "Подъезд" },
+              { key: "postal_code", title: "Индекс" },
+              { key: "comment", title: "Комментарий" },
+            ]}
+            onResolve={async (choice) => {
+              if (choice === "overwrite" && conflict?.current && conflict?.draft) {
+                await handleUpdate(conflict.id, {
+                  ...conflict.draft,
+                  version: conflict.current.version,
+                })
+              }
+              setConflict(null)
+            }}
+            onReload={async () => {
+              if (conflict?.current) replaceRow(conflict.current)
+              await fetchData()
+              setConflict(null)
+            }}
+            onCancel={() => setConflict(null)}
+          />
+        )}
+      </div>
     </div>
   )
 }

@@ -9,12 +9,7 @@
   overflow: visible; /* важно: попапы должны "видеть" якорь */
 }
 
-/* Оболочка контента под раскрытой строкой:
-   - аккуратные отступы
-   - белый фон
-   - новый stacking-context для попапов
-   - НЕ двигаем margin-left (смещение даёт expand-ячейка)
-*/
+/* Оболочка контента под раскрытой строкой */
 .subtable-shell {
   padding: 12px 16px;
   background: #fff;
@@ -25,7 +20,7 @@
   margin: 8px 0;
 }
 
-/* Алиасы для совместимости (чтоб не ломать старый код) */
+/* Алиасы */
 .parts-subtable,
 .subtable-inset {
   padding: 0;
@@ -36,13 +31,13 @@
    Анти-смещение раскрытой строки
    ========================================= */
 
-/* КЛЮЧ: убираем внутренний padding у ячейки expanded-row */
-.ant-table .ant-table-expanded-row > .ant-table-cell {
+/* убираем внутренний padding у ячейки expanded-row */
+.ant-table-expanded-row > .ant-table-cell {
   padding: 0 !important;
-  background: transparent;
+  background: transparent !important;
 }
 
-/* Дополнительная страховка для некоторых скинов */
+/* страховка для .op-table */
 .op-table .ant-table-expanded-row > td {
   padding: 0 !important;
 }

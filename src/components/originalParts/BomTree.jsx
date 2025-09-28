@@ -1,32 +1,25 @@
-// src/components/originalParts/BomTree.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Table, message } from "antd";
 import axios from "@/api/axiosInstance";
 
-// аккуратно форматируем числа
 const fmt = (n) =>
   n == null || Number.isNaN(Number(n)) ? "—" : Number(n).toFixed(4);
 
-// из плоского списка (с level, path, mult_qty) собираем дерево
 function buildTree(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
-
-  // path делаем ключом, чтобы одинаковая деталь могла встречаться в разных ветках
   const byPath = new Map();
 
-  // вспомогательная функция: создаёт узел
   const makeNode = (r) => ({
-    key: r.path, // уникален в рамках дерева
+    key: r.path,
     partId: r.node_id,
     cat_number: r.cat_number,
     description: r.description_ru || r.description_en || "—",
     level: r.level,
-    totalQty: Number(r.mult_qty ?? 1), // итоговое (перемноженное) количество по пути
-    directQty: null,                   // вычислим ниже; для корня оставим null
+    totalQty: Number(r.mult_qty ?? 1),
+    directQty: null,
     children: [],
   });
 
-  // первым всегда идёт корень (level = 0, mult_qty = 1.0)
   const rootRow = rows[0];
   const root = makeNode(rootRow);
   byPath.set(rootRow.path, root);
@@ -35,12 +28,10 @@ function buildTree(rows) {
     const r = rows[i];
     const node = makeNode(r);
 
-    // родитель — это path без последнего id
     const parts = String(r.path).split(">");
     const parentPath = parts.slice(0, -1).join(">");
     const parent = byPath.get(parentPath);
 
-    // прямое кол-во = total(child) / total(parent)
     const parentTotal = parent ? Number(parent.totalQty) || 1 : 1;
     node.directQty =
       parentTotal && Number.isFinite(parentTotal)
@@ -74,7 +65,9 @@ export default function BomTree({ rootId }) {
       }
     };
     load();
-    return () => { ignore = true; };
+    return () => {
+      ignore = true;
+    };
   }, [rootId]);
 
   const treeData = useMemo(() => buildTree(rows), [rows]);
@@ -99,7 +92,7 @@ export default function BomTree({ rootId }) {
   ];
 
   return (
-    <div className="op-table parts-table">
+    <div className="subtable-shell">
       <Table
         rowKey="key"
         columns={columns}

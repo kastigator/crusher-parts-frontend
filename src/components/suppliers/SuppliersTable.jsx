@@ -235,8 +235,7 @@ export default function SuppliersTable({
   )
   /* eslint-enable react-hooks/exhaustive-deps */
 
-  // ===== вкладка «Профиль» (остальные поля мастера) =====
-  // ВАЖНО: function-declaration (хоистится), чтобы не ловить ReferenceError
+  // ===== вкладка «Профиль» =====
   function ProfileTab({ supplier }) {
     const [form] = Form.useForm()
     const [submitting, setSubmitting] = useState(false)
@@ -301,7 +300,7 @@ export default function SuppliersTable({
               options={CURRENCIES.map((c) => ({ value: c, label: c }))}
               value={form.getFieldValue("preferred_currency") || undefined}
               onChange={(v) => form.setFieldsValue({ preferred_currency: v || "" })}
-              getPopupContainer={(t) => t?.closest(".parts-subtable") || document.body}
+              getPopupContainer={(t) => t?.closest(".subtable-shell") || document.body}
             />
           </Form.Item>
 
@@ -313,7 +312,7 @@ export default function SuppliersTable({
               options={INCOTERMS.map((c) => ({ value: c, label: c }))}
               value={form.getFieldValue("incoterms") || undefined}
               onChange={(v) => form.setFieldsValue({ incoterms: v || "" })}
-              getPopupContainer={(t) => t?.closest(".parts-subtable") || document.body}
+              getPopupContainer={(t) => t?.closest(".subtable-shell") || document.body}
             />
           </Form.Item>
 
@@ -335,12 +334,12 @@ export default function SuppliersTable({
     )
   }
 
-  // ===== раскрытая строка с индетом под «+» =====
+  // ===== раскрытая строка =====
   const EXPAND_COL_W = 48
   const expandedRowRender = (supplier) => {
     if (!supplier?.id) return null
     return (
-      <div className="parts-table-wrap parts-subtable subtable-inset">
+      <div className="parts-table-wrap subtable-shell">
         <Tabs
           defaultActiveKey="profile"
           destroyInactiveTabPane
