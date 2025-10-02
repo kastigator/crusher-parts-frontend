@@ -15,25 +15,20 @@ const TEMPLATE_URL =
   "https://storage.googleapis.com/shared-parts-bucket/templates/original_parts_template.xlsx"
 
 export default function OriginalPartsMain() {
-  // выбранные сущности
-  const [manufacturer, setManufacturer] = useState(null)  // { id, name }
-  const [model, setModel] = useState(null)                // { id, model_name }
+  const [manufacturer, setManufacturer] = useState(null)
+  const [model, setModel] = useState(null)
 
-  // фильтры
   const [search, setSearch] = useState("")
   const [onlyAssemblies, setOnlyAssemblies] = useState(false)
   const [onlyParts, setOnlyParts] = useState(false)
 
-  // данные деталей
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
-  // модалки/формы
   const [importOpen, setImportOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [addForm] = Form.useForm()
 
-  // ====== загрузка деталей (с отменой запросов)
   const partsAbortRef = useRef(null)
   const fetchParts = useCallback(async () => {
     const modelId = model?.id
@@ -51,13 +46,8 @@ export default function OriginalPartsMain() {
       const { data } = await axios.get("/original-parts", { params, signal: controller.signal })
       setRows(Array.isArray(data) ? data : [])
     } catch (e) {
-      const name = e?.name || e?.code
-      if (name !== "AbortError" && name !== "ERR_CANCELED") {
-        console.error(e); message.error("Не удалось загрузить детали")
-      }
-    } finally {
-      setLoading(false)
-    }
+      console.error(e); message.error("Не удалось загрузить детали")
+    } finally { setLoading(false) }
   }, [model?.id, search, onlyAssemblies, onlyParts])
 
   useEffect(() => {
@@ -65,7 +55,6 @@ export default function OriginalPartsMain() {
     return () => { clearTimeout(t); partsAbortRef.current?.abort() }
   }, [fetchParts])
 
-  // ====== добавление детали (инлайн-форма)
   const submitAddPart = async (values) => {
     if (!model?.id) { message.warning("Сначала выберите производителя и модель"); return }
     try {
@@ -77,6 +66,7 @@ export default function OriginalPartsMain() {
         tech_description: values.tech_description || null,
         weight_kg: values.weight_kg ?? null,
         tnved_code_id: values.tnved?.id ?? null,
+        is_assembly: values.is_assembly ? 1 : 0,   // ✅ новое поле
       }
       const { data } = await axios.post("/original-parts", payload)
       message.success(`Деталь ${data.cat_number} создана`)
@@ -89,7 +79,6 @@ export default function OriginalPartsMain() {
     }
   }
 
-  // локальное удаление строки без полной перезагрузки
   const removeRowLocal = useCallback((id) => {
     setRows(prev => prev.filter(r => r.id !== id))
   }, [])
@@ -99,17 +88,14 @@ export default function OriginalPartsMain() {
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Card title="Оригинальные детали" bodyStyle={{ paddingTop: 8 }}>
-        {/* Ряд 1: выбор производителя/модели + фильтры + действия */}
         <Row gutter={[12, 12]} align="middle">
           <Col xs={24} md={12}>
             <Space wrap>
               <Button icon={<ApartmentOutlined />} onClick={() => setPickerOpen(true)}>
                 {manufacturer && model ? "Изменить производителя/модель" : "Выбрать производителя и модель"}
               </Button>
-
               {manufacturer && <Tag color="geekblue">Производитель: {manufacturer.name}</Tag>}
               {model && <Tag color="blue">Модель: {model.model_name}</Tag>}
-
               {(manufacturer || model) && (
                 <Button size="small" onClick={clearSelection} icon={<ReloadOutlined />}>
                   Сбросить
@@ -148,10 +134,8 @@ export default function OriginalPartsMain() {
           </Col>
         </Row>
 
-        {/* Поиск */}
         <TableToolbar search={search} onSearch={setSearch} disabled={!model} />
 
-        {/* Ряд 2: инлайн-форма добавления детали */}
         <Form
           form={addForm}
           layout="inline"
@@ -166,48 +150,26 @@ export default function OriginalPartsMain() {
           >
             <Input placeholder="например, 711-22-12340" allowClear />
           </Form.Item>
-
-          <Form.Item name="description_ru" label="RU">
-            <Input placeholder="Описание (RU)" allowClear />
-          </Form.Item>
-
-          <Form.Item name="description_en" label="EN">
-            <Input placeholder="Description (EN)" allowClear />
-          </Form.Item>
-
+          <Form.Item name="description_ru" label="RU"><Input placeholder="Описание (RU)" allowClear /></Form.Item>
+          <Form.Item name="description_en" label="EN"><Input placeholder="Description (EN)" allowClear /></Form.Item>
           <Form.Item name="tech_description" label="Тех. опис.">
-            <Input.TextArea
-              placeholder="Коротко о тех.описании"
-              autoSize={{ minRows: 1, maxRows: 4 }}
-              style={{ width: 280 }}
-              allowClear
-            />
+            <Input.TextArea placeholder="Коротко о тех.описании" autoSize={{ minRows: 1, maxRows: 4 }} style={{ width: 280 }} allowClear />
           </Form.Item>
-
-          <Form.Item name="weight_kg" label="Вес, кг">
-            <InputNumber style={{ width: 120 }} min={0} step={0.001} />
-          </Form.Item>
-
-          <Form.Item name="tnved" label="ТН ВЭД">
-            <TnvedPicker style={{ width: 240 }} allowClear />
-          </Form.Item>
-
-          <Form.Item>
-            <Button type="primary" htmlType="submit">Добавить</Button>
-          </Form.Item>
+          <Form.Item name="weight_kg" label="Вес, кг"><InputNumber style={{ width: 120 }} min={0} step={0.001} /></Form.Item>
+          <Form.Item name="tnved" label="ТН ВЭД"><TnvedPicker style={{ width: 240 }} allowClear /></Form.Item>
+          <Form.Item name="is_assembly" valuePropName="checked"><Checkbox>Это сборка</Checkbox></Form.Item>
+          <Form.Item><Button type="primary" htmlType="submit">Добавить</Button></Form.Item>
         </Form>
 
-        {/* Таблица */}
         <OriginalPartsTable
           data={rows}
           loading={loading}
           modelId={model?.id || null}
           onReload={fetchParts}
-          onRemove={removeRowLocal}          // <-- важное: локально убираем строку после DELETE
+          onRemove={removeRowLocal}
         />
       </Card>
 
-      {/* Импорт */}
       <ImportModal
         open={importOpen}
         type="original_parts"
@@ -217,7 +179,6 @@ export default function OriginalPartsMain() {
         onSuccess={() => { setImportOpen(false); fetchParts(); message.success("Импорт выполнен") }}
       />
 
-      {/* Drawer: выбор производителя и модели */}
       <ManufacturerModelPicker
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}

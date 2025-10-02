@@ -6,7 +6,7 @@
 .parts-table-wrap {
   position: relative;
   isolation: isolate;
-  overflow: visible; /* важно: попапы должны "видеть" якорь */
+  overflow: visible; /* попапы должны "видеть" якорь */
 }
 
 /* Оболочка контента под раскрытой строкой */
@@ -18,9 +18,14 @@
   border-radius: 8px;
   border: 1px solid #e5e7eb;
   margin: 8px 0;
+
+  /* фиксы против «уезда вправо» */
+  max-width: 100%;
+  overflow-x: auto;   /* если внутри реально широкая таблица */
+  box-sizing: border-box;
 }
 
-/* Алиасы */
+/* Алиасы для обратной совместимости */
 .parts-subtable,
 .subtable-inset {
   padding: 0;
