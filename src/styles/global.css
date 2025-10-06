@@ -18,7 +18,9 @@ html, body, #root {
   box-sizing: border-box;
 }
 
-/* Умеренные transition (без all!) */
+/* ==========================================================
+   Умеренные transition (без all!)
+   ========================================================== */
 .ant-btn,
 .ant-input,
 .ant-select .ant-select-selector,
@@ -28,7 +30,9 @@ html, body, #root {
               background-color .2s ease-in-out;
 }
 
-/* ==== SweetAlert2 ======================================================= */
+/* ==========================================================
+   SweetAlert2
+   ========================================================== */
 .swal2-popup.sweet-dialog {
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0,0,0,.15);
@@ -61,13 +65,17 @@ html, body, #root {
   font-family: 'Inter', sans-serif;
 }
 
-/* ==== Ant Design — общий тон =========================================== */
+/* ==========================================================
+   Ant Design — базовая таблица и общие элементы
+   ========================================================== */
 .ant-table {
   font-size: 13px;
   font-family: 'Inter', sans-serif;
   border-radius: 8px;
   background-color: #fff;
   border: 1px solid #e0e0e0;
+  width: 100%; /* фикс: гарантирует вписывание в контейнер */
+  table-layout: auto;
 }
 .ant-table-thead > tr > th {
   background-color: #f3f4f6;
@@ -75,16 +83,22 @@ html, body, #root {
   color: #1f2937;
   padding: 8px;
   font-size: 13px;
+  white-space: nowrap;
 }
 .ant-table-tbody > tr > td {
   padding: 8px;
   font-size: 13px;
   color: #1f2937;
+  vertical-align: top;
+  word-break: break-word;
 }
 .ant-table-tbody > tr:hover > td {
   background-color: #f5faff;
 }
 
+/* ==========================================================
+   Кнопки, инпуты и поля ввода
+   ========================================================== */
 .ant-btn {
   border-radius: 8px;
   font-size: 13px;
@@ -110,6 +124,9 @@ html, body, #root {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, .2);
 }
 
+/* ==========================================================
+   Модальные окна и тултипы
+   ========================================================== */
 .ant-modal-content {
   border-radius: 12px;
   font-family: 'Inter', sans-serif;
@@ -130,7 +147,23 @@ html, body, #root {
   border-radius: 6px;
 }
 
-/* ==== Утилиты ========================================================== */
+/* ==========================================================
+   Таблицы — UX улучшения
+   ========================================================== */
+
+/* Убираем баг с overflow при вложенных таблицах */
+.ant-table-wrapper {
+  overflow-x: hidden;
+}
+
+/* Чтобы вложенные таблицы не вылазили за границы */
+.ant-table-container {
+  overflow: visible !important;
+}
+
+/* ==========================================================
+   Утилиты
+   ========================================================== */
 .cell-ellipsis {
   display: inline-block;
   max-width: 100%;

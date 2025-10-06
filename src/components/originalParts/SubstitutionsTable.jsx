@@ -1,53 +1,56 @@
-import React, { useEffect, useMemo, useState } from "react"
-import { Table, message, Empty, Tooltip } from "antd"
-import axios from "@/api/axiosInstance"
-import ValueDisplay from "@/components/common/ValueDisplay"
+import React, { useEffect, useState } from "react";
+import { Table, Button, message, Input } from "antd";
+import axios from "@/api/axiosInstance";
+import confirmAction from "@/utils/confirmAction";
 
-export default function SubstitutionsTable({ part, originalPartId }) {
-  const partId = useMemo(() => originalPartId || part?.id, [originalPartId, part?.id])
-  const [rows, setRows] = useState(null)
-  const [loading, setLoading] = useState(false)
+export default function SubstitutionsTable({ originalPartId }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   const load = async () => {
-    if (!partId) return
-    setLoading(true)
+    if (!originalPartId) return;
+    setLoading(true);
     try {
-      const { data } = await axios.get("/original-part-substitutions", { params: { part_id: partId } })
-      setRows(Array.isArray(data) ? data : [])
-    } catch (e) {
-      if (e?.response?.status === 404) setRows([])
-      else { console.error("Ошибка загрузки замен:", e); message.error("Не удалось загрузить замены"); setRows([]) }
-    } finally { setLoading(false) }
-  }
+      const { data } = await axios.get(`/original-part-substitutions?original_id=${originalPartId}`);
+      setRows(Array.isArray(data) ? data : []);
+    } catch {
+      message.error("Не удалось загрузить замены");
+    } finally { setLoading(false); }
+  };
 
-  useEffect(() => { setRows(null); load() }, [partId])
+  useEffect(() => { load(); }, [originalPartId]);
 
-  if (!loading && rows && rows.length === 0) {
-    return <div className="subtable-shell"><Empty description="Замен пока нет" /></div>
-  }
+  const deleteRow = async (rec) => {
+    const { confirmed } = await confirmAction("Удалить замену?");
+    if (!confirmed) return;
+    try {
+      await axios.delete(`/original-part-substitutions/${rec.id}`);
+      message.success("Удалено");
+      load();
+    } catch { message.error("Ошибка удаления"); }
+  };
 
   const columns = [
-    { title: "Группа", dataIndex: "group_code", width: 140, render: (v) => <ValueDisplay value={v} /> },
-    { title: "Тип", dataIndex: "relation_type", width: 140, render: (v) => <ValueDisplay value={v} /> },
-    { title: "Cat #", dataIndex: "cat_number", width: 180, render: (v, r) => r?.cat_number_tooltip
-        ? <Tooltip title={r.cat_number_tooltip}><span>{v}</span></Tooltip>
-        : <ValueDisplay value={v} /> },
-    { title: "Описание", dataIndex: "description",
-      render: (v) => v ? (
-        <Tooltip title={v}><span className="cell-ellipsis" style={{ maxWidth: 600 }}>{v}</span></Tooltip>
-      ) : <ValueDisplay value={null} /> },
-  ]
+    { title: "Код комплекта", dataIndex: "kit_code", width: 180 },
+    { title: "Описание", dataIndex: "description", ellipsis: true },
+    {
+      title: "Действия", key: "act", width: 100,
+      render: (_, r) => (
+        <Button danger size="small" onClick={() => deleteRow(r)}>Удалить</Button>
+      ),
+    },
+  ];
 
   return (
-    <div className="subtable-shell">
+    <div className="op-table" style={{ width: "100%", overflowX: "auto" }}>
       <Table
         rowKey="id"
-        size="small"
+        columns={columns}
+        dataSource={rows}
         loading={loading}
         pagination={false}
-        dataSource={rows || []}
-        columns={columns}
+        size="small"
       />
     </div>
-  )
+  );
 }

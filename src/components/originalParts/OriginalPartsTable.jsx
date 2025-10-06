@@ -19,7 +19,11 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
 
   const isEditingCell = (record, field) =>
     editing && editing.id === record.id && editing.field === field;
-  const startEditCell = (record, field) => { setEditing({ id: record.id, field }); setDraft({ ...record }); };
+
+  const startEditCell = (record, field) => {
+    setEditing({ id: record.id, field });
+    setDraft({ ...record });
+  };
   const cancelEdit = () => { setEditing(null); setDraft(null); };
 
   const norm = (field, value) => {
@@ -114,15 +118,14 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
     if (!codeText) return <ValueDisplay value={null} />;
     return <Tooltip title={record.tnved_description || null}><span>{codeText}</span></Tooltip>;
   };
-  const renderTnvedEditor = (record) => {
-    const valueObj = record.tnved_code_id || record.tnved_code_text ? { id: record.tnved_code_id ?? null, code: record.tnved_code_text ?? null } : null;
-    return <TnvedPicker value={valueObj} onChange={(picked) => saveTnved(record, picked)} allowClear autoFocus />;
-  };
 
-  const renderTechDisplay = (record) => {
-    const v = record.tech_description;
-    if (!v) return <ValueDisplay value={null} />;
-    return <Tooltip title={v}><span style={{ display:"inline-block", maxWidth:420, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{v}</span></Tooltip>;
+  const renderTnvedEditor = (record) => {
+    const valueObj = record.tnved_code_id || record.tnved_code_text
+      ? { id: record.tnved_code_id ?? null, code: record.tnved_code_text ?? null }
+      : null;
+    return (
+      <TnvedPicker value={valueObj} onChange={(picked) => saveTnved(record, picked)} allowClear autoFocus />
+    );
   };
 
   const columns = useMemo(() => [
@@ -135,13 +138,10 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
     { title: "Description (EN)", dataIndex: "description_en",
       onCell: (r) => ({ onDoubleClick: () => startEditCell(r, "description_en") }),
       render: (_, r) => isEditingCell(r, "description_en") ? renderTextInput(r, "description_en", { multiline:true }) : <ValueDisplay value={r.description_en} /> },
-    { title: "Тех. описание", dataIndex: "tech_description",
-      onCell: (r) => ({ onDoubleClick: () => startEditCell(r, "tech_description") }),
-      render: (_, r) => isEditingCell(r, "tech_description") ? renderTextInput(r, "tech_description", { multiline:true }) : renderTechDisplay(r) },
     { title: "Вес, кг", dataIndex: "weight_kg", width: 110, align:"right",
       onCell: (r) => ({ onDoubleClick: () => startEditCell(r, "weight_kg") }),
       render: (_, r) => isEditingCell(r, "weight_kg") ? renderNumberInput(r, "weight_kg") : <ValueDisplay value={r.weight_kg} /> },
-    { title: "ТН ВЭД", dataIndex: "tnved_code_text", width: 240,
+    { title: "ТН ВЭД", dataIndex: "tnved_code_text", width: 220,
       onCell: (r) => ({ onDoubleClick: () => startEditCell(r, "tnved_code") }),
       render: (_, r) => isEditingCell(r, "tnved_code") ? renderTnvedEditor(r) : renderTnvedDisplay(r) },
     { title: "Сборка", dataIndex: "is_assembly", width: 100, align:"center",
@@ -150,12 +150,12 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
       render: (_, r) => <ActionButtons onHistory={() => setHistoryForId(r.id)} onDelete={() => deleteRow(r)} size="small" /> }
   ], [editing, draft]);
 
-  const EXPAND_COL_W = 48;
   const expandedRowRender = (part) => (
-    <div className="subtable-shell">
+    <div className="subtable-shell" style={{ width: "100%" }}>
       <Tabs
         defaultActiveKey="bom"
         destroyInactiveTabPane
+        style={{ width: "100%" }}
         items={[
           { key: "bom", label: "BOM (таблица)", children: <BomTable parent={part} modelId={modelId} onReload={onReload} /> },
           { key: "tree", label: "BOM (дерево)", children: <BomTree rootId={part.id} /> },
@@ -168,17 +168,18 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
 
   return (
     <>
-      <Table
-        className="op-table parts-table"
-        rowKey="id"
-        dataSource={data}
-        columns={columns}
-        loading={loading}
-        expandable={{ expandedRowRender, columnWidth: EXPAND_COL_W }}
-        pagination={{ pageSize: 10 }}
-        size="middle"
-        style={{ "--op-expand-w": `${EXPAND_COL_W}px` }}
-      />
+      <div className="parts-table-wrap">
+        <Table
+          className="op-table"
+          rowKey="id"
+          dataSource={data}
+          columns={columns}
+          loading={loading}
+          expandable={{ expandedRowRender, columnWidth: 48 }}
+          pagination={{ pageSize: 10 }}
+          size="middle"
+        />
+      </div>
       {historyForId && <FullHistoryDialog entityType="original_parts" entityId={historyForId} onClose={() => setHistoryForId(null)} />}
     </>
   );

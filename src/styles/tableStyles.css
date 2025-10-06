@@ -1,55 +1,59 @@
-/* =========================================
-   Общие утилиты для таблиц/всплывашек
-   ========================================= */
+/* ==========================================================
+   Общие утилиты для таблиц и вложенных компонентов
+   ========================================================== */
 
 /* Якорь для выпадающих (Select/DatePicker/Dropdown/size-changer) */
 .parts-table-wrap {
   position: relative;
   isolation: isolate;
-  overflow: visible; /* попапы должны "видеть" якорь */
+  overflow: visible; /* позволяет popups рендериться корректно */
+  width: 100%;
 }
 
-/* Оболочка контента под раскрытой строкой */
+/* Оболочка контента под раскрытой строкой:
+   - белый фон
+   - скругления
+   - аккуратные отступы
+   - безопасный контекст для popup-элементов */
 .subtable-shell {
-  padding: 12px 16px;
-  background: #fff;
   position: relative;
-  isolation: isolate;
+  background: #fff;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
+  padding: 12px 16px;
   margin: 8px 0;
-
-  /* фиксы против «уезда вправо» */
-  max-width: 100%;
-  overflow-x: auto;   /* если внутри реально широкая таблица */
+  isolation: isolate;
+  overflow: visible;
+  width: 100%;
   box-sizing: border-box;
 }
 
-/* Алиасы для обратной совместимости */
+/* Алиасы для совместимости (устаревшие классы) */
 .parts-subtable,
 .subtable-inset {
   padding: 0;
   background: transparent;
 }
 
-/* =========================================
+/* ==========================================================
    Анти-смещение раскрытой строки
-   ========================================= */
+   ========================================================== */
 
-/* убираем внутренний padding у ячейки expanded-row */
+/* Убираем внутренний padding у ячейки expanded-row */
 .ant-table-expanded-row > .ant-table-cell {
   padding: 0 !important;
   background: transparent !important;
 }
 
-/* страховка для .op-table */
+/* Для оптаблиц добавляем защиту */
 .op-table .ant-table-expanded-row > td {
   padding: 0 !important;
+  background: transparent !important;
 }
 
-/* =========================================
-   Scoped оформление внутри .op-table
-   ========================================= */
+/* ==========================================================
+   Основной вид таблиц (.op-table)
+   ========================================================== */
 
 .op-table .ant-table {
   table-layout: auto;
@@ -83,39 +87,94 @@
   background-color: #f0f8ff;
 }
 
-/* Инлайн-редактирование */
+/* ==========================================================
+   Управление скроллами и вложенностью
+   ========================================================== */
+
+/* Таблица должна вписываться в контейнер без смещений */
+.op-table {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  box-sizing: border-box;
+}
+
+/* Вложенные таблицы (внутри subtable-shell) */
+.subtable-shell .ant-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* BOM, UsedIn и Substitutions таблицы должны растягиваться на всю ширину */
+.subtable-shell .op-table,
+.subtable-shell .ant-table {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto;
+  box-sizing: border-box;
+}
+
+/* ==========================================================
+   Элементы управления и inline-редактирование
+   ========================================================== */
+
 .op-table .ant-input,
 .op-table .ant-input-affix-wrapper {
   font-size: 13px;
   padding: 4px 8px;
 }
+
 .op-table .ant-btn {
   font-size: 13px;
   border-radius: 6px;
 }
 
-/* Пагинация */
+/* ==========================================================
+   Пагинация и навигация
+   ========================================================== */
+
 .op-table .ant-pagination {
   margin: 12px 0;
   font-size: 13px;
 }
+
 .op-table .ant-pagination-options {
   margin-left: 8px;
 }
+
 .op-table .ant-pagination-total-text {
   white-space: nowrap;
 }
 
-/* Всплывающие элементы внутри якоря */
+/* ==========================================================
+   Всплывающие элементы внутри якорей
+   ========================================================== */
+
 .parts-table-wrap .ant-select-dropdown,
 .parts-table-wrap .ant-picker-dropdown,
 .parts-table-wrap .ant-dropdown {
   z-index: 1000;
 }
 
-/* =========================================
-   Утилита «воздух» между формами и таблицей
-   ========================================= */
+/* ==========================================================
+   Утилита "воздуха" между формами и таблицей
+   ========================================================== */
 .table-section {
   margin-bottom: 12px;
+}
+
+/* ==========================================================
+   Оптимизация UX при вложенных панелях (BOM/Tree/Substitutions)
+   ========================================================== */
+
+/* Запрещаем появление двойных скроллов в контейнерах */
+.subtable-shell .ant-tabs-content-holder {
+  overflow: visible !important;
+}
+
+/* Для удобного просмотра больших деревьев */
+.subtable-shell .ant-table-body {
+  overflow-y: auto;
+  overflow-x: auto;
+  max-height: 70vh; /* чтобы большие деревья не уезжали вниз экрана */
 }
