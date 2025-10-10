@@ -91,12 +91,17 @@
    Управление скроллами и вложенностью
    ========================================================== */
 
-/* Таблица должна вписываться в контейнер без смещений */
+/* Таблица верхнего уровня должна вписываться в контейнер */
 .op-table {
   width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   box-sizing: border-box;
+}
+
+/* Если таблица находится внутри подтаблицы — не дублируем скролл */
+.subtable-shell .op-table {
+  overflow-x: visible !important;
 }
 
 /* Вложенные таблицы (внутри subtable-shell) */
@@ -105,13 +110,18 @@
   overflow-x: auto;
 }
 
-/* BOM, UsedIn и Substitutions таблицы должны растягиваться на всю ширину */
+/* BOM, UsedIn, Tree и Substitutions таблицы должны растягиваться на всю ширину */
 .subtable-shell .op-table,
 .subtable-shell .ant-table {
   width: 100% !important;
   max-width: 100% !important;
-  overflow-x: auto;
   box-sizing: border-box;
+  overflow-x: auto;
+}
+
+/* Защита от сдвига заголовков при появлении вертикального скролла */
+.op-table .ant-table-container {
+  overflow: auto hidden;
 }
 
 /* ==========================================================
@@ -172,9 +182,14 @@
   overflow: visible !important;
 }
 
+/* Лёгкий отступ между Tabs и таблицей */
+.subtable-shell .ant-tabs-content {
+  padding-top: 8px;
+}
+
 /* Для удобного просмотра больших деревьев */
 .subtable-shell .ant-table-body {
   overflow-y: auto;
   overflow-x: auto;
-  max-height: 70vh; /* чтобы большие деревья не уезжали вниз экрана */
+  max-height: 60vh; /* чуть меньше, чтобы не появлялся белый “разрыв” */
 }
