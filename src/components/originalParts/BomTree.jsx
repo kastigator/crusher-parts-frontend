@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { Table, message } from "antd"
+import { Table, message, Empty } from "antd"
 import axios from "@/api/axiosInstance"
 
 const fmt = (n) =>
@@ -46,7 +46,11 @@ export default function BomTree({ rootId }) {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!rootId) return
+    if (!rootId) {
+      setRows([])
+      return
+    }
+
     let ignore = false
 
     const load = async () => {
@@ -90,21 +94,40 @@ export default function BomTree({ rootId }) {
   ]
 
   return (
-    <div className="subtable-shell" style={{ width: "100%" }}>
-      <Table
-        className="op-table"
-        rowKey="key"
-        columns={columns}
-        loading={loading}
-        dataSource={treeData}
-        pagination={false}
-        size="small"
-        expandable={{
-          defaultExpandAllRows: true,
-          childrenColumnName: "children",
-        }}
-        scroll={{ x: true }} // ✅ единый горизонтальный скролл при необходимости
-      />
+    <div
+      className="subtable-shell"
+      style={{
+        width: "100%",
+        minHeight: 160,          // ✅ фиксирует базовую высоту
+        maxHeight: "70vh",       // ✅ ограничивает вертикальный рост
+        overflowY: "auto",
+      }}
+    >
+      {(!loading && (!rows || rows.length === 0)) ? (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="Нет данных для отображения дерева"
+          style={{ margin: "24px 0" }}
+        />
+      ) : (
+        <Table
+          className="op-table"
+          rowKey="key"
+          columns={columns}
+          loading={loading}
+          dataSource={treeData}
+          pagination={false}
+          size="small"
+          expandable={{
+            defaultExpandAllRows: true,
+            childrenColumnName: "children",
+          }}
+          scroll={{
+            x: "max-content",
+            y: "calc(70vh - 180px)", // ✅ предотвращает скачки layout при больших деревьях
+          }}
+        />
+      )}
     </div>
   )
 }

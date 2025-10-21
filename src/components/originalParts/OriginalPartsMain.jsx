@@ -1,8 +1,7 @@
-// src/components/originalParts/OriginalPartsMain.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react"
 import {
   Card, Space, Row, Col, Checkbox, message, Button, Form,
-  Input, InputNumber, Tag
+  Input, InputNumber, Tag, Empty
 } from "antd"
 import { ApartmentOutlined, ReloadOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
@@ -34,7 +33,11 @@ export default function OriginalPartsMain() {
 
   const fetchParts = useCallback(async () => {
     const modelId = model?.id
-    if (!modelId) { setRows([]); return }
+    if (!modelId) {
+      setRows([])
+      return
+    }
+
     partsAbortRef.current?.abort()
     const controller = new AbortController()
     partsAbortRef.current = controller
@@ -110,8 +113,19 @@ export default function OriginalPartsMain() {
   }
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size={16}>
-      <Card title="Оригинальные детали" bodyStyle={{ paddingTop: 8 }}>
+    <Space
+      direction="vertical"
+      style={{
+        width: "100%",
+        minHeight: "calc(100vh - 180px)", // ✅ удерживает стабильную высоту страницы
+      }}
+      size={16}
+    >
+      <Card
+        title="Оригинальные детали"
+        bodyStyle={{ paddingTop: 8 }}
+        style={{ width: "100%", minHeight: 400 }} // ✅ предотвращает прыжки
+      >
         {/* === Выбор производителя и модели === */}
         <Row gutter={[12, 12]} align="middle">
           <Col xs={24} md={12}>
@@ -242,15 +256,23 @@ export default function OriginalPartsMain() {
           </Form.Item>
         </Form>
 
-        {/* === Основная таблица деталей (внешний контейнер для стабильного layout) === */}
-        <div className="parts-table-wrap">
-          <OriginalPartsTable
-            data={rows}
-            loading={loading}
-            modelId={model?.id || null}
-            onReload={fetchParts}
-            onRemove={removeRowLocal}
-          />
+        {/* === Основная таблица или пустое состояние === */}
+        <div className="parts-table-wrap" style={{ minHeight: 240 }}>
+          {model ? (
+            <OriginalPartsTable
+              data={rows}
+              loading={loading}
+              modelId={model?.id || null}
+              onReload={fetchParts}
+              onRemove={removeRowLocal}
+            />
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="Выберите производителя и модель, чтобы отобразить детали"
+              style={{ padding: "48px 0" }}
+            />
+          )}
         </div>
       </Card>
 

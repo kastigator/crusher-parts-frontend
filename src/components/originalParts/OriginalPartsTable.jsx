@@ -166,7 +166,7 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
         render: (_, r) =>
           isEditingCell(r, "cat_number")
             ? renderTextInput(r, "cat_number")
-            : <ValueDisplay value={r.cat_number} />
+            : <ValueDisplay value={r.cat_number} />,
       },
       {
         title: "Описание (RU)",
@@ -175,7 +175,7 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
         render: (_, r) =>
           isEditingCell(r, "description_ru")
             ? renderTextInput(r, "description_ru", { multiline: true })
-            : <ValueDisplay value={r.description_ru} />
+            : <ValueDisplay value={r.description_ru} />,
       },
       {
         title: "Description (EN)",
@@ -184,7 +184,7 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
         render: (_, r) =>
           isEditingCell(r, "description_en")
             ? renderTextInput(r, "description_en", { multiline: true })
-            : <ValueDisplay value={r.description_en} />
+            : <ValueDisplay value={r.description_en} />,
       },
       {
         title: "Вес, кг",
@@ -195,7 +195,7 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
         render: (_, r) =>
           isEditingCell(r, "weight_kg")
             ? renderNumberInput(r, "weight_kg")
-            : <ValueDisplay value={r.weight_kg} />
+            : <ValueDisplay value={r.weight_kg} />,
       },
       {
         title: "ТН ВЭД",
@@ -205,7 +205,7 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
         render: (_, r) =>
           isEditingCell(r, "tnved_code")
             ? renderTnvedEditor(r)
-            : renderTnvedDisplay(r)
+            : renderTnvedDisplay(r),
       },
       {
         title: "Сборка",
@@ -213,7 +213,7 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
         width: 100,
         align: "center",
         render: (_, r) =>
-          r.children_count > 0 ? `Да (${r.children_count})` : "Нет"
+          r.children_count > 0 ? `Да (${r.children_count})` : "Нет",
       },
       {
         title: "Действия",
@@ -225,35 +225,26 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
             onDelete={() => deleteRow(r)}
             size="small"
           />
-        )
-      }
+        ),
+      },
     ],
     [editing, draft]
   )
 
   // ======================
-  // expanded rows (вкладки)
+  // expanded rows
   // ======================
   const expandedRowRender = (part) => {
-    // Скрываем вкладку "BOM (дерево)", если нет дочерних элементов
     const hasChildren = part.children_count > 0
     const items = [
-      {
-        key: "bom",
-        label: "BOM (таблица)",
-        children: (
-          <BomTable parent={part} modelId={modelId} onReload={onReload} />
-        )
-      },
-      ...(hasChildren
-        ? [{ key: "tree", label: "BOM (дерево)", children: <BomTree rootId={part.id} /> }]
-        : []),
+      { key: "bom", label: "BOM (таблица)", children: <BomTable parent={part} modelId={modelId} onReload={onReload} /> },
+      ...(hasChildren ? [{ key: "tree", label: "BOM (дерево)", children: <BomTree rootId={part.id} /> }] : []),
       { key: "usedin", label: "Где используется", children: <UsedInTable partId={part.id} /> },
-      { key: "subs", label: "Замены (комплекты)", children: <SubstitutionsTable originalPartId={part.id} /> }
+      { key: "subs", label: "Замены (комплекты)", children: <SubstitutionsTable originalPartId={part.id} /> },
     ]
 
     return (
-      <div className="subtable-shell" style={{ width: "100%" }}>
+      <div className="subtable-shell" style={{ width: "100%", minHeight: 160 }}>
         <Tabs
           defaultActiveKey="bom"
           destroyInactiveTabPane
@@ -269,20 +260,23 @@ export default function OriginalPartsTable({ data, loading, modelId, onReload, o
   // ======================
   return (
     <>
-      <Table
-        className="op-table"
-        rowKey="id"
-        dataSource={data}
-        columns={columns}
-        loading={loading}
-        expandable={{
-          expandedRowRender,
-          columnWidth: 48
-        }}
-        pagination={{ pageSize: 10 }}
-        size="middle"
-        scroll={{ x: true }}     // ✅ предотвращает сдвиги при expand
-      />
+      <div className="parts-table-wrap">
+        <Table
+          className="op-table"
+          rowKey="id"
+          dataSource={data}
+          columns={columns}
+          loading={loading}
+          expandable={{
+            expandedRowRender,
+            columnWidth: 48,
+            expandRowByClick: false,
+          }}
+          pagination={{ pageSize: 10 }}
+          size="middle"
+          scroll={{ x: "max-content" }}   // ✅ стабильная ширина
+        />
+      </div>
 
       {historyForId && (
         <FullHistoryDialog

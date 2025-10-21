@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react"
-import { Table, InputNumber, message, Button, Space } from "antd"
+import { Table, InputNumber, message, Button, Space, Empty } from "antd"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import BomChildPickerDrawer from "./BomChildPickerDrawer"
@@ -27,9 +27,11 @@ export default function BomTable({ parent, modelId, onReload }) {
 
   useEffect(() => {
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parent?.id])
 
   const updateQty = async (rec, val) => {
+    if (val === rec.mult_qty) return
     try {
       await axios.put(`/original-part-bom/${rec.id}`, { mult_qty: val })
       message.success("Количество обновлено")
@@ -99,7 +101,7 @@ export default function BomTable({ parent, modelId, onReload }) {
   ]
 
   return (
-    <div className="subtable-shell" style={{ width: "100%" }}>
+    <div className="subtable-shell" style={{ width: "100%", minHeight: 160 }}>
       <Space direction="vertical" style={{ width: "100%" }}>
         <Button
           type="primary"
@@ -110,16 +112,24 @@ export default function BomTable({ parent, modelId, onReload }) {
           Добавить позицию
         </Button>
 
-        <Table
-          className="op-table"
-          rowKey="id"
-          columns={columns}
-          dataSource={rows}
-          loading={loading}
-          pagination={false}
-          size="small"
-          scroll={{ x: true }} // ✅ устраняет переполнение
-        />
+        {rows.length === 0 && !loading ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="Нет позиций в этой сборке"
+            style={{ margin: "24px 0" }}
+          />
+        ) : (
+          <Table
+            className="op-table"
+            rowKey="id"
+            columns={columns}
+            dataSource={rows}
+            loading={loading}
+            pagination={false}
+            size="small"
+            scroll={{ x: "max-content" }} // ✅ стабильная ширина таблицы
+          />
+        )}
       </Space>
 
       <BomChildPickerDrawer

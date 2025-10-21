@@ -9,8 +9,9 @@ const PageWrapper = ({ children }) => {
         padding: "32px 24px",
         width: "100%",
         maxWidth: "100%",
-        overflowX: "auto",
-        boxSizing: "border-box"
+        minWidth: 0,          // ✅ предотвращает «выталкивание» контента
+        overflowX: "hidden",  // ✅ убираем горизонтальный скролл
+        boxSizing: "border-box",
       }}
     >
       {children}

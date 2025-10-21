@@ -1,38 +1,47 @@
 // src/layout/LayoutBody.jsx
-
-import React from 'react'
-import { Outlet } from 'react-router-dom'
-import { Spin } from 'antd'
-import Sidebar from '@/components/Sidebar'
-import Header from './Header'
-import { useTabs } from '@/context/TabsContext'
+import React from "react"
+import { Outlet } from "react-router-dom"
+import { Spin } from "antd"
+import Sidebar from "@/components/Sidebar"
+import Header from "./Header"
+import { useTabs } from "@/context/TabsContext"
 
 const LayoutBody = () => {
   const { loading } = useTabs()
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+    <div
+      style={{
+        display: "flex",
+        height: "100vh",
+        overflow: "hidden", // одна область прокрутки
+      }}
+    >
       <Sidebar />
 
       <div
         style={{
           flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
+          display: "flex",
+          flexDirection: "column",
           minHeight: 0,
-          overflow: 'visible' // ✅ тултипы и т.п.
+          overflow: "hidden", // 🚫 не прокручиваем тут
         }}
       >
         <Header />
+
+        {/* Главная область контента */}
         <div
           style={{
             flex: 1,
-            overflowY: 'auto',
-            minHeight: 0
+            overflowY: "auto", // ✅ только здесь скролл
+            overflowX: "hidden",
+            minHeight: 0,
+            background: "#f9fafb",
           }}
         >
           {loading ? (
-            <div style={{ marginTop: 64, textAlign: 'center' }}>
+            <div style={{ marginTop: 64, textAlign: "center" }}>
               <Spin size="large" />
             </div>
           ) : (

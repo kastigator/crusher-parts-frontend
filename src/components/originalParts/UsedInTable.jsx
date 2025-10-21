@@ -14,7 +14,10 @@ export default function UsedInTable({ partId }) {
   const [loading, setLoading] = useState(false)
 
   const load = async () => {
-    if (!partId) return
+    if (!partId) {
+      setRows([])
+      return
+    }
     setLoading(true)
     try {
       const { data } = await axios.get("/original-part-bom/used-in", {
@@ -31,8 +34,8 @@ export default function UsedInTable({ partId }) {
   }
 
   useEffect(() => {
-    setRows([])
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partId])
 
   const columns = useMemo(
@@ -77,26 +80,34 @@ export default function UsedInTable({ partId }) {
     []
   )
 
-  if (!loading && rows.length === 0) {
-    return (
-      <div className="subtable-shell" style={{ width: "100%" }}>
-        <Empty description="Не используется ни в одной сборке" />
-      </div>
-    )
-  }
-
   return (
-    <div className="subtable-shell" style={{ width: "100%" }}>
-      <Table
-        className="op-table"
-        rowKey={(r) => `${r.parent_id}:${r.child_id}`}
-        size="small"
-        loading={loading}
-        pagination={false}
-        dataSource={rows}
-        columns={columns}
-        scroll={{ x: true }} // ✅ предотвращает смещение при длинных описаниях
-      />
+    <div
+      className="subtable-shell"
+      style={{
+        width: "100%",
+        minHeight: 160,      // ✅ фиксированная высота для стабильного layout
+        maxHeight: "70vh",   // ✅ ограничение роста таблицы
+        overflowY: "auto",   // ✅ предотвращает выталкивание при длинных списках
+      }}
+    >
+      {!loading && rows.length === 0 ? (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="Не используется ни в одной сборке"
+          style={{ margin: "24px 0" }}
+        />
+      ) : (
+        <Table
+          className="op-table"
+          rowKey={(r) => `${r.parent_id}:${r.child_id}`}
+          size="small"
+          loading={loading}
+          pagination={false}
+          dataSource={rows}
+          columns={columns}
+          scroll={{ x: "max-content" }} // ✅ устраняет горизонтальные скачки
+        />
+      )}
     </div>
   )
 }

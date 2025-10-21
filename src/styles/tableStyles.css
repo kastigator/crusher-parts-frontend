@@ -2,19 +2,15 @@
    Общие утилиты для таблиц и вложенных компонентов
    ========================================================== */
 
-/* Якорь для выпадающих (Select/DatePicker/Dropdown/size-changer) */
+/* Якорь для выпадающих элементов (Select/DatePicker/Dropdown) */
 .parts-table-wrap {
   position: relative;
   isolation: isolate;
-  overflow: visible; /* позволяет popups рендериться корректно */
+  overflow: visible; /* чтобы popups отображались поверх */
   width: 100%;
 }
 
-/* Оболочка контента под раскрытой строкой:
-   - белый фон
-   - скругления
-   - аккуратные отступы
-   - безопасный контекст для popup-элементов */
+/* Оболочка контента под раскрытой строкой */
 .subtable-shell {
   position: relative;
   background: #fff;
@@ -23,12 +19,17 @@
   padding: 12px 16px;
   margin: 8px 0;
   isolation: isolate;
-  overflow: visible;
   width: 100%;
   box-sizing: border-box;
+
+  /* ✅ стабильная высота и прокрутка при больших вложениях */
+  min-height: 160px;        /* базовая высота при пустом контенте */
+  max-height: 70vh;         /* ограничение роста блока */
+  overflow-y: auto;         /* вертикальный скролл при переполнении */
+  overflow-x: hidden;       /* горизонтальные скроллы берут таблицы */
 }
 
-/* Алиасы для совместимости (устаревшие классы) */
+/* Алиасы для старых классов */
 .parts-subtable,
 .subtable-inset {
   padding: 0;
@@ -39,13 +40,11 @@
    Анти-смещение раскрытой строки
    ========================================================== */
 
-/* Убираем внутренний padding у ячейки expanded-row */
 .ant-table-expanded-row > .ant-table-cell {
   padding: 0 !important;
   background: transparent !important;
 }
 
-/* Для оптаблиц добавляем защиту */
 .op-table .ant-table-expanded-row > td {
   padding: 0 !important;
   background: transparent !important;
@@ -91,7 +90,6 @@
    Управление скроллами и вложенностью
    ========================================================== */
 
-/* Таблица верхнего уровня должна вписываться в контейнер */
 .op-table {
   width: 100%;
   overflow-x: auto;
@@ -99,18 +97,18 @@
   box-sizing: border-box;
 }
 
-/* Если таблица находится внутри подтаблицы — не дублируем скролл */
+/* Не дублируем горизонтальный скролл во вложенных */
 .subtable-shell .op-table {
   overflow-x: visible !important;
 }
 
-/* Вложенные таблицы (внутри subtable-shell) */
+/* Вложенные таблицы */
 .subtable-shell .ant-table-wrapper {
   width: 100%;
   overflow-x: auto;
 }
 
-/* BOM, UsedIn, Tree и Substitutions таблицы должны растягиваться на всю ширину */
+/* BOM, UsedIn, Tree и Substitutions */
 .subtable-shell .op-table,
 .subtable-shell .ant-table {
   width: 100% !important;
@@ -140,7 +138,7 @@
 }
 
 /* ==========================================================
-   Пагинация и навигация
+   Пагинация
    ========================================================== */
 
 .op-table .ant-pagination {
@@ -157,7 +155,7 @@
 }
 
 /* ==========================================================
-   Всплывающие элементы внутри якорей
+   Всплывающие элементы внутри таблиц
    ========================================================== */
 
 .parts-table-wrap .ant-select-dropdown,
@@ -167,17 +165,17 @@
 }
 
 /* ==========================================================
-   Утилита "воздуха" между формами и таблицей
+   Отступы и визуальный воздух
    ========================================================== */
+
 .table-section {
   margin-bottom: 12px;
 }
 
 /* ==========================================================
-   Оптимизация UX при вложенных панелях (BOM/Tree/Substitutions)
+   Вложенные панели (BOM/Tree/Substitutions/UsedIn)
    ========================================================== */
 
-/* Запрещаем появление двойных скроллов в контейнерах */
 .subtable-shell .ant-tabs-content-holder {
   overflow: visible !important;
 }
@@ -187,9 +185,14 @@
   padding-top: 8px;
 }
 
-/* Для удобного просмотра больших деревьев */
+/* Для больших деревьев BOM */
 .subtable-shell .ant-table-body {
   overflow-y: auto;
   overflow-x: auto;
-  max-height: 60vh; /* чуть меньше, чтобы не появлялся белый “разрыв” */
+  max-height: 60vh; /* чуть меньше, чтобы не было белого “разрыва” */
+}
+
+/* ✅ выравнивание состояния Empty */
+.subtable-shell .ant-empty {
+  margin: 24px 0;
 }

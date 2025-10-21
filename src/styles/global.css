@@ -3,8 +3,10 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  overflow-x: hidden;   /* убираем горизонтальный скролл */
-  overflow-y: auto;
+
+  /* ВАЖНО: скролл НЕ на body, а только внутри контента LayoutBody */
+  overflow: hidden;
+
   font-size: 14px;
   line-height: 1.4;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -14,9 +16,7 @@ html, body, #root {
   color: #1f2937;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 /* ==========================================================
    Умеренные transition (без all!)
@@ -66,7 +66,7 @@ html, body, #root {
 }
 
 /* ==========================================================
-   Ant Design — базовая таблица и общие элементы
+   Ant Design — таблица и общие элементы
    ========================================================== */
 .ant-table {
   font-size: 13px;
@@ -74,7 +74,7 @@ html, body, #root {
   border-radius: 8px;
   background-color: #fff;
   border: 1px solid #e0e0e0;
-  width: 100%; /* фикс: гарантирует вписывание в контейнер */
+  width: 100%;
   table-layout: auto;
 }
 .ant-table-thead > tr > th {
@@ -96,9 +96,13 @@ html, body, #root {
   background-color: #f5faff;
 }
 
-/* ==========================================================
-   Кнопки, инпуты и поля ввода
-   ========================================================== */
+/* Убираем внутренний padding у expanded-row, чтобы не "дергало" */
+.ant-table-expanded-row > .ant-table-cell {
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+/* Кнопки/поля */
 .ant-btn {
   border-radius: 8px;
   font-size: 13px;
@@ -125,7 +129,7 @@ html, body, #root {
 }
 
 /* ==========================================================
-   Модальные окна и тултипы
+   Модалки и тултипы
    ========================================================== */
 .ant-modal-content {
   border-radius: 12px;
@@ -135,30 +139,12 @@ html, body, #root {
   font-weight: 600;
   font-size: 16px;
 }
-
-.ant-tooltip {
-  z-index: 9999 !important;
-  pointer-events: auto;
-}
+.ant-tooltip { z-index: 9999 !important; pointer-events: auto; }
 .ant-tooltip-inner {
   font-size: 12px;
   font-family: 'Inter', sans-serif;
   padding: 6px 10px;
   border-radius: 6px;
-}
-
-/* ==========================================================
-   Таблицы — UX улучшения
-   ========================================================== */
-
-/* Убираем баг с overflow при вложенных таблицах */
-.ant-table-wrapper {
-  overflow-x: hidden;
-}
-
-/* Чтобы вложенные таблицы не вылазили за границы */
-.ant-table-container {
-  overflow: visible !important;
 }
 
 /* ==========================================================
