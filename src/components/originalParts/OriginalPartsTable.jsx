@@ -1,290 +1,90 @@
-import React, { useMemo, useState } from "react"
-import { Table, Input, InputNumber, Tabs, message, Tooltip } from "antd"
+import React, { useEffect, useState, useCallback } from "react"
+import { Table, Tabs, Button, message } from "antd"
 import axios from "@/api/axiosInstance"
-import ValueDisplay from "@/components/common/ValueDisplay"
-import ActionButtons from "@/components/common/ActionButtons"
-import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import confirmAction from "@/utils/confirmAction"
-
 import BomTable from "./BomTable"
 import BomTree from "./BomTree"
-import SubstitutionsTable from "./SubstitutionsTable"
 import UsedInTable from "./UsedInTable"
-import TnvedPicker from "@/components/fields/TnvedPicker"
+import SubstitutionsTable from "./SubstitutionsTable"
 
-export default function OriginalPartsTable({ data, loading, modelId, onReload, onRemove }) {
-  const [editing, setEditing] = useState(null)
-  const [draft, setDraft] = useState(null)
-  const [historyForId, setHistoryForId] = useState(null)
+export default function OriginalPartsTable({ modelId }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
 
-  // ======================
-  // helpers
-  // ======================
-  const isEditingCell = (record, field) =>
-    editing && editing.id === record.id && editing.field === field
-
-  const startEditCell = (record, field) => {
-    setEditing({ id: record.id, field })
-    setDraft({ ...record })
-  }
-  const cancelEdit = () => {
-    setEditing(null)
-    setDraft(null)
-  }
-
-  const norm = (field, value) => {
-    if (value === "" || value === undefined) return null
-    if (field === "weight_kg") {
-      const n = Number(value)
-      return Number.isFinite(n) ? n : null
-    }
-    return typeof value === "string" ? value.trim() : value
-  }
-
-  const saveField = async (record, field, rawValue) => {
-    const value = norm(field, rawValue)
-    const current = norm(field, record[field])
-    if (value === current) return cancelEdit()
+  const load = useCallback(async () => {
+    if (!modelId) return
+    setLoading(true)
     try {
-      await axios.put(`/original-parts/${record.id}`, { [field]: value })
-      message.success("Сохранено")
-      cancelEdit()
-      await onReload?.()
+      const { data } = await axios.get("/original-parts", { params: { model_id: modelId } })
+      setRows(Array.isArray(data) ? data : [])
     } catch (err) {
-      if (err?.response?.status === 409)
-        message.error("Дубликат Part number в этой модели")
-      else message.error(err?.response?.data?.message || "Не удалось сохранить")
-      cancelEdit()
+      console.error(err)
+      message.error("Не удалось загрузить детали модели")
+    } finally {
+      setLoading(false)
     }
-  }
+  }, [modelId])
 
-  const saveTnved = async (record, picked) => {
-    try {
-      const body =
-        picked && picked.id ? { tnved_code_id: picked.id } : { tnved_code_id: null }
-      await axios.patch(`/original-parts/${record.id}/tnved`, body)
-      message.success(picked ? "Код ТН ВЭД обновлён" : "Код ТН ВЭД снят")
-      cancelEdit()
-      await onReload?.()
-    } catch (err) {
-      message.error(err?.response?.data?.message || "Не удалось сохранить ТН ВЭД")
-      cancelEdit()
-    }
-  }
+  useEffect(() => { load() }, [load])
 
-  const deleteRow = async (record) => {
+  const handleDelete = async (id) => {
     const { confirmed } = await confirmAction("Удалить деталь?")
     if (!confirmed) return
     try {
-      await axios.delete(`/original-parts/${record.id}`)
-      message.success("Деталь удалена")
-      if (onRemove) onRemove(record.id)
-      else await onReload?.()
+      await axios.delete(`/original-parts/${id}`)
+      message.success("Удалено")
+      setRows(prev => prev.filter(r => r.id !== id))
     } catch (err) {
-      if (err?.response?.status === 409)
-        message.error("Удаление невозможно: есть связанные записи")
-      else message.error("Не удалось удалить")
+      console.error(err)
+      message.error("Ошибка удаления детали")
     }
   }
 
-  // ======================
-  // render helpers
-  // ======================
-  const renderTextInput = (record, field, { multiline = false } = {}) =>
-    multiline ? (
-      <Input.TextArea
-        rows={3}
-        value={draft?.[field] ?? ""}
-        onChange={(e) => setDraft((p) => ({ ...p, [field]: e.target.value }))}
-        onBlur={() => saveField(record, field, draft?.[field] ?? "")}
-        onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
-        autoSize={{ minRows: 2, maxRows: 6 }}
-        autoFocus
-      />
-    ) : (
-      <Input
-        value={draft?.[field] ?? ""}
-        onChange={(e) => setDraft((p) => ({ ...p, [field]: e.target.value }))}
-        onPressEnter={() => saveField(record, field, draft?.[field] ?? "")}
-        onBlur={() => saveField(record, field, draft?.[field] ?? "")}
-        onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
-        autoFocus
-      />
-    )
+  const columns = [
+    { title: "Part number", dataIndex: "cat_number", width: 180 },
+    { title: "Описание (RU)", dataIndex: "description_ru", ellipsis: true },
+    { title: "Description (EN)", dataIndex: "description_en", ellipsis: true },
+    { title: "Вес, кг", dataIndex: "weight", align: "right", width: 120 },
+    { title: "ТН ВЭД", dataIndex: "tnved_code", width: 120 },
+    { title: "Сборка", dataIndex: "is_assembly", width: 100, render: (v) => (v ? "Да" : "Нет") },
+    {
+      title: "Действия",
+      width: 100,
+      render: (_, r) => (
+        <Button danger size="small" onClick={() => handleDelete(r.id)}>
+          Удалить
+        </Button>
+      ),
+    },
+  ]
 
-  const renderNumberInput = (record, field) => (
-    <InputNumber
-      min={0}
-      step={0.001}
-      style={{ width: "100%" }}
-      value={draft?.[field] ?? record[field] ?? null}
-      onChange={(val) => setDraft((p) => ({ ...p, [field]: val }))}
-      onBlur={() => saveField(record, field, draft?.[field])}
-      onPressEnter={() => saveField(record, field, draft?.[field])}
-      autoFocus
-    />
+  const expandedRowRender = (record) => (
+    <div className="expanded-area">
+      <Tabs
+        defaultActiveKey="bom"
+        destroyInactiveTabPane
+        items={[
+          { key: "bom", label: "BOM (таблица)", children: <BomTable parent={record} modelId={modelId} onReload={load} /> },
+          { key: "tree", label: "BOM (дерево)", children: <BomTree rootId={record.id} /> },
+          { key: "used", label: "Где используется", children: <UsedInTable partId={record.id} /> },
+          { key: "subs", label: "Замены (комплекты)", children: <SubstitutionsTable originalPartId={record.id} /> },
+        ]}
+      />
+    </div>
   )
 
-  const renderTnvedDisplay = (record) => {
-    const codeText =
-      record.tnved_code_text ??
-      record.tnved_code ??
-      (record.tnved_code_id ? String(record.tnved_code_id) : null)
-    if (!codeText) return <ValueDisplay value={null} />
-    return (
-      <Tooltip title={record.tnved_description || null}>
-        <span>{codeText}</span>
-      </Tooltip>
-    )
-  }
-
-  const renderTnvedEditor = (record) => {
-    const valueObj =
-      record.tnved_code_id || record.tnved_code_text
-        ? { id: record.tnved_code_id ?? null, code: record.tnved_code_text ?? null }
-        : null
-    return (
-      <TnvedPicker
-        value={valueObj}
-        onChange={(picked) => saveTnved(record, picked)}
-        allowClear
-        autoFocus
-      />
-    )
-  }
-
-  // ======================
-  // columns
-  // ======================
-  const columns = useMemo(
-    () => [
-      {
-        title: "Part number",
-        dataIndex: "cat_number",
-        width: 180,
-        onCell: (r) => ({ onDoubleClick: () => startEditCell(r, "cat_number") }),
-        render: (_, r) =>
-          isEditingCell(r, "cat_number")
-            ? renderTextInput(r, "cat_number")
-            : <ValueDisplay value={r.cat_number} />,
-      },
-      {
-        title: "Описание (RU)",
-        dataIndex: "description_ru",
-        onCell: (r) => ({ onDoubleClick: () => startEditCell(r, "description_ru") }),
-        render: (_, r) =>
-          isEditingCell(r, "description_ru")
-            ? renderTextInput(r, "description_ru", { multiline: true })
-            : <ValueDisplay value={r.description_ru} />,
-      },
-      {
-        title: "Description (EN)",
-        dataIndex: "description_en",
-        onCell: (r) => ({ onDoubleClick: () => startEditCell(r, "description_en") }),
-        render: (_, r) =>
-          isEditingCell(r, "description_en")
-            ? renderTextInput(r, "description_en", { multiline: true })
-            : <ValueDisplay value={r.description_en} />,
-      },
-      {
-        title: "Вес, кг",
-        dataIndex: "weight_kg",
-        width: 110,
-        align: "right",
-        onCell: (r) => ({ onDoubleClick: () => startEditCell(r, "weight_kg") }),
-        render: (_, r) =>
-          isEditingCell(r, "weight_kg")
-            ? renderNumberInput(r, "weight_kg")
-            : <ValueDisplay value={r.weight_kg} />,
-      },
-      {
-        title: "ТН ВЭД",
-        dataIndex: "tnved_code_text",
-        width: 220,
-        onCell: (r) => ({ onDoubleClick: () => startEditCell(r, "tnved_code") }),
-        render: (_, r) =>
-          isEditingCell(r, "tnved_code")
-            ? renderTnvedEditor(r)
-            : renderTnvedDisplay(r),
-      },
-      {
-        title: "Сборка",
-        dataIndex: "is_assembly",
-        width: 100,
-        align: "center",
-        render: (_, r) =>
-          r.children_count > 0 ? `Да (${r.children_count})` : "Нет",
-      },
-      {
-        title: "Действия",
-        key: "actions",
-        width: 140,
-        render: (_, r) => (
-          <ActionButtons
-            onHistory={() => setHistoryForId(r.id)}
-            onDelete={() => deleteRow(r)}
-            size="small"
-          />
-        ),
-      },
-    ],
-    [editing, draft]
-  )
-
-  // ======================
-  // expanded rows
-  // ======================
-  const expandedRowRender = (part) => {
-    const hasChildren = part.children_count > 0
-    const items = [
-      { key: "bom", label: "BOM (таблица)", children: <BomTable parent={part} modelId={modelId} onReload={onReload} /> },
-      ...(hasChildren ? [{ key: "tree", label: "BOM (дерево)", children: <BomTree rootId={part.id} /> }] : []),
-      { key: "usedin", label: "Где используется", children: <UsedInTable partId={part.id} /> },
-      { key: "subs", label: "Замены (комплекты)", children: <SubstitutionsTable originalPartId={part.id} /> },
-    ]
-
-    return (
-      <div className="subtable-shell" style={{ width: "100%", minHeight: 160 }}>
-        <Tabs
-          defaultActiveKey="bom"
-          destroyInactiveTabPane
-          items={items}
-          style={{ width: "100%" }}
-        />
-      </div>
-    )
-  }
-
-  // ======================
-  // render
-  // ======================
   return (
-    <>
-      <div className="parts-table-wrap">
-        <Table
-          className="op-table"
-          rowKey="id"
-          dataSource={data}
-          columns={columns}
-          loading={loading}
-          expandable={{
-            expandedRowRender,
-            columnWidth: 48,
-            expandRowByClick: false,
-          }}
-          pagination={{ pageSize: 10 }}
-          size="middle"
-          scroll={{ x: "max-content" }}   // ✅ стабильная ширина
-        />
-      </div>
-
-      {historyForId && (
-        <FullHistoryDialog
-          entityType="original_parts"
-          entityId={historyForId}
-          onClose={() => setHistoryForId(null)}
-        />
-      )}
-    </>
+    <Table
+      className="op-table"
+      rowKey="id"
+      columns={columns}
+      dataSource={rows}
+      loading={loading}
+      expandable={{ expandedRowRender }}
+      pagination={false}
+      tableLayout="fixed"
+      scroll={{ x: true }}
+      size="middle"
+    />
   )
 }

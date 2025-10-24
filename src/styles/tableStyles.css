@@ -1,198 +1,148 @@
-/* ==========================================================
-   Общие утилиты для таблиц и вложенных компонентов
-   ========================================================== */
+/* ================================================================
+   🧩 Общие таблицы проекта Crusher Parts (Ant Design)
+   Унифицированный стиль для всех таблиц и подтаблиц
+================================================================ */
 
-/* Якорь для выпадающих элементов (Select/DatePicker/Dropdown) */
-.parts-table-wrap {
-  position: relative;
-  isolation: isolate;
-  overflow: visible; /* чтобы popups отображались поверх */
-  width: 100%;
-}
-
-/* Оболочка контента под раскрытой строкой */
-.subtable-shell {
-  position: relative;
-  background: #fff;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  padding: 12px 16px;
-  margin: 8px 0;
-  isolation: isolate;
-  width: 100%;
-  box-sizing: border-box;
-
-  /* ✅ стабильная высота и прокрутка при больших вложениях */
-  min-height: 160px;        /* базовая высота при пустом контенте */
-  max-height: 70vh;         /* ограничение роста блока */
-  overflow-y: auto;         /* вертикальный скролл при переполнении */
-  overflow-x: hidden;       /* горизонтальные скроллы берут таблицы */
-}
-
-/* Алиасы для старых классов */
-.parts-subtable,
-.subtable-inset {
-  padding: 0;
-  background: transparent;
-}
-
-/* ==========================================================
-   Анти-смещение раскрытой строки
-   ========================================================== */
-
-.ant-table-expanded-row > .ant-table-cell {
-  padding: 0 !important;
-  background: transparent !important;
-}
-
-.op-table .ant-table-expanded-row > td {
-  padding: 0 !important;
-  background: transparent !important;
-}
-
-/* ==========================================================
-   Основной вид таблиц (.op-table)
-   ========================================================== */
-
-.op-table .ant-table {
-  table-layout: auto;
-  width: 100%;
-  font-size: 13px;
-  font-family: 'Inter', sans-serif;
-  border-radius: 6px;
-  border: 1px solid #e0e0e0;
-  background-color: #fff;
-}
-
-.op-table .ant-table-thead > tr > th {
-  background-color: #f9fafb;
-  font-weight: 600;
-  padding: 8px;
-  color: #1f2937;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.op-table .ant-table-tbody > tr > td {
-  padding: 8px;
-  color: #1f2937;
-  white-space: pre-wrap;
-  word-break: break-word;
-  vertical-align: top;
-}
-
-.op-table .ant-table-tbody > tr:hover > td {
-  background-color: #f0f8ff;
-}
-
-/* ==========================================================
-   Управление скроллами и вложенностью
-   ========================================================== */
-
+/* === Базовая таблица ========================================== */
 .op-table {
   width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  box-sizing: border-box;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: none;
+  transition: background 0.2s ease;
 }
 
-/* Не дублируем горизонтальный скролл во вложенных */
-.subtable-shell .op-table {
-  overflow-x: visible !important;
+/* Убираем излишние рамки/тени у оболочки */
+.op-table .ant-table-container {
+  border: none !important;
+  box-shadow: none !important;
+  scrollbar-gutter: stable both-edges; /* предотвращает «дрожь» ширины */
 }
 
-/* Вложенные таблицы */
-.subtable-shell .ant-table-wrapper {
+/* Фиксированная сетка колонок по умолчанию */
+.op-table .ant-table {
+  table-layout: fixed;
+}
+
+/* Заголовок таблицы */
+.op-table .ant-table-thead > tr > th {
+  background: #fafafa;
+  font-weight: 500;
+  color: #333;
+  border-bottom: 1px solid #f0f0f0;
+  white-space: nowrap;
+}
+
+/* Строки таблицы */
+.op-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid #f5f5f5;
+  background: #fff;
+  transition: background 0.15s ease;
+}
+.op-table .ant-table-tbody > tr:hover > td {
+  background: #f6f9ff;
+}
+
+/* Маленький размер */
+.ant-table-small .ant-table-tbody > tr > td { padding: 6px 12px; }
+.ant-table-small .ant-table-thead > tr > th { padding: 6px 12px; }
+
+/* Состояние загрузки (чтобы спиннер не «прыгал») */
+.op-table .ant-spin-nested-loading > div > .ant-spin { max-height: 60vh; }
+
+/* === Кнопки действий в таблице ================================ */
+.table-actions { display: flex; align-items: center; gap: 6px; }
+.table-actions button { min-width: 22px; }
+
+/* =================================================================
+   РАСКРЫТАЯ СТРОКА: вкладки как продолжение таблицы, без «коробок»
+================================================================= */
+
+/* Ячейка раскрытой строки — без внутренних отступов и с тонкой границей */
+.ant-table-expanded-row > .ant-table-cell {
+  background: #fff !important;
+  padding: 8px 0 !important; /* небольшой зазор над Tabs */
+  border-top: 1px solid #f0f0f0;
+}
+
+/* Область раскрытого контента фиксирует ширину и не раздувает родителя */
+.expanded-area {
   width: 100%;
-  overflow-x: auto;
+  max-width: 100%;
+  overflow: hidden; /* отрезаем элементы, выпирающие шире 100% */
 }
 
-/* BOM, UsedIn, Tree и Substitutions */
-.subtable-shell .op-table,
-.subtable-shell .ant-table {
+/* Внутри раскрытой области все таблицы строго укладываются в 100% */
+.expanded-area .ant-table-wrapper,
+.expanded-area .ant-table,
+.expanded-area .ant-table-container,
+.expanded-area .ant-table-content {
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box;
-  overflow-x: auto;
 }
 
-/* Защита от сдвига заголовков при появлении вертикального скролла */
-.op-table .ant-table-container {
-  overflow: auto hidden;
+/* Внутренним таблицам запрещаем собственные скроллы */
+.expanded-area .ant-table-body {
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
 }
 
-/* ==========================================================
-   Элементы управления и inline-редактирование
-   ========================================================== */
-
-.op-table .ant-input,
-.op-table .ant-input-affix-wrapper {
-  font-size: 13px;
-  padding: 4px 8px;
-}
-
-.op-table .ant-btn {
-  font-size: 13px;
-  border-radius: 6px;
-}
-
-/* ==========================================================
-   Пагинация
-   ========================================================== */
-
-.op-table .ant-pagination {
-  margin: 12px 0;
-  font-size: 13px;
-}
-
-.op-table .ant-pagination-options {
-  margin-left: 8px;
-}
-
-.op-table .ant-pagination-total-text {
-  white-space: nowrap;
-}
-
-/* ==========================================================
-   Всплывающие элементы внутри таблиц
-   ========================================================== */
-
-.parts-table-wrap .ant-select-dropdown,
-.parts-table-wrap .ant-picker-dropdown,
-.parts-table-wrap .ant-dropdown {
-  z-index: 1000;
-}
-
-/* ==========================================================
-   Отступы и визуальный воздух
-   ========================================================== */
-
-.table-section {
-  margin-bottom: 12px;
-}
-
-/* ==========================================================
-   Вложенные панели (BOM/Tree/Substitutions/UsedIn)
-   ========================================================== */
-
-.subtable-shell .ant-tabs-content-holder {
-  overflow: visible !important;
-}
-
-/* Лёгкий отступ между Tabs и таблицей */
-.subtable-shell .ant-tabs-content {
+/* Вкладки визуально как продолжение строки */
+.expanded-area .ant-tabs-nav { margin: 0 0 8px 0 !important; }
+.expanded-area .ant-tabs-content-holder {
+  border-top: 1px solid #f0f0f0;
   padding-top: 8px;
+  background: #fff;
 }
 
-/* Для больших деревьев BOM */
-.subtable-shell .ant-table-body {
-  overflow-y: auto;
-  overflow-x: auto;
-  max-height: 60vh; /* чуть меньше, чтобы не было белого “разрыва” */
+/* Таблицы во вкладках без дополнительных фонов/рамок */
+.expanded-area .ant-table { background: transparent !important; }
+.expanded-area .ant-table-container { border: none !important; box-shadow: none !important; }
+
+/* =================================================================
+   Прочие общие элементы
+================================================================= */
+
+/* Стиль кнопок */
+.ant-btn-primary { border-radius: 6px; font-weight: 500; }
+.ant-btn-dangerous { font-weight: 500; }
+
+/* Подсказки */
+.ant-tooltip-inner { font-size: 13px; line-height: 1.3; }
+
+/* Обёртки/секции */
+.table-section { margin: 8px 0; }
+.parts-table-wrap { width: 100%; overflow: visible !important; }
+
+/* Заглушки */
+.ant-empty-description { color: #999; font-size: 13px; }
+
+/* Тулбар */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
 }
 
-/* ✅ выравнивание состояния Empty */
-.subtable-shell .ant-empty {
-  margin: 24px 0;
-}
+/* Инлайн-форма — чуть плотнее */
+.ant-form-inline .ant-form-item { margin-bottom: 8px; }
+
+/* Небольшая микро-анимация строки */
+.ant-table-tbody > tr { transition: background 0.2s ease, transform 0.1s ease; }
+.ant-table-tbody > tr:hover { transform: translateY(-1px); }
+
+/* Адаптация для вложенных таблиц BOM и SupplierParts */
+.op-table .ant-table-expanded-row { background: #fff; }
+.op-table .ant-table-expanded-row .ant-tabs-top { margin-top: 4px; }
+
+/* Поля ввода немного скруглённые */
+.ant-input, .ant-select-selector, .ant-input-number, .ant-picker { border-radius: 6px !important; }
+.ant-message { font-size: 14px; }
+
+/* Аккуратные скроллбары (WebKit) */
+::-webkit-scrollbar { height: 8px; width: 8px; }
+::-webkit-scrollbar-track { background: #fafafa; }
+::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }

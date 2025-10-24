@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Drawer, Table, Input, Button, Space, Checkbox, InputNumber, Tooltip, message } from "antd";
-import axios from "@/api/axiosInstance";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
+import { Drawer, Table, Input, Button, Space, Checkbox, InputNumber, Tooltip, message } from "antd"
+import axios from "@/api/axiosInstance"
 
 export default function BomChildPickerDrawer({
   open,
@@ -10,66 +10,81 @@ export default function BomChildPickerDrawer({
   excludeIds = [],
   onPick,
 }) {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [q, setQ] = useState("");
-  const [onlyParts, setOnlyParts] = useState(true);
-  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
-  const [qtyMap, setQtyMap] = useState({});
-  const dref = useRef(null);
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [q, setQ] = useState("")
+  const [onlyParts, setOnlyParts] = useState(true)
+  const [selectedRowKeys, setSelectedRowKeys] = useState([])
+  const [qtyMap, setQtyMap] = useState({})
+  const debounceRef = useRef(null)
+  const abortRef = useRef(null)
+  const fetchLock = useRef(false)
 
   const blockedIds = useMemo(
     () => new Set([parentPartId, ...(excludeIds || [])]),
     [parentPartId, excludeIds]
-  );
+  )
 
-  const fetch = async (query) => {
-    if (!modelId) return;
-    setLoading(true);
-    try {
-      const params = { equipment_model_id: modelId };
-      if (query?.trim()) params.q = query.trim();
-      if (onlyParts) params.only_parts = 1;
+  const fetchData = useCallback(
+    async (query) => {
+      if (!modelId || fetchLock.current) return
+      fetchLock.current = true
 
-      const { data } = await axios.get("/original-parts", { params });
-      const arr = (Array.isArray(data) ? data : []).filter((r) => !blockedIds.has(r.id));
-      setRows(arr);
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+      setLoading(true)
 
-      setQtyMap((prev) => {
-        const next = { ...prev };
-        for (const r of arr) if (next[r.id] == null) next[r.id] = 1;
-        return next;
-      });
+      try {
+        const params = { equipment_model_id: modelId }
+        if (query?.trim()) params.q = query.trim()
+        if (onlyParts) params.only_parts = 1
 
-      setSelectedRowKeys((prev) => prev.filter((id) => !blockedIds.has(id)));
-    } catch (e) {
-      console.error(e);
-      message.error("Не удалось загрузить детали для выбора");
-    } finally {
-      setLoading(false);
-    }
-  };
+        const { data } = await axios.get("/original-parts", { params, signal: controller.signal })
+        const arr = (Array.isArray(data) ? data : []).filter((r) => !blockedIds.has(r.id))
+        setRows(arr)
+
+        setQtyMap((prev) => {
+          const next = { ...prev }
+          for (const r of arr) if (next[r.id] == null) next[r.id] = 1
+          return next
+        })
+        setSelectedRowKeys((prev) => prev.filter((id) => !blockedIds.has(id)))
+      } catch (e) {
+        if (e?.name !== "AbortError") {
+          console.error(e)
+          message.error("Не удалось загрузить детали для выбора")
+        }
+      } finally {
+        setLoading(false)
+        fetchLock.current = false
+      }
+    },
+    [modelId, onlyParts, blockedIds]
+  )
 
   useEffect(() => {
-    if (open) fetch(q);
+    if (open) fetchData(q)
+    else abortRef.current?.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, modelId, onlyParts, blockedIds]);
+  }, [open])
 
   const onChangeSearch = (e) => {
-    const v = e.target.value;
-    setQ(v);
-    clearTimeout(dref.current);
-    dref.current = setTimeout(() => fetch(v), 300);
-  };
+    const v = e.target.value
+    setQ(v)
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => fetchData(v), 400)
+  }
 
   const confirm = () => {
-    if (!selectedRowKeys.length) return;
+    if (!selectedRowKeys.length) return
     const items = selectedRowKeys.map((id) => ({
       id,
       qty: Number(qtyMap[id]) > 0 ? Number(qtyMap[id]) : 1,
-    }));
-    onPick?.(items);
-  };
+    }))
+    onPick?.(items)
+    onClose()
+  }
 
   const columns = useMemo(
     () => [
@@ -77,8 +92,7 @@ export default function BomChildPickerDrawer({
       {
         title: "Описание",
         render: (_, r) => {
-          const text = r.description_ru || r.description_en || "—";
-          if (!text || text === "—") return "—";
+          const text = r.description_ru || r.description_en || "—"
           return (
             <Tooltip title={text}>
               <span
@@ -93,13 +107,12 @@ export default function BomChildPickerDrawer({
                 {text}
               </span>
             </Tooltip>
-          );
+          )
         },
       },
       {
         title: "Кол-во",
-        dataIndex: "quantity",
-        width: 140,
+        width: 120,
         render: (_v, r) => (
           <InputNumber
             min={0.0001}
@@ -112,21 +125,23 @@ export default function BomChildPickerDrawer({
       },
     ],
     [qtyMap]
-  );
+  )
 
   return (
     <Drawer
+      title="Добавить позиции в BOM"
       open={open}
       onClose={onClose}
       width={880}
-      title="Добавить позиции в BOM"
       destroyOnClose
+      maskClosable
+      getContainer={() => document.body}
       extra={
         <Space>
           <Checkbox checked={onlyParts} onChange={(e) => setOnlyParts(e.target.checked)}>
             Только детали (не сборки)
           </Checkbox>
-          <Button onClick={() => fetch(q)}>Искать</Button>
+          <Button onClick={() => fetchData(q)}>Искать</Button>
           <Button type="primary" onClick={confirm} disabled={!selectedRowKeys.length}>
             Выбрать: {selectedRowKeys.length}
           </Button>
@@ -140,8 +155,6 @@ export default function BomChildPickerDrawer({
           onChange={onChangeSearch}
           allowClear
         />
-
-        {/* Обёртка с op-table для единых стилей */}
         <div className="op-table parts-table">
           <Table
             rowKey="id"
@@ -155,10 +168,10 @@ export default function BomChildPickerDrawer({
               onChange: setSelectedRowKeys,
               getCheckboxProps: (r) => ({ disabled: blockedIds.has(r.id) }),
             }}
-            scroll={{ x: true }}
+            scroll={{ y: "calc(100vh - 320px)", x: "max-content" }}
           />
         </div>
       </Space>
     </Drawer>
-  );
+  )
 }

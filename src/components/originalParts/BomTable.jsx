@@ -1,99 +1,91 @@
-import React, { useEffect, useState } from "react"
-import { Table, InputNumber, message, Button, Space, Empty } from "antd"
+import React, { useState, useEffect, useCallback } from "react"
+import { Table, Button, InputNumber, message } from "antd"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import BomChildPickerDrawer from "./BomChildPickerDrawer"
 
-export default function BomTable({ parent, modelId, onReload }) {
+export default function BomTable({ parentId, modelId }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const load = async () => {
-    if (!parent?.id) return
+  const load = useCallback(async () => {
+    if (!parentId) return
     setLoading(true)
     try {
-      const { data } = await axios.get(`/original-part-bom`, {
-        params: { parent_id: parent.id },
-      })
+      const { data } = await axios.get("/bom-items", { params: { parent_part_id: parentId } })
       setRows(Array.isArray(data) ? data : [])
     } catch (e) {
       console.error(e)
-      message.error("Не удалось загрузить BOM")
+      message.error("Не удалось загрузить состав BOM")
     } finally {
       setLoading(false)
     }
-  }
+  }, [parentId])
 
   useEffect(() => {
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parent?.id])
+  }, [load])
 
-  const updateQty = async (rec, val) => {
-    if (val === rec.mult_qty) return
+  const handlePickParts = async (items) => {
+    if (!items?.length) return
     try {
-      await axios.put(`/original-part-bom/${rec.id}`, { mult_qty: val })
-      message.success("Количество обновлено")
-      setRows((prev) =>
-        prev.map((r) => (r.id === rec.id ? { ...r, mult_qty: val } : r))
-      )
-      onReload?.()
+      const body = items.map((p) => ({
+        parent_part_id: parentId,
+        child_part_id: p.id,
+        quantity: p.qty,
+      }))
+      await axios.post("/bom-items", body)
+      message.success("Детали добавлены в BOM")
+      setDrawerOpen(false)
+      load()
     } catch (e) {
       console.error(e)
-      message.error("Ошибка обновления количества")
+      message.error("Ошибка при добавлении в BOM")
     }
   }
 
-  const deleteRow = async (rec) => {
-    const { confirmed } = await confirmAction("Удалить позицию из сборки?")
+  const handleDelete = async (row) => {
+    const { confirmed } = await confirmAction("Удалить запись из BOM?")
     if (!confirmed) return
     try {
-      await axios.delete(`/original-part-bom/${rec.id}`)
-      message.success("Удалено")
-      setRows((prev) => prev.filter((r) => r.id !== rec.id))
-      onReload?.()
+      await axios.delete(`/bom-items/${row.id}`)
+      message.success("Удалено из BOM")
+      load()
     } catch (e) {
       console.error(e)
-      message.error("Не удалось удалить позицию")
+      message.error("Ошибка при удалении")
     }
   }
 
   const columns = [
-    {
-      title: "Part number",
-      dataIndex: "cat_number",
-      width: 180,
-      render: (v) => v || "—",
-    },
-    {
-      title: "Описание",
-      dataIndex: "description_ru",
-      ellipsis: true,
-      render: (v, r) => v || r.description_en || "—",
-    },
+    { title: "Part number", dataIndex: "cat_number", width: 180 },
+    { title: "Описание", dataIndex: "description_ru", render: (v) => v || "—" },
     {
       title: "Кол-во",
-      dataIndex: "mult_qty",
-      align: "right",
       width: 120,
       render: (_, r) => (
         <InputNumber
-          min={0.001}
-          step={0.001}
-          value={r.mult_qty}
-          onChange={(v) => updateQty(r, v)}
+          value={r.quantity}
+          min={0.0001}
+          step={0.0001}
+          onChange={async (val) => {
+            try {
+              await axios.put(`/bom-items/${r.id}`, { quantity: val })
+              setRows((prev) => prev.map((p) => (p.id === r.id ? { ...p, quantity: val } : p)))
+            } catch {
+              message.error("Ошибка при обновлении количества")
+            }
+          }}
           style={{ width: "100%" }}
-          size="small"
         />
       ),
     },
     {
       title: "Действия",
-      key: "act",
       width: 100,
       render: (_, r) => (
-        <Button size="small" danger onClick={() => deleteRow(r)}>
+        <Button danger size="small" onClick={() => handleDelete(r)}>
           Удалить
         </Button>
       ),
@@ -101,43 +93,28 @@ export default function BomTable({ parent, modelId, onReload }) {
   ]
 
   return (
-    <div className="subtable-shell" style={{ width: "100%", minHeight: 160 }}>
-      <Space direction="vertical" style={{ width: "100%" }}>
-        <Button
-          type="primary"
-          size="small"
-          onClick={() => setDrawerOpen(true)}
-          style={{ alignSelf: "flex-start" }}
-        >
-          Добавить позицию
-        </Button>
+    <div className="parts-table-wrap">
+      <Button type="primary" onClick={() => setDrawerOpen(true)} style={{ marginBottom: 8 }}>
+        Добавить позицию
+      </Button>
 
-        {rows.length === 0 && !loading ? (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="Нет позиций в этой сборке"
-            style={{ margin: "24px 0" }}
-          />
-        ) : (
-          <Table
-            className="op-table"
-            rowKey="id"
-            columns={columns}
-            dataSource={rows}
-            loading={loading}
-            pagination={false}
-            size="small"
-            scroll={{ x: "max-content" }} // ✅ стабильная ширина таблицы
-          />
-        )}
-      </Space>
+      <Table
+        rowKey="id"
+        className="op-table"
+        columns={columns}
+        dataSource={rows}
+        loading={loading}
+        size="small"
+        pagination={false}
+      />
 
       <BomChildPickerDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        parentId={parent?.id}
+        parentPartId={parentId}
         modelId={modelId}
-        onPicked={load}
+        excludeIds={rows.map((r) => r.child_part_id)}
+        onPick={handlePickParts}
       />
     </div>
   )

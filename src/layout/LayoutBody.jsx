@@ -1,4 +1,3 @@
-// src/layout/LayoutBody.jsx
 import React from "react"
 import { Outlet } from "react-router-dom"
 import { Spin } from "antd"
@@ -34,10 +33,11 @@ const LayoutBody = () => {
         <div
           style={{
             flex: 1,
-            overflowY: "auto", // ✅ только здесь скролл
+            overflowY: "auto",       // ✅ только здесь скролл
             overflowX: "hidden",
             minHeight: 0,
             background: "#f9fafb",
+            scrollbarGutter: "stable both-edges", // ✅ предотвращает сдвиги при появлении скролла
           }}
         >
           {loading ? (
