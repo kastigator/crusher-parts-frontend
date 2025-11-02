@@ -68,15 +68,22 @@ html, body, #root {
 /* ==========================================================
    Ant Design — таблица и общие элементы
    ========================================================== */
+
+/* Базовая косметика для всех таблиц */
 .ant-table {
   font-size: 13px;
   font-family: 'Inter', sans-serif;
   border-radius: 8px;
   background-color: #fff;
   border: 1px solid #e0e0e0;
-  width: 100%;
-  table-layout: auto;
 }
+
+/* Стабильная сетка — только для наших унифицированных таблиц */
+.op-table .ant-table {
+  width: 100%;
+  table-layout: fixed; /* стабильная ширина колонок */
+}
+
 .ant-table-thead > tr > th {
   background-color: #f3f4f6;
   font-weight: 600;
@@ -96,11 +103,9 @@ html, body, #root {
   background-color: #f5faff;
 }
 
-/* Убираем внутренний padding у expanded-row, чтобы не "дергало" */
-.ant-table-expanded-row > .ant-table-cell {
-  padding: 0 !important;
-  background: transparent !important;
-}
+/* ⛔️ Специально НЕТ правила:
+   .ant-table-expanded-row > .ant-table-cell { padding:0; ... }
+   — чтобы не конфликтовать с tableStyles.css */
 
 /* Кнопки/поля */
 .ant-btn {

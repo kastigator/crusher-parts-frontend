@@ -1,39 +1,32 @@
-import React, { useEffect, useState, useCallback } from "react"
-import { Table, Tabs, Button, message } from "antd"
+import React from "react"
+import { Table, Button, message } from "antd"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
-import BomTable from "./BomTable"
-import BomTree from "./BomTree"
-import UsedInTable from "./UsedInTable"
-import SubstitutionsTable from "./SubstitutionsTable"
 
-export default function OriginalPartsTable({ modelId }) {
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(false)
-
-  const load = useCallback(async () => {
-    if (!modelId) return
-    setLoading(true)
-    try {
-      const { data } = await axios.get("/original-parts", { params: { model_id: modelId } })
-      setRows(Array.isArray(data) ? data : [])
-    } catch (err) {
-      console.error(err)
-      message.error("Не удалось загрузить детали модели")
-    } finally {
-      setLoading(false)
-    }
-  }, [modelId])
-
-  useEffect(() => { load() }, [load])
-
+/**
+ * Тонкая таблица оригинальных деталей.
+ * - Ничего не грузит сама: получает data и loading сверху.
+ * - Управление выбором строки — через onSelect / selectedId.
+ * - Удаление строки — DELETE /original-parts/:id, затем onRemove(id) и onReload?.
+ */
+export default function OriginalPartsTable({
+  data = [],
+  loading = false,
+  modelId = null,
+  onReload,
+  onRemove,
+  onSelect,
+  selectedId = null,
+}) {
   const handleDelete = async (id) => {
     const { confirmed } = await confirmAction("Удалить деталь?")
     if (!confirmed) return
     try {
       await axios.delete(`/original-parts/${id}`)
       message.success("Удалено")
-      setRows(prev => prev.filter(r => r.id !== id))
+      if (typeof onRemove === "function") onRemove(id)
+      // при необходимости можно освежить серверные данные
+      if (typeof onReload === "function") onReload()
     } catch (err) {
       console.error(err)
       message.error("Ошибка удаления детали")
@@ -41,8 +34,15 @@ export default function OriginalPartsTable({ modelId }) {
   }
 
   const columns = [
-    { title: "Part number", dataIndex: "cat_number", width: 180 },
-    { title: "Описание (RU)", dataIndex: "description_ru", ellipsis: true },
+    { title: "Part number", dataIndex: "cat_number", width: 200 },
+    {
+      title: "Описание (RU)",
+      dataIndex: "description_ru",
+      ellipsis: true,
+      // фиксируем ширину растяжной колонки, чтобы шапка/тело всегда совпадали
+      onHeaderCell: () => ({ style: { width: 420, minWidth: 420, maxWidth: 420 } }),
+      onCell:       () => ({ style: { width: 420, minWidth: 420, maxWidth: 420 } }),
+    },
     { title: "Description (EN)", dataIndex: "description_en", ellipsis: true },
     { title: "Вес, кг", dataIndex: "weight", align: "right", width: 120 },
     { title: "ТН ВЭД", dataIndex: "tnved_code", width: 120 },
@@ -58,33 +58,27 @@ export default function OriginalPartsTable({ modelId }) {
     },
   ]
 
-  const expandedRowRender = (record) => (
-    <div className="expanded-area">
-      <Tabs
-        defaultActiveKey="bom"
-        destroyInactiveTabPane
-        items={[
-          { key: "bom", label: "BOM (таблица)", children: <BomTable parent={record} modelId={modelId} onReload={load} /> },
-          { key: "tree", label: "BOM (дерево)", children: <BomTree rootId={record.id} /> },
-          { key: "used", label: "Где используется", children: <UsedInTable partId={record.id} /> },
-          { key: "subs", label: "Замены (комплекты)", children: <SubstitutionsTable originalPartId={record.id} /> },
-        ]}
-      />
-    </div>
-  )
-
   return (
     <Table
       className="op-table"
       rowKey="id"
       columns={columns}
-      dataSource={rows}
+      dataSource={Array.isArray(data) ? data : []}
       loading={loading}
-      expandable={{ expandedRowRender }}
-      pagination={false}
+      pagination={{ pageSize: 50 }}
       tableLayout="fixed"
-      scroll={{ x: true }}
+      scroll={{ x: true, y: 480 }}
       size="middle"
+      // выбор строки — кликом
+      onRow={(record) => ({
+        onClick: () => {
+          if (typeof onSelect === "function") onSelect(record)
+        },
+      })}
+      // визуальная подсветка выбранной строки
+      rowClassName={(record) =>
+        record.id === selectedId ? "ant-table-row-selected" : ""
+      }
     />
   )
 }

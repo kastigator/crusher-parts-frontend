@@ -1,11 +1,17 @@
+// src/components/originalParts/BomChildPickerDrawer.jsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
-import { Drawer, Table, Input, Button, Space, Checkbox, InputNumber, Tooltip, message } from "antd"
+import { Drawer, Table, Input, Button, Space, Checkbox, Tooltip, message, Empty, Tag } from "antd"
+import { SearchOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 
 export default function BomChildPickerDrawer({
   open,
   onClose,
   parentPartId,
+  parentCatNumber,
+  parentDescription,
+  manufacturerName,
+  modelName,
   modelId,
   excludeIds = [],
   onPick,
@@ -13,165 +19,173 @@ export default function BomChildPickerDrawer({
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [q, setQ] = useState("")
-  const [onlyParts, setOnlyParts] = useState(true)
+  const [onlyAssemblies, setOnlyAssemblies] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState([])
-  const [qtyMap, setQtyMap] = useState({})
-  const debounceRef = useRef(null)
+  const [selectedRows, setSelectedRows] = useState([])
+
   const abortRef = useRef(null)
-  const fetchLock = useRef(false)
+  const searchTimer = useRef(null)
 
-  const blockedIds = useMemo(
-    () => new Set([parentPartId, ...(excludeIds || [])]),
-    [parentPartId, excludeIds]
-  )
+  const canSearch = !!modelId && open
 
-  const fetchData = useCallback(
-    async (query) => {
-      if (!modelId || fetchLock.current) return
-      fetchLock.current = true
+  const fetchCandidates = useCallback(async () => {
+    if (!canSearch) {
+      setRows([])
+      return
+    }
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    setLoading(true)
+    try {
+      const params = { equipment_model_id: modelId }
+      if (q?.trim()) params.q = q.trim()
+      if (onlyAssemblies) params.only_assemblies = 1
 
-      abortRef.current?.abort()
-      const controller = new AbortController()
-      abortRef.current = controller
-      setLoading(true)
+      const { data } = await axios.get("/original-parts", { params, signal: controller.signal })
+      const list = Array.isArray(data) ? data : []
+      const filtered = excludeIds?.length ? list.filter(r => !excludeIds.includes(r.id)) : list
+      setRows(filtered)
 
-      try {
-        const params = { equipment_model_id: modelId }
-        if (query?.trim()) params.q = query.trim()
-        if (onlyParts) params.only_parts = 1
-
-        const { data } = await axios.get("/original-parts", { params, signal: controller.signal })
-        const arr = (Array.isArray(data) ? data : []).filter((r) => !blockedIds.has(r.id))
-        setRows(arr)
-
-        setQtyMap((prev) => {
-          const next = { ...prev }
-          for (const r of arr) if (next[r.id] == null) next[r.id] = 1
-          return next
-        })
-        setSelectedRowKeys((prev) => prev.filter((id) => !blockedIds.has(id)))
-      } catch (e) {
-        if (e?.name !== "AbortError") {
-          console.error(e)
-          message.error("Не удалось загрузить детали для выбора")
-        }
-      } finally {
-        setLoading(false)
-        fetchLock.current = false
+      if (selectedRowKeys.length) {
+        const remaining = selectedRowKeys.filter(id => filtered.some(r => r.id === id))
+        setSelectedRowKeys(remaining)
+        setSelectedRows(prev => prev.filter(r => remaining.includes(r.id)))
       }
-    },
-    [modelId, onlyParts, blockedIds]
-  )
+    } catch (e) {
+      if (e.name !== "CanceledError" && e.code !== "ERR_CANCELED") {
+        console.error(e)
+        message.error("Не удалось загрузить список деталей")
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [canSearch, modelId, q, onlyAssemblies, excludeIds, selectedRowKeys])
 
   useEffect(() => {
-    if (open) fetchData(q)
-    else abortRef.current?.abort()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(fetchCandidates, 250)
+    return () => clearTimeout(searchTimer.current)
+  }, [fetchCandidates])
+
+  useEffect(() => {
+    if (!open) {
+      setQ("")
+      setOnlyAssemblies(false)
+      setSelectedRowKeys([])
+      setSelectedRows([])
+      setRows([])
+      abortRef.current?.abort()
+    }
   }, [open])
 
-  const onChangeSearch = (e) => {
-    const v = e.target.value
-    setQ(v)
-    clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => fetchData(v), 400)
+  const columns = useMemo(() => ([
+    { title: "Cat #", dataIndex: "cat_number", width: 180 },
+    {
+      title: "Описание",
+      dataIndex: "description_ru",
+      ellipsis: true,
+      onHeaderCell: () => ({ style: { width: 380, minWidth: 380, maxWidth: 380 } }),
+      onCell:       () => ({ style: { width: 380, minWidth: 380, maxWidth: 380 } }),
+      render: (v, r) => (
+        <Tooltip title={v || r.description_en} placement="topLeft">
+          <span className="cell-ellipsis">{v || r.description_en || "—"}</span>
+        </Tooltip>
+      ),
+    },
+    { title: "EN", dataIndex: "description_en", ellipsis: true },
+    { title: "Вес, кг", dataIndex: "weight", align: "right", width: 120 },
+    { title: "Тип", dataIndex: "is_assembly", width: 100, render: (v) => v ? <Tag color="blue">Сборка</Tag> : <Tag>Деталь</Tag> },
+  ]), [])
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys, rows) => { setSelectedRowKeys(keys); setSelectedRows(rows) },
   }
 
-  const confirm = () => {
-    if (!selectedRowKeys.length) return
-    const items = selectedRowKeys.map((id) => ({
-      id,
-      qty: Number(qtyMap[id]) > 0 ? Number(qtyMap[id]) : 1,
-    }))
-    onPick?.(items)
-    onClose()
-  }
-
-  const columns = useMemo(
-    () => [
-      { title: "Part number", dataIndex: "cat_number", width: 160 },
-      {
-        title: "Описание",
-        render: (_, r) => {
-          const text = r.description_ru || r.description_en || "—"
-          return (
-            <Tooltip title={text}>
-              <span
-                style={{
-                  display: "inline-block",
-                  maxWidth: 500,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {text}
-              </span>
-            </Tooltip>
-          )
-        },
-      },
-      {
-        title: "Кол-во",
-        width: 120,
-        render: (_v, r) => (
-          <InputNumber
-            min={0.0001}
-            step={0.0001}
-            value={qtyMap[r.id] ?? 1}
-            onChange={(val) => setQtyMap((p) => ({ ...p, [r.id]: val ?? 1 }))}
-            style={{ width: "100%" }}
+  const header = (
+    <Space direction="vertical" style={{ width: "100%" }} size={10}>
+      <Space wrap style={{ width: "100%", justifyContent: "space-between" }}>
+        <Space>
+          <Input
+            allowClear
+            placeholder="Поиск по номеру/описанию…"
+            prefix={<SearchOutlined />}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            style={{ width: 320 }}
+            disabled={!modelId}
           />
-        ),
-      },
-    ],
-    [qtyMap]
+          <Checkbox
+            checked={onlyAssemblies}
+            onChange={(e) => setOnlyAssemblies(e.target.checked)}
+            disabled={!modelId}
+          >
+            Только сборки
+          </Checkbox>
+        </Space>
+        <Space>
+          <Button onClick={onClose} icon={<CloseOutlined />}>Отмена</Button>
+          <Button
+            type="primary"
+            icon={<CheckOutlined />}
+            disabled={!selectedRowKeys.length}
+            onClick={() => onPick?.(selectedRows)}
+          >
+            Выбрать ({selectedRowKeys.length})
+          </Button>
+        </Space>
+      </Space>
+
+      {/* Человекочитаемый статус вместо ID */}
+      <div style={{ color: "#666", fontSize: 12 }}>
+        <strong>Модель:</strong> {manufacturerName || "—"}{modelName ? ` / ${modelName}` : ""} &nbsp;•&nbsp;
+        <strong>Родитель:</strong> {parentCatNumber || "—"}
+        {parentDescription ? ` — ${parentDescription}` : ""} &nbsp;•&nbsp;
+        <strong>Уже в составе:</strong> {excludeIds?.length || 0}
+      </div>
+    </Space>
   )
 
   return (
     <Drawer
-      title="Добавить позиции в BOM"
       open={open}
       onClose={onClose}
-      width={880}
+      width={920}
+      title="Добавить позиции в BOM"
       destroyOnClose
-      maskClosable
-      getContainer={() => document.body}
-      extra={
-        <Space>
-          <Checkbox checked={onlyParts} onChange={(e) => setOnlyParts(e.target.checked)}>
-            Только детали (не сборки)
-          </Checkbox>
-          <Button onClick={() => fetchData(q)}>Искать</Button>
-          <Button type="primary" onClick={confirm} disabled={!selectedRowKeys.length}>
-            Выбрать: {selectedRowKeys.length}
-          </Button>
-        </Space>
-      }
+      bodyStyle={{ padding: 12 }}
+      footer={null}
     >
-      <Space direction="vertical" style={{ width: "100%" }} size="middle">
-        <Input
-          placeholder="Поиск по part number или описанию…"
-          value={q}
-          onChange={onChangeSearch}
-          allowClear
-        />
-        <div className="op-table parts-table">
-          <Table
-            rowKey="id"
-            loading={loading}
-            dataSource={rows}
-            columns={columns}
-            size="small"
-            pagination={{ pageSize: 10 }}
-            rowSelection={{
-              selectedRowKeys,
-              onChange: setSelectedRowKeys,
-              getCheckboxProps: (r) => ({ disabled: blockedIds.has(r.id) }),
-            }}
-            scroll={{ y: "calc(100vh - 320px)", x: "max-content" }}
+      {header}
+      <div style={{ marginTop: 12 }}>
+        {(!rows.length && !loading) ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={modelId ? "Ничего не найдено" : "Выберите модель, чтобы подобрать позиции"}
+            style={{ marginTop: 48 }}
           />
-        </div>
-      </Space>
+        ) : (
+          <Table
+            className="op-table"
+            rowKey="id"
+            columns={columns}
+            dataSource={rows}
+            loading={loading}
+            pagination={{ pageSize: 20 }}
+            size="middle"
+            tableLayout="fixed"
+            scroll={{ x: true, y: "calc(100vh - 360px)" }}
+            rowSelection={rowSelection}
+            onRow={(record) => ({
+              onDoubleClick: () => {
+                setSelectedRowKeys([record.id])
+                setSelectedRows([record])
+              },
+            })}
+          />
+        )}
+      </div>
     </Drawer>
   )
 }

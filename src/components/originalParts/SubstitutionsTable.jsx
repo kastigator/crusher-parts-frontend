@@ -11,7 +11,9 @@ export default function SubstitutionsTable({ originalPartId }) {
     if (!originalPartId) return
     setLoading(true)
     try {
-      const { data } = await axios.get("/original-part-substitutions", { params: { original_id: originalPartId } })
+      const { data } = await axios.get("/original-part-substitutions", {
+        params: { original_part_id: originalPartId }, // важно: original_part_id
+      })
       setRows(Array.isArray(data) ? data : [])
     } catch (err) {
       console.error(err)
@@ -23,13 +25,13 @@ export default function SubstitutionsTable({ originalPartId }) {
 
   useEffect(() => { load() }, [originalPartId])
 
-  const deleteRow = async (rec) => {
-    const { confirmed } = await confirmAction("Удалить замену?")
+  const deleteGroup = async (row) => {
+    const { confirmed } = await confirmAction("Удалить группу замен?")
     if (!confirmed) return
     try {
-      await axios.delete(`/original-part-substitutions/${rec.id}`)
+      await axios.delete(`/original-part-substitutions/${row.id}`)
       message.success("Удалено")
-      setRows(prev => prev.filter(r => r.id !== rec.id))
+      setRows(prev => prev.filter(r => r.id !== row.id))
     } catch (err) {
       console.error(err)
       message.error("Ошибка удаления")
@@ -37,13 +39,20 @@ export default function SubstitutionsTable({ originalPartId }) {
   }
 
   const columns = [
-    { title: "Код комплекта", dataIndex: "kit_code", width: 180 },
-    { title: "Описание", dataIndex: "description", ellipsis: true },
+    { title: "ID", dataIndex: "id", width: 80 },
+    { title: "Название", dataIndex: "name", ellipsis: true },
+    { title: "Комментарий", dataIndex: "comment", ellipsis: true },
+    { title: "Режим", dataIndex: "mode", width: 100 },
+    {
+      title: "Позиции",
+      width: 140,
+      render: (_, r) => (Array.isArray(r.items) ? r.items.length : 0),
+    },
     {
       title: "Действия",
       width: 100,
       render: (_, r) => (
-        <Button danger size="small" onClick={() => deleteRow(r)}>
+        <Button danger size="small" onClick={() => deleteGroup(r)}>
           Удалить
         </Button>
       ),
@@ -54,6 +63,7 @@ export default function SubstitutionsTable({ originalPartId }) {
     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Нет замен (комплектов)" />
   ) : (
     <Table
+      className="op-table"
       rowKey="id"
       columns={columns}
       dataSource={rows}
@@ -61,6 +71,7 @@ export default function SubstitutionsTable({ originalPartId }) {
       pagination={false}
       size="small"
       tableLayout="fixed"
+      scroll={{ x: true }}
     />
   )
 }
