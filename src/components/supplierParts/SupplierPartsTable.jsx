@@ -1,6 +1,6 @@
 // src/components/supplierParts/SupplierPartsTable.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Table, Empty, message, Input, Tag, Tooltip } from "antd"
+import { Table, Empty, message, Tag, Input } from "antd"
 import axios from "@/api/axiosInstance"
 
 import ValueDisplay from "@/components/common/ValueDisplay"
@@ -8,9 +8,14 @@ import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import confirmAction from "@/utils/confirmAction"
 
-import SupplierPartDock from "./SupplierPartDock"
-
-export default function SupplierPartsTable({ supplierId, search, version, onReload }) {
+export default function SupplierPartsTable({
+  supplierId,
+  search,
+  version,
+  onReload,
+  selectedId = null,
+  onSelectPart = () => {},
+}) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
@@ -148,25 +153,9 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
     {
       title: "Привязки",
       dataIndex: "original_cat_numbers",
-      width: 260,
-      render: (v) => {
-        if (!v) return <Tag>нет</Tag>
-        const list = String(v).split(',').filter(Boolean)
-        const shown = list.slice(0, 3)
-        const extra = list.length - shown.length
-        return (
-          <span>
-            {shown.map((c) => (
-              <Tag key={c}>{c}</Tag>
-            ))}
-            {extra > 0 && (
-              <Tooltip title={list.join(', ')}>
-                <Tag>+{extra}</Tag>
-              </Tooltip>
-            )}
-          </span>
-        )
-      }
+      width: 130,
+      render: (v) =>
+        v ? <Tag>{String(v).split(",").length}</Tag> : <Tag color="default">нет</Tag>,
     },
     {
       title: "Последняя цена",
@@ -213,13 +202,6 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
     showTotal: (t, [from, to]) => `Всего: ${t} · Показано: ${from}–${to}`,
   }), [page, pageSize, total])
 
-  // ===== раскрытые строки =====
-  const expandedRowRender = (record) => (
-    <div className="subtable-shell">
-      <SupplierPartDock supplierPart={record} />
-    </div>
-  )
-
   if (!supplierId) return <Empty description="Выберите поставщика, чтобы увидеть его детали" />
 
   return (
@@ -231,9 +213,13 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
           dataSource={rows}
           columns={columns}
           loading={loading}
-          expandable={{ expandedRowRender }}
           pagination={pagination}
           size="middle"
+          rowClassName={(r) => r.id === selectedId ? "ant-table-row-selected" : ""}
+          onRow={(record) => ({
+            onClick: () => onSelectPart(record),
+            onDoubleClick: () => onSelectPart(record),
+          })}
         />
       </div>
 

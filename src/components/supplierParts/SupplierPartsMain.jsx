@@ -1,88 +1,93 @@
 // src/components/supplierParts/SupplierPartsMain.jsx
-import React, { useMemo, useState, useEffect } from "react"
-import { Card, Row, Col, Space, Button, Tag, message, Input, Form } from "antd"
-import { TeamOutlined, ReloadOutlined, ImportOutlined, PlusOutlined } from "@ant-design/icons"
-import TableToolbar from "@/components/common/TableToolbar"
-import SupplierPickerDrawer from "./SupplierPickerDrawer"
-import SupplierPartsTable from "./SupplierPartsTable"
-import SupplierPartDock from "./SupplierPartDock"
-import ImportModal from "@/components/common/ImportModal"
-import axios from "@/api/axiosInstance"
+import React, { useMemo, useState, useEffect } from "react";
+import { Card, Row, Col, Space, Button, Tag, message, Input, Form } from "antd";
+import { TeamOutlined, ReloadOutlined, ImportOutlined, PlusOutlined } from "@ant-design/icons";
+import TableToolbar from "@/components/common/TableToolbar";
+import SupplierPickerDrawer from "./SupplierPickerDrawer";
+import SupplierPartsTable from "./SupplierPartsTable";
+import SupplierPartDock from "./SupplierPartDock";
+import ImportModal from "@/components/common/ImportModal";
+import axios from "@/api/axiosInstance";
 
-const SUPPLIER_TEMPLATE_URL = "https://storage.googleapis.com/shared-parts-bucket/templates/supplier_parts_template.xlsx"
+const SUPPLIER_TEMPLATE_URL =
+  "https://storage.googleapis.com/shared-parts-bucket/templates/supplier_parts_template.xlsx";
 
 export default function SupplierPartsMain() {
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [supplier, setSupplier] = useState(null)
-  const [search, setSearch] = useState("")
-  const [version, setVersion] = useState(0)
-  const [importOpen, setImportOpen] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [supplier, setSupplier] = useState(null);
+  const [search, setSearch] = useState("");
+  const [version, setVersion] = useState(0);
+  const [importOpen, setImportOpen] = useState(false);
 
-  const [form] = Form.useForm()
-  const [adding, setAdding] = useState(false)
+  const [form] = Form.useForm();
+  const [adding, setAdding] = useState(false);
 
   // выбранная деталь для нижнего дока
-  const [selectedPart, setSelectedPart] = useState(null)
+  const [selectedPart, setSelectedPart] = useState(null);
 
-  // при смене поставщика очищаем выбор и дергаем обновление
+  // при смене поставщика — сбрасываем выбор и поиск
   useEffect(() => {
-    setSelectedPart(null)
-  }, [supplier?.id])
+    setSelectedPart(null);
+    setSearch("");
+  }, [supplier?.id]);
 
   const clearSupplier = () => {
-    setSupplier(null)
-    setSelectedPart(null)
-    setVersion(v => v + 1)
-  }
+    setSupplier(null);
+    setSelectedPart(null);
+    setSearch("");
+    setVersion((v) => v + 1);
+  };
 
   const supplierSummary = useMemo(() => {
-    if (!supplier) return null
-    const title = supplier.company || supplier.name
+    if (!supplier) return null;
+    const title = supplier.company || supplier.name;
     return (
       <Space wrap size={[8, 8]}>
         <Tag color="geekblue">Поставщик: {title}</Tag>
         {supplier.country ? <Tag>{supplier.country}</Tag> : null}
         {supplier.phone ? <Tag>{supplier.phone}</Tag> : null}
         {supplier.email ? <Tag>{supplier.email}</Tag> : null}
-        <Button size="small" onClick={clearSupplier} icon={<ReloadOutlined />}>Сбросить</Button>
+        <Button size="small" onClick={clearSupplier} icon={<ReloadOutlined />}>
+          Сбросить
+        </Button>
       </Space>
-    )
-  }, [supplier])
+    );
+  }, [supplier]);
 
   const handleImportClick = () => {
     if (!supplier?.id) {
-      message.warning("Сначала выберите поставщика")
-      return
+      message.warning("Сначала выберите поставщика");
+      return;
     }
-    setImportOpen(true)
-  }
+    setImportOpen(true);
+  };
 
   const handleAdd = async () => {
     if (!supplier?.id) {
-      message.warning("Сначала выберите поставщика")
-      return
+      message.warning("Сначала выберите поставщика");
+      return;
     }
     try {
-      const v = await form.validateFields()
-      setAdding(true)
+      const v = await form.validateFields();
+      setAdding(true);
       await axios.post("/supplier-parts", {
         supplier_id: supplier.id,
         supplier_part_number: v.supplier_part_number,
         description: v.description || null,
-      })
-      message.success("Деталь поставщика создана")
-      form.resetFields()
-      setVersion(x => x + 1)
+      });
+      message.success("Деталь поставщика создана");
+      form.resetFields();
+      setVersion((x) => x + 1);
     } catch (e) {
-      if (e?.response?.data?.message) message.error(e.response.data.message)
+      if (e?.response?.data?.message) message.error(e.response.data.message);
       else if (!e?.errorFields) {
-        console.error(e)
-        message.error("Не удалось создать деталь")
+        console.error(e);
+        message.error("Не удалось создать деталь");
       }
     } finally {
-      setAdding(false)
+      setAdding(false);
     }
-  }
+  };
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
@@ -98,7 +103,11 @@ export default function SupplierPartsMain() {
             </Space>
           </Col>
 
-          <Col xs={24} md={12} style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <Col
+            xs={24}
+            md={12}
+            style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+          >
             <Button icon={<ImportOutlined />} onClick={handleImportClick} disabled={!supplier}>
               Импорт
             </Button>
@@ -149,20 +158,24 @@ export default function SupplierPartsMain() {
           supplierId={supplier?.id || null}
           search={search}
           version={version}
-          onReload={() => setVersion(v => v + 1)}
+          onReload={() => setVersion((v) => v + 1)}
           selectedId={selectedPart?.id || null}
           onSelectPart={setSelectedPart}
         />
       </Card>
 
       {/* Нижняя панель с вкладками по выбранной детали */}
-      <SupplierPartDock part={selectedPart} />
+      <SupplierPartDock part={selectedPart} onChanged={() => setVersion((v) => v + 1)} />
 
       {/* Drawer выбора поставщика */}
       <SupplierPickerDrawer
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        onPick={(s) => { setSupplier(s); setPickerOpen(false); setVersion(v => v + 1) }}
+        onPick={(s) => {
+          setSupplier(s);
+          setPickerOpen(false);
+          setVersion((v) => v + 1);
+        }}
         initialSupplierId={supplier?.id ?? null}
       />
 
@@ -174,11 +187,11 @@ export default function SupplierPartsMain() {
         extraParams={{ supplier_id: supplier?.id }}
         onClose={() => setImportOpen(false)}
         onSuccess={() => {
-          setImportOpen(false)
-          setVersion(v => v + 1)
-          message.success("Импорт выполнен")
+          setImportOpen(false);
+          setVersion((v) => v + 1);
+          message.success("Импорт выполнен");
         }}
       />
     </Space>
-  )
+  );
 }
