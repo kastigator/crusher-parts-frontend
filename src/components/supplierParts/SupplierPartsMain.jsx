@@ -1,10 +1,11 @@
 // src/components/supplierParts/SupplierPartsMain.jsx
-import React, { useMemo, useState } from "react"
+import React, { useMemo, useState, useEffect } from "react"
 import { Card, Row, Col, Space, Button, Tag, message, Input, Form } from "antd"
 import { TeamOutlined, ReloadOutlined, ImportOutlined, PlusOutlined } from "@ant-design/icons"
 import TableToolbar from "@/components/common/TableToolbar"
 import SupplierPickerDrawer from "./SupplierPickerDrawer"
 import SupplierPartsTable from "./SupplierPartsTable"
+import SupplierPartDock from "./SupplierPartDock"
 import ImportModal from "@/components/common/ImportModal"
 import axios from "@/api/axiosInstance"
 
@@ -20,8 +21,17 @@ export default function SupplierPartsMain() {
   const [form] = Form.useForm()
   const [adding, setAdding] = useState(false)
 
+  // выбранная деталь для нижнего дока
+  const [selectedPart, setSelectedPart] = useState(null)
+
+  // при смене поставщика очищаем выбор и дергаем обновление
+  useEffect(() => {
+    setSelectedPart(null)
+  }, [supplier?.id])
+
   const clearSupplier = () => {
     setSupplier(null)
+    setSelectedPart(null)
     setVersion(v => v + 1)
   }
 
@@ -140,8 +150,13 @@ export default function SupplierPartsMain() {
           search={search}
           version={version}
           onReload={() => setVersion(v => v + 1)}
+          selectedId={selectedPart?.id || null}
+          onSelectPart={setSelectedPart}
         />
       </Card>
+
+      {/* Нижняя панель с вкладками по выбранной детали */}
+      <SupplierPartDock part={selectedPart} />
 
       {/* Drawer выбора поставщика */}
       <SupplierPickerDrawer

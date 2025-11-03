@@ -1,6 +1,6 @@
 // src/components/supplierParts/SupplierPartsTable.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Table, Empty, Tabs, message, Input } from "antd"
+import { Table, Empty, message, Input, Tag, Tooltip } from "antd"
 import axios from "@/api/axiosInstance"
 
 import ValueDisplay from "@/components/common/ValueDisplay"
@@ -8,8 +8,7 @@ import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import confirmAction from "@/utils/confirmAction"
 
-import PriceHistoryTab from "./PriceHistoryTab"
-import OriginalsLinkTab from "./OriginalsLinkTab"
+import SupplierPartDock from "./SupplierPartDock"
 
 export default function SupplierPartsTable({ supplierId, search, version, onReload }) {
   const [rows, setRows] = useState([])
@@ -147,6 +146,29 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
           : <ValueDisplay value={record.description} />,
     },
     {
+      title: "Привязки",
+      dataIndex: "original_cat_numbers",
+      width: 260,
+      render: (v) => {
+        if (!v) return <Tag>нет</Tag>
+        const list = String(v).split(',').filter(Boolean)
+        const shown = list.slice(0, 3)
+        const extra = list.length - shown.length
+        return (
+          <span>
+            {shown.map((c) => (
+              <Tag key={c}>{c}</Tag>
+            ))}
+            {extra > 0 && (
+              <Tooltip title={list.join(', ')}>
+                <Tag>+{extra}</Tag>
+              </Tooltip>
+            )}
+          </span>
+        )
+      }
+    },
+    {
       title: "Последняя цена",
       dataIndex: "latest_price",
       width: 140,
@@ -194,14 +216,7 @@ export default function SupplierPartsTable({ supplierId, search, version, onRelo
   // ===== раскрытые строки =====
   const expandedRowRender = (record) => (
     <div className="subtable-shell">
-      <Tabs
-        defaultActiveKey="prices"
-        destroyInactiveTabPane
-        items={[
-          { key: "prices", label: "История цен", children: <PriceHistoryTab supplierPartId={record.id} /> },
-          { key: "originals", label: "Оригинальные детали", children: <OriginalsLinkTab supplierPartId={record.id} /> },
-        ]}
-      />
+      <SupplierPartDock supplierPart={record} />
     </div>
   )
 

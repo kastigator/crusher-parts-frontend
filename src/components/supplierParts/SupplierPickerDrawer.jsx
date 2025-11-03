@@ -1,5 +1,4 @@
-// src/components/supplierParts/SupplierPickerDrawer.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { Drawer, Table, Button, Input, Space, Tooltip, Empty, message } from "antd"
 import axios from "@/api/axiosInstance"
 
@@ -15,10 +14,18 @@ export default function SupplierPickerDrawer({
   const [search, setSearch] = useState("")
   const abortRef = useRef(null)
 
-  useEffect(() => { setSelectedId(initialSupplierId ?? null) }, [initialSupplierId])
+  // синхронизируем selectedId с пропом
+  useEffect(() => {
+    setSelectedId(initialSupplierId ?? null)
+  }, [initialSupplierId])
 
-  const load = async () => {
-    abortRef.current?.abort()
+  const cancelIfRunning = () => {
+    try { abortRef.current?.abort?.() } catch {}
+    abortRef.current = null
+  }
+
+  const load = useCallback(async () => {
+    cancelIfRunning()
     const controller = new AbortController()
     abortRef.current = controller
     setLoading(true)
@@ -26,7 +33,14 @@ export default function SupplierPickerDrawer({
       const params = {}
       if (search?.trim()) params.q = search.trim()
       const { data } = await axios.get("/part-suppliers", { params, signal: controller.signal })
-      setRows(Array.isArray(data) ? data : [])
+      const list = Array.isArray(data) ? data : []
+      setRows(list)
+
+      // если выбранный поставщик всё еще в выдаче — не сбрасываем выбор
+      if (selectedId) {
+        const stillThere = list.some(r => r.id === selectedId)
+        if (!stillThere) setSelectedId(null)
+      }
     } catch (e) {
       const name = e?.name || e?.code
       if (name !== "AbortError" && name !== "ERR_CANCELED") {
@@ -36,13 +50,14 @@ export default function SupplierPickerDrawer({
     } finally {
       setLoading(false)
     }
-  }
+  }, [search, selectedId])
 
+  // грузим список при открытии и при изменении поисковой строки
   useEffect(() => {
+    if (!open) return
     const t = setTimeout(load, 300)
-    return () => { clearTimeout(t); abortRef.current?.abort() }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search])
+    return () => { clearTimeout(t); cancelIfRunning() }
+  }, [open, load])
 
   const columns = useMemo(() => [
     {
@@ -73,16 +88,20 @@ export default function SupplierPickerDrawer({
     if (picked) onPick?.(picked)
   }
 
+  const handleClose = () => {
+    cancelIfRunning()
+    onClose?.()
+  }
+
   return (
     <Drawer
       width={900}
       title="Выбрать поставщика"
       open={open}
-      onClose={onClose}
-      // Кнопка «Выбрать» в правой части заголовка — как в других наших модалках
+      onClose={handleClose}
       extra={
         <Space>
-          <Button onClick={onClose}>Отмена</Button>
+          <Button onClick={handleClose}>Отмена</Button>
           <Button type="primary" disabled={!selectedId} onClick={pickSelected}>
             Выбрать
           </Button>
@@ -96,7 +115,9 @@ export default function SupplierPickerDrawer({
           placeholder="Найти поставщика по названию…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          onPressEnter={load}
         />
+        <Button onClick={load}>Обновить</Button>
       </Space>
 
       <Table

@@ -1,6 +1,6 @@
 // src/components/supplierParts/PriceHistoryTab.jsx
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react"
-import { Table, Form, InputNumber, DatePicker, Button, Input, Select, Space, message } from "antd"
+import { Table, Form, InputNumber, DatePicker, Button, Input, Select, Space, message, Popconfirm } from "antd"
 import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
 import cc from "currency-codes"
@@ -10,12 +10,17 @@ const CURRENCY_OPTIONS = cc.codes().map(code => {
   return { value: code, label: `${code} — ${info?.currency || code}` }
 })
 
-export default function PriceHistoryTab({ supplierPartId }) {
+export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [adding, setAdding] = useState(false)
   const [form] = Form.useForm()
   const abortRef = useRef(null)
+
+  const popupContainer = (trigger) =>
+    trigger?.closest(".dock-shell")
+      || trigger?.closest(".parts-table-wrap")
+      || document.body
 
   const load = useCallback(async () => {
     if (!supplierPartId) { setRows([]); return }
@@ -57,7 +62,8 @@ export default function PriceHistoryTab({ supplierPartId }) {
       })
       message.success("Цена добавлена")
       form.resetFields()
-      load()
+      await load()
+      onChanged() // чтобы обновить «последнюю цену» в верхней таблице
     } catch (e) {
       if (!e?.errorFields) {
         console.error(e)
@@ -78,18 +84,47 @@ export default function PriceHistoryTab({ supplierPartId }) {
     addPrice()
   }
 
+  const handleDelete = async (row) => {
+    try {
+      await axios.delete(`/supplier-part-prices/${row.id}`)
+      message.success("Запись удалена")
+      await load()
+      onChanged()
+    } catch (e) {
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось удалить запись")
+    }
+  }
+
   const columns = useMemo(() => ([
     { title: "Дата", dataIndex: "date", width: 170, render: v => v ? dayjs(v).format("YYYY-MM-DD HH:mm") : "—" },
     { title: "Цена", dataIndex: "price", width: 120 },
     { title: "Валюта", dataIndex: "currency", width: 110, render: v => v || "—" },
     { title: "Комментарий", dataIndex: "comment" },
+    {
+      title: "",
+      key: "actions",
+      width: 90,
+      align: "right",
+      render: (_, row) => (
+        <Popconfirm
+          title="Удалить запись цены?"
+          okText="Удалить"
+          cancelText="Отмена"
+          onConfirm={() => handleDelete(row)}
+          getPopupContainer={popupContainer}
+        >
+          <Button danger size="small">Удалить</Button>
+        </Popconfirm>
+      ),
+    }
   ]), [])
 
   const selectFilter = (input, option) =>
     (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
 
   return (
-    <div className="parts-table-wrap subtable-shell">
+    <div className="parts-table-wrap subtable-shell dock-shell">
       {/* форма добавления */}
       <Form
         form={form}
@@ -113,9 +148,9 @@ export default function PriceHistoryTab({ supplierPartId }) {
             optionFilterProp="label"
             filterOption={selectFilter}
             placeholder="Выберите валюту"
-            style={{ width: 200 }}
+            style={{ width: 220 }}
             dropdownMatchSelectWidth={false}
-            getPopupContainer={(t) => t?.closest(".parts-table-wrap") || document.body}
+            getPopupContainer={popupContainer}
           />
         </Form.Item>
 
@@ -124,12 +159,12 @@ export default function PriceHistoryTab({ supplierPartId }) {
             showTime
             allowClear
             style={{ width: 210 }}
-            getPopupContainer={(t) => t?.closest(".parts-table-wrap") || document.body}
+            getPopupContainer={popupContainer}
           />
         </Form.Item>
 
         <Form.Item name="comment" label="Комментарий" style={{ flex: 1 }}>
-          <Input placeholder="По прайсу №…" style={{ minWidth: 200 }} />
+          <Input placeholder="По прайсу №…" style={{ minWidth: 220 }} />
         </Form.Item>
 
         <Form.Item>
