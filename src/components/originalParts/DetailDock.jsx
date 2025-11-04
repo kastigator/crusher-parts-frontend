@@ -1,52 +1,51 @@
 // src/components/originalParts/DetailDock.jsx
-import React from "react"
-import { Card, Empty, Tabs, Typography } from "antd"
+import React, { useMemo } from "react"
+import { Card, Tabs, Empty, Tag, Space, Typography } from "antd"
 import BomTable from "./BomTable"
 import BomTree from "./BomTree"
 import UsedInTable from "./UsedInTable"
 import SubstitutionsTable from "./SubstitutionsTable"
+import SuppliersLinksTab from "./SuppliersLinksTab"
 
 const { Text } = Typography
 
-export default function DetailDock({ part, modelId, manufacturerName, modelName }) {
-  return (
-    <Card style={{ marginTop: 12, borderRadius: 10 }} bodyStyle={{ padding: 12 }}>
-      {!part ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="Выберите деталь в таблице, чтобы увидеть её состав (BOM)."
-        />
-      ) : (
-        <>
-          <div style={{ marginBottom: 8 }}>
-            <Text strong>Деталь:</Text>{" "}
-            <Text code>{part.cat_number || `ID:${part.id}`}</Text>{" "}
-            <Text type="secondary">{part.description_ru || part.description_en || ""}</Text>
-          </div>
+export default function DetailDock({ part }) {
+  const partId = part?.id || null
 
-          <Tabs
-            defaultActiveKey="bom"
-            items={[
-              {
-                key: "bom",
-                label: "BOM (таблица)",
-                children: (
-                  <BomTable
-                    parentId={part.id}
-                    parentPart={part}
-                    modelId={modelId}
-                    manufacturerName={manufacturerName}
-                    modelName={modelName}
-                  />
-                ),
-              },
-              { key: "tree", label: "BOM (дерево)", children: <BomTree rootId={part.id} /> },
-              { key: "used", label: "Где используется", children: <UsedInTable partId={part.id} /> },
-              { key: "subs", label: "Замены (комплекты)", children: <SubstitutionsTable originalPartId={part.id} /> },
-            ]}
-          />
-        </>
-      )}
+  const header = useMemo(() => {
+    if (!part) return null
+    return (
+      <Space size="small" wrap>
+        <Text type="secondary">Деталь:</Text>
+        <Tag>{part?.cat_number}</Tag>
+        {part?.description_ru ? <Tag color="blue">{part.description_ru}</Tag> : null}
+        {part?.description_en ? <Tag>{part.description_en}</Tag> : null}
+      </Space>
+    )
+  }, [part])
+
+  if (!partId) {
+    return (
+      <Card bodyStyle={{ padding: 24 }}>
+        <Empty description="Выберите деталь в таблице выше" />
+      </Card>
+    )
+  }
+
+  return (
+    <Card title={header} bodyStyle={{ paddingTop: 8 }}>
+      <Tabs
+        defaultActiveKey="bom"
+        destroyInactiveTabPane
+        items={[
+          // ⬇️ ВАЖНО: сюда передаём ВЕСЬ объект part, а не только id
+          { key: "bom", label: "BOM (таблица)", children: <BomTable part={part} /> },
+          { key: "tree", label: "BOM (дерево)", children: <BomTree originalPartId={partId} /> },
+          { key: "used", label: "Где используется", children: <UsedInTable partId={partId} /> },
+          { key: "subs", label: "Замены (комплекты)", children: <SubstitutionsTable originalPartId={partId} /> },
+          { key: "suppliers", label: "Поставщики", children: <SuppliersLinksTab originalPartId={partId} /> },
+        ]}
+      />
     </Card>
   )
 }

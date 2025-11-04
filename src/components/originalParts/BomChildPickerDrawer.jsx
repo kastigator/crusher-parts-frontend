@@ -7,13 +7,13 @@ import axios from "@/api/axiosInstance"
 export default function BomChildPickerDrawer({
   open,
   onClose,
-  parentPartId,
+  parentPartId,          // id родителя — используем как exclude_id
   parentCatNumber,
   parentDescription,
   manufacturerName,
   modelName,
   modelId,
-  excludeIds = [],
+  excludeIds = [],       // массив уже добавленных child.id
   onPick,
 }) {
   const [rows, setRows] = useState([])
@@ -33,7 +33,7 @@ export default function BomChildPickerDrawer({
       setRows([])
       return
     }
-    abortRef.current?.abort()
+    abortRef.current?.abort?.()
     const controller = new AbortController()
     abortRef.current = controller
     setLoading(true)
@@ -41,26 +41,37 @@ export default function BomChildPickerDrawer({
       const params = { equipment_model_id: modelId }
       if (q?.trim()) params.q = q.trim()
       if (onlyAssemblies) params.only_assemblies = 1
+      // важно: исключаем родителя уже на сервере
+      if (parentPartId) params.exclude_id = parentPartId
 
       const { data } = await axios.get("/original-parts", { params, signal: controller.signal })
       const list = Array.isArray(data) ? data : []
-      const filtered = excludeIds?.length ? list.filter(r => !excludeIds.includes(r.id)) : list
+
+      // и дублируем защиту на клиенте:
+      const exclSet = new Set([
+        ...(excludeIds || []).map(Number),
+        parentPartId ? Number(parentPartId) : undefined,
+      ].filter(Boolean))
+
+      const filtered = exclSet.size ? list.filter(r => !exclSet.has(Number(r.id))) : list
       setRows(filtered)
 
+      // если из выбранных что-то исчезло — подчистим выбор
       if (selectedRowKeys.length) {
         const remaining = selectedRowKeys.filter(id => filtered.some(r => r.id === id))
         setSelectedRowKeys(remaining)
         setSelectedRows(prev => prev.filter(r => remaining.includes(r.id)))
       }
     } catch (e) {
-      if (e.name !== "CanceledError" && e.code !== "ERR_CANCELED") {
+      const name = e?.name || e?.code
+      if (name !== "AbortError" && name !== "ERR_CANCELED") {
         console.error(e)
         message.error("Не удалось загрузить список деталей")
       }
     } finally {
       setLoading(false)
     }
-  }, [canSearch, modelId, q, onlyAssemblies, excludeIds, selectedRowKeys])
+  }, [canSearch, modelId, q, onlyAssemblies, excludeIds, selectedRowKeys, parentPartId])
 
   useEffect(() => {
     clearTimeout(searchTimer.current)
@@ -75,7 +86,7 @@ export default function BomChildPickerDrawer({
       setSelectedRowKeys([])
       setSelectedRows([])
       setRows([])
-      abortRef.current?.abort()
+      abortRef.current?.abort?.()
     }
   }, [open])
 
@@ -95,7 +106,12 @@ export default function BomChildPickerDrawer({
     },
     { title: "EN", dataIndex: "description_en", ellipsis: true },
     { title: "Вес, кг", dataIndex: "weight", align: "right", width: 120 },
-    { title: "Тип", dataIndex: "is_assembly", width: 100, render: (v) => v ? <Tag color="blue">Сборка</Tag> : <Tag>Деталь</Tag> },
+    {
+      title: "Тип",
+      dataIndex: "is_assembly",
+      width: 100,
+      render: (v) => v ? <Tag color="blue">Сборка</Tag> : <Tag>Деталь</Tag>
+    },
   ]), [])
 
   const rowSelection = {
@@ -137,7 +153,6 @@ export default function BomChildPickerDrawer({
         </Space>
       </Space>
 
-      {/* Человекочитаемый статус вместо ID */}
       <div style={{ color: "#666", fontSize: 12 }}>
         <strong>Модель:</strong> {manufacturerName || "—"}{modelName ? ` / ${modelName}` : ""} &nbsp;•&nbsp;
         <strong>Родитель:</strong> {parentCatNumber || "—"}
