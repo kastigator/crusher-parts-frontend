@@ -39,12 +39,12 @@ export default function DetailDock({ part }) {
         defaultActiveKey="bom"
         destroyInactiveTabPane
         items={[
-          { key: "bom", label: "BOM (таблица)", children: <BomTable originalPartId={partId} /> },
+          { key: "bom", label: "BOM (таблица)", children: <BomTable part={part} /> },
           { key: "tree", label: "BOM (дерево)", children: <BomTree originalPartId={partId} /> },
           { key: "used", label: "Где используется", children: <UsedInTable partId={partId} /> },
           { key: "subs", label: "Замены (комплекты)", children: <SubstitutionsTable originalPartId={partId} /> },
           { key: "suppliers", label: "Поставщики", children: <SuppliersLinksTab originalPartId={partId} /> },
-          { key: "bundle", label: "Комплект (сборный)", children: <BundleTab originalPartId={partId} /> }, // ← НОВОЕ
+          { key: "bundle", label: "Комплект (сборный)", children: <BundleTab originalPartId={partId} /> },
         ]}
       />
     </Card>

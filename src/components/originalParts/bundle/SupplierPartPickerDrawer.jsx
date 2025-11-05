@@ -1,106 +1,98 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Drawer, Table, Space, Input, Button, Tag, Tooltip, Empty, message } from "antd"
-import { SearchOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons"
+// src/components/originalParts/bundle/SupplierPartPickerDrawer.jsx
+import React, { useEffect, useMemo, useRef, useState } from "react"
+import { Drawer, Table, Input, Button, Space, Empty, message } from "antd"
 import axios from "@/api/axiosInstance"
 
-/**
- * Пикер деталей поставщика:
- * - глобальный поиск по всем поставщикам (по номеру/описанию)
- * - мультивыбор и возврат выбранных строк через onPick(rows)
- *
- * Props:
- *  - open: boolean
- *  - onClose: () => void
- *  - onPick: (rows) => void
- */
-export default function SupplierPartPickerDrawer({ open, onClose, onPick }) {
+export default function SupplierPartPickerDrawer({
+  open,
+  onClose,
+  excludeIds = [],
+  onPick,
+}) {
+  const [q, setQ] = useState("")
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
-  const [q, setQ] = useState("")
   const [selectedRowKeys, setSelectedRowKeys] = useState([])
-  const [selectedRows, setSelectedRows] = useState([])
-
   const abortRef = useRef(null)
-  const timerRef = useRef(null)
 
-  const fetchList = useCallback(async () => {
-    if (!open) return
-    abortRef.current?.abort()
+  const doSearch = async (query) => {
+    // отменяем предыдущий запрос
+    abortRef.current?.abort?.()
     const ctrl = new AbortController()
     abortRef.current = ctrl
+
+    const trimmed = (query || "").trim()
+    if (!trimmed) {
+      setRows([])
+      setSelectedRowKeys([])
+      return
+    }
+
     setLoading(true)
     try {
-      // без supplier_id — глобальный поиск по всем поставщикам
-      const params = { q: q?.trim() || undefined, page_size: 50, page: 1 }
-      const { data } = await axios.get("/supplier-parts", { params, signal: ctrl.signal })
-      const list = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
-      setRows(list)
-
-      // синхронизируем выделение, если какие-то ключи выпали из результата
-      if (selectedRowKeys.length) {
-        const setIds = new Set(list.map((r) => r.id))
-        const keep = selectedRowKeys.filter((id) => setIds.has(id))
-        setSelectedRowKeys(keep)
-        setSelectedRows((prev) => prev.filter((r) => setIds.has(r.id)))
+      const params = {
+        q: trimmed,
+        limit: 50,
+        exclude_ids: (excludeIds || []).join(","),
       }
+      const { data } = await axios.get("/supplier-parts/search-lite", {
+        params,
+        signal: ctrl.signal,
+      })
+      setRows(Array.isArray(data) ? data : [])
     } catch (e) {
-      if (e?.name !== "CanceledError" && e?.code !== "ERR_CANCELED") {
+      const name = e?.name || e?.code
+      if (name !== "AbortError" && name !== "ERR_CANCELED") {
         console.error(e)
-        message.error("Не удалось загрузить детали поставщиков")
+        message.error("Не удалось выполнить поиск деталей поставщиков")
       }
     } finally {
       setLoading(false)
     }
-  }, [open, q, selectedRowKeys])
+  }
 
+  // дебаунс поиска
   useEffect(() => {
-    clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(fetchList, 250)
-    return () => clearTimeout(timerRef.current)
-  }, [fetchList])
+    if (!open) return
+    const t = setTimeout(() => doSearch(q), 250)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, open, (excludeIds || []).join(",")])
 
+  // сброс при закрытии
   useEffect(() => {
     if (!open) {
       setQ("")
       setRows([])
       setSelectedRowKeys([])
-      setSelectedRows([])
-      abortRef.current?.abort()
     }
   }, [open])
 
   const columns = useMemo(
     () => [
+      { title: "Поставщик", dataIndex: "supplier_name", width: 220 },
+      { title: "Номер у поставщика", dataIndex: "supplier_part_number", width: 220 },
+      { title: "Описание", dataIndex: "description", ellipsis: true },
       {
-        title: "Поставщик",
-        dataIndex: "supplier_name",
-        width: 220,
-        render: (v) => v || "—",
-      },
-      {
-        title: "№ у пост.",
-        dataIndex: "supplier_part_number",
-        width: 180,
-        render: (v) => (v ? <Tooltip title={v}>{v}</Tooltip> : "—"),
-      },
-      {
-        title: "Описание",
-        dataIndex: "description",
-        ellipsis: true,
-        render: (v) => v || "—",
+        title: "Привязки",
+        dataIndex: "original_links",
+        width: 100,
+        render: (v) => (v ? String(v) : "—"),
       },
       {
         title: "Последняя цена",
         dataIndex: "latest_price",
         width: 140,
         align: "right",
-        render: (v, r) => (v ? `${Number(v).toFixed(2)} ${r.latest_currency || ""}` : <Tag>нет</Tag>),
+        render: (v, r) =>
+          v != null ? `${Number(v).toFixed(2)} ${r.latest_currency || ""}` : "—",
       },
       {
-        title: "Дата",
+        title: "Дата цены",
         dataIndex: "latest_price_date",
-        width: 130,
-        render: (v) => (v ? new Date(v).toLocaleDateString() : "—"),
+        width: 140,
+        render: (v) =>
+          v ? new Date(v).toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" }) : "—",
       },
     ],
     []
@@ -108,74 +100,58 @@ export default function SupplierPartPickerDrawer({ open, onClose, onPick }) {
 
   const rowSelection = {
     selectedRowKeys,
-    onChange: (keys, selRows) => {
-      setSelectedRowKeys(keys)
-      setSelectedRows(selRows)
-    },
+    onChange: setSelectedRowKeys,
+    preserveSelectedRowKeys: true,
   }
 
-  const header = (
-    <Space style={{ width: "100%", justifyContent: "space-between" }}>
-      <Input
-        allowClear
-        style={{ width: 360 }}
-        placeholder="Поиск по номеру/описанию…"
-        prefix={<SearchOutlined />}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        disabled={!open}
-      />
-      <Space>
-        <Button onClick={onClose} icon={<CloseOutlined />}>
-          Отмена
-        </Button>
-        <Button
-          type="primary"
-          icon={<CheckOutlined />}
-          disabled={!selectedRowKeys.length}
-          onClick={() => onPick?.(selectedRows)}
-        >
-          Выбрать ({selectedRowKeys.length})
-        </Button>
-      </Space>
-    </Space>
-  )
+  const onConfirm = () => {
+    const picked = rows.filter((r) => selectedRowKeys.includes(r.id))
+    if (picked.length) onPick?.(picked)
+    onClose?.()
+  }
 
   return (
     <Drawer
+      title="Выбрать детали поставщиков"
       open={open}
       onClose={onClose}
-      title="Выбрать детали поставщиков"
-      width={980}
+      placement="right"
+      width={920}
       destroyOnClose
-      bodyStyle={{ padding: 12 }}
-      footer={null}
+      keyboard
+      maskClosable
+      styles={{ body: { paddingTop: 8 } }}
+      extra={
+        <Space>
+          <Button onClick={onClose}>Отмена</Button>
+          <Button type="primary" disabled={!selectedRowKeys.length} onClick={onConfirm}>
+            Выбрать ({selectedRowKeys.length})
+          </Button>
+        </Space>
+      }
     >
-      {header}
-      <div style={{ marginTop: 12 }}>
-        {!rows.length && !loading ? (
-          <Empty description={q ? "Ничего не найдено" : "Начните с поиска"} />
-        ) : (
-          <Table
-            rowKey="id"
-            className="op-table"
-            columns={columns}
-            dataSource={rows}
-            loading={loading}
-            pagination={{ pageSize: 50 }}
-            size="middle"
-            tableLayout="fixed"
-            rowSelection={rowSelection}
-            scroll={{ x: true, y: "calc(100vh - 360px)" }}
-            onRow={(record) => ({
-              onDoubleClick: () => {
-                setSelectedRowKeys([record.id])
-                setSelectedRows([record])
-              },
-            })}
-          />
-        )}
-      </div>
+      <Space direction="vertical" style={{ width: "100%" }} size="middle">
+        <Input
+          placeholder="Поиск по номеру/описанию..."
+          allowClear
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onPressEnter={(e) => doSearch(e.currentTarget.value)}
+        />
+        <Table
+          rowKey="id"
+          className="op-table"
+          dataSource={rows}
+          columns={columns}
+          loading={loading}
+          size="small"
+          pagination={false}
+          rowSelection={rowSelection}
+          locale={{
+            emptyText: q.trim() ? <Empty description="Ничего не найдено" /> : <Empty description="Начните с поиска" />,
+          }}
+        />
+      </Space>
     </Drawer>
   )
 }
