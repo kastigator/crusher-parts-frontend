@@ -19,6 +19,9 @@ export default function SupplierPartsTable({
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
+  // доп. инфо: в скольких комплектах участвует деталь поставщика
+  const [usageCounts, setUsageCounts] = useState({}) // { [supplier_part_id]: number }
+
   // редактирование
   const [editing, setEditing] = useState(null)
   const [draft, setDraft] = useState(null)
@@ -35,7 +38,7 @@ export default function SupplierPartsTable({
   const wrapRef = useRef(null)
 
   const load = useCallback(async () => {
-    if (!supplierId) { setRows([]); setTotal(0); return }
+    if (!supplierId) { setRows([]); setTotal(0); setUsageCounts({}); return }
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -44,10 +47,30 @@ export default function SupplierPartsTable({
       const params = { supplier_id: supplierId, page, page_size: pageSize }
       if (search?.trim()) params.q = search.trim()
       const { data } = await axios.get("/supplier-parts", { params, signal: controller.signal })
-      setRows(Array.isArray(data?.items) ? data.items : [])
+      const items = Array.isArray(data?.items) ? data.items : []
+      setRows(items)
       setTotal(Number(data?.total || 0))
+
+      // Пытаемся подгрузить участие в комплектах (необязательный роут).
+      try {
+        const ids = items.map(r => r.id)
+        if (ids.length) {
+          const { data: usage } = await axios.get("/supplier-bundles/usage", {
+            params: { part_ids: ids.join(",") },
+            signal: controller.signal,
+          })
+          if (usage && typeof usage === "object") setUsageCounts(usage)
+          else setUsageCounts({})
+        } else {
+          setUsageCounts({})
+        }
+      } catch (e) {
+        // Если роут не подключён или вернулась ошибка — молча игнорируем.
+        setUsageCounts({})
+      }
     } catch (e) {
-      if (e?.name !== "AbortError" && e?.code !== "ERR_CANCELED") {
+      const name = e?.name || e?.code
+      if (name !== "AbortError" && name !== "ERR_CANCELED") {
         console.error(e)
         message.error("Не удалось загрузить детали поставщика")
       }
@@ -158,6 +181,15 @@ export default function SupplierPartsTable({
         v ? <Tag>{String(v).split(",").length}</Tag> : <Tag color="default">нет</Tag>,
     },
     {
+      title: "Комплекты",
+      dataIndex: "id",
+      width: 130,
+      render: (id) => {
+        const n = usageCounts?.[id] ?? 0
+        return n > 0 ? <Tag color="purple">Входит: {n}</Tag> : <span style={{ color: "#999" }}>—</span>
+      },
+    },
+    {
       title: "Последняя цена",
       dataIndex: "latest_price",
       width: 140,
@@ -182,7 +214,7 @@ export default function SupplierPartsTable({
         />
       ),
     },
-  ], [editing, draft])
+  ], [editing, draft, usageCounts, selectedId])
 
   // ===== пагинация =====
   const pagination = useMemo(() => ({

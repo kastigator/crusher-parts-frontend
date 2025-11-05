@@ -6,6 +6,7 @@ import BomTree from "./BomTree"
 import UsedInTable from "./UsedInTable"
 import SubstitutionsTable from "./SubstitutionsTable"
 import SuppliersLinksTab from "./SuppliersLinksTab"
+import BundleTab from "./bundle/BundleTab"   // ← НОВОЕ
 
 const { Text } = Typography
 
@@ -38,12 +39,12 @@ export default function DetailDock({ part }) {
         defaultActiveKey="bom"
         destroyInactiveTabPane
         items={[
-          // ⬇️ ВАЖНО: сюда передаём ВЕСЬ объект part, а не только id
-          { key: "bom", label: "BOM (таблица)", children: <BomTable part={part} /> },
+          { key: "bom", label: "BOM (таблица)", children: <BomTable originalPartId={partId} /> },
           { key: "tree", label: "BOM (дерево)", children: <BomTree originalPartId={partId} /> },
           { key: "used", label: "Где используется", children: <UsedInTable partId={partId} /> },
           { key: "subs", label: "Замены (комплекты)", children: <SubstitutionsTable originalPartId={partId} /> },
           { key: "suppliers", label: "Поставщики", children: <SuppliersLinksTab originalPartId={partId} /> },
+          { key: "bundle", label: "Комплект (сборный)", children: <BundleTab originalPartId={partId} /> }, // ← НОВОЕ
         ]}
       />
     </Card>
