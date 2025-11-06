@@ -1,5 +1,6 @@
+// /src/components/originalParts/bundle/BundleTab.jsx
 import React, { useEffect, useMemo, useState } from "react"
-import { Button, Empty, Input, InputNumber, message, Popconfirm, Space, Table, Tag, Tooltip, Typography } from "antd"
+import { Button, Empty, Input, InputNumber, message, Space, Table, Tag, Tooltip, Typography } from "antd"
 import { StarFilled } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import SupplierPartPickerDrawer from "./SupplierPartPickerDrawer"
@@ -134,13 +135,60 @@ export default function BundleTab({ originalPartId, originalPart }) {
     }
   }
 
+  /** Делает вариант дефолтным. Сначала пытаемся применить ответ бэка (в нём уже свежие options по item_id).
+   * Если вдруг опций нет в ответе — делаем оптимистичный апдейт локально, а затем обновляем с сервера. */
   const setDefault = async (linkId) => {
     try {
       setDefaultBusy(true)
-      console.debug("[BundleTab] PUT /supplier-bundles/links/%s {is_default:1}", linkId)
+
+      // item_id можно определить заранее — пригодится для оптимистичного апдейта
+      const current = options.find(o => o.link_id === linkId)
+      const currentItemId = current?.item_id
+
       const res = await axios.put(`/supplier-bundles/links/${linkId}`, { is_default: 1 })
-      console.debug("[BundleTab] response:", res?.status, res?.data)
+      const payload = res?.data
+
+      // 1) если бэк вернул свежие options по роли — подменяем в состоянии именно их
+      if (payload?.item_id && Array.isArray(payload?.options)) {
+        const itemIdFromServer = payload.item_id
+        const fresh = payload.options.map(r => ({
+          // маппим поля к тем, что ожидает таблица верхнего уровня
+          bundle_id: r.bundle_id,
+          item_id: r.item_id,
+          role_label: r.role_label,
+          qty: Number(r.qty || 1),
+          link_id: r.link_id,
+          supplier_id: r.supplier_id,
+          supplier_name: r.supplier_name,
+          supplier_part_id: r.supplier_part_id,
+          supplier_part_number: r.supplier_part_number,
+          description: r.supplier_part_description,
+          is_default: !!r.is_default,
+          // цены в ответе PUT нет — дотянем из старых данных, если они были
+          last_price: options.find(o => o.link_id === r.link_id)?.last_price ?? null,
+          last_currency: options.find(o => o.link_id === r.link_id)?.last_currency ?? null,
+          last_price_date: options.find(o => o.link_id === r.link_id)?.last_price_date ?? null,
+          note: r.note || null,
+        }))
+
+        setOptions(prev =>
+          prev
+            .filter(o => o.item_id !== itemIdFromServer)
+            .concat(fresh)
+        )
+      } else if (currentItemId) {
+        // 2) запасной вариант — оптимистично помечаем нужную ссылку дефолтной локально
+        setOptions(prev =>
+          prev.map(o =>
+            o.item_id === currentItemId
+              ? { ...o, is_default: o.link_id === linkId }
+              : o
+          )
+        )
+      }
+
       message.success("Вариант установлен по умолчанию")
+      // обновим тоталы и цены наверняка
       await loadData()
     } catch (e) {
       console.error("setDefault error:", e)
