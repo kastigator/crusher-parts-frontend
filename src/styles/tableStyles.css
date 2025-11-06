@@ -1,6 +1,5 @@
 /* /src/styles/tableStyles.css
-   Унифицированный стиль для всех таблиц и подтаблиц (Ant Design)
-*/
+   Унифицированный стиль для всех таблиц и подтаблиц (Ant Design) */
 
 /* === Базовая таблица ========================================== */
 .op-table {
@@ -11,13 +10,14 @@
   transition: background 0.2s ease;
 }
 
+/* Удаляем лишние рамки/тени у контейнера таблицы */
 .op-table .ant-table-container {
   border: none !important;
   box-shadow: none !important;
   scrollbar-gutter: stable both-edges; /* стабилизирует ширину при появлении скролла */
 }
 
-/* фиксация сетки */
+/* Фиксированная сетка — исключает перерасчёт ширин при раскрытии */
 .op-table .ant-table { table-layout: fixed; }
 
 .op-table .ant-table-thead > tr > th {
@@ -35,11 +35,11 @@
 }
 .op-table .ant-table-tbody > tr:hover > td { background: #f6f9ff; }
 
-/* плотная таблица */
+/* Плотная таблица */
 .ant-table-small .ant-table-tbody > tr > td { padding: 6px 12px; }
 .ant-table-small .ant-table-thead > tr > th { padding: 6px 12px; }
 
-/* состояние загрузки */
+/* Состояние загрузки */
 .op-table .ant-spin-nested-loading > div > .ant-spin { max-height: 60vh; }
 
 /* === Кнопки действий в таблице ================================ */
@@ -47,24 +47,35 @@
 .table-actions button { min-width: 22px; }
 
 /* =================================================================
-   РАСКРЫТАЯ СТРОКА: вкладки как продолжение таблицы
-================================================================= */
+   РАСКРЫТАЯ СТРОКА: таблица без смещения относительно шапки
+   ================================================================= */
 
-/* Ячейка раскрытой строки */
-.ant-table-expanded-row > .ant-table-cell {
-  background: #fff !important;
-  padding: 8px 0 !important;
-  border-top: 1px solid #f0f0f0;
+/* 1) фикс ширины колонки с иконкой раскрытия (и для col-варианта тоже) */
+.op-table .ant-table-row-expand-icon-cell,
+.op-table .ant-table-row-expand-icon-col {
+  width: 36px !important;
+  min-width: 36px !important;
+  max-width: 36px !important;
+  padding-inline: 8px !important;
 }
 
-/* Контейнер раскрытого контента — ничего не «режем» */
-.expanded-area {
+/* 2) убираем внутренние отступы у ячейки раскрытой строки;
+      далее управляем отступами из .expanded-area */
+.op-table .ant-table-expanded-row > .ant-table-cell {
+  background: #fff !important;
+  border-top: 1px solid #f0f0f0;
+  padding: 0 !important;
+}
+
+/* 3) контейнер раскрытой области */
+.op-table .ant-table-expanded-row > .ant-table-cell .expanded-area {
   width: 100%;
   max-width: 100%;
-  overflow: visible; /* НЕ hidden — иначе ломается синхронизация header/body */
+  overflow: visible;
+  padding: 8px 0 8px 8px; /* небольшой левый отступ для выравнивания */
 }
 
-/* Внутренние таблицы стелим ровно на 100% */
+/* 4) вложенная таблица растягивается на 100%, без рамок/теней */
 .expanded-area .ant-table-wrapper,
 .expanded-area .ant-table,
 .expanded-area .ant-table-container,
@@ -73,20 +84,25 @@
   max-width: 100% !important;
   box-sizing: border-box;
 }
+.expanded-area .ant-table { background: transparent !important; }
+.expanded-area .ant-table-container { border: none !important; box-shadow: none !important; }
 
-/* Таблицы во вкладках без дополнительных фонов/рамок */
+/* исключаем паразитный левый «отступ» у вложенной таблицы */
+.op-table .ant-table-expanded-row .ant-table {
+  margin-left: 0 !important;
+}
+
+/* вкладки во вскрытой области (если используются) */
 .expanded-area .ant-tabs-nav { margin: 0 0 8px 0 !important; }
 .expanded-area .ant-tabs-content-holder {
   border-top: 1px solid #f0f0f0;
   padding-top: 8px;
   background: #fff;
 }
-.expanded-area .ant-table { background: transparent !important; }
-.expanded-area .ant-table-container { border: none !important; box-shadow: none !important; }
 
 /* =================================================================
    Прочие общие элементы
-================================================================= */
+   ================================================================= */
 .ant-btn-primary { border-radius: 6px; font-weight: 500; }
 .ant-btn-dangerous { font-weight: 500; }
 .ant-tooltip-inner { font-size: 13px; line-height: 1.3; }
@@ -111,9 +127,13 @@
 .op-table .ant-table-expanded-row { background: #fff; }
 .op-table .ant-table-expanded-row .ant-tabs-top { margin-top: 4px; }
 
-.ant-input, .ant-select-selector, .ant-input-number, .ant-picker { border-radius: 6px !important; }
+.ant-input,
+.ant-select-selector,
+.ant-input-number,
+.ant-picker { border-radius: 6px !important; }
 .ant-message { font-size: 14px; }
 
+/* Скроллбар (webkit) */
 ::-webkit-scrollbar { height: 8px; width: 8px; }
 ::-webkit-scrollbar-track { background: #fafafa; }
 ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }

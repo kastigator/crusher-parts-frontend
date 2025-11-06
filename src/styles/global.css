@@ -4,7 +4,7 @@ html, body, #root {
   margin: 0;
   padding: 0;
 
-  /* ВАЖНО: скролл НЕ на body, а только внутри контента LayoutBody */
+  /* Скролл не на body: прокрутка должна жить внутри контента приложения */
   overflow: hidden;
 
   font-size: 14px;
@@ -25,9 +25,10 @@ html, body, #root {
 .ant-input,
 .ant-select .ant-select-selector,
 .ant-picker {
-  transition: box-shadow .2s ease-in-out,
-              border-color .2s ease-in-out,
-              background-color .2s ease-in-out;
+  transition:
+    box-shadow .2s ease-in-out,
+    border-color .2s ease-in-out,
+    background-color .2s ease-in-out;
 }
 
 /* ==========================================================
@@ -44,10 +45,7 @@ html, body, #root {
   margin-bottom: .25em;
   color: #222;
 }
-.swal2-actions.sweet-actions {
-  gap: 10px;
-  justify-content: center;
-}
+.swal2-actions.sweet-actions { gap: 10px; justify-content: center; }
 .swal2-confirm.sweet-confirm {
   background-color: #2563eb !important;
   color: #fff !important;
@@ -66,10 +64,8 @@ html, body, #root {
 }
 
 /* ==========================================================
-   Ant Design — таблица и общие элементы
+   Ant Design — базовая косметика (общее)
    ========================================================== */
-
-/* Базовая косметика для всех таблиц */
 .ant-table {
   font-size: 13px;
   font-family: 'Inter', sans-serif;
@@ -78,11 +74,8 @@ html, body, #root {
   border: 1px solid #e0e0e0;
 }
 
-/* Стабильная сетка — только для наших унифицированных таблиц */
-.op-table .ant-table {
-  width: 100%;
-  table-layout: fixed; /* стабильная ширина колонок */
-}
+/* ВАЖНО: никаких глобальных правил для .ant-table-expanded-row здесь!
+   Всё управление раскрытой областью — в tableStyles.css под .op-table. */
 
 .ant-table-thead > tr > th {
   background-color: #f3f4f6;
@@ -99,15 +92,9 @@ html, body, #root {
   vertical-align: top;
   word-break: break-word;
 }
-.ant-table-tbody > tr:hover > td {
-  background-color: #f5faff;
-}
+.ant-table-tbody > tr:hover > td { background-color: #f5faff; }
 
-/* ⛔️ Специально НЕТ правила:
-   .ant-table-expanded-row > .ant-table-cell { padding:0; ... }
-   — чтобы не конфликтовать с tableStyles.css */
-
-/* Кнопки/поля */
+/* Кнопки / поля */
 .ant-btn {
   border-radius: 8px;
   font-size: 13px;
@@ -140,10 +127,7 @@ html, body, #root {
   border-radius: 12px;
   font-family: 'Inter', sans-serif;
 }
-.ant-modal-title {
-  font-weight: 600;
-  font-size: 16px;
-}
+.ant-modal-title { font-weight: 600; font-size: 16px; }
 .ant-tooltip { z-index: 9999 !important; pointer-events: auto; }
 .ant-tooltip-inner {
   font-size: 12px;

@@ -1,296 +1,342 @@
-// src/components/originalParts/bundle/BundleTab.jsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, Space, Input, Button, message, Tag, Table, Empty, Tooltip } from "antd";
-import axios from "@/api/axiosInstance";
-import SupplierPartPickerDrawer from "./SupplierPartPickerDrawer";
-import confirmAction from "@/utils/confirmAction";
+import React, { useEffect, useMemo, useState } from "react"
+import { Button, Empty, Input, InputNumber, message, Popconfirm, Space, Table, Tag, Tooltip, Typography } from "antd"
+import { StarFilled } from "@ant-design/icons"
+import axios from "@/api/axiosInstance"
+import SupplierPartPickerDrawer from "./SupplierPartPickerDrawer"
+import ActionButtons from "@/components/common/ActionButtons"
 
-export default function BundleTab({ originalPartId }) {
-  const [bundle, setBundle] = useState(null);           // { id, title, note }
-  const [items, setItems] = useState([]);               // роли
-  const [options, setOptions] = useState([]);           // варианты
-  const [totals, setTotals] = useState([]);             // свод по валютам
-  const [loading, setLoading] = useState(false);
-  const [creatingTitle, setCreatingTitle] = useState("");
-  const [creatingNote, setCreatingNote] = useState("");
+const { Text } = Typography
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeItem, setActiveItem] = useState(null);   // выбранная роль для добавления вариантов
+/**
+ * Props:
+ * - originalPartId: number (обязателен для загрузки комплекта)
+ * - originalPart?: { id, part_number?, name? } — (необяз.) для красивой подписи
+ */
+export default function BundleTab({ originalPartId, originalPart }) {
+  const [bundleId, setBundleId] = useState(null)
+  const [loading, setLoading] = useState(false)
 
-  // загрузка/создание "шапки" комплекта
-  const loadBundle = useCallback(async () => {
-    if (!originalPartId) return;
-    setLoading(true);
+  const [items, setItems] = useState([])
+  const [options, setOptions] = useState([])
+  const [totals, setTotals] = useState([])
+
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerItem, setPickerItem] = useState(null)
+  const [qNewRole, setQNewRole] = useState("")
+  const [defaultBusy, setDefaultBusy] = useState(false) // индикатор на «сделать дефолт»
+
+  // --------------------- загрузка / создание комплекта ---------------------
+  const ensureBundle = async () => {
+    if (!originalPartId) return
     try {
-      const { data } = await axios.get("/supplier-bundles", { params: { original_part_id: originalPartId }});
-      const b = Array.isArray(data) && data[0] ? data[0] : null;
-      setBundle(b);
-    } catch (e) {
-      console.error(e);
-      message.error("Не удалось загрузить комплект");
-    } finally {
-      setLoading(false);
-    }
-  }, [originalPartId]);
-
-  const ensureBundle = useCallback(async () => {
-    if (bundle) return bundle.id;
-    if (!creatingTitle?.trim()) {
-      message.warning("Введите название комплекта");
-      return null;
-    }
-    try {
-      const { data } = await axios.post("/supplier-bundles", {
-        original_part_id: originalPartId,
-        title: creatingTitle.trim(),
-        note: creatingNote?.trim() || null,
-      });
-      await loadBundle();
-      setCreatingTitle("");
-      setCreatingNote("");
-      return data?.id || null;
-    } catch (e) {
-      console.error(e);
-      message.error("Не удалось создать комплект");
-      return null;
-    }
-  }, [bundle, creatingTitle, creatingNote, originalPartId, loadBundle]);
-
-  // загрузка состава (роли/варианты/итоги)
-  const loadSummary = useCallback(async (bundleId) => {
-    if (!bundleId) return;
-    setLoading(true);
-    try {
-      const { data } = await axios.get(`/supplier-bundles/${bundleId}/summary`);
-      setItems(data?.items || []);
-      setOptions(data?.options || []);
-      setTotals(data?.totals || []);
-    } catch (e) {
-      console.error(e);
-      message.error("Не удалось загрузить состав комплекта");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    setItems([]); setOptions([]); setTotals([]);
-    setActiveItem(null);
-    loadBundle();
-  }, [originalPartId, loadBundle]);
-
-  useEffect(() => {
-    if (bundle?.id) loadSummary(bundle.id);
-  }, [bundle, loadSummary]);
-
-  // роли
-  const addItem = async (roleLabel, qty = 1) => {
-    const bundleId = await ensureBundle();
-    if (!bundleId) return;
-    try {
-      await axios.post("/supplier-bundles/items", {
-        bundle_id: bundleId,
-        role_label: roleLabel?.trim() || "Позиция",
-        qty: Number(qty) || 1,
-      });
-      loadSummary(bundleId);
-    } catch (e) {
-      console.error(e);
-      message.error("Не удалось добавить роль");
-    }
-  };
-
-  const deleteItem = async (id) => {
-    const { confirmed } = await confirmAction("Удалить позицию комплекта?");
-    if (!confirmed) return;
-    try {
-      await axios.delete(`/supplier-bundles/items/${id}`);
-      loadSummary(bundle.id);
-      if (activeItem?.id === id) setActiveItem(null);
-    } catch (e) {
-      console.error(e);
-      message.error("Не удалось удалить позицию");
-    }
-  };
-
-  // варианты
-  const addOptionsToItem = async (itemId, parts = []) => {
-    if (!itemId || !parts?.length) return;
-    try {
-      for (const p of parts) {
-        await axios.post("/supplier-bundles/links", {
-          item_id: itemId,
-          supplier_part_id: p.id,
-          is_default: 0,
-        });
+      setLoading(true)
+      const { data } = await axios.get("/supplier-bundles", { params: { original_part_id: originalPartId } })
+      if (Array.isArray(data) && data.length) {
+        setBundleId(data[0].id)
+      } else {
+        const { data: created } = await axios.post("/supplier-bundles", {
+          original_part_id: originalPartId,
+          title: "",
+          note: ""
+        })
+        setBundleId(created.id)
+        message.success("Создан новый комплект для этой детали")
       }
-      await loadSummary(bundle.id);
-      message.success(`Добавлено вариантов: ${parts.length}`);
     } catch (e) {
-      console.error(e);
-      message.error("Не удалось добавить варианты");
+      console.error(e)
+      message.error("Не удалось получить/создать комплект")
+    } finally {
+      setLoading(false)
     }
-  };
+  }
 
-  const deleteLink = async (linkId) => {
-    const { confirmed } = await confirmAction("Удалить вариант из роли?");
-    if (!confirmed) return;
+  // --------------------- загрузка содержимого ---------------------
+  const loadData = async () => {
+    if (!bundleId) return
     try {
-      await axios.delete(`/supplier-bundles/links/${linkId}`);
-      await loadSummary(bundle.id);
+      setLoading(true)
+      const [itRes, optRes, totRes] = await Promise.all([
+        axios.get(`/supplier-bundles/${bundleId}/items`),
+        axios.get(`/supplier-bundles/${bundleId}/options`),
+        axios.get(`/supplier-bundles/${bundleId}/totals`)
+      ])
+      setItems(Array.isArray(itRes.data) ? itRes.data : [])
+      setOptions(Array.isArray(optRes.data) ? optRes.data : [])
+      setTotals(Array.isArray(totRes.data) ? totRes.data : [])
     } catch (e) {
-      console.error(e);
-      message.error("Не удалось удалить вариант");
+      console.error(e)
+      message.error("Не удалось загрузить комплект")
+    } finally {
+      setLoading(false)
     }
-  };
+  }
+
+  useEffect(() => { setBundleId(null); setItems([]); setOptions([]); setTotals([]) }, [originalPartId])
+  useEffect(() => { if (originalPartId) ensureBundle() }, [originalPartId])
+  useEffect(() => { if (bundleId) loadData() }, [bundleId])
+
+  // --------------------- роли ---------------------
+  const addRole = async () => {
+    const label = qNewRole.trim()
+    if (!label) return
+    try {
+      await axios.post("/supplier-bundles/items", { bundle_id: bundleId, role_label: label, qty: 1 })
+      setQNewRole("")
+      await loadData()
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось добавить роль")
+    }
+  }
+
+  const updateItemQty = async (itemId, qty) => {
+    try {
+      await axios.put(`/supplier-bundles/items/${itemId}`, { qty })
+      await loadData()
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось изменить количество")
+    }
+  }
+
+  const deleteItem = async (itemId) => {
+    try {
+      await axios.delete(`/supplier-bundles/items/${itemId}`)
+      await loadData()
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось удалить роль")
+    }
+  }
+
+  // --------------------- варианты ---------------------
+  const openPicker = (item) => { setPickerItem(item); setPickerOpen(true) }
+
+  const handlePickParts = async (pickedRows) => {
+    if (!pickerItem || !pickedRows?.length) return
+    try {
+      const hasDefault = options.some(o => o.item_id === pickerItem.id && o.is_default)
+      for (let idx = 0; idx < pickedRows.length; idx++) {
+        const r = pickedRows[idx]
+        await axios.post("/supplier-bundles/links", {
+          item_id: pickerItem.id,
+          supplier_part_id: r.id,
+          is_default: (!hasDefault && idx === 0) ? 1 : 0
+        })
+      }
+      message.success("Варианты добавлены")
+      await loadData()
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось добавить варианты")
+    } finally {
+      setPickerItem(null)
+    }
+  }
 
   const setDefault = async (linkId) => {
     try {
-      await axios.put(`/supplier-bundles/links/${linkId}`, { is_default: 1 });
-      await loadSummary(bundle.id);
+      setDefaultBusy(true)
+      console.debug("[BundleTab] PUT /supplier-bundles/links/%s {is_default:1}", linkId)
+      const res = await axios.put(`/supplier-bundles/links/${linkId}`, { is_default: 1 })
+      console.debug("[BundleTab] response:", res?.status, res?.data)
+      message.success("Вариант установлен по умолчанию")
+      await loadData()
     } catch (e) {
-      console.error(e);
-      message.error("Не удалось назначить по умолчанию");
+      console.error("setDefault error:", e)
+      const msg = e?.response?.data?.message || "Не удалось установить вариант по умолчанию"
+      message.error(msg)
+    } finally {
+      setDefaultBusy(false)
     }
-  };
+  }
 
-  // таблицы
+  const deleteLink = async (linkId) => {
+    try {
+      await axios.delete(`/supplier-bundles/links/${linkId}`)
+      await loadData()
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось удалить вариант")
+    }
+  }
+
+  // --------------------- таблица вариантов ---------------------
+  const optionsByItem = useMemo(() => {
+    const m = new Map()
+    for (const o of options) {
+      if (!m.has(o.item_id)) m.set(o.item_id, [])
+      m.get(o.item_id).push(o)
+    }
+    return m
+  }, [options])
+
+  const renderOptionsTable = (item) => {
+    const data = optionsByItem.get(item.id) || []
+    const cols = [
+      {
+        title: "Поставщик",
+        dataIndex: "supplier_name",
+        width: 220,
+        render: (_, r) => r.supplier_name || r.name || "—",
+      },
+      { title: "№ у поставщика", dataIndex: "supplier_part_number", width: 180, render: v => v || "—" },
+      {
+        title: "Описание",
+        dataIndex: "description",
+        ellipsis: true,
+        render: (_, r) => r.description ?? r.supplier_part_description ?? "—",
+      },
+      {
+        title: "Цена",
+        dataIndex: "last_price",
+        align: "right",
+        width: 120,
+        render: (v, r) => (v != null ? `${Number(v).toFixed(2)} ${r.last_currency || ""}` : "—")
+      },
+      {
+        title: "Дата",
+        dataIndex: "last_price_date",
+        width: 120,
+        render: (v) => v ? new Date(v).toLocaleDateString() : "—"
+      },
+      {
+        title: "По умолчанию",
+        dataIndex: "is_default",
+        width: 120,
+        render: (v) => v ? <Tag color="green">да</Tag> : <Tag>нет</Tag>
+      },
+      {
+        title: "Действия",
+        key: "act",
+        width: 120,
+        render: (_, r) => (
+          <Space size="small">
+            <Tooltip title="Сделать по умолчанию">
+              <Button
+                size="small"
+                type="text"
+                icon={<StarFilled style={{ color: r.is_default ? '#52c41a' : undefined }} />}
+                disabled={!!r.is_default || defaultBusy}
+                onClick={() => setDefault(r.link_id)}
+                loading={defaultBusy}
+              />
+            </Tooltip>
+            <ActionButtons
+              size="small"
+              onDelete={() => deleteLink(r.link_id)}
+              titles={{ delete: "Удалить" }}
+            />
+          </Space>
+        )
+      }
+    ]
+    return (
+      <div className="expanded-area" style={{ paddingLeft: 8 }}>
+        <Table
+          rowKey="link_id"
+          className="op-table"
+          size="small"
+          columns={cols}
+          dataSource={data}
+          pagination={false}
+        />
+      </div>
+    )
+  }
+
+  // --------------------- колонки ролей ---------------------
   const itemColumns = [
-    { title: "Роль", dataIndex: "role_label" },
-    { title: "Кол-во", dataIndex: "qty", width: 100, align: "right" },
+    { title: "Роль", dataIndex: "role_label", width: 240 },
     {
-      title: "Действия",
-      key: "act",
-      width: 220,
-      render: (_, r) => (
-        <Space>
-          <Button size="small" onClick={() => { setActiveItem(r); setDrawerOpen(true); }}>
-            Добавить варианты
-          </Button>
-          <Button size="small" danger onClick={() => deleteItem(r.id)}>Удалить</Button>
-        </Space>
-      ),
-    },
-  ];
-
-  const optionsForItem = (itemId) => options.filter(o => o.item_id === itemId);
-  const excludeIdsForItem = (itemId) =>
-    optionsForItem(itemId).map(o => o.supplier_part_id);
-
-  const optionsColumns = [
-    { title: "Поставщик", dataIndex: "supplier_name", width: 220 },
-    { title: "Номер у поставщика", dataIndex: "supplier_part_number", width: 220 },
-    { title: "Описание", dataIndex: "description" },
-    { title: "Цена", dataIndex: "last_price", width: 120, align: "right" },
-    { title: "Валюта", dataIndex: "last_currency", width: 90, align: "center" },
-    {
-      title: "По умолчанию",
-      dataIndex: "is_default",
-      width: 130,
-      align: "center",
-      render: (v) => v ? <Tag color="green">да</Tag> : <Tag>нет</Tag>,
+      title: "Кол-во",
+      dataIndex: "qty",
+      width: 120,
+      align: "right",
+      render: (v, r) => (
+        <InputNumber
+          min={0.0001}
+          step={0.1}
+          value={Number(v || 1)}
+          onChange={(val) => updateItemQty(r.id, Number(val || 1))}
+        />
+      )
     },
     {
       title: "Действия",
-      key: "op",
+      key: "actions",
       width: 220,
       render: (_, r) => (
         <Space>
-          {!r.is_default && (
-            <Button size="small" onClick={() => setDefault(r.link_id)}>Сделать дефолт</Button>
-          )}
-          <Button size="small" danger onClick={() => deleteLink(r.link_id)}>Удалить</Button>
+          <Button size="small" onClick={() => openPicker(r)}>Добавить варианты</Button>
+          <ActionButtons
+            size="small"
+            onDelete={() => deleteItem(r.id)}
+            titles={{ delete: "Удалить роль" }}
+          />
         </Space>
       )
     }
-  ];
+  ]
 
-  const totalsBar = totals?.length
-    ? totals.map(t => <Tag key={t.currency_iso3}>{t.currency_iso3}: {t.total_price}</Tag>)
-    : <Tag>нет итогов</Tag>;
+  if (!originalPartId) {
+    return <Empty description="Сначала выберите оригинальную деталь" />
+  }
+
+  const partLabel = originalPart
+    ? [originalPart.part_number, originalPart.name].filter(Boolean).join(" — ")
+    : null
 
   return (
-    <Card
-      bodyStyle={{ paddingTop: 12 }}
-      title={
-        bundle
-          ? <Space><Tag color="blue">Комплект ID: {bundle.id}</Tag> {totalsBar}</Space>
-          : "Комплект ещё не создан для этой детали."
-      }
-      loading={loading}
-    >
-      {/* Создание комплекта */}
-      {!bundle && (
-        <Space.Compact style={{ width: "100%", marginBottom: 12 }}>
+    <div className="table-section">
+      <Space style={{ marginBottom: 8, width: "100%", justifyContent: "space-between" }}>
+        <Space wrap>
+          <Text strong>{bundleId ? `Комплект №${bundleId}` : "Комплект"}</Text>
+          {partLabel ? (
+            <Text type="secondary">({partLabel})</Text>
+          ) : null}
+          {totals?.length ? (
+            <Text type="secondary">
+              &nbsp;•&nbsp;Итого:&nbsp;
+              {totals.map(t => `${Number(t.total_price ?? 0).toFixed(2)} ${t.currency_iso3}`).join("  |  ")}
+            </Text>
+          ) : null}
+        </Space>
+        <Space>
           <Input
-            placeholder="Название комплекта"
-            value={creatingTitle}
-            onChange={(e) => setCreatingTitle(e.target.value)}
+            placeholder="Название роли (например, Насос)"
+            value={qNewRole}
+            onChange={(e) => setQNewRole(e.target.value)}
+            onPressEnter={addRole}
+            style={{ width: 260 }}
           />
-          <Input
-            placeholder="Комментарий (необязательно)"
-            value={creatingNote}
-            onChange={(e) => setCreatingNote(e.target.value)}
-          />
-          <Button type="primary" onClick={ensureBundle}>Создать комплект</Button>
-        </Space.Compact>
-      )}
+          <Button type="primary" onClick={addRole} disabled={!qNewRole.trim()}>+ Добавить</Button>
+          <Button onClick={loadData} loading={loading}>Обновить</Button>
+        </Space>
+      </Space>
 
-      {/* Добавить роль */}
-      {bundle && (
-        <Space.Compact style={{ width: 520, marginBottom: 12 }}>
-          <Input
-            placeholder="Например: Насос"
-            onPressEnter={(e) => addItem(e.target.value, 1)}
-          />
-          <Tooltip title="Кол-во по роли">
-            <Input style={{ width: 100 }} defaultValue="1" id="bundle-role-qty" />
-          </Tooltip>
-          <Button
-            onClick={() => {
-              const role = document.querySelector("input[placeholder='Например: Насос']")?.value || "";
-              const qtyEl = document.getElementById("bundle-role-qty");
-              const qty = Number(qtyEl?.value || 1);
-              addItem(role, qty);
-            }}
-          >
-            + Добавить
-          </Button>
-        </Space.Compact>
-      )}
-
-      {/* Роли */}
-      {bundle ? (
-        <Table
-          rowKey="id"
-          dataSource={items}
-          columns={itemColumns}
-          pagination={false}
-          locale={{ emptyText: <Empty description="Нет ролей. Добавьте первую роль выше." /> }}
-          expandable={{
-            expandedRowRender: (item) => (
-              <Table
-                rowKey="link_id"
-                dataSource={optionsForItem(item.id)}
-                columns={optionsColumns}
-                pagination={false}
-                size="small"
-                locale={{ emptyText: <Empty description="Нет вариантов. Нажмите «Добавить варианты»." /> }}
-              />
-            ),
-          }}
-          size="middle"
-          className="op-table"
-        />
-      ) : null}
-
-      {/* Drawer выбора деталей поставщика */}
-      <SupplierPartPickerDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        excludeIds={activeItem ? excludeIdsForItem(activeItem.id) : []}
-        onPick={(rows) => activeItem && addOptionsToItem(activeItem.id, rows)}
+      <Table
+        rowKey="id"
+        className="op-table"
+        size="small"
+        loading={loading && !bundleId}
+        columns={itemColumns}
+        dataSource={items}
+        pagination={false}
+        locale={{ emptyText: <Empty description="Нет ролей в комплекте" /> }}
+        expandable={{
+          expandedRowRender: renderOptionsTable,
+          expandRowByClick: true,
+          columnWidth: 36,
+        }}
       />
-    </Card>
-  );
+
+      <SupplierPartPickerDrawer
+        open={pickerOpen}
+        onClose={() => { setPickerOpen(false); setPickerItem(null) }}
+        excludeIds={pickerItem ? (optionsByItem.get(pickerItem.id) || []).map(o => o.supplier_part_id) : []}
+        onPick={handlePickParts}
+      />
+    </div>
+  )
 }
