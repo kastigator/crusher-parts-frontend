@@ -2,6 +2,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { Card, Row, Col, Space, Button, Tag, message, Input, Form } from "antd";
 import { TeamOutlined, ReloadOutlined, ImportOutlined, PlusOutlined } from "@ant-design/icons";
+import { useSearchParams } from "react-router-dom";          // ✅ добавлено
 import TableToolbar from "@/components/common/TableToolbar";
 import SupplierPickerDrawer from "./SupplierPickerDrawer";
 import SupplierPartsTable from "./SupplierPartsTable";
@@ -24,6 +25,10 @@ export default function SupplierPartsMain() {
 
   // выбранная деталь для нижнего дока
   const [selectedPart, setSelectedPart] = useState(null);
+
+  // ✅ deep-link ?focus=<supplier_part_id>
+  const [params] = useSearchParams();
+  const focusId = params.get("focus");
 
   // при смене поставщика — сбрасываем выбор и поиск
   useEffect(() => {
@@ -88,6 +93,42 @@ export default function SupplierPartsMain() {
       setAdding(false);
     }
   };
+
+  // ✅ эффект глубокого перехода ?focus=ID
+  useEffect(() => {
+    const initFromFocus = async () => {
+      const id = focusId && Number(focusId);
+      if (!id) return;
+      try {
+        // Желательно иметь этот эндпоинт:
+        //   GET /supplier-parts/:id -> { id, supplier_id, supplier_name, ... }
+        const { data } = await axios.get(`/supplier-parts/${id}`);
+        if (!data) return;
+
+        // 1) выставляем поставщика (минимальный набор полей)
+        setSupplier({
+          id: data.supplier_id,
+          company: data.supplier_name || data.company || data.name || `#${data.supplier_id}`,
+        });
+
+        // 2) заставим таблицу перечитать строки выбранного поставщика
+        setVersion((v) => v + 1);
+
+        // 3) выделим нужную деталь внизу
+        setSelectedPart({ id: data.id, ...data });
+
+        // 4) мягко прокрутим к строке, когда она появится в DOM
+        // дадим таблице один кадр на ререндер
+        requestAnimationFrame(() => {
+          const row = document.querySelector(`[data-row-key="${id}"]`);
+          if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
+        });
+      } catch (e) {
+        console.error("focus open failed", e);
+      }
+    };
+    initFromFocus();
+  }, [focusId]);
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>

@@ -8,11 +8,6 @@ import ActionButtons from "@/components/common/ActionButtons"
 
 const { Text } = Typography
 
-/**
- * Props:
- * - originalPartId: number (обязателен для загрузки комплекта)
- * - originalPart?: { id, part_number?, name? } — (необяз.) для красивой подписи
- */
 export default function BundleTab({ originalPartId, originalPart }) {
   const [bundleId, setBundleId] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -24,7 +19,7 @@ export default function BundleTab({ originalPartId, originalPart }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerItem, setPickerItem] = useState(null)
   const [qNewRole, setQNewRole] = useState("")
-  const [defaultBusy, setDefaultBusy] = useState(false) // индикатор на «сделать дефолт»
+  const [defaultBusy, setDefaultBusy] = useState(false)
 
   // --------------------- загрузка / создание комплекта ---------------------
   const ensureBundle = async () => {
@@ -126,6 +121,10 @@ export default function BundleTab({ originalPartId, originalPart }) {
         })
       }
       message.success("Варианты добавлены")
+
+      // 🔁 уведомим вкладку "Поставщики" об изменении
+      window.dispatchEvent(new CustomEvent("supplier-links:refresh", { detail: { original_part_id: originalPartId } }))
+
       await loadData()
     } catch (e) {
       console.error(e)
@@ -135,41 +134,38 @@ export default function BundleTab({ originalPartId, originalPart }) {
     }
   }
 
-  /** Делает вариант дефолтным. Сначала пытаемся применить ответ бэка (в нём уже свежие options по item_id).
-   * Если вдруг опций нет в ответе — делаем оптимистичный апдейт локально, а затем обновляем с сервера. */
+  /** Сделать вариант дефолтным */
   const setDefault = async (linkId) => {
     try {
       setDefaultBusy(true)
 
-      // item_id можно определить заранее — пригодится для оптимистичного апдейта
       const current = options.find(o => o.link_id === linkId)
       const currentItemId = current?.item_id
 
       const res = await axios.put(`/supplier-bundles/links/${linkId}`, { is_default: 1 })
       const payload = res?.data
 
-      // 1) если бэк вернул свежие options по роли — подменяем в состоянии именно их
       if (payload?.item_id && Array.isArray(payload?.options)) {
         const itemIdFromServer = payload.item_id
-        const fresh = payload.options.map(r => ({
-          // маппим поля к тем, что ожидает таблица верхнего уровня
-          bundle_id: r.bundle_id,
-          item_id: r.item_id,
-          role_label: r.role_label,
-          qty: Number(r.qty || 1),
-          link_id: r.link_id,
-          supplier_id: r.supplier_id,
-          supplier_name: r.supplier_name,
-          supplier_part_id: r.supplier_part_id,
-          supplier_part_number: r.supplier_part_number,
-          description: r.supplier_part_description,
-          is_default: !!r.is_default,
-          // цены в ответе PUT нет — дотянем из старых данных, если они были
-          last_price: options.find(o => o.link_id === r.link_id)?.last_price ?? null,
-          last_currency: options.find(o => o.link_id === r.link_id)?.last_currency ?? null,
-          last_price_date: options.find(o => o.link_id === r.link_id)?.last_price_date ?? null,
-          note: r.note || null,
-        }))
+        const fresh = payload.options
+          .map(r => ({
+            bundle_id: r.bundle_id,
+            item_id: r.item_id,
+            role_label: r.role_label,
+            qty: Number(r.qty || 1),
+            link_id: r.link_id,
+            supplier_id: r.supplier_id,
+            supplier_name: r.supplier_name,
+            supplier_part_id: r.supplier_part_id,
+            supplier_part_number: r.supplier_part_number,
+            description: r.supplier_part_description,
+            is_default: !!r.is_default,
+            last_price: options.find(o => o.link_id === r.link_id)?.last_price ?? null,
+            last_currency: options.find(o => o.link_id === r.link_id)?.last_currency ?? null,
+            last_price_date: options.find(o => o.link_id === r.link_id)?.last_price_date ?? null,
+            note: r.note || null,
+          }))
+          .sort((a, b) => (a.link_id ?? 0) - (b.link_id ?? 0))
 
         setOptions(prev =>
           prev
@@ -177,7 +173,6 @@ export default function BundleTab({ originalPartId, originalPart }) {
             .concat(fresh)
         )
       } else if (currentItemId) {
-        // 2) запасной вариант — оптимистично помечаем нужную ссылку дефолтной локально
         setOptions(prev =>
           prev.map(o =>
             o.item_id === currentItemId
@@ -188,7 +183,10 @@ export default function BundleTab({ originalPartId, originalPart }) {
       }
 
       message.success("Вариант установлен по умолчанию")
-      // обновим тоталы и цены наверняка
+
+      // 🔁 уведомим вкладку "Поставщики"
+      window.dispatchEvent(new CustomEvent("supplier-links:refresh", { detail: { original_part_id: originalPartId } }))
+
       await loadData()
     } catch (e) {
       console.error("setDefault error:", e)
@@ -202,6 +200,11 @@ export default function BundleTab({ originalPartId, originalPart }) {
   const deleteLink = async (linkId) => {
     try {
       await axios.delete(`/supplier-bundles/links/${linkId}`)
+      message.success("Вариант удалён")
+
+      // 🔁 уведомим вкладку "Поставщики"
+      window.dispatchEvent(new CustomEvent("supplier-links:refresh", { detail: { original_part_id: originalPartId } }))
+
       await loadData()
     } catch (e) {
       console.error(e)
@@ -216,44 +219,24 @@ export default function BundleTab({ originalPartId, originalPart }) {
       if (!m.has(o.item_id)) m.set(o.item_id, [])
       m.get(o.item_id).push(o)
     }
+    for (const [key, arr] of m.entries()) {
+      m.set(
+        key,
+        [...arr].sort((a, b) => (a.link_id ?? 0) - (b.link_id ?? 0))
+      )
+    }
     return m
   }, [options])
 
   const renderOptionsTable = (item) => {
     const data = optionsByItem.get(item.id) || []
     const cols = [
-      {
-        title: "Поставщик",
-        dataIndex: "supplier_name",
-        width: 220,
-        render: (_, r) => r.supplier_name || r.name || "—",
-      },
+      { title: "Поставщик", dataIndex: "supplier_name", width: 220, render: (_, r) => r.supplier_name || r.name || "—" },
       { title: "№ у поставщика", dataIndex: "supplier_part_number", width: 180, render: v => v || "—" },
-      {
-        title: "Описание",
-        dataIndex: "description",
-        ellipsis: true,
-        render: (_, r) => r.description ?? r.supplier_part_description ?? "—",
-      },
-      {
-        title: "Цена",
-        dataIndex: "last_price",
-        align: "right",
-        width: 120,
-        render: (v, r) => (v != null ? `${Number(v).toFixed(2)} ${r.last_currency || ""}` : "—")
-      },
-      {
-        title: "Дата",
-        dataIndex: "last_price_date",
-        width: 120,
-        render: (v) => v ? new Date(v).toLocaleDateString() : "—"
-      },
-      {
-        title: "По умолчанию",
-        dataIndex: "is_default",
-        width: 120,
-        render: (v) => v ? <Tag color="green">да</Tag> : <Tag>нет</Tag>
-      },
+      { title: "Описание", dataIndex: "description", ellipsis: true, render: (_, r) => r.description ?? r.supplier_part_description ?? "—" },
+      { title: "Цена", dataIndex: "last_price", align: "right", width: 120, render: (v, r) => (v != null ? `${Number(v).toFixed(2)} ${r.last_currency || ""}` : "—") },
+      { title: "Дата", dataIndex: "last_price_date", width: 120, render: (v) => v ? new Date(v).toLocaleDateString() : "—" },
+      { title: "По умолчанию", dataIndex: "is_default", width: 120, render: (v) => v ? <Tag color="green">да</Tag> : <Tag>нет</Tag> },
       {
         title: "Действия",
         key: "act",
@@ -281,19 +264,11 @@ export default function BundleTab({ originalPartId, originalPart }) {
     ]
     return (
       <div className="expanded-area" style={{ paddingLeft: 8 }}>
-        <Table
-          rowKey="link_id"
-          className="op-table"
-          size="small"
-          columns={cols}
-          dataSource={data}
-          pagination={false}
-        />
+        <Table rowKey="link_id" className="op-table" size="small" columns={cols} dataSource={data} pagination={false} />
       </div>
     )
   }
 
-  // --------------------- колонки ролей ---------------------
   const itemColumns = [
     { title: "Роль", dataIndex: "role_label", width: 240 },
     {
@@ -317,11 +292,7 @@ export default function BundleTab({ originalPartId, originalPart }) {
       render: (_, r) => (
         <Space>
           <Button size="small" onClick={() => openPicker(r)}>Добавить варианты</Button>
-          <ActionButtons
-            size="small"
-            onDelete={() => deleteItem(r.id)}
-            titles={{ delete: "Удалить роль" }}
-          />
+          <ActionButtons size="small" onDelete={() => deleteItem(r.id)} titles={{ delete: "Удалить роль" }} />
         </Space>
       )
     }
@@ -340,9 +311,7 @@ export default function BundleTab({ originalPartId, originalPart }) {
       <Space style={{ marginBottom: 8, width: "100%", justifyContent: "space-between" }}>
         <Space wrap>
           <Text strong>{bundleId ? `Комплект №${bundleId}` : "Комплект"}</Text>
-          {partLabel ? (
-            <Text type="secondary">({partLabel})</Text>
-          ) : null}
+          {partLabel ? <Text type="secondary">({partLabel})</Text> : null}
           {totals?.length ? (
             <Text type="secondary">
               &nbsp;•&nbsp;Итого:&nbsp;
@@ -359,7 +328,6 @@ export default function BundleTab({ originalPartId, originalPart }) {
             style={{ width: 260 }}
           />
           <Button type="primary" onClick={addRole} disabled={!qNewRole.trim()}>+ Добавить</Button>
-          <Button onClick={loadData} loading={loading}>Обновить</Button>
         </Space>
       </Space>
 
