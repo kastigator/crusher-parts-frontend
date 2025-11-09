@@ -1,3 +1,4 @@
+// src/components/clients/bankDetails/BankDetailsMain.jsx
 import React, { useEffect, useState } from "react"
 import { Row, Col, Input, Button, message } from "antd"
 import axios from "@/api/axiosInstance"
@@ -24,7 +25,9 @@ export default function BankDetailsMain({ clientId, onChanged }) {
     if (!clientId) return
     setLoading(true)
     try {
-      const { data } = await axios.get("/client-bank-details", { params: { client_id: clientId } })
+      const { data } = await axios.get("/client-bank-details", {
+        params: { client_id: clientId },
+      })
       setData(Array.isArray(data) ? data : [])
     } catch (e) {
       console.error(e)
@@ -79,7 +82,9 @@ export default function BankDetailsMain({ clientId, onChanged }) {
       onChanged?.()
     } catch (e) {
       console.error(e)
-      message.error(e?.response?.data?.message || "Не удалось добавить реквизиты")
+      message.error(
+        e?.response?.data?.message || "Не удалось добавить реквизиты"
+      )
     } finally {
       setSubmitting(false)
     }
@@ -87,7 +92,10 @@ export default function BankDetailsMain({ clientId, onChanged }) {
 
   const onUpdate = async (id, updated) => {
     try {
-      const { data: fresh } = await axios.put(`/client-bank-details/${id}`, updated)
+      const { data: fresh } = await axios.put(
+        `/client-bank-details/${id}`,
+        updated
+      )
       setData((prev) => prev.map((r) => (r.id === id ? fresh : r)))
       message.success("Изменения сохранены")
       onChanged?.()
@@ -102,7 +110,9 @@ export default function BankDetailsMain({ clientId, onChanged }) {
 
   const onDelete = async (record) => {
     try {
-      await axios.delete(`/client-bank-details/${record.id}`, { params: { version: record.version } })
+      await axios.delete(`/client-bank-details/${record.id}`, {
+        params: { version: record.version },
+      })
       setData((prev) => prev.filter((r) => r.id !== record.id))
       message.success("Реквизиты удалены")
       onChanged?.()
@@ -132,12 +142,14 @@ export default function BankDetailsMain({ clientId, onChanged }) {
       if (info) {
         setNewBank((p) => ({
           ...p,
+          // если из API пришло значение — подставляем, но не мешаем вручную редактировать потом
           bank_name: info.bank_name || p.bank_name,
-          correspondent_account: info.correspondent_account || p.correspondent_account,
+          correspondent_account:
+            info.correspondent_account || p.correspondent_account,
         }))
       }
     } catch {
-      /* noop */
+      // если банк по БИК не найден или сервис недоступен — просто даём пользователю заполнить руками
     }
   }
 
@@ -152,7 +164,13 @@ export default function BankDetailsMain({ clientId, onChanged }) {
       />
 
       {/* Форма быстрого добавления */}
-      <Row gutter={[8, 8]} wrap align="middle" className="table-section">
+      <Row
+        gutter={[8, 8]}
+        wrap
+        align="middle"
+        className="table-section"
+        style={{ marginBottom: 8 }}
+      >
         <Col span={4}>
           <Input
             placeholder="БИК"
@@ -163,24 +181,36 @@ export default function BankDetailsMain({ clientId, onChanged }) {
         </Col>
 
         <Col span={5}>
-          <Input placeholder="Банк" value={newBank.bank_name} disabled />
+          <Input
+            placeholder="Банк"
+            value={newBank.bank_name}
+            onChange={(e) =>
+              setNewBank((p) => ({ ...p, bank_name: e.target.value }))
+            }
+          />
         </Col>
 
         <Col span={5}>
           <Input
             placeholder="Кор. счёт"
             value={newBank.correspondent_account}
-            disabled
+            onChange={(e) =>
+              setNewBank((p) => ({
+                ...p,
+                correspondent_account: e.target.value,
+              }))
+            }
           />
         </Col>
 
         <Col span={3}>
           <CurrencySelect
             value={newBank.currency}
-            onChange={(val) => setNewBank((prev) => ({ ...prev, currency: val }))}
+            onChange={(val) =>
+              setNewBank((prev) => ({ ...prev, currency: val }))
+            }
             size="small"
             style={{ minWidth: 150 }}
-            // якорим выпадение в контейнер раскрытой строки
             getPopupContainer={(trigger) =>
               trigger?.closest(".parts-table-wrap") || document.body
             }

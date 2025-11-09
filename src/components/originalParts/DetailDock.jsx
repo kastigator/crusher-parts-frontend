@@ -4,9 +4,9 @@ import { Card, Tabs, Empty, Tag, Space, Typography } from "antd"
 import BomTable from "./BomTable"
 import BomTree from "./BomTree"
 import UsedInTable from "./UsedInTable"
-import SubstitutionsTable from "./SubstitutionsTable"
+import AltOriginalsTable from "./AltOriginalsTable" // 🔹 новое название
 import SuppliersLinksTab from "./SuppliersLinksTab"
-import BundleTab from "./bundle/BundleTab"   // ← НОВОЕ
+import BundleTab from "./bundle/BundleTab"
 
 const { Text } = Typography
 
@@ -39,12 +39,12 @@ export default function DetailDock({ part }) {
         defaultActiveKey="bom"
         destroyInactiveTabPane
         items={[
-          { key: "bom", label: "BOM (таблица)", children: <BomTable part={part} /> },
-          { key: "tree", label: "BOM (дерево)", children: <BomTree originalPartId={partId} /> },
+          { key: "bom", label: "Состав (BOM таблица)", children: <BomTable part={part} /> },
+          { key: "tree", label: "Структура BOM (дерево)", children: <BomTree originalPartId={partId} /> },
           { key: "used", label: "Где используется", children: <UsedInTable partId={partId} /> },
-          { key: "subs", label: "Замены (комплекты)", children: <SubstitutionsTable originalPartId={partId} /> },
-          { key: "suppliers", label: "Поставщики", children: <SuppliersLinksTab originalPartId={partId} /> },
-          { key: "bundle", label: "Комплект (сборный)", children: <BundleTab originalPartId={partId} /> },
+          { key: "alt", label: "Альтернативные оригиналы", children: <AltOriginalsTable originalPartId={partId} /> },
+          { key: "suppliers", label: "Связанные поставщики", children: <SuppliersLinksTab originalPartId={partId} /> },
+          { key: "bundle", label: "Комплекты поставщика", children: <BundleTab originalPartId={partId} /> },
         ]}
       />
     </Card>

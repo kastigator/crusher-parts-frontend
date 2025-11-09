@@ -1,7 +1,7 @@
 // src/components/originalParts/BomTable.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button, InputNumber, Space, Table, Typography, Tag, message, Tooltip } from "antd"
-import { PlusOutlined, ReloadOutlined, DeleteOutlined } from "@ant-design/icons"
+import { PlusOutlined, DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import BomChildPickerDrawer from "./BomChildPickerDrawer"
@@ -13,19 +13,23 @@ export default function BomTable({ part }) {
   const modelId = part?.equipment_model_id || null
 
   const [rows, setRows] = useState([])
-  const [loading,   setLoading]   = useState(false)
-  const [pickerOpen,setPickerOpen]= useState(false)
+  const [loading, setLoading] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   const abortRef = useRef(null)
 
   const load = useCallback(async () => {
-    if (!parentId) { setRows([]); return }
-    abortRef.current?.abort?.()
+    if (!parentId) {
+      setRows([])
+      return
+    }
+    try {
+      abortRef.current?.abort?.()
+    } catch {}
     const controller = new AbortController()
     abortRef.current = controller
     setLoading(true)
     try {
-      // ✅ правильный эндпойнт и параметр
       const { data } = await axios.get("/original-part-bom", {
         params: { parent_id: parentId },
         signal: controller.signal,
@@ -44,15 +48,19 @@ export default function BomTable({ part }) {
 
   useEffect(() => {
     const t = setTimeout(load, 100)
-    return () => { clearTimeout(t); abortRef.current?.abort?.() }
+    return () => {
+      clearTimeout(t)
+      try {
+        abortRef.current?.abort?.()
+      } catch {}
+    }
   }, [load, parentId])
 
   // ===== Добавление через Drawer-пикер =====
   const handlePickParts = async (pickedRows) => {
     if (!parentId || !Array.isArray(pickedRows) || !pickedRows.length) return
     try {
-      // готовим payload под bulk
-      const items = pickedRows.map(r => ({
+      const items = pickedRows.map((r) => ({
         child_part_id: r.id,
         quantity: 1,
       }))
@@ -64,7 +72,7 @@ export default function BomTable({ part }) {
       const inserted = Number(data?.inserted || 0)
       if (inserted) message.success(`Добавлено позиций: ${inserted}`)
       if (Array.isArray(data?.errors) && data.errors.length) {
-        const txt = data.errors.slice(0, 5).map(e => e.reason).join("; ")
+        const txt = data.errors.slice(0, 5).map((e) => e.reason).join("; ")
         message.warning(`Часть строк пропущена: ${data.errors.length}. ${txt}`)
       }
       setPickerOpen(false)
@@ -84,7 +92,6 @@ export default function BomTable({ part }) {
       return
     }
     try {
-      // ✅ правильный эндпойнт и имена полей
       await axios.put("/original-part-bom", {
         parent_part_id: parentId,
         child_part_id: childId,
@@ -113,58 +120,61 @@ export default function BomTable({ part }) {
     }
   }
 
-  const columns = useMemo(() => ([
-    {
-      title: "Child Cat #",
-      dataIndex: "child_cat_number",
-      width: 220,
-      render: (v) => <Text strong>{v}</Text>,
-    },
-    {
-      title: "Описание",
-      dataIndex: "child_description_ru",
-      ellipsis: true,
-      render: (v, r) => v || r.child_description_en || "—",
-    },
-    {
-      title: "Кол-во",
-      dataIndex: "quantity",
-      align: "right",
-      width: 160,
-      render: (v, r) => (
-        <InputNumber
-          min={0.0001}
-          step={0.0001}
-          precision={4}
-          value={Number(v)}
-          style={{ width: 120 }}
-          onPressEnter={(e) => updateQty(r.child_part_id, e.target.value)}
-          onBlur={(e) => updateQty(r.child_part_id, e.target.value)}
-        />
-      ),
-    },
-    {
-      title: "Действия",
-      key: "actions",
-      width: 110,
-      render: (_, r) => (
-        <Space>
-          <Tooltip title="Удалить строку">
-            <Button
-              danger
-              size="small"
-              icon={<DeleteOutlined />}
-              onClick={() => removeRow(r.child_part_id)}
-            />
-          </Tooltip>
-        </Space>
-      ),
-    },
-  ]), [])
+  const columns = useMemo(
+    () => [
+      {
+        title: "Номер детали",
+        dataIndex: "child_cat_number",
+        width: 220,
+        render: (v) => <Text strong>{v}</Text>,
+      },
+      {
+        title: "Описание",
+        dataIndex: "child_description_ru",
+        ellipsis: true,
+        render: (v, r) => v || r.child_description_en || "—",
+      },
+      {
+        title: "Кол-во",
+        dataIndex: "quantity",
+        align: "right",
+        width: 160,
+        render: (v, r) => (
+          <InputNumber
+            min={0.0001}
+            step={0.0001}
+            precision={4}
+            value={Number(v)}
+            style={{ width: 120 }}
+            onPressEnter={(e) => updateQty(r.child_part_id, e.target.value)}
+            onBlur={(e) => updateQty(r.child_part_id, e.target.value)}
+          />
+        ),
+      },
+      {
+        title: "Действия",
+        key: "actions",
+        width: 110,
+        render: (_, r) => (
+          <Space>
+            <Tooltip title="Удалить строку">
+              <Button
+                danger
+                size="small"
+                icon={<DeleteOutlined />}
+                onClick={() => removeRow(r.child_part_id)}
+              />
+            </Tooltip>
+          </Space>
+        ),
+      },
+    ],
+    [updateQty] // removeRow стабилен, но можно добавить при желании
+  )
 
   // уже находящиеся в составе — чтобы скрыть их в пикере
   const excludeIds = useMemo(
-    () => rows.map(r => Number(r.child_part_id)).filter(Boolean),
+    () => rows.map((r) => Number(r.child_part_id)).filter(Boolean),
     [rows]
   )
 
@@ -173,24 +183,18 @@ export default function BomTable({ part }) {
       <Button
         type="primary"
         icon={<PlusOutlined />}
-        // ⛳️ не блокируем по modelId — пикер сам подскажет, если поиска по модели не будет
         disabled={!parentId}
         onClick={() => setPickerOpen(true)}
       >
         Добавить позицию
       </Button>
 
-      <Button icon={<ReloadOutlined />} onClick={load} disabled={!parentId}>
-        Обновить
-      </Button>
-
-      <Tag>
-        Показано: {rows.length}
-      </Tag>
+      <Tag>Показано: {rows.length}</Tag>
 
       {part?.manufacturer_name || part?.model_name ? (
         <Tag color="geekblue">
-          {part?.manufacturer_name ? `${part.manufacturer_name}` : ""}{part?.model_name ? ` / ${part.model_name}` : ""}
+          {part?.manufacturer_name ? `${part.manufacturer_name}` : ""}
+          {part?.model_name ? ` / ${part.model_name}` : ""}
         </Tag>
       ) : null}
     </Space>

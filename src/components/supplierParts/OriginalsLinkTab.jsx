@@ -1,7 +1,7 @@
 // src/components/supplierParts/OriginalsLinkTab.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { Button, Space, Table, Tag, Typography, message, Tooltip, Popconfirm } from "antd"
-import { PlusOutlined, UnorderedListOutlined, DeleteOutlined, LinkOutlined } from "@ant-design/icons"
+import { PlusOutlined, DeleteOutlined, LinkOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import OriginalsPickerDrawer from "./OriginalsPickerDrawer"
 
@@ -14,21 +14,24 @@ const { Text } = Typography
  * - onChanged?: () => void (опционально, уведомить родителя)
  */
 export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} }) {
-  const [list, setList] = useState([])     // [{ original_part_id, cat_number, description_ru, description_en, manufacturer_name, model_name }]
+  const [list, setList] = useState([])
   const [loading, setLoading] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
 
   const popupContainer = (trigger) =>
-    trigger?.closest(".dock-shell")
-      || trigger?.closest(".parts-table-wrap")
-      || document.body
+    trigger?.closest(".dock-shell") ||
+    trigger?.closest(".parts-table-wrap") ||
+    document.body
 
   const loadLinks = useCallback(async () => {
-    if (!supplierPartId) { setList([]); return }
+    if (!supplierPartId) {
+      setList([])
+      return
+    }
     setLoading(true)
     try {
       const { data } = await axios.get("/supplier-part-originals", {
-        params: { supplier_part_id: supplierPartId }
+        params: { supplier_part_id: supplierPartId },
       })
       setList(Array.isArray(data) ? data : [])
     } catch (e) {
@@ -46,15 +49,15 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
 
   // Уже привязанные original_part_id — исключаем в пикере
   const excludeIds = useMemo(
-    () => list.map(x => Number(x.original_part_id)).filter(Boolean),
+    () => list.map((x) => Number(x.original_part_id)).filter(Boolean),
     [list]
   )
 
   const addLinks = async (pickedRows) => {
     if (!supplierPartId) return
     const toAdd = pickedRows
-      .map(r => Number(r.id))
-      .filter(id => id && !excludeIds.includes(id))
+      .map((r) => Number(r.id))
+      .filter((id) => id && !excludeIds.includes(id))
 
     if (!toAdd.length) {
       message.info("Нечего добавлять")
@@ -67,7 +70,7 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
       try {
         await axios.post("/supplier-part-originals", {
           supplier_part_id: supplierPartId,
-          original_part_id: originalId
+          original_part_id: originalId,
         })
         added++
       } catch (e) {
@@ -94,10 +97,12 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
   const unlink = async (original_part_id) => {
     try {
       await axios.delete("/supplier-part-originals", {
-        data: { supplier_part_id: supplierPartId, original_part_id }
+        data: { supplier_part_id: supplierPartId, original_part_id },
       })
       message.success("Привязка удалена")
-      setList(prev => prev.filter(x => Number(x.original_part_id) !== Number(original_part_id)))
+      setList((prev) =>
+        prev.filter((x) => Number(x.original_part_id) !== Number(original_part_id))
+      )
       onChanged()
     } catch (e) {
       console.error(e)
@@ -105,37 +110,60 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
     }
   }
 
+  const openOriginal = (original_part_id) => {
+    const url = `/original-parts?focus=${encodeURIComponent(original_part_id)}`
+    window.open(url, "_blank")
+  }
+
   const columns = [
     {
-      title: "Оригинальная деталь",
-      key: "cat",
+      title: "Каталожный номер",
+      dataIndex: "cat_number",
+      width: 140,
+      render: (v) => <Text strong>{v}</Text>,
+    },
+    {
+      title: "Название / описание",
+      key: "desc",
       render: (_, r) => (
         <Space direction="vertical" size={2}>
-          <Space size={6} wrap>
-            <Text strong>{r.cat_number}</Text>
-            {r.description_ru && <Tag>{r.description_ru}</Tag>}
-          </Space>
-          <Text type="secondary">{r.description_en || ""}</Text>
+          {r.description_ru && <Text>{r.description_ru}</Text>}
+          {r.description_en && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {r.description_en}
+            </Text>
+          )}
         </Space>
-      )
+      ),
     },
     {
       title: "Оборудование",
       key: "meta",
-      width: 280,
+      width: 260,
       render: (_, r) => (
         <Space size={6} wrap>
           <Tag color="geekblue">{r.manufacturer_name || "—"}</Tag>
           <Tag>{r.model_name || "—"}</Tag>
         </Space>
-      )
+      ),
     },
     {
       title: "Действия",
       key: "actions",
-      width: 120,
+      width: 140,
       render: (_, r) => (
         <Space>
+          <Tooltip
+            title="Открыть оригинал в новой вкладке"
+            getPopupContainer={popupContainer}
+          >
+            <Button
+              size="small"
+              icon={<LinkOutlined />}
+              onClick={() => openOriginal(r.original_part_id)}
+            />
+          </Tooltip>
+
           <Popconfirm
             title="Удалить привязку?"
             okType="danger"
@@ -149,22 +177,25 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
             </Tooltip>
           </Popconfirm>
         </Space>
-      )
-    }
+      ),
+    },
   ]
 
   return (
     <>
       <Space style={{ width: "100%", marginBottom: 8 }} wrap>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setPickerOpen(true)}>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => setPickerOpen(true)}
+        >
           Добавить привязку
         </Button>
-        <Button icon={<UnorderedListOutlined />} onClick={loadLinks}>
-          Обновить
-        </Button>
-        <Tag icon={<LinkOutlined />} color="blue">
+
+        <Tag color="blue">
           Привязок: {list.length}
         </Tag>
+
         <Text type="secondary">
           Можно привязывать несколько разных оригиналов (разные производители/модели).
         </Text>

@@ -1,4 +1,3 @@
-// src/components/roles/RolePermissionsMatrix.jsx
 import React, { useEffect, useState } from "react"
 import { Table, Checkbox, Button, Input, Space, message } from "antd"
 import { PlusOutlined } from "@ant-design/icons"
@@ -6,7 +5,7 @@ import axios from "@/api/axiosInstance"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 
-export default function RolePermissionsMatrix() {
+export default function RolePermissionsMatrix({ onRolesChanged }) {
   const [roles, setRoles] = useState([])
   const [tabs, setTabs] = useState([])
   const [permissions, setPermissions] = useState({})
@@ -63,15 +62,18 @@ export default function RolePermissionsMatrix() {
   }
 
   const handleAddRole = async () => {
-    if (!newRole.trim()) return
+    const value = newRole.trim()
+    if (!value) return
+
     try {
-      await axios.post("/roles", { role: newRole.trim() })
+      await axios.post("/roles", { name: value })
       setNewRole("")
       await fetchData()
+      onRolesChanged && onRolesChanged()
       message.success("Роль добавлена")
     } catch (err) {
-      message.error("Не удалось добавить роль")
       console.error("Ошибка добавления роли:", err)
+      message.error(err.response?.data?.message || "Не удалось добавить роль")
     }
   }
 
@@ -88,12 +90,13 @@ export default function RolePermissionsMatrix() {
         return message.warning(`Роль используется у пользователей: ${names}`)
       }
 
-      await axios.delete(`/roles/${role.slug}`)
+      await axios.delete(`/roles/${role.id}`)
       await fetchData()
+      onRolesChanged && onRolesChanged()
       message.success("Роль удалена")
     } catch (err) {
-      message.error("Не удалось удалить роль")
       console.error("Ошибка удаления роли:", err)
+      message.error(err.response?.data?.message || "Не удалось удалить роль")
     }
   }
 
@@ -137,7 +140,11 @@ export default function RolePermissionsMatrix() {
           onChange={(e) => setNewRole(e.target.value)}
           onPressEnter={handleAddRole}
         />
-        <Button icon={<PlusOutlined />} type="primary" onClick={handleAddRole}>
+        <Button
+          icon={<PlusOutlined />}
+          type="primary"
+          onClick={handleAddRole}
+        >
           Добавить
         </Button>
       </Space>

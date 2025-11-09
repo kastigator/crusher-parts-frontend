@@ -1,13 +1,12 @@
-// src/components/users/UsersTable.jsx
 import React, { useEffect, useState } from "react"
-import { Table, Input, Button, Space, Modal, message } from "antd"
+import { Table, Input, Button, Modal, message } from "antd"
 import { PlusOutlined, UserOutlined, KeyOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import ActionButtons from "@/components/common/ActionButtons"
 
-export default function UsersTable() {
+export default function UsersTable({ rolesRevision = 0 }) {
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(false)
@@ -28,11 +27,11 @@ export default function UsersTable() {
 
   // модалка выбора роли
   const [roleModalOpen, setRoleModalOpen] = useState(false)
-  const [roleTarget, setRoleTarget] = useState(null)
+  const [roleTarget, setRoleTarget] = useState(null) // "new" или id пользователя
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [rolesRevision])
 
   const fetchData = async () => {
     setLoading(true)
@@ -89,20 +88,40 @@ export default function UsersTable() {
 
   const handleSave = async (id) => {
     try {
-      const payload = {
-        ...formState[id],
-        role_slug: roles.find(r => r.id === formState[id]?.role_id)?.slug
+      const user = users.find(u => u.id === id)
+      if (!user) {
+        message.error("Пользователь не найден")
+        return
       }
-      delete payload.password // пароль не меняем при обычном редактировании
+
+      const changes = formState[id] || {}
+
+      // собираем полный объект: базовый пользователь + изменения
+      const merged = {
+        username: changes.username ?? user.username,
+        full_name: changes.full_name ?? user.full_name,
+        email: changes.email ?? user.email,
+        phone: changes.phone ?? user.phone,
+        role_id: changes.role_id ?? user.role_id
+      }
+
+      const role = roles.find(r => r.id === merged.role_id)
+
+      const payload = {
+        ...merged,
+        // backend, судя по POST /users, понимает role_slug
+        role_slug: role?.slug
+      }
 
       await axios.put(`/users/${id}`, payload)
+
       setEditingId(null)
       setFormState(prev => ({ ...prev, [id]: {} }))
       fetchData()
       message.success("Изменения сохранены")
     } catch (err) {
+      console.error("Ошибка при сохранении:", err)
       message.error("Ошибка при сохранении")
-      console.error(err)
     }
   }
 
@@ -130,16 +149,24 @@ export default function UsersTable() {
     }
   }
 
-  // ===== Выбор роли =====
+  // ===== Выбор роли (через модалку) =====
   const openRoleModal = (targetId) => {
     setRoleTarget(targetId)
+
+    // существующий пользователь — сразу включаем режим редактирования
+    if (targetId !== "new") {
+      setEditingId(targetId)
+    }
+
     setRoleModalOpen(true)
   }
 
   const selectRole = (roleId) => {
     if (roleTarget === "new") {
+      // новая строка — просто записываем роль в newUser
       setNewUser(prev => ({ ...prev, role_id: roleId }))
     } else {
+      // существующий пользователь — меняем role_id в formState
       handleEdit(roleTarget, "role_id", roleId)
     }
     setRoleModalOpen(false)
@@ -152,48 +179,122 @@ export default function UsersTable() {
       dataIndex: "username",
       render: (text, record) =>
         record.id === "__new__"
-          ? <Input value={newUser.username} onChange={e => setNewUser({ ...newUser, username: e.target.value })} />
+          ? (
+              <Input
+                value={newUser.username}
+                onChange={e => setNewUser({ ...newUser, username: e.target.value })}
+              />
+            )
           : editingId === record.id
-            ? <Input value={formState[record.id]?.username ?? text} onChange={e => handleEdit(record.id, "username", e.target.value)} />
-            : <ValueDisplay value={text} onDoubleClick={() => setEditingId(record.id)} />
+            ? (
+                <Input
+                  value={formState[record.id]?.username ?? text}
+                  onChange={e => handleEdit(record.id, "username", e.target.value)}
+                />
+              )
+            : (
+                <ValueDisplay
+                  value={text}
+                  onDoubleClick={() => setEditingId(record.id)}
+                />
+              )
     },
     {
       title: "Имя",
       dataIndex: "full_name",
       render: (text, record) =>
         record.id === "__new__"
-          ? <Input value={newUser.full_name} onChange={e => setNewUser({ ...newUser, full_name: e.target.value })} />
+          ? (
+              <Input
+                value={newUser.full_name}
+                onChange={e => setNewUser({ ...newUser, full_name: e.target.value })}
+              />
+            )
           : editingId === record.id
-            ? <Input value={formState[record.id]?.full_name ?? text} onChange={e => handleEdit(record.id, "full_name", e.target.value)} />
-            : <ValueDisplay value={text} onDoubleClick={() => setEditingId(record.id)} />
+            ? (
+                <Input
+                  value={formState[record.id]?.full_name ?? text}
+                  onChange={e => handleEdit(record.id, "full_name", e.target.value)}
+                />
+              )
+            : (
+                <ValueDisplay
+                  value={text}
+                  onDoubleClick={() => setEditingId(record.id)}
+                />
+              )
     },
     {
       title: "Email",
       dataIndex: "email",
       render: (text, record) =>
         record.id === "__new__"
-          ? <Input value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} />
+          ? (
+              <Input
+                value={newUser.email}
+                onChange={e => setNewUser({ ...newUser, email: e.target.value })}
+              />
+            )
           : editingId === record.id
-            ? <Input value={formState[record.id]?.email ?? text} onChange={e => handleEdit(record.id, "email", e.target.value)} />
-            : <ValueDisplay value={text} type="email" onDoubleClick={() => setEditingId(record.id)} />
+            ? (
+                <Input
+                  value={formState[record.id]?.email ?? text}
+                  onChange={e => handleEdit(record.id, "email", e.target.value)}
+                />
+              )
+            : (
+                <ValueDisplay
+                  value={text}
+                  type="email"
+                  onDoubleClick={() => setEditingId(record.id)}
+                />
+              )
     },
     {
       title: "Телефон",
       dataIndex: "phone",
       render: (text, record) =>
         record.id === "__new__"
-          ? <Input value={newUser.phone} onChange={e => setNewUser({ ...newUser, phone: e.target.value })} />
+          ? (
+              <Input
+                value={newUser.phone}
+                onChange={e => setNewUser({ ...newUser, phone: e.target.value })}
+              />
+            )
           : editingId === record.id
-            ? <Input value={formState[record.id]?.phone ?? text} onChange={e => handleEdit(record.id, "phone", e.target.value)} />
-            : <ValueDisplay value={text} type="phone" onDoubleClick={() => setEditingId(record.id)} />
+            ? (
+                <Input
+                  value={formState[record.id]?.phone ?? text}
+                  onChange={e => handleEdit(record.id, "phone", e.target.value)}
+                />
+              )
+            : (
+                <ValueDisplay
+                  value={text}
+                  type="phone"
+                  onDoubleClick={() => setEditingId(record.id)}
+                />
+              )
     },
     {
       title: "Пароль",
       dataIndex: "password",
       render: (_, record) =>
         record.id === "__new__"
-          ? <Input.Password value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} />
-          : <Button icon={<KeyOutlined />} onClick={() => handlePasswordReset(record.id)}>Сбросить</Button>
+          ? (
+              <Input.Password
+                value={newUser.password}
+                onChange={e => setNewUser({ ...newUser, password: e.target.value })}
+              />
+            )
+          : (
+              <Button
+                icon={<KeyOutlined />}
+                onClick={() => handlePasswordReset(record.id)}
+              >
+                Сбросить
+              </Button>
+            )
     },
     {
       title: "Роль",
@@ -201,7 +302,12 @@ export default function UsersTable() {
       render: (value, record) => {
         const roleName = roles.find(r => r.id === value)?.name || "Выбрать"
         return (
-          <Button icon={<UserOutlined />} onClick={() => openRoleModal(record.id === "__new__" ? "new" : record.id)}>
+          <Button
+            icon={<UserOutlined />}
+            onClick={() =>
+              openRoleModal(record.id === "__new__" ? "new" : record.id)
+            }
+          >
             {roleName}
           </Button>
         )
@@ -212,7 +318,15 @@ export default function UsersTable() {
       key: "actions",
       render: (_, record) => {
         if (record.id === "__new__") {
-          return <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>Создать</Button>
+          return (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleCreate}
+            >
+              Создать
+            </Button>
+          )
         }
         const editing = editingId === record.id
         return (
@@ -227,7 +341,6 @@ export default function UsersTable() {
     }
   ]
 
-  // добавляем пустую строку для создания нового пользователя
   const dataWithNew = [{ ...newUser, id: "__new__" }, ...users]
 
   return (

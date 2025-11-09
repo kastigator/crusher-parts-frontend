@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { Card, Row, Col, Space, Button, Tag, message, Input, Form } from "antd";
 import { TeamOutlined, ReloadOutlined, ImportOutlined, PlusOutlined } from "@ant-design/icons";
-import { useSearchParams } from "react-router-dom";          // ✅ добавлено
+import { useSearchParams } from "react-router-dom";
 import TableToolbar from "@/components/common/TableToolbar";
 import SupplierPickerDrawer from "./SupplierPickerDrawer";
 import SupplierPartsTable from "./SupplierPartsTable";
@@ -26,9 +26,10 @@ export default function SupplierPartsMain() {
   // выбранная деталь для нижнего дока
   const [selectedPart, setSelectedPart] = useState(null);
 
-  // ✅ deep-link ?focus=<supplier_part_id>
+  // ✅ deep-link параметры
   const [params] = useSearchParams();
-  const focusId = params.get("focus");
+  const focusId = params.get("focus");           // supplier_part_id для авто-открытия
+  const supplierIdParam = params.get("supplierId"); // выбрать поставщика без фокуса
 
   // при смене поставщика — сбрасываем выбор и поиск
   useEffect(() => {
@@ -94,35 +95,61 @@ export default function SupplierPartsMain() {
     }
   };
 
-  // ✅ эффект глубокого перехода ?focus=ID
+  // ✅ Инициализация только по supplierId (когда нет focus)
+  useEffect(() => {
+    const initSupplierOnly = async () => {
+      const sid = supplierIdParam && Number(supplierIdParam);
+      if (!sid || focusId) return; // если есть focus — им займётся другой эффект
+      try {
+        // Нужен эндпоинт: GET /part-suppliers/:id
+        const { data } = await axios.get(`/part-suppliers/${sid}`);
+        if (!data) return;
+        setSupplier({
+          id: data.id,
+          company: data.company || data.name || `#${data.id}`,
+          country: data.country || null,
+          phone: data.phone || null,
+          email: data.email || null,
+        });
+        setVersion((v) => v + 1);
+      } catch (e) {
+        console.error("supplierId init failed", e);
+      }
+    };
+    initSupplierOnly();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supplierIdParam, focusId]);
+
+  // ✅ Инициализация по focus=ID (открыть конкретную деталь)
   useEffect(() => {
     const initFromFocus = async () => {
       const id = focusId && Number(focusId);
       if (!id) return;
       try {
-        // Желательно иметь этот эндпоинт:
-        //   GET /supplier-parts/:id -> { id, supplier_id, supplier_name, ... }
+        // Нужен эндпоинт: GET /supplier-parts/:id
         const { data } = await axios.get(`/supplier-parts/${id}`);
         if (!data) return;
 
-        // 1) выставляем поставщика (минимальный набор полей)
+        // 1) выставляем поставщика детали
         setSupplier({
           id: data.supplier_id,
           company: data.supplier_name || data.company || data.name || `#${data.supplier_id}`,
+          country: data.supplier_country || null,
+          phone: data.supplier_phone || null,
+          email: data.supplier_email || null,
         });
 
-        // 2) заставим таблицу перечитать строки выбранного поставщика
+        // 2) перечитываем список
         setVersion((v) => v + 1);
 
-        // 3) выделим нужную деталь внизу
+        // 3) выделяем деталь
         setSelectedPart({ id: data.id, ...data });
 
-        // 4) мягко прокрутим к строке, когда она появится в DOM
-        // дадим таблице один кадр на ререндер
-        requestAnimationFrame(() => {
+        // 4) мягкий скролл к строке после рендера таблицы
+        setTimeout(() => {
           const row = document.querySelector(`[data-row-key="${id}"]`);
           if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
-        });
+        }, 150);
       } catch (e) {
         console.error("focus open failed", e);
       }

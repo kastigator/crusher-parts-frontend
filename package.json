@@ -53,7 +53,7 @@
     "react-router-dom": "^7.6.3",
     "react-window": "^1.8.11",
     "read-excel-file": "^5.8.8",
-    "recharts": "^3.1.2",
+    "recharts": "^3.3.0",
     "sweetalert2": "^11.22.2",
     "sweetalert2-react-content": "^5.1.0",
     "transliteration": "^2.3.5"

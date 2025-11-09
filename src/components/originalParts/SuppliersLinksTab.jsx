@@ -3,7 +3,8 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Empty, Space, Table, Tooltip, Typography, Tag, Button } from "antd"
 import { ArrowUpOutlined, ArrowDownOutlined, LinkOutlined, DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
-import confirmAction from "@/utils/confirmAction"             // ✅ правильный импорт
+import confirmAction from "@/utils/confirmAction"
+
 const { Text } = Typography
 
 /**
@@ -14,7 +15,7 @@ export default function SuppliersLinksTab({ originalPartId }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
-  // «Комплект (сборный)» – просто просмотр вариантов по ролям
+  // «Комплект (сборный)» – только DEFАULT-варианты по ролям (read-only)
   const [bundleOptions, setBundleOptions] = useState([])
   const [bundleLoading, setBundleLoading] = useState(false)
 
@@ -22,22 +23,43 @@ export default function SuppliersLinksTab({ originalPartId }) {
   const [sortKey, setSortKey]   = useState(null)     // "price" | "date"
   const [sortDesc, setSortDesc] = useState(false)
 
-  // -------- data --------
-  const load = async () => {
+  // -------- data: DIRECT offers через /original-parts/:id/options --------
+  const loadDirectOffers = async () => {
     if (!originalPartId) return
     try {
       setLoading(true)
-      const { data } = await axios.get("/original-parts/suppliers", { params: { original_part_id: originalPartId } })
-      setRows(Array.isArray(data) ? data : [])
+      const { data } = await axios.get(`/original-parts/${originalPartId}/options`, { params: { qty: 1 } })
+      const direct = Array.isArray(data?.options)
+        ? data.options.filter(o => o?.type === "DIRECT")
+        : []
+
+      // расплющим: каждая опция содержит items[0]
+      const flat = []
+      for (const opt of direct) {
+        for (const it of opt.items || []) {
+          flat.push({
+            supplier_part_id: it.supplier_part_id,
+            supplier_id: it.supplier_id,
+            supplier_name: it.supplier_name || "—",
+            supplier_part_number: it.supplier_part_number || null,
+            description: it.description || null,
+            last_price: it.latest_price ?? null,
+            last_currency: it.latest_currency ?? null,
+            last_price_date: it.latest_price_date ?? null,
+          })
+        }
+      }
+      setRows(flat)
     } catch (e) {
       console.error(e)
+      setRows([])
     } finally {
       setLoading(false)
     }
   }
 
-  // подпанель «Комплект (сборный)» (read-only)
-  const loadBundle = async () => {
+  // -------- data: BUNDLE defaults через /supplier-bundles/:id/options --------
+  const loadBundleDefaults = async () => {
     if (!originalPartId) { setBundleOptions([]); return }
     try {
       setBundleLoading(true)
@@ -45,7 +67,9 @@ export default function SuppliersLinksTab({ originalPartId }) {
       if (Array.isArray(bundles) && bundles.length) {
         const bundleId = bundles[0].id
         const { data: opts } = await axios.get(`/supplier-bundles/${bundleId}/options`)
-        setBundleOptions(Array.isArray(opts) ? opts : [])
+        // оставляем ТОЛЬКО дефолтные варианты
+        const onlyDefaults = (Array.isArray(opts) ? opts : []).filter(o => o.is_default)
+        setBundleOptions(onlyDefaults)
       } else {
         setBundleOptions([])
       }
@@ -57,15 +81,15 @@ export default function SuppliersLinksTab({ originalPartId }) {
     }
   }
 
-  useEffect(() => { load(); loadBundle() }, [originalPartId])
+  useEffect(() => { loadDirectOffers(); loadBundleDefaults() }, [originalPartId])
 
   // ✅ авто-рефреш из вкладки «Комплект (сборный)»
   useEffect(() => {
     const onRefresh = (ev) => {
       const id = ev?.detail?.original_part_id
       if (!id || id === originalPartId) {
-        load()
-        loadBundle()
+        loadDirectOffers()
+        loadBundleDefaults()
       }
     }
     window.addEventListener("supplier-links:refresh", onRefresh)
@@ -77,18 +101,19 @@ export default function SuppliersLinksTab({ originalPartId }) {
     const { confirmed } = await confirmAction("Удалить связь с поставщиком?")
     if (!confirmed) return
     try {
-      await axios.delete("/original-parts/suppliers", {
+      // связь OP↔SP живёт в supplier_part_originals
+      await axios.delete("/supplier-part-originals", {
         data: { original_part_id: originalPartId, supplier_part_id: supplierPartId }
       })
-      await load()
+      await loadDirectOffers()
     } catch (e) {
       console.error(e)
     }
   }
 
-  // deep-link в «Детали поставщиков» (см. правку SupplierPartsMain ниже)
-  const openSupplierPart = (supplierPartId) => {
-    const url = `/supplier-parts?focus=${encodeURIComponent(supplierPartId)}`
+  // deep-link в «Детали поставщиков»: передаём supplierId и focus
+  const openSupplierPart = (supplierPartId, supplierId) => {
+    const url = `/supplier-parts?supplierId=${encodeURIComponent(String(supplierId || ""))}&focus=${encodeURIComponent(String(supplierPartId))}`
     window.open(url, "_blank")
   }
 
@@ -96,7 +121,8 @@ export default function SuppliersLinksTab({ originalPartId }) {
   const sortedRows = useMemo(() => {
     const list = [...rows]
     if (sortKey === "price") {
-      list.sort((a, b) => Number(a.last_price ?? Infinity) - Number(b.last_price ?? Infinity))
+      const num = v => (v == null ? Number.POSITIVE_INFINITY : Number(v))
+      list.sort((a, b) => num(a.last_price) - num(b.last_price))
     } else if (sortKey === "date") {
       const t = (d) => d ? new Date(d).getTime() : 0
       list.sort((a, b) => t(a.last_price_date) - t(b.last_price_date))
@@ -174,7 +200,7 @@ export default function SuppliersLinksTab({ originalPartId }) {
             <Button
               size="small"
               icon={<LinkOutlined />}
-              onClick={() => openSupplierPart(r.supplier_part_id)}
+              onClick={() => openSupplierPart(r.supplier_part_id, r.supplier_id)}
             />
           </Tooltip>
           <Tooltip title="Удалить связь">
@@ -190,7 +216,7 @@ export default function SuppliersLinksTab({ originalPartId }) {
     }
   ]
 
-  // сгруппировать bundleOptions по роли — просто для просмотра
+  // сгруппировать bundleOptions по роли — только дефолт
   const bundleByRole = useMemo(() => {
     const map = new Map()
     for (const o of bundleOptions) {
@@ -198,15 +224,16 @@ export default function SuppliersLinksTab({ originalPartId }) {
       if (!map.has(key)) map.set(key, [])
       map.get(key).push(o)
     }
+    // порядок внутри роли — по link_id (стабильный)
     for (const [k, arr] of map.entries()) {
-      arr.sort((a, b) => (a.link_id ?? 0) - (b.link_id ?? 0))
-      map.set(k, arr)
+      map.set(k, [...arr].sort((a, b) => (a.link_id ?? 0) - (b.link_id ?? 0)))
     }
     return map
   }, [bundleOptions])
 
   return (
     <div>
+      {/* Прямые аналоги */}
       <Table
         rowKey={(r) => `${r.supplier_part_id}`}
         className="op-table"
@@ -218,16 +245,16 @@ export default function SuppliersLinksTab({ originalPartId }) {
         locale={{ emptyText: <Empty description="Нет связанных поставщиков" /> }}
       />
 
-      {/* Комплект (сборный) — информативная панель */}
+      {/* Комплект (сборный) — информативная панель (только default) */}
       <div style={{ marginTop: 16 }}>
         <Text type="secondary">
-          Комплект (сборный): варианты по ролям
+          Комплект (сборный): выбранные по умолчанию варианты по ролям
         </Text>
         <div style={{ marginTop: 8 }}>
           {bundleLoading ? (
             <div style={{ padding: 12 }}>Загрузка…</div>
           ) : bundleOptions.length === 0 ? (
-            <div style={{ padding: 12 }}><Empty description="Нет вариантов комплекта для этой детали" /></div>
+            <div style={{ padding: 12 }}><Empty description="Нет дефолтных вариантов для этой детали" /></div>
           ) : (
             [...bundleByRole.entries()].map(([role, arr]) => (
               <div key={role} style={{ padding: "8px 12px", border: "1px solid #f0f0f0", borderRadius: 8, marginBottom: 8 }}>

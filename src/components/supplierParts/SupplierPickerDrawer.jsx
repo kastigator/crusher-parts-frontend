@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
-import { Drawer, Table, Button, Input, Space, Tooltip, Empty, message } from "antd"
-import axios from "@/api/axiosInstance"
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { Drawer, Table, Button, Input, Space, Tooltip, Empty, message } from "antd";
+import axios from "@/api/axiosInstance";
+
+const { Search } = Input;
 
 export default function SupplierPickerDrawer({
   open,
@@ -8,90 +10,115 @@ export default function SupplierPickerDrawer({
   onPick,
   initialSupplierId = null,
 }) {
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [selectedId, setSelectedId] = useState(initialSupplierId)
-  const [search, setSearch] = useState("")
-  const abortRef = useRef(null)
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedId, setSelectedId] = useState(initialSupplierId);
+  const [search, setSearch] = useState("");
+  const abortRef = useRef(null);
 
   // синхронизируем selectedId с пропом
   useEffect(() => {
-    setSelectedId(initialSupplierId ?? null)
-  }, [initialSupplierId])
+    setSelectedId(initialSupplierId ?? null);
+  }, [initialSupplierId]);
 
   const cancelIfRunning = () => {
-    try { abortRef.current?.abort?.() } catch {}
-    abortRef.current = null
-  }
+    try {
+      abortRef.current?.abort?.();
+    } catch {}
+    abortRef.current = null;
+  };
 
   const load = useCallback(async () => {
-    cancelIfRunning()
-    const controller = new AbortController()
-    abortRef.current = controller
-    setLoading(true)
+    cancelIfRunning();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLoading(true);
     try {
-      const params = {}
-      if (search?.trim()) params.q = search.trim()
-      const { data } = await axios.get("/part-suppliers", { params, signal: controller.signal })
-      const list = Array.isArray(data) ? data : []
-      setRows(list)
+      const params = {};
+      if (search?.trim()) params.q = search.trim();
+      const { data } = await axios.get("/part-suppliers", {
+        params,
+        signal: controller.signal,
+      });
+      const list = Array.isArray(data) ? data : [];
+      setRows(list);
 
-      // если выбранный поставщик всё еще в выдаче — не сбрасываем выбор
+      // если выбранный поставщик всё ещё в выдаче — не сбрасываем выбор
       if (selectedId) {
-        const stillThere = list.some(r => r.id === selectedId)
-        if (!stillThere) setSelectedId(null)
+        const stillThere = list.some((r) => r.id === selectedId);
+        if (!stillThere) setSelectedId(null);
       }
     } catch (e) {
-      const name = e?.name || e?.code
+      const name = e?.name || e?.code;
       if (name !== "AbortError" && name !== "ERR_CANCELED") {
-        console.error(e)
-        message.error("Не удалось загрузить поставщиков")
+        console.error(e);
+        message.error("Не удалось загрузить поставщиков");
       }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [search, selectedId])
+  }, [search, selectedId]);
 
   // грузим список при открытии и при изменении поисковой строки
   useEffect(() => {
-    if (!open) return
-    const t = setTimeout(load, 300)
-    return () => { clearTimeout(t); cancelIfRunning() }
-  }, [open, load])
+    if (!open) return;
+    const t = setTimeout(load, 300);
+    return () => {
+      clearTimeout(t);
+      cancelIfRunning();
+    };
+  }, [open, load]);
 
-  const columns = useMemo(() => [
-    {
-      title: "Компания",
-      dataIndex: "name",
-      render: (text) => (
-        <Tooltip title={text}>
-          <span className="cell-ellipsis" style={{ display: "inline-block", maxWidth: 380 }}>
-            {text}
-          </span>
-        </Tooltip>
-      ),
-    },
-    { title: "Страна", dataIndex: "country", width: 80 },
-    {
-      title: "Контакт",
-      dataIndex: "contact_person",
-      render: (v) => v || "—",
-      width: 180,
-      ellipsis: true,
-    },
-    { title: "Телефон", dataIndex: "phone", render: (v) => v || "—", width: 150 },
-    { title: "Email", dataIndex: "email", render: (v) => v || "—", width: 220, ellipsis: true },
-  ], [])
+  const columns = useMemo(
+    () => [
+      {
+        title: "Компания",
+        dataIndex: "name",
+        render: (text) => (
+          <Tooltip title={text}>
+            <span
+              className="cell-ellipsis"
+              style={{ display: "inline-block", maxWidth: 380 }}
+            >
+              {text}
+            </span>
+          </Tooltip>
+        ),
+      },
+      { title: "Страна", dataIndex: "country", width: 80 },
+      {
+        title: "Контакт",
+        dataIndex: "contact_person",
+        render: (v) => v || "—",
+        width: 180,
+        ellipsis: true,
+      },
+      {
+        title: "Телефон",
+        dataIndex: "phone",
+        render: (v) => v || "—",
+        width: 150,
+      },
+      {
+        title: "Email",
+        dataIndex: "email",
+        render: (v) => v || "—",
+        width: 220,
+        ellipsis: true,
+      },
+    ],
+    []
+  );
 
   const pickSelected = () => {
-    const picked = rows.find(r => r.id === selectedId)
-    if (picked) onPick?.(picked)
-  }
+    const picked = rows.find((r) => r.id === selectedId);
+    if (picked) onPick?.(picked);
+  };
 
   const handleClose = () => {
-    cancelIfRunning()
-    onClose?.()
-  }
+    cancelIfRunning();
+    onClose?.();
+  };
 
   return (
     <Drawer
@@ -109,16 +136,16 @@ export default function SupplierPickerDrawer({
       }
       footer={null}
     >
-      <Space style={{ width: "100%", marginBottom: 12 }}>
-        <Input
+      {/* Поле поиска без отдельной кнопки "Обновить" */}
+      <div style={{ marginBottom: 12 }}>
+        <Search
           allowClear
           placeholder="Найти поставщика по названию…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          onPressEnter={load}
+          onSearch={load} // Enter или иконка запускают запрос сразу
         />
-        <Button onClick={load}>Обновить</Button>
-      </Space>
+      </div>
 
       <Table
         rowKey="id"
@@ -134,9 +161,12 @@ export default function SupplierPickerDrawer({
         }}
         onRow={(record) => ({
           onClick: () => setSelectedId(record.id),
-          onDoubleClick: () => { setSelectedId(record.id); pickSelected() },
+          onDoubleClick: () => {
+            setSelectedId(record.id);
+            pickSelected();
+          },
         })}
       />
     </Drawer>
-  )
+  );
 }
