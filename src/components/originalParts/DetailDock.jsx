@@ -1,4 +1,3 @@
-// src/components/originalParts/DetailDock.jsx
 import React, { useMemo } from "react"
 import { Card, Tabs, Empty, Tag, Space, Typography } from "antd"
 
@@ -8,22 +7,16 @@ import UsedInTable from "./UsedInTable"
 import AltOriginalsTable from "./AltOriginalsTable"
 import SuppliersLinksTab from "./SuppliersLinksTab"
 import BundleTab from "./bundle/BundleTab"
-import OriginalPartDocumentsTab from "./OriginalPartDocumentsTab" // 🔹 новая вкладка
+import OriginalPartDocumentsTab from "./OriginalPartDocumentsTab"
 
 const { Text } = Typography
 
-/**
- * Нижняя панель с детализацией по выбранной оригинальной детали.
- *
- * Пропсы:
- * - part: объект оригинальной детали (обязательно)
- * - modelId, manufacturerName, modelName — опционально (если вдруг понадобятся в будущем)
- */
 export default function DetailDock({
   part,
-  modelId,            // сейчас не используем, но оставляем для совместимости
-  manufacturerName,   // тоже опционально
+  modelId,
+  manufacturerName,
   modelName,
+  onPartsChanged,          // 🔹 новый проп – обновить список деталей
 }) {
   const partId = part?.id || null
 
@@ -41,7 +34,6 @@ export default function DetailDock({
 
         {part?.description_en ? <Tag>{part.description_en}</Tag> : null}
 
-        {/* Можно дополнительно показывать производителя/модель, если переданы */}
         {manufacturerName ? (
           <Tag color="geekblue">Производитель: {manufacturerName}</Tag>
         ) : null}
@@ -94,11 +86,15 @@ export default function DetailDock({
             label: "Комплекты поставщика",
             children: <BundleTab originalPartId={partId} />,
           },
-          // 🔹 НОВАЯ ВКЛАДКА: Документы / чертежи
           {
             key: "documents",
             label: "Документы",
-            children: <OriginalPartDocumentsTab partId={partId} />,
+            children: (
+              <OriginalPartDocumentsTab
+                partId={partId}
+                onChanged={onPartsChanged}
+              />
+            ),
           },
         ]}
       />

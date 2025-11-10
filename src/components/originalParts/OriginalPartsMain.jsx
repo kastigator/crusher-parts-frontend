@@ -54,20 +54,21 @@ export default function OriginalPartsMain() {
 
   const partsAbortRef = useRef(null)
 
-  // 🔹 список групп оригинальных деталей
+  // группы
   const [groups, setGroups] = useState([])
   const [groupsLoading, setGroupsLoading] = useState(false)
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
 
-  // deep-link ?focus=<original_part_id>
+  // фильтр по группе
+  const [groupFilter, setGroupFilter] = useState(null)
+
+  // deep-link ?focus=<id>
   const [params] = useSearchParams()
   const focusParam = params.get("focus")
   const focusId = focusParam ? Number(focusParam) || null : null
   const [pendingFocusId, setPendingFocusId] = useState(null)
 
-  /* -----------------------------------------------------------
-     Загрузка справочника групп оригинальных деталей
-  ----------------------------------------------------------- */
+  /* ---------------------- загрузка групп ---------------------- */
   const loadGroups = useCallback(async () => {
     setGroupsLoading(true)
     try {
@@ -85,9 +86,7 @@ export default function OriginalPartsMain() {
     loadGroups()
   }, [loadGroups])
 
-  /* -----------------------------------------------------------
-     Загрузка списка деталей
-  ----------------------------------------------------------- */
+  /* ---------------------- загрузка деталей --------------------- */
   const fetchParts = useCallback(async () => {
     const modelId = model?.id
     if (!modelId) {
@@ -96,7 +95,6 @@ export default function OriginalPartsMain() {
       return
     }
 
-    // отменяем предыдущий запрос, если ещё идёт
     try {
       partsAbortRef.current?.abort()
     } catch {}
@@ -109,6 +107,7 @@ export default function OriginalPartsMain() {
       if (search?.trim()) params.q = search.trim()
       if (onlyAssemblies) params.only_assemblies = 1
       if (onlyParts) params.only_parts = 1
+      if (groupFilter) params.group_id = groupFilter
 
       const { data } = await axios.get("/original-parts", {
         params,
@@ -116,7 +115,6 @@ export default function OriginalPartsMain() {
       })
       setRows(Array.isArray(data) ? data : [])
     } catch (e) {
-      // игнорируем только отмену
       if (
         e?.name === "AbortError" ||
         e?.name === "CanceledError" ||
@@ -129,9 +127,8 @@ export default function OriginalPartsMain() {
     } finally {
       setLoading(false)
     }
-  }, [model?.id, search, onlyAssemblies, onlyParts])
+  }, [model?.id, search, onlyAssemblies, onlyParts, groupFilter])
 
-  // дебаунс-загрузка при изменении фильтров / модели
   useEffect(() => {
     const t = setTimeout(fetchParts, 300)
     return () => {
@@ -142,9 +139,7 @@ export default function OriginalPartsMain() {
     }
   }, [fetchParts])
 
-  /* -----------------------------------------------------------
-     Синхронизация выбранной детали с обновлённым списком
-  ----------------------------------------------------------- */
+  /* ------------- синхронизация выбранной детали --------------- */
   useEffect(() => {
     if (!selectedPart) return
     const fresh = rows.find((r) => r.id === selectedPart.id)
@@ -155,9 +150,7 @@ export default function OriginalPartsMain() {
     }
   }, [rows, selectedPart])
 
-  /* -----------------------------------------------------------
-     Обработка pendingFocusId после загрузки rows
-  ----------------------------------------------------------- */
+  /* ------------- обработка pendingFocusId ---------------------- */
   useEffect(() => {
     if (!pendingFocusId) return
     const focusRow = rows.find((r) => r.id === pendingFocusId)
@@ -165,7 +158,6 @@ export default function OriginalPartsMain() {
 
     setSelectedPart(focusRow)
 
-    // мягко прокрутим к строке
     requestAnimationFrame(() => {
       const rowEl = document.querySelector(
         `[data-row-key="${pendingFocusId}"]`,
@@ -177,9 +169,7 @@ export default function OriginalPartsMain() {
     setPendingFocusId(null)
   }, [rows, pendingFocusId])
 
-  /* -----------------------------------------------------------
-     Создание детали
-  ----------------------------------------------------------- */
+  /* ----------------------- создание детали -------------------- */
   const submitAddPart = async (values) => {
     if (!model?.id) {
       message.warning("Сначала выберите производителя и модель")
@@ -195,7 +185,6 @@ export default function OriginalPartsMain() {
         weight_kg: values.weight_kg ?? null,
         tnved_code_id: values.tnved?.id ?? null,
         is_assembly: values.is_assembly ? 1 : 0,
-        // 🔹 новые поля
         group_id: values.group_id ?? null,
         length_cm: values.length_cm ?? null,
         width_cm: values.width_cm ?? null,
@@ -225,15 +214,12 @@ export default function OriginalPartsMain() {
     setPendingFocusId(null)
   }
 
-  // при смене модели сбрасываем выбранную деталь и pending focus
   useEffect(() => {
     setSelectedPart(null)
     setPendingFocusId(null)
   }, [model?.id])
 
-  /* -----------------------------------------------------------
-     deep-link инициализация по ?focus=ID
-  ----------------------------------------------------------- */
+  /* -------------------- deep-link ?focus=ID -------------------- */
   useEffect(() => {
     const id = focusId && Number(focusId)
     if (!id) return
@@ -242,7 +228,6 @@ export default function OriginalPartsMain() {
 
     const initFromFocus = async () => {
       try {
-        // берём расширенную карточку, чтобы знать производителя и модель
         const { data } = await axios.get(`/original-parts/${id}/full`)
         if (cancelled || !data) return
 
@@ -271,9 +256,7 @@ export default function OriginalPartsMain() {
     }
   }, [focusId])
 
-  /* -----------------------------------------------------------
-     Рендер
-  ----------------------------------------------------------- */
+  /* -------------------------- рендер --------------------------- */
   return (
     <Space
       direction="vertical"
@@ -363,22 +346,60 @@ export default function OriginalPartsMain() {
           </Col>
         </Row>
 
-        <TableToolbar
+        {/* Поиск + фильтр по группе в одном компактном блоке слева */}
+        <div
           className="table-section"
-          search={search}
-          onSearch={(val) => {
-            setSearch(val)
-            setSelectedPart(null)
+          style={{
+            marginTop: 12,
+            marginBottom: 16,
+            padding: "8px 12px",
+            background: "#fafafa",
+            borderRadius: 6,
+            border: "1px solid #f0f0f0",
           }}
-          disabled={!model}
-        />
+        >
+          <Space align="center" wrap style={{ width: "100%" }}>
+            <TableToolbar
+              search={search}
+              onSearch={(val) => {
+                setSearch(val)
+                setSelectedPart(null)
+              }}
+              disabled={!model}
+            />
 
+            <Space align="center">
+              <span style={{ whiteSpace: "nowrap", color: "#666" }}>
+                Группа:
+              </span>
+              <Select
+                style={{ width: 200 }}
+                placeholder="Все группы"
+                allowClear
+                loading={groupsLoading}
+                disabled={!model}
+                value={groupFilter ?? undefined}
+                onChange={(val) => {
+                  setGroupFilter(val ?? null)
+                  setSelectedPart(null)
+                }}
+                options={groups.map((g) => ({
+                  value: g.id,
+                  label: g.name,
+                }))}
+              />
+            </Space>
+          </Space>
+        </div>
+
+        {/* Форма добавления детали */}
         <Form
           form={addForm}
           layout="inline"
           onFinish={submitAddPart}
           disabled={!model}
           className="table-section"
+          style={{ marginTop: 8, marginBottom: 8 }}
         >
           <Form.Item
             name="cat_number"
@@ -408,7 +429,6 @@ export default function OriginalPartsMain() {
             <TnvedPicker style={{ width: 240 }} allowClear />
           </Form.Item>
 
-          {/* 🔹 Группа + иконка управления */}
           <Form.Item name="group_id" label="Группа">
             <Select
               style={{ width: 220 }}
@@ -430,7 +450,6 @@ export default function OriginalPartsMain() {
             />
           </Form.Item>
 
-          {/* 🔹 Габариты, см */}
           <Form.Item name="length_cm" label="Дл., см">
             <InputNumber style={{ width: 100 }} min={0} step={0.1} />
           </Form.Item>
@@ -441,7 +460,6 @@ export default function OriginalPartsMain() {
             <InputNumber style={{ width: 100 }} min={0} step={0.1} />
           </Form.Item>
 
-          {/* 🔹 Есть ли КД/чертежи */}
           <Form.Item name="has_drawing" valuePropName="checked">
             <Checkbox>Есть КД</Checkbox>
           </Form.Item>
@@ -481,6 +499,7 @@ export default function OriginalPartsMain() {
           modelId={model?.id || null}
           manufacturerName={manufacturer?.name || null}
           modelName={model?.model_name || null}
+          onPartsChanged={fetchParts}
         />
       </Card>
 
@@ -511,7 +530,10 @@ export default function OriginalPartsMain() {
       <OriginalPartGroupsManager
         open={groupManagerOpen}
         onClose={() => setGroupManagerOpen(false)}
-        onChanged={loadGroups}
+        onChanged={() => {
+          loadGroups()
+          fetchParts()
+        }}
       />
     </Space>
   )
