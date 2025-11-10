@@ -1,7 +1,23 @@
 // src/components/supplierParts/SupplierPartsMain.jsx
 import React, { useMemo, useState, useEffect } from "react";
-import { Card, Row, Col, Space, Button, Tag, message, Input, Form } from "antd";
-import { TeamOutlined, ReloadOutlined, ImportOutlined, PlusOutlined } from "@ant-design/icons";
+import {
+  Card,
+  Row,
+  Col,
+  Space,
+  Button,
+  Tag,
+  message,
+  Input,
+  Form,
+  InputNumber,               // 👈 добавили
+} from "antd";
+import {
+  TeamOutlined,
+  ReloadOutlined,
+  ImportOutlined,
+  PlusOutlined,
+} from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import TableToolbar from "@/components/common/TableToolbar";
 import SupplierPickerDrawer from "./SupplierPickerDrawer";
@@ -28,7 +44,7 @@ export default function SupplierPartsMain() {
 
   // ✅ deep-link параметры
   const [params] = useSearchParams();
-  const focusId = params.get("focus");           // supplier_part_id для авто-открытия
+  const focusId = params.get("focus"); // supplier_part_id для авто-открытия
   const supplierIdParam = params.get("supplierId"); // выбрать поставщика без фокуса
 
   // при смене поставщика — сбрасываем выбор и поиск
@@ -80,6 +96,8 @@ export default function SupplierPartsMain() {
         supplier_id: supplier.id,
         supplier_part_number: v.supplier_part_number,
         description: v.description || null,
+        // 👇 новое поле — срок поставки в днях
+        lead_time_days: v.lead_time_days ?? null,
       });
       message.success("Деталь поставщика создана");
       form.resetFields();
@@ -133,7 +151,8 @@ export default function SupplierPartsMain() {
         // 1) выставляем поставщика детали
         setSupplier({
           id: data.supplier_id,
-          company: data.supplier_name || data.company || data.name || `#${data.supplier_id}`,
+          company:
+            data.supplier_name || data.company || data.name || `#${data.supplier_id}`,
           country: data.supplier_country || null,
           phone: data.supplier_phone || null,
           email: data.supplier_email || null,
@@ -176,7 +195,11 @@ export default function SupplierPartsMain() {
             md={12}
             style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
           >
-            <Button icon={<ImportOutlined />} onClick={handleImportClick} disabled={!supplier}>
+            <Button
+              icon={<ImportOutlined />}
+              onClick={handleImportClick}
+              disabled={!supplier}
+            >
               Импорт
             </Button>
           </Col>
@@ -204,7 +227,20 @@ export default function SupplierPartsMain() {
             </Form.Item>
 
             <Form.Item name="description" label="Описание" style={{ flex: 1 }}>
-              <Input placeholder="Короткое описание" style={{ minWidth: 260 }} />
+              <Input
+                placeholder="Короткое описание"
+                style={{ minWidth: 260 }}
+              />
+            </Form.Item>
+
+            {/* 👇 Новое поле: срок поставки в календарных днях */}
+            <Form.Item name="lead_time_days" label="Срок поставки, дней">
+              <InputNumber
+                min={0}
+                max={365}
+                style={{ width: 140 }}
+                placeholder="например, 30"
+              />
             </Form.Item>
 
             <Form.Item>
@@ -233,7 +269,10 @@ export default function SupplierPartsMain() {
       </Card>
 
       {/* Нижняя панель с вкладками по выбранной детали */}
-      <SupplierPartDock part={selectedPart} onChanged={() => setVersion((v) => v + 1)} />
+      <SupplierPartDock
+        part={selectedPart}
+        onChanged={() => setVersion((v) => v + 1)}
+      />
 
       {/* Drawer выбора поставщика */}
       <SupplierPickerDrawer

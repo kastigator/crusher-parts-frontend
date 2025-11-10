@@ -38,7 +38,12 @@ export default function SupplierPartsTable({
   const wrapRef = useRef(null)
 
   const load = useCallback(async () => {
-    if (!supplierId) { setRows([]); setTotal(0); setUsageCounts({}); return }
+    if (!supplierId) {
+      setRows([])
+      setTotal(0)
+      setUsageCounts({})
+      return
+    }
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -53,7 +58,7 @@ export default function SupplierPartsTable({
 
       // Пытаемся подгрузить участие в комплектах (необязательный роут).
       try {
-        const ids = items.map(r => r.id)
+        const ids = items.map((r) => r.id)
         if (ids.length) {
           const { data: usage } = await axios.get("/supplier-bundles/usage", {
             params: { part_ids: ids.join(",") },
@@ -81,10 +86,15 @@ export default function SupplierPartsTable({
 
   useEffect(() => {
     const t = setTimeout(load, 200)
-    return () => { clearTimeout(t); abortRef.current?.abort() }
+    return () => {
+      clearTimeout(t)
+      abortRef.current?.abort()
+    }
   }, [load, version])
 
-  useEffect(() => { setPage(1) }, [supplierId, search])
+  useEffect(() => {
+    setPage(1)
+  }, [supplierId, search])
 
   // ===== редактирование =====
   const isEditingCell = (record, field) =>
@@ -95,14 +105,21 @@ export default function SupplierPartsTable({
     setDraft({ ...record })
   }
 
-  const cancelEdit = () => { setEditing(null); setDraft(null) }
+  const cancelEdit = () => {
+    setEditing(null)
+    setDraft(null)
+  }
 
-  const norm = (v) => (v === "" || v === undefined) ? null : (typeof v === "string" ? v.trim() : v)
+  const norm = (v) =>
+    v === "" || v === undefined ? null : typeof v === "string" ? v.trim() : v
 
   const saveField = async (record, field, rawValue) => {
     const value = norm(rawValue)
     const current = norm(record[field])
-    if (value === current) { cancelEdit(); return }
+    if (value === current) {
+      cancelEdit()
+      return
+    }
 
     try {
       await axios.put(`/supplier-parts/${record.id}`, { [field]: value })
@@ -145,7 +162,8 @@ export default function SupplierPartsTable({
     try {
       await axios.delete(`/supplier-parts/${id}`)
       message.success("Удалено")
-      if (onReload) onReload(); else load()
+      if (onReload) onReload()
+      else load()
     } catch (err) {
       console.error(err)
       message.error("Не удалось удалить деталь")
@@ -153,88 +171,132 @@ export default function SupplierPartsTable({
   }
 
   // ===== колонки =====
-  const columns = useMemo(() => [
-    {
-      title: "Номер у поставщика",
-      dataIndex: "supplier_part_number",
-      width: 220,
-      onCell: (record) => ({ onDoubleClick: () => startEditCell(record, "supplier_part_number") }),
-      render: (_, record) =>
-        isEditingCell(record, "supplier_part_number")
-          ? renderTextInput(record, "supplier_part_number")
-          : <ValueDisplay value={record.supplier_part_number} copyable />,
-    },
-    {
-      title: "Описание",
-      dataIndex: "description",
-      onCell: (record) => ({ onDoubleClick: () => startEditCell(record, "description") }),
-      render: (_, record) =>
-        isEditingCell(record, "description")
-          ? renderTextInput(record, "description", { multiline: true })
-          : <ValueDisplay value={record.description} />,
-    },
-    {
-      title: "Привязки",
-      dataIndex: "original_cat_numbers",
-      width: 130,
-      render: (v) =>
-        v ? <Tag>{String(v).split(",").length}</Tag> : <Tag color="default">нет</Tag>,
-    },
-    {
-      title: "Комплекты",
-      dataIndex: "id",
-      width: 130,
-      render: (id) => {
-        const n = usageCounts?.[id] ?? 0
-        return n > 0 ? <Tag color="purple">Входит: {n}</Tag> : <span style={{ color: "#999" }}>—</span>
+  const columns = useMemo(
+    () => [
+      {
+        title: "Номер у поставщика",
+        dataIndex: "supplier_part_number",
+        width: 220,
+        onCell: (record) => ({
+          onDoubleClick: () => startEditCell(record, "supplier_part_number"),
+        }),
+        render: (_, record) =>
+          isEditingCell(record, "supplier_part_number") ? (
+            renderTextInput(record, "supplier_part_number")
+          ) : (
+            <ValueDisplay value={record.supplier_part_number} copyable />
+          ),
       },
-    },
-    {
-      title: "Последняя цена",
-      dataIndex: "latest_price",
-      width: 140,
-      align: "right",
-      render: (v) => <ValueDisplay value={v} />,
-    },
-    {
-      title: "Дата цены",
-      dataIndex: "latest_price_date",
-      width: 160,
-      render: (v) => <ValueDisplay value={v && new Date(v).toLocaleDateString()} />,
-    },
-    {
-      title: "Действия",
-      key: "actions",
-      width: 120,
-      render: (_, row) => (
-        <ActionButtons
-          onHistory={() => setHistoryForId(row.id)}
-          onDelete={() => handleDelete(row.id)}
-          size="small"
-        />
-      ),
-    },
-  ], [editing, draft, usageCounts, selectedId])
+      {
+        title: "Описание",
+        dataIndex: "description",
+        onCell: (record) => ({
+          onDoubleClick: () => startEditCell(record, "description"),
+        }),
+        render: (_, record) =>
+          isEditingCell(record, "description") ? (
+            renderTextInput(record, "description", { multiline: true })
+          ) : (
+            <ValueDisplay value={record.description} />
+          ),
+      },
+      {
+        title: "Срок поставки, дн",
+        dataIndex: "lead_time_days",
+        width: 150,
+        align: "right",
+        onCell: (record) => ({
+          onDoubleClick: () => startEditCell(record, "lead_time_days"),
+        }),
+        render: (_, record) =>
+          isEditingCell(record, "lead_time_days") ? (
+            renderTextInput(record, "lead_time_days")
+          ) : (
+            <ValueDisplay value={record.lead_time_days} />
+          ),
+      },
+      {
+        title: "Привязки",
+        dataIndex: "original_cat_numbers",
+        width: 130,
+        render: (v) =>
+          v ? (
+            <Tag>{String(v).split(",").length}</Tag>
+          ) : (
+            <Tag color="default">нет</Tag>
+          ),
+      },
+      {
+        title: "Комплекты",
+        dataIndex: "id",
+        width: 130,
+        render: (id) => {
+          const n = usageCounts?.[id] ?? 0
+          return n > 0 ? (
+            <Tag color="purple">Входит: {n}</Tag>
+          ) : (
+            <span style={{ color: "#999" }}>—</span>
+          )
+        },
+      },
+      {
+        title: "Последняя цена",
+        dataIndex: "latest_price",
+        width: 140,
+        align: "right",
+        render: (v) => <ValueDisplay value={v} />,
+      },
+      {
+        title: "Дата цены",
+        dataIndex: "latest_price_date",
+        width: 160,
+        render: (v) => (
+          <ValueDisplay value={v && new Date(v).toLocaleDateString()} />
+        ),
+      },
+      {
+        title: "Действия",
+        key: "actions",
+        width: 120,
+        render: (_, row) => (
+          <ActionButtons
+            onHistory={() => setHistoryForId(row.id)}
+            onDelete={() => handleDelete(row.id)}
+            size="small"
+          />
+        ),
+      },
+    ],
+    [editing, draft, usageCounts, selectedId]
+  )
 
   // ===== пагинация =====
-  const pagination = useMemo(() => ({
-    current: page,
-    pageSize,
-    total,
-    showSizeChanger: true,
-    pageSizeOptions: [10, 20, 50, 100],
-    selectProps: {
-      getPopupContainer: () => wrapRef.current || document.body,
-    },
-    onChange: (nextPage, nextSize) => {
-      const sizeNum = Number(nextSize)
-      if (sizeNum !== pageSize) { setPage(1); setPageSize(sizeNum) }
-      else { setPage(nextPage) }
-    },
-    showTotal: (t, [from, to]) => `Всего: ${t} · Показано: ${from}–${to}`,
-  }), [page, pageSize, total])
+  const pagination = useMemo(
+    () => ({
+      current: page,
+      pageSize,
+      total,
+      showSizeChanger: true,
+      pageSizeOptions: [10, 20, 50, 100],
+      selectProps: {
+        getPopupContainer: () => wrapRef.current || document.body,
+      },
+      onChange: (nextPage, nextSize) => {
+        const sizeNum = Number(nextSize)
+        if (sizeNum !== pageSize) {
+          setPage(1)
+          setPageSize(sizeNum)
+        } else {
+          setPage(nextPage)
+        }
+      },
+      showTotal: (t, [from, to]) => `Всего: ${t} · Показано: ${from}–${to}`,
+    }),
+    [page, pageSize, total]
+  )
 
-  if (!supplierId) return <Empty description="Выберите поставщика, чтобы увидеть его детали" />
+  if (!supplierId)
+    return <Empty description="Выберите поставщика, чтобы увидеть его детали" />
 
   return (
     <>
@@ -247,7 +309,9 @@ export default function SupplierPartsTable({
           loading={loading}
           pagination={pagination}
           size="middle"
-          rowClassName={(r) => r.id === selectedId ? "ant-table-row-selected" : ""}
+          rowClassName={(r) =>
+            r.id === selectedId ? "ant-table-row-selected" : ""
+          }
           onRow={(record) => ({
             onClick: () => onSelectPart(record),
             onDoubleClick: () => onSelectPart(record),
