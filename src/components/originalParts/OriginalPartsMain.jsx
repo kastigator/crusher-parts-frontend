@@ -1,4 +1,3 @@
-// src/components/originalParts/OriginalPartsMain.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react"
 import {
   Card,
@@ -14,8 +13,13 @@ import {
   Tag,
   Empty,
   Typography,
+  Select,
 } from "antd"
-import { ApartmentOutlined, ReloadOutlined } from "@ant-design/icons"
+import {
+  ApartmentOutlined,
+  ReloadOutlined,
+  SettingOutlined,
+} from "@ant-design/icons"
 import { useSearchParams } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 import TableToolbar from "@/components/common/TableToolbar"
@@ -24,6 +28,7 @@ import OriginalPartsTable from "./OriginalPartsTable"
 import ManufacturerModelPicker from "@/components/originalParts/ManufacturerModelPicker"
 import TnvedPicker from "@/components/fields/TnvedPicker"
 import DetailDock from "@/components/originalParts/DetailDock"
+import OriginalPartGroupsManager from "@/components/originalParts/OriginalPartGroupsManager"
 
 const { Title } = Typography
 
@@ -49,11 +54,36 @@ export default function OriginalPartsMain() {
 
   const partsAbortRef = useRef(null)
 
+  // 🔹 список групп оригинальных деталей
+  const [groups, setGroups] = useState([])
+  const [groupsLoading, setGroupsLoading] = useState(false)
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false)
+
   // deep-link ?focus=<original_part_id>
   const [params] = useSearchParams()
   const focusParam = params.get("focus")
   const focusId = focusParam ? Number(focusParam) || null : null
   const [pendingFocusId, setPendingFocusId] = useState(null)
+
+  /* -----------------------------------------------------------
+     Загрузка справочника групп оригинальных деталей
+  ----------------------------------------------------------- */
+  const loadGroups = useCallback(async () => {
+    setGroupsLoading(true)
+    try {
+      const { data } = await axios.get("/original-part-groups")
+      setGroups(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error("Не удалось загрузить группы оригинальных деталей", e)
+      message.error("Не удалось загрузить группы деталей")
+    } finally {
+      setGroupsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadGroups()
+  }, [loadGroups])
 
   /* -----------------------------------------------------------
      Загрузка списка деталей
@@ -138,7 +168,7 @@ export default function OriginalPartsMain() {
     // мягко прокрутим к строке
     requestAnimationFrame(() => {
       const rowEl = document.querySelector(
-        `[data-row-key="${pendingFocusId}"]`
+        `[data-row-key="${pendingFocusId}"]`,
       )
       if (rowEl) {
         rowEl.scrollIntoView({ block: "center", behavior: "smooth" })
@@ -165,6 +195,12 @@ export default function OriginalPartsMain() {
         weight_kg: values.weight_kg ?? null,
         tnved_code_id: values.tnved?.id ?? null,
         is_assembly: values.is_assembly ? 1 : 0,
+        // 🔹 новые поля
+        group_id: values.group_id ?? null,
+        length_cm: values.length_cm ?? null,
+        width_cm: values.width_cm ?? null,
+        height_cm: values.height_cm ?? null,
+        has_drawing: values.has_drawing ? 1 : 0,
       }
       const { data } = await axios.post("/original-parts", payload)
       message.success(`Деталь ${data.cat_number} создана`)
@@ -371,9 +407,45 @@ export default function OriginalPartsMain() {
           <Form.Item name="tnved" label="ТН ВЭД">
             <TnvedPicker style={{ width: 240 }} allowClear />
           </Form.Item>
-          <Form.Item name="is_assembly" valuePropName="checked">
-            <Checkbox>Это сборка</Checkbox>
+
+          {/* 🔹 Группа + иконка управления */}
+          <Form.Item name="group_id" label="Группа">
+            <Select
+              style={{ width: 220 }}
+              placeholder="Не выбрано"
+              loading={groupsLoading}
+              allowClear
+              options={groups.map((g) => ({
+                value: g.id,
+                label: g.name,
+              }))}
+            />
           </Form.Item>
+          <Form.Item>
+            <Button
+              type="text"
+              icon={<SettingOutlined />}
+              onClick={() => setGroupManagerOpen(true)}
+              style={{ padding: 0 }}
+            />
+          </Form.Item>
+
+          {/* 🔹 Габариты, см */}
+          <Form.Item name="length_cm" label="Дл., см">
+            <InputNumber style={{ width: 100 }} min={0} step={0.1} />
+          </Form.Item>
+          <Form.Item name="width_cm" label="Шир., см">
+            <InputNumber style={{ width: 100 }} min={0} step={0.1} />
+          </Form.Item>
+          <Form.Item name="height_cm" label="Выс., см">
+            <InputNumber style={{ width: 100 }} min={0} step={0.1} />
+          </Form.Item>
+
+          {/* 🔹 Есть ли КД/чертежи */}
+          <Form.Item name="has_drawing" valuePropName="checked">
+            <Checkbox>Есть КД</Checkbox>
+          </Form.Item>
+
           <Form.Item>
             <Button type="primary" htmlType="submit">
               Добавить
@@ -434,6 +506,12 @@ export default function OriginalPartsMain() {
           setManufacturer(mf)
           setModel(md)
         }}
+      />
+
+      <OriginalPartGroupsManager
+        open={groupManagerOpen}
+        onClose={() => setGroupManagerOpen(false)}
+        onChanged={loadGroups}
       />
     </Space>
   )

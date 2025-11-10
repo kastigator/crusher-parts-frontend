@@ -1,29 +1,54 @@
 // src/components/originalParts/DetailDock.jsx
 import React, { useMemo } from "react"
 import { Card, Tabs, Empty, Tag, Space, Typography } from "antd"
+
 import BomTable from "./BomTable"
 import BomTree from "./BomTree"
 import UsedInTable from "./UsedInTable"
-import AltOriginalsTable from "./AltOriginalsTable" // 🔹 новое название
+import AltOriginalsTable from "./AltOriginalsTable"
 import SuppliersLinksTab from "./SuppliersLinksTab"
 import BundleTab from "./bundle/BundleTab"
+import OriginalPartDocumentsTab from "./OriginalPartDocumentsTab" // 🔹 новая вкладка
 
 const { Text } = Typography
 
-export default function DetailDock({ part }) {
+/**
+ * Нижняя панель с детализацией по выбранной оригинальной детали.
+ *
+ * Пропсы:
+ * - part: объект оригинальной детали (обязательно)
+ * - modelId, manufacturerName, modelName — опционально (если вдруг понадобятся в будущем)
+ */
+export default function DetailDock({
+  part,
+  modelId,            // сейчас не используем, но оставляем для совместимости
+  manufacturerName,   // тоже опционально
+  modelName,
+}) {
   const partId = part?.id || null
 
   const header = useMemo(() => {
     if (!part) return null
+
     return (
       <Space size="small" wrap>
         <Text type="secondary">Деталь:</Text>
         <Tag>{part?.cat_number}</Tag>
-        {part?.description_ru ? <Tag color="blue">{part.description_ru}</Tag> : null}
+
+        {part?.description_ru ? (
+          <Tag color="blue">{part.description_ru}</Tag>
+        ) : null}
+
         {part?.description_en ? <Tag>{part.description_en}</Tag> : null}
+
+        {/* Можно дополнительно показывать производителя/модель, если переданы */}
+        {manufacturerName ? (
+          <Tag color="geekblue">Производитель: {manufacturerName}</Tag>
+        ) : null}
+        {modelName ? <Tag color="blue">Модель: {modelName}</Tag> : null}
       </Space>
     )
-  }, [part])
+  }, [part, manufacturerName, modelName])
 
   if (!partId) {
     return (
@@ -39,12 +64,42 @@ export default function DetailDock({ part }) {
         defaultActiveKey="bom"
         destroyInactiveTabPane
         items={[
-          { key: "bom", label: "Состав (BOM таблица)", children: <BomTable part={part} /> },
-          { key: "tree", label: "Структура BOM (дерево)", children: <BomTree originalPartId={partId} /> },
-          { key: "used", label: "Где используется", children: <UsedInTable partId={partId} /> },
-          { key: "alt", label: "Альтернативные оригиналы", children: <AltOriginalsTable originalPartId={partId} /> },
-          { key: "suppliers", label: "Связанные поставщики", children: <SuppliersLinksTab originalPartId={partId} /> },
-          { key: "bundle", label: "Комплекты поставщика", children: <BundleTab originalPartId={partId} /> },
+          {
+            key: "bom",
+            label: "Состав (BOM таблица)",
+            children: <BomTable part={part} />,
+          },
+          {
+            key: "tree",
+            label: "Структура BOM (дерево)",
+            children: <BomTree originalPartId={partId} />,
+          },
+          {
+            key: "used",
+            label: "Где используется",
+            children: <UsedInTable partId={partId} />,
+          },
+          {
+            key: "alt",
+            label: "Альтернативные оригиналы",
+            children: <AltOriginalsTable originalPartId={partId} />,
+          },
+          {
+            key: "suppliers",
+            label: "Связанные поставщики",
+            children: <SuppliersLinksTab originalPartId={partId} />,
+          },
+          {
+            key: "bundle",
+            label: "Комплекты поставщика",
+            children: <BundleTab originalPartId={partId} />,
+          },
+          // 🔹 НОВАЯ ВКЛАДКА: Документы / чертежи
+          {
+            key: "documents",
+            label: "Документы",
+            children: <OriginalPartDocumentsTab partId={partId} />,
+          },
         ]}
       />
     </Card>

@@ -1,5 +1,12 @@
-import React, { useState } from "react"
-import { Table, message } from "antd"
+import React, { useState, useEffect } from "react"
+import {
+  Table,
+  message,
+  Input,
+  InputNumber,
+  Select,
+  Checkbox,
+} from "antd"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import ActionButtons from "@/components/common/ActionButtons"
@@ -7,15 +14,11 @@ import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 
 /**
  * Таблица оригинальных деталей.
- * - Ничего не грузит сама: получает data и loading сверху.
- * - Управление выбором строки — через onSelect / selectedId.
- * - Удаление строки — DELETE /original-parts/:id, затем onRemove(id) и onReload?.
- * - История изменений — FullHistoryDialog (entity_type = "original_parts").
  */
 export default function OriginalPartsTable({
   data = [],
   loading = false,
-  modelId = null,      // сейчас не используется, но оставляем на будущее
+  modelId = null, // сейчас не используется, но оставляем на будущее
   onReload,
   onRemove,
   onSelect,
@@ -23,6 +26,47 @@ export default function OriginalPartsTable({
 }) {
   const [historyId, setHistoryId] = useState(null)
 
+  // 🔹 справочник групп
+  const [groups, setGroups] = useState([])
+  const [groupsLoading, setGroupsLoading] = useState(false)
+
+  // 🔹 inline-редактирование
+  const [editingId, setEditingId] = useState(null)
+  const [editingValues, setEditingValues] = useState({
+    cat_number: "",
+    description_ru: "",
+    description_en: "",
+    weight_kg: null,
+    group_id: null,
+    has_drawing: false,
+    length_cm: null,
+    width_cm: null,
+    height_cm: null,
+  })
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  /* -----------------------------------------------------------
+     Группы
+  ----------------------------------------------------------- */
+  useEffect(() => {
+    const loadGroups = async () => {
+      setGroupsLoading(true)
+      try {
+        const { data } = await axios.get("/original-part-groups")
+        setGroups(Array.isArray(data) ? data : [])
+      } catch (e) {
+        console.error("Не удалось загрузить группы деталей", e)
+        message.error("Не удалось загрузить группы деталей")
+      } finally {
+        setGroupsLoading(false)
+      }
+    }
+    loadGroups()
+  }, [])
+
+  /* -----------------------------------------------------------
+     Удаление детали
+  ----------------------------------------------------------- */
   const handleDelete = async (record) => {
     const { confirmed } = await confirmAction(
       `Удалить деталь ${record.cat_number || ""}?`,
@@ -39,19 +83,338 @@ export default function OriginalPartsTable({
     }
   }
 
+  /* -----------------------------------------------------------
+     Inline-редактирование
+  ----------------------------------------------------------- */
+  const startEdit = (record) => {
+    setEditingId(record.id)
+    setEditingValues({
+      cat_number: record.cat_number || "",
+      description_ru: record.description_ru || "",
+      description_en: record.description_en || "",
+      weight_kg:
+        record.weight_kg === undefined || record.weight_kg === null
+          ? null
+          : Number(record.weight_kg),
+      group_id:
+        record.group_id === undefined || record.group_id === null
+          ? null
+          : record.group_id,
+      has_drawing: !!record.has_drawing,
+      length_cm:
+        record.length_cm === undefined || record.length_cm === null
+          ? null
+          : Number(record.length_cm),
+      width_cm:
+        record.width_cm === undefined || record.width_cm === null
+          ? null
+          : Number(record.width_cm),
+      height_cm:
+        record.height_cm === undefined || record.height_cm === null
+          ? null
+          : Number(record.height_cm),
+    })
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditingValues({
+      cat_number: "",
+      description_ru: "",
+      description_en: "",
+      weight_kg: null,
+      group_id: null,
+      has_drawing: false,
+      length_cm: null,
+      width_cm: null,
+      height_cm: null,
+    })
+  }
+
+  const saveEdit = async (id) => {
+    if (!id) return
+    setSavingEdit(true)
+    try {
+      const toNum = (v) =>
+        v === null || v === "" || Number.isNaN(Number(v))
+          ? null
+          : Number(v)
+
+      const payload = {
+        cat_number: editingValues.cat_number || null,
+        description_ru: editingValues.description_ru || null,
+        description_en: editingValues.description_en || null,
+        weight_kg: toNum(editingValues.weight_kg),
+        group_id:
+          editingValues.group_id === undefined ||
+          editingValues.group_id === null ||
+          editingValues.group_id === ""
+            ? null
+            : Number(editingValues.group_id),
+        has_drawing: editingValues.has_drawing ? 1 : 0,
+        length_cm: toNum(editingValues.length_cm),
+        width_cm: toNum(editingValues.width_cm),
+        height_cm: toNum(editingValues.height_cm),
+      }
+
+      await axios.put(`/original-parts/${id}`, payload)
+      message.success("Изменения сохранены")
+      cancelEdit()
+      if (typeof onReload === "function") onReload()
+    } catch (e) {
+      console.error(e)
+      if (e?.response?.data?.message) {
+        message.error(e.response.data.message)
+      } else {
+        message.error("Не удалось сохранить изменения")
+      }
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const makeKeyHandler = (id) => (e) => {
+    if (e.key === "Escape") {
+      e.stopPropagation()
+      cancelEdit()
+    } else if (e.key === "Enter") {
+      e.preventDefault()
+      e.stopPropagation()
+      saveEdit(id)
+    }
+  }
+
+  /* -----------------------------------------------------------
+     Колонки
+  ----------------------------------------------------------- */
   const columns = [
-    { title: "Part number", dataIndex: "cat_number", width: 200 },
+    {
+      title: "Part number",
+      dataIndex: "cat_number",
+      width: 200,
+      render: (value, record) => {
+        if (record.id !== editingId) return value
+        return (
+          <Input
+            value={editingValues.cat_number}
+            onChange={(e) =>
+              setEditingValues((prev) => ({
+                ...prev,
+                cat_number: e.target.value,
+              }))
+            }
+            onKeyDown={makeKeyHandler(record.id)}
+          />
+        )
+      },
+    },
     {
       title: "Описание (RU)",
       dataIndex: "description_ru",
       ellipsis: true,
-      // фиксируем ширину растяжной колонки, чтобы шапка/тело всегда совпадали
-      onHeaderCell: () => ({ style: { width: 420, minWidth: 420, maxWidth: 420 } }),
-      onCell:       () => ({ style: { width: 420, minWidth: 420, maxWidth: 420 } }),
+      onHeaderCell: () => ({
+        style: { width: 420, minWidth: 420, maxWidth: 420 },
+      }),
+      onCell: () => ({
+        style: { width: 420, minWidth: 420, maxWidth: 420 },
+      }),
+      render: (value, record) => {
+        if (record.id !== editingId) return value
+        return (
+          <Input
+            value={editingValues.description_ru}
+            onChange={(e) =>
+              setEditingValues((prev) => ({
+                ...prev,
+                description_ru: e.target.value,
+              }))
+            }
+            onKeyDown={makeKeyHandler(record.id)}
+          />
+        )
+      },
     },
-    { title: "Description (EN)", dataIndex: "description_en", ellipsis: true },
-    { title: "Вес, кг", dataIndex: "weight", align: "right", width: 120 },
-    { title: "ТН ВЭД", dataIndex: "tnved_code", width: 120 },
+    {
+      title: "Description (EN)",
+      dataIndex: "description_en",
+      ellipsis: true,
+      render: (value, record) => {
+        if (record.id !== editingId) return value
+        return (
+          <Input
+            value={editingValues.description_en}
+            onChange={(e) =>
+              setEditingValues((prev) => ({
+                ...prev,
+                description_en: e.target.value,
+              }))
+            }
+            onKeyDown={makeKeyHandler(record.id)}
+          />
+        )
+      },
+    },
+
+    // 🔹 Группа
+    {
+      title: "Группа",
+      dataIndex: "group_name",
+      width: 180,
+      ellipsis: true,
+      render: (text, record) => {
+        if (record.id !== editingId) return text
+        return (
+          <Select
+            style={{ width: "100%" }}
+            placeholder="Не выбрано"
+            allowClear
+            loading={groupsLoading}
+            value={
+              editingValues.group_id === null
+                ? undefined
+                : editingValues.group_id
+            }
+            options={groups.map((g) => ({
+              value: g.id,
+              label: g.name,
+            }))}
+            onChange={(val) =>
+              setEditingValues((prev) => ({
+                ...prev,
+                group_id: val ?? null,
+              }))
+            }
+            onKeyDown={makeKeyHandler(record.id)}
+          />
+        )
+      },
+    },
+
+    // 🔹 Вес
+    {
+      title: "Вес, кг",
+      dataIndex: "weight_kg",
+      align: "right",
+      width: 120,
+      render: (value, record) => {
+        if (record.id !== editingId) return value
+        return (
+          <InputNumber
+            style={{ width: "100%" }}
+            min={0}
+            step={0.001}
+            value={editingValues.weight_kg}
+            onChange={(val) =>
+              setEditingValues((prev) => ({
+                ...prev,
+                weight_kg: val,
+              }))
+            }
+            onKeyDown={makeKeyHandler(record.id)}
+          />
+        )
+      },
+    },
+
+    // 🔹 Габариты
+    {
+      title: "Габариты, см",
+      dataIndex: "length_cm",
+      width: 200,
+      render: (_, record) => {
+        if (record.id !== editingId) {
+          const { length_cm, width_cm, height_cm } = record
+          if (
+            length_cm == null &&
+            width_cm == null &&
+            height_cm == null
+          ) {
+            return ""
+          }
+          const fmt = (v) => (v == null ? "-" : Number(v))
+          return `${fmt(length_cm)} × ${fmt(width_cm)} × ${fmt(height_cm)}`
+        }
+
+        return (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <InputNumber
+              style={{ width: 70 }}
+              min={0}
+              step={0.1}
+              value={editingValues.length_cm}
+              onChange={(val) =>
+                setEditingValues((prev) => ({
+                  ...prev,
+                  length_cm: val,
+                }))
+              }
+              onKeyDown={makeKeyHandler(record.id)}
+            />
+            <span>×</span>
+            <InputNumber
+              style={{ width: 70 }}
+              min={0}
+              step={0.1}
+              value={editingValues.width_cm}
+              onChange={(val) =>
+                setEditingValues((prev) => ({
+                  ...prev,
+                  width_cm: val,
+                }))
+              }
+              onKeyDown={makeKeyHandler(record.id)}
+            />
+            <span>×</span>
+            <InputNumber
+              style={{ width: 70 }}
+              min={0}
+              step={0.1}
+              value={editingValues.height_cm}
+              onChange={(val) =>
+                setEditingValues((prev) => ({
+                  ...prev,
+                  height_cm: val,
+                }))
+              }
+              onKeyDown={makeKeyHandler(record.id)}
+            />
+          </div>
+        )
+      },
+    },
+
+    // 🔹 Наличие чертежа/КД
+    {
+      title: "Докум.",
+      dataIndex: "has_drawing",
+      width: 90,
+      render: (v, record) => {
+        if (record.id !== editingId) {
+          return v ? "Да" : "Нет"
+        }
+        return (
+          <Checkbox
+            checked={!!editingValues.has_drawing}
+            onChange={(e) =>
+              setEditingValues((prev) => ({
+                ...prev,
+                has_drawing: e.target.checked,
+              }))
+            }
+            onKeyDown={makeKeyHandler(record.id)}
+          >
+            Есть
+          </Checkbox>
+        )
+      },
+    },
+
     {
       title: "Сборка",
       dataIndex: "is_assembly",
@@ -64,7 +427,6 @@ export default function OriginalPartsTable({
       render: (_, record) => (
         <ActionButtons
           size="small"
-          // редактирования пока нет — оставляем только историю и удаление
           onHistory={() => setHistoryId(record.id)}
           onDelete={() => handleDelete(record)}
           titles={{
@@ -83,24 +445,24 @@ export default function OriginalPartsTable({
         rowKey="id"
         columns={columns}
         dataSource={Array.isArray(data) ? data : []}
-        loading={loading}
+        loading={loading || savingEdit}
         pagination={{ pageSize: 50 }}
         tableLayout="fixed"
         scroll={{ x: true, y: 480 }}
         size="middle"
-        // выбор строки — кликом
         onRow={(record) => ({
           onClick: () => {
             if (typeof onSelect === "function") onSelect(record)
           },
+          onDoubleClick: () => {
+            startEdit(record)
+          },
         })}
-        // визуальная подсветка выбранной строки
         rowClassName={(record) =>
           record.id === selectedId ? "ant-table-row-selected" : ""
         }
       />
 
-      {/* История изменений конкретной оригинальной детали */}
       {historyId != null && (
         <FullHistoryDialog
           entityType="original_parts"
