@@ -54,6 +54,9 @@ export default function OriginalPartsMain() {
 
   const partsAbortRef = useRef(null)
 
+  // 🔹 режим "Показать все детали"
+  const [showAll, setShowAll] = useState(false)
+
   // группы
   const [groups, setGroups] = useState([])
   const [groupsLoading, setGroupsLoading] = useState(false)
@@ -89,7 +92,10 @@ export default function OriginalPartsMain() {
   /* ---------------------- загрузка деталей --------------------- */
   const fetchParts = useCallback(async () => {
     const modelId = model?.id
-    if (!modelId) {
+
+    // если ни модель не выбрана, ни режим "показать все" не включен —
+    // просто очищаем таблицу
+    if (!modelId && !showAll) {
       setRows([])
       setSelectedPart(null)
       return
@@ -103,11 +109,20 @@ export default function OriginalPartsMain() {
 
     setLoading(true)
     try {
-      const params = { equipment_model_id: modelId }
+      const params = {}
+
+      // в обычном режиме фильтруем по модели
+      if (!showAll && modelId) {
+        params.equipment_model_id = modelId
+      }
+
       if (search?.trim()) params.q = search.trim()
       if (onlyAssemblies) params.only_assemblies = 1
       if (onlyParts) params.only_parts = 1
       if (groupFilter) params.group_id = groupFilter
+
+      // можно передавать флажок для ясности (backend он не нужен, но не мешает)
+      if (showAll) params.all = 1
 
       const { data } = await axios.get("/original-parts", {
         params,
@@ -127,7 +142,7 @@ export default function OriginalPartsMain() {
     } finally {
       setLoading(false)
     }
-  }, [model?.id, search, onlyAssemblies, onlyParts, groupFilter])
+  }, [model?.id, search, onlyAssemblies, onlyParts, groupFilter, showAll])
 
   useEffect(() => {
     const t = setTimeout(fetchParts, 300)
@@ -212,6 +227,7 @@ export default function OriginalPartsMain() {
     setRows([])
     setSelectedPart(null)
     setPendingFocusId(null)
+    setShowAll(false) // при сбросе также выключаем режим "все"
   }
 
   useEffect(() => {
@@ -287,7 +303,7 @@ export default function OriginalPartsMain() {
               )}
               {model && <Tag color="blue">Модель: {model.model_name}</Tag>}
 
-              {(manufacturer || model) && (
+              {(manufacturer || model || showAll) && (
                 <Button
                   size="small"
                   onClick={clearSelection}
@@ -310,7 +326,7 @@ export default function OriginalPartsMain() {
                 setOnlyAssemblies(e.target.checked)
                 if (e.target.checked) setOnlyParts(false)
               }}
-              disabled={!model}
+              disabled={!model && !showAll}
             >
               Только сборки
             </Checkbox>
@@ -320,7 +336,7 @@ export default function OriginalPartsMain() {
                 setOnlyParts(e.target.checked)
                 if (e.target.checked) setOnlyAssemblies(false)
               }}
-              disabled={!model}
+              disabled={!model && !showAll}
             >
               Только детали
             </Checkbox>
@@ -329,8 +345,23 @@ export default function OriginalPartsMain() {
           <Col
             xs={24}
             md={6}
-            style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+            style={{
+              display: "flex",
+              gap: 8,
+              justifyContent: "flex-end",
+              alignItems: "center",
+            }}
           >
+            <Checkbox
+              checked={showAll}
+              onChange={(e) => {
+                setShowAll(e.target.checked)
+                setSelectedPart(null)
+              }}
+            >
+              Показать все детали
+            </Checkbox>
+
             <Button
               onClick={() => {
                 if (!model?.id) {
@@ -346,7 +377,7 @@ export default function OriginalPartsMain() {
           </Col>
         </Row>
 
-        {/* Поиск + фильтр по группе в одном компактном блоке слева */}
+        {/* Поиск + фильтр по группе */}
         <div
           className="table-section"
           style={{
@@ -365,7 +396,7 @@ export default function OriginalPartsMain() {
                 setSearch(val)
                 setSelectedPart(null)
               }}
-              disabled={!model}
+              disabled={!model && !showAll}
             />
 
             <Space align="center">
@@ -377,7 +408,7 @@ export default function OriginalPartsMain() {
                 placeholder="Все группы"
                 allowClear
                 loading={groupsLoading}
-                disabled={!model}
+                disabled={!model && !showAll}
                 value={groupFilter ?? undefined}
                 onChange={(val) => {
                   setGroupFilter(val ?? null)
@@ -392,7 +423,7 @@ export default function OriginalPartsMain() {
           </Space>
         </div>
 
-        {/* Форма добавления детали */}
+        {/* Форма добавления детали — по-прежнему только для выбранной модели */}
         <Form
           form={addForm}
           layout="inline"
@@ -472,11 +503,12 @@ export default function OriginalPartsMain() {
         </Form>
 
         <div className="parts-table-wrap" style={{ minHeight: 240 }}>
-          {model ? (
+          {model || showAll ? (
             <OriginalPartsTable
               data={rows}
               loading={loading}
               modelId={model?.id || null}
+              showAll={showAll}
               onReload={fetchParts}
               onRemove={(id) => {
                 setRows((prev) => prev.filter((r) => r.id !== id))
@@ -488,7 +520,7 @@ export default function OriginalPartsMain() {
           ) : (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="Выберите производителя и модель, чтобы отобразить детали"
+              description="Выберите производителя и модель или включите режим «Показать все детали»"
               style={{ padding: "48px 0" }}
             />
           )}

@@ -1,12 +1,5 @@
-import React, { useState, useEffect } from "react"
-import {
-  Table,
-  message,
-  Input,
-  InputNumber,
-  Select,
-  Checkbox,
-} from "antd"
+import React, { useState, useEffect, useMemo } from "react"
+import { Table, message, Input, InputNumber, Select, Checkbox } from "antd"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import ActionButtons from "@/components/common/ActionButtons"
@@ -23,6 +16,7 @@ export default function OriginalPartsTable({
   onRemove,
   onSelect,
   selectedId = null,
+  showAll = false, // 🔹 режим "Показать все детали"
 }) {
   const [historyId, setHistoryId] = useState(null)
 
@@ -63,6 +57,29 @@ export default function OriginalPartsTable({
     }
     loadGroups()
   }, [])
+
+  /* -----------------------------------------------------------
+     Варианты для фильтров Производитель / Модель
+  ----------------------------------------------------------- */
+  const manufacturerFilters = useMemo(() => {
+    const set = new Set()
+    ;(Array.isArray(data) ? data : []).forEach((r) => {
+      if (r.manufacturer_name) set.add(r.manufacturer_name)
+    })
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ text: name, value: name }))
+  }, [data])
+
+  const modelFilters = useMemo(() => {
+    const set = new Set()
+    ;(Array.isArray(data) ? data : []).forEach((r) => {
+      if (r.model_name) set.add(r.model_name)
+    })
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ text: name, value: name }))
+  }, [data])
 
   /* -----------------------------------------------------------
      Удаление детали
@@ -188,10 +205,46 @@ export default function OriginalPartsTable({
      Колонки
   ----------------------------------------------------------- */
   const columns = [
+    // 🔹 в режиме "Показать все" добавляем производителя и модель
+    ...(showAll
+      ? [
+          {
+            title: "Производитель",
+            dataIndex: "manufacturer_name",
+            width: 180,
+            ellipsis: true,
+            filters: manufacturerFilters,
+            onFilter: (value, record) =>
+              (record.manufacturer_name || "") === value,
+            sorter: (a, b) =>
+              (a.manufacturer_name || "").localeCompare(
+                b.manufacturer_name || "",
+              ),
+            sortDirections: ["ascend", "descend"],
+            defaultSortOrder: "ascend",
+          },
+          {
+            title: "Модель оборудования",
+            dataIndex: "model_name",
+            width: 200,
+            ellipsis: true,
+            filters: modelFilters,
+            onFilter: (value, record) =>
+              (record.model_name || "") === value,
+            sorter: (a, b) =>
+              (a.model_name || "").localeCompare(b.model_name || ""),
+            sortDirections: ["ascend", "descend"],
+          },
+        ]
+      : []),
+
     {
       title: "Part number",
       dataIndex: "cat_number",
       width: 200,
+      sorter: (a, b) =>
+        (a.cat_number || "").localeCompare(b.cat_number || ""),
+      sortDirections: ["ascend", "descend"],
       render: (value, record) => {
         if (record.id !== editingId) return value
         return (
@@ -261,6 +314,9 @@ export default function OriginalPartsTable({
       dataIndex: "group_name",
       width: 180,
       ellipsis: true,
+      sorter: (a, b) =>
+        (a.group_name || "").localeCompare(b.group_name || ""),
+      sortDirections: ["ascend", "descend"],
       render: (text, record) => {
         if (record.id !== editingId) return text
         return (
@@ -296,6 +352,8 @@ export default function OriginalPartsTable({
       dataIndex: "weight_kg",
       align: "right",
       width: 120,
+      sorter: (a, b) => (a.weight_kg || 0) - (b.weight_kg || 0),
+      sortDirections: ["ascend", "descend"],
       render: (value, record) => {
         if (record.id !== editingId) return value
         return (
