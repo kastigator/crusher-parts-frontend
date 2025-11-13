@@ -19,11 +19,17 @@ const formatFull = (r = {}) =>
     .filter(Boolean)
     .join(", ")
 
-export default function ShippingAddressesTable({ data = [], loading, onUpdate, onDelete }) {
+export default function ShippingAddressesTable({
+  data = [],
+  loading,
+  onUpdate,
+  onDelete,
+}) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
 
   const isEditing = (r) => editingId !== null && r?.id === editingId
+
   const cancelEdit = () => {
     setEditingId(null)
     setEditedRow(null)
@@ -40,7 +46,7 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
       await onUpdate(editingId, { ...editedRow })
       cancelEdit()
     } catch (e) {
-      console.error(e)
+      console.error("Ошибка при сохранении адреса доставки:", e)
     }
   }
 
@@ -50,7 +56,7 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
     try {
       await onDelete(record)
     } catch (e) {
-      console.error(e)
+      console.error("Ошибка при удалении адреса доставки:", e)
     }
   }
 
@@ -60,6 +66,7 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
       dataIndex: "formatted_address",
       render: (_, r) => {
         const editing = isEditing(r)
+
         if (editing && editedRow) {
           return (
             <>
@@ -72,25 +79,24 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                   place_id: editedRow.place_id,
                   postal_code: editedRow.postal_code,
                 }}
-                // якорим попапы к .parts-table-wrap
                 getPopupContainer={(trigger) =>
                   trigger?.closest(".parts-table-wrap") || document.body
                 }
-                onChange={(v) =>
-                  setEditedRow((p) => ({
-                    ...p,
-                    formatted_address: v.address_line,
-                    place_id: v.place_id,
-                    lat: v.lat,
-                    lng: v.lng,
-                    postal_code: v.postal_code,
-                    country: v.country,
-                    region: v.region,
-                    city: v.city,
-                    street: v.street,
-                    house: v.house,
-                    building: v.building,
-                    entrance: v.entrance,
+                onChange={(val) =>
+                  setEditedRow((prev) => ({
+                    ...prev,
+                    formatted_address: val.address_line,
+                    place_id: val.place_id,
+                    lat: val.lat,
+                    lng: val.lng,
+                    postal_code: val.postal_code,
+                    country: val.country,
+                    region: val.region,
+                    city: val.city,
+                    street: val.street,
+                    house: val.house,
+                    building: val.building,
+                    entrance: val.entrance,
                   }))
                 }
               />
@@ -102,7 +108,9 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                   <Input
                     placeholder="Страна"
                     value={editedRow.country}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, country: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, country: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -110,7 +118,9 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                   <Input
                     placeholder="Регион"
                     value={editedRow.region}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, region: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, region: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -118,7 +128,9 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                   <Input
                     placeholder="Город"
                     value={editedRow.city}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, city: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, city: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -126,7 +138,12 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                   <Input
                     placeholder="Индекс"
                     value={editedRow.postal_code}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, postal_code: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({
+                        ...p,
+                        postal_code: e.target.value,
+                      }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -137,7 +154,9 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                   <Input
                     placeholder="Улица"
                     value={editedRow.street}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, street: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, street: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -145,7 +164,9 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                   <Input
                     placeholder="Дом"
                     value={editedRow.house}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, house: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, house: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -153,7 +174,9 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                   <Input
                     placeholder="Строение"
                     value={editedRow.building}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, building: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, building: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -161,7 +184,23 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
                   <Input
                     placeholder="Подъезд"
                     value={editedRow.entrance}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, entrance: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, entrance: e.target.value }))
+                    }
+                    onKeyDown={onKey}
+                  />
+                </Col>
+              </Row>
+
+              <Row className="table-section">
+                <Col span={24}>
+                  <Input.TextArea
+                    placeholder="Комментарий"
+                    autoSize={{ minRows: 1, maxRows: 4 }}
+                    value={editedRow.comment}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, comment: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -170,7 +209,12 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
           )
         }
 
-        const oneLine = formatFull(r) || r.formatted_address?.trim() || "—"
+        const built = formatFull(r)?.trim()
+        const oneLine =
+          built && built.length > 0
+            ? built
+            : r.formatted_address?.trim() || "—"
+
         return (
           <div
             onDoubleClick={() => {
@@ -178,7 +222,7 @@ export default function ShippingAddressesTable({ data = [], loading, onUpdate, o
               setEditedRow({ ...r })
             }}
           >
-            <div className="cell-ellipsis" style={{ fontWeight: 600 }}>
+            <div className="cell-ellipsis">
               {oneLine}
             </div>
             {r.comment && (

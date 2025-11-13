@@ -1,6 +1,7 @@
 import React, { useState } from "react"
 import { Table, Input, Select } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
+import confirmAction from "@/utils/confirmAction"
 
 const CURRENCY_OPTIONS = [
   { value: "RUB", label: "RUB — Russian Ruble" },
@@ -13,85 +14,114 @@ export default function BankDetailsTable({ data = [], loading, onUpdate, onDelet
   const [edited, setEdited] = useState(null)
 
   const isEditing = (r) => r.id === editingId
-  const cancel = () => { setEditingId(null); setEdited(null) }
-  const save = async () => { await onUpdate(editingId, edited); cancel() }
+  const cancel = () => {
+    setEditingId(null)
+    setEdited(null)
+  }
+  const save = async () => {
+    if (!edited) return
+    await onUpdate(editingId, edited)
+    cancel()
+  }
+
+  const handleDelete = async (record) => {
+    const { confirmed } = await confirmAction("Удалить банковские реквизиты?")
+    if (!confirmed) return
+
+    try {
+      await onDelete?.(record)
+    } catch (e) {
+      console.error("Ошибка при удалении реквизитов:", e)
+    }
+  }
 
   const columns = [
     {
       title: "Банк",
       dataIndex: "bank_name",
       render: (_, r) =>
-        isEditing(r)
-          ? (
-            <Input
-              value={edited.bank_name}
-              onChange={e => setEdited(p => ({ ...p, bank_name: e.target.value }))}
-              onPressEnter={save}
-            />
-          )
-          : r.bank_name || "—",
+        isEditing(r) ? (
+          <Input
+            value={edited.bank_name}
+            onChange={(e) =>
+              setEdited((p) => ({ ...p, bank_name: e.target.value }))
+            }
+            onPressEnter={save}
+          />
+        ) : (
+          r.bank_name || "—"
+        ),
     },
     {
       title: "БИК",
       dataIndex: "bic",
       width: 150,
       render: (_, r) =>
-        isEditing(r)
-          ? (
-            <Input
-              value={edited.bic}
-              onChange={e => setEdited(p => ({ ...p, bic: e.target.value }))}
-              onPressEnter={save}
-            />
-          )
-          : r.bic || "—",
+        isEditing(r) ? (
+          <Input
+            value={edited.bic}
+            onChange={(e) =>
+              setEdited((p) => ({ ...p, bic: e.target.value }))
+            }
+            onPressEnter={save}
+          />
+        ) : (
+          r.bic || "—"
+        ),
     },
     {
       title: "Кор. счёт",
       dataIndex: "correspondent_account",
       render: (_, r) =>
-        isEditing(r)
-          ? (
-            <Input
-              value={edited.correspondent_account}
-              onChange={e => setEdited(p => ({ ...p, correspondent_account: e.target.value }))}
-              onPressEnter={save}
-            />
-          )
-          : r.correspondent_account || "—",
+        isEditing(r) ? (
+          <Input
+            value={edited.correspondent_account}
+            onChange={(e) =>
+              setEdited((p) => ({
+                ...p,
+                correspondent_account: e.target.value,
+              }))
+            }
+            onPressEnter={save}
+          />
+        ) : (
+          r.correspondent_account || "—"
+        ),
     },
     {
       title: "Валюта",
       dataIndex: "currency",
       width: 200,
       render: (_, r) =>
-        isEditing(r)
-          ? (
-            <Select
-              options={CURRENCY_OPTIONS}
-              value={edited.currency || "RUB"}
-              onChange={(v) => setEdited(p => ({ ...p, currency: v }))}
-              style={{ width: "100%" }}
-              getPopupContainer={(trigger) =>
-                trigger?.closest(".parts-table-wrap") || document.body
-              }
-            />
-          )
-          : (r.currency || "RUB"),
+        isEditing(r) ? (
+          <Select
+            options={CURRENCY_OPTIONS}
+            value={edited.currency || "RUB"}
+            onChange={(v) => setEdited((p) => ({ ...p, currency: v }))}
+            style={{ width: "100%" }}
+            getPopupContainer={(trigger) =>
+              trigger?.closest(".parts-table-wrap") || document.body
+            }
+          />
+        ) : (
+          r.currency || "RUB"
+        ),
     },
     {
       title: "Расч. счёт",
       dataIndex: "account_number",
       render: (_, r) =>
-        isEditing(r)
-          ? (
-            <Input
-              value={edited.account_number}
-              onChange={e => setEdited(p => ({ ...p, account_number: e.target.value }))}
-              onPressEnter={save}
-            />
-          )
-          : r.account_number || "—",
+        isEditing(r) ? (
+          <Input
+            value={edited.account_number}
+            onChange={(e) =>
+              setEdited((p) => ({ ...p, account_number: e.target.value }))
+            }
+            onPressEnter={save}
+          />
+        ) : (
+          r.account_number || "—"
+        ),
     },
     {
       title: "Действия",
@@ -103,11 +133,16 @@ export default function BankDetailsTable({ data = [], loading, onUpdate, onDelet
           <ActionButtons
             onSave={editing ? save : undefined}
             onCancel={editing ? cancel : undefined}
-            onDelete={!editing ? () => onDelete(r) : undefined}
+            onDelete={!editing ? () => handleDelete(r) : undefined}
             confirmDelete={false}
             size="small"
             onEdit={
-              !editing ? () => { setEditingId(r.id); setEdited({ ...r }) } : undefined
+              !editing
+                ? () => {
+                    setEditingId(r.id)
+                    setEdited({ ...r })
+                  }
+                : undefined
             }
           />
         )

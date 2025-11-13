@@ -2,6 +2,7 @@ import React, { useState } from "react"
 import { Table, Input, Row, Col, Divider, Space, Tooltip, Button } from "antd"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ActionButtons from "@/components/common/ActionButtons"
+import confirmAction from "@/utils/confirmAction"
 import { CopyOutlined } from "@ant-design/icons"
 
 const formatFullAddress = (r = {}) => {
@@ -29,7 +30,10 @@ export default function BillingAddressesTable({
   const [editedRow, setEditedRow] = useState(null)
 
   const isEditing = (record) => editingId === record.id
-  const cancelEdit = () => { setEditingId(null); setEditedRow(null) }
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditedRow(null)
+  }
 
   const handleSave = async () => {
     if (!editedRow?.formatted_address?.trim()) return
@@ -42,6 +46,9 @@ export default function BillingAddressesTable({
   }
 
   const handleDelete = async (record) => {
+    const { confirmed } = await confirmAction("Удалить адрес?")
+    if (!confirmed) return
+
     try {
       await onDelete(record)
     } catch (err) {
@@ -66,7 +73,6 @@ export default function BillingAddressesTable({
             <>
               <PlaceAddressInput
                 debugId={`billing-table-row-${record.id}`}
-                // якорим выпадашки к .parts-table-wrap
                 getPopupContainer={(trigger) =>
                   trigger?.closest(".parts-table-wrap") || document.body
                 }
@@ -103,7 +109,9 @@ export default function BillingAddressesTable({
                   <Input
                     placeholder="Страна"
                     value={editedRow.country}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, country: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, country: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -111,7 +119,9 @@ export default function BillingAddressesTable({
                   <Input
                     placeholder="Регион"
                     value={editedRow.region}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, region: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, region: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -119,7 +129,9 @@ export default function BillingAddressesTable({
                   <Input
                     placeholder="Город"
                     value={editedRow.city}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, city: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, city: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -127,7 +139,12 @@ export default function BillingAddressesTable({
                   <Input
                     placeholder="Индекс"
                     value={editedRow.postal_code}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, postal_code: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({
+                        ...p,
+                        postal_code: e.target.value,
+                      }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -138,7 +155,9 @@ export default function BillingAddressesTable({
                   <Input
                     placeholder="Улица"
                     value={editedRow.street}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, street: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, street: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -146,7 +165,9 @@ export default function BillingAddressesTable({
                   <Input
                     placeholder="Дом"
                     value={editedRow.house}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, house: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, house: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -154,7 +175,9 @@ export default function BillingAddressesTable({
                   <Input
                     placeholder="Строение"
                     value={editedRow.building}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, building: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, building: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -162,7 +185,9 @@ export default function BillingAddressesTable({
                   <Input
                     placeholder="Подъезд"
                     value={editedRow.entrance}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, entrance: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, entrance: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -174,7 +199,9 @@ export default function BillingAddressesTable({
                     placeholder="Комментарий"
                     autoSize={{ minRows: 1, maxRows: 4 }}
                     value={editedRow.comment}
-                    onChange={(e) => setEditedRow((p) => ({ ...p, comment: e.target.value }))}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({ ...p, comment: e.target.value }))
+                    }
                     onKeyDown={onKey}
                   />
                 </Col>
@@ -184,7 +211,10 @@ export default function BillingAddressesTable({
         }
 
         const built = formatFullAddress(record)?.trim()
-        const oneLine = built && built.length > 0 ? built : (record.formatted_address?.trim() || "—")
+        const oneLine =
+          built && built.length > 0
+            ? built
+            : record.formatted_address?.trim() || "—"
 
         return (
           <div
@@ -193,7 +223,9 @@ export default function BillingAddressesTable({
               setEditedRow({ ...record })
             }}
           >
-            <div style={{ fontWeight: 600 }} className="cell-ellipsis">{oneLine}</div>
+            <div className="cell-ellipsis">
+              {oneLine}
+            </div>
             {record.comment && (
               <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
                 Комментарий: {record.comment}
