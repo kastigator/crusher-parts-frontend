@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Typography, Input, Button, Alert, Card, Spin } from 'antd'
+import { Typography, Input, Button, Alert, Card } from 'antd'
 import axios from '../api/axiosInstance'
 import { useAuth } from '../auth/AuthContext'
 import { useNavigate } from 'react-router-dom'
@@ -21,11 +21,29 @@ const LoginPage = () => {
     e.preventDefault()
     setLoading(true)
     setError(null)
+
     try {
       const res = await axios.post('/auth/login', { username, password })
-      login(res.data.token, res.data.userData)
+
+      console.log('🔐 /auth/login response:', res.data)
+
+      const { token, userData, user } = res.data
+      const payload = userData || user
+
+      if (!token || !payload) {
+        console.error('❌ Нет token или user в ответе /auth/login:', res.data)
+        setError('Ошибка авторизации: некорректный ответ сервера')
+        return
+      }
+
+      console.log('✅ login() payload:', payload)
+
+      // сохраняем токен и пользователя в AuthContext
+      login(token, payload)
+
       navigate('/')
     } catch (err) {
+      console.error('❌ Ошибка при логине:', err)
       setError('Неверный логин или пароль')
     } finally {
       setLoading(false)
@@ -53,7 +71,14 @@ const LoginPage = () => {
         padding: 16
       }}
     >
-      <Card style={{ width: 360, borderRadius: 12, padding: 24, boxShadow: '0 4px 16px rgba(0,0,0,0.05)' }}>
+      <Card
+        style={{
+          width: 360,
+          borderRadius: 12,
+          padding: 24,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.05)'
+        }}
+      >
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <img src={logo} alt="Логотип" style={{ maxWidth: 160, marginBottom: 12 }} />
           <Typography.Title level={5}>Вход в систему</Typography.Title>
@@ -76,7 +101,12 @@ const LoginPage = () => {
           />
 
           {error && (
-            <Alert message={error} type="error" showIcon style={{ marginBottom: 16 }} />
+            <Alert
+              message={error}
+              type="error"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
           )}
 
           <Button
