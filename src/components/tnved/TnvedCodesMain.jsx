@@ -1,3 +1,4 @@
+// src/components/tnved/TnvedCodesMain.jsx
 import React, { useState, useEffect } from "react"
 import { Card, Space, message, Button, Input, InputNumber, Form } from "antd"
 import axios from "@/api/axiosInstance"
@@ -8,12 +9,19 @@ import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 
 const { TextArea } = Input
 
+const EMPTY_NEW_RECORD = {
+  code: "",
+  description: "",
+  duty_rate: null,
+  notes: "",
+}
+
 export default function TnvedCodesMain() {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [importVisible, setImportVisible] = useState(false)
   const [search, setSearch] = useState("")
-  const [newRecord, setNewRecord] = useState(null)
+  const [newRecord, setNewRecord] = useState(EMPTY_NEW_RECORD)
   const [logId, setLogId] = useState(null)
 
   // баннер «появились изменения»
@@ -77,7 +85,7 @@ export default function TnvedCodesMain() {
     }
 
     const t0 = setTimeout(checkChanged, 10000) // первый через 10с
-    timer = setInterval(checkChanged, 30000)   // далее каждые 30с
+    timer = setInterval(checkChanged, 30000) // далее каждые 30с
     const vis = () => checkChanged()
     document.addEventListener("visibilitychange", vis)
 
@@ -90,23 +98,23 @@ export default function TnvedCodesMain() {
 
   // ---------- create ----------
   const handleAdd = async () => {
-    if (!newRecord?.code?.trim()) {
+    if (!newRecord.code?.trim()) {
       message.warning("Поле 'Код' обязательно для заполнения")
       return
     }
 
     const payload = {
       code: newRecord.code.trim(),
-      description: toNull(newRecord?.description?.trim?.()),
-      duty_rate: toNumberOrNull(newRecord?.duty_rate),
-      notes: toNull(newRecord?.notes?.trim?.()),
+      description: toNull(newRecord.description?.trim?.()),
+      duty_rate: toNumberOrNull(newRecord.duty_rate),
+      notes: toNull(newRecord.notes?.trim?.()),
     }
 
     try {
       const { data: created } = await axios.post("/tnved-codes", payload)
       // локально добавим запись в начало — быстрее, чем полный refetch
       setData((prev) => [created, ...prev])
-      setNewRecord(null)
+      setNewRecord(EMPTY_NEW_RECORD)
       setHasNew(false)
       // обновим локальный etag, чтобы поллинг не мигал
       const freshEtag = await fetchEtag()
@@ -116,7 +124,10 @@ export default function TnvedCodesMain() {
       console.error("Ошибка при добавлении:", err)
       const t = err?.response?.data?.type
       if (t === "duplicate_key") message.error("Код уже существует")
-      else message.error(err?.response?.data?.message || "Не удалось добавить запись")
+      else
+        message.error(
+          err?.response?.data?.message || "Не удалось добавить запись"
+        )
     }
   }
 
@@ -144,7 +155,9 @@ export default function TnvedCodesMain() {
   // ---------- delete (с ?version=) ----------
   const handleDelete = async (record) => {
     try {
-      await axios.delete(`/tnved-codes/${record.id}`, { params: { version: record.version } })
+      await axios.delete(`/tnved-codes/${record.id}`, {
+        params: { version: record.version },
+      })
       removeRow(record.id)
       const freshEtag = await fetchEtag()
       setEtag(freshEtag)
@@ -152,7 +165,9 @@ export default function TnvedCodesMain() {
     } catch (err) {
       if (err?.isVersionConflict) {
         if (err.currentRecord) replaceRow(err.currentRecord)
-        message.warning("Запись изменилась и не была удалена. Обновили строку.")
+        message.warning(
+          "Запись изменилась и не была удалена. Обновили строку."
+        )
         return
       }
       console.error("Ошибка удаления:", err)
@@ -169,14 +184,24 @@ export default function TnvedCodesMain() {
   )
 
   return (
-    <Space direction="vertical" style={{ width: "100%", maxWidth: "100%" }} size={16}>
+    <Space
+      direction="vertical"
+      style={{ width: "100%", maxWidth: "100%" }}
+      size={16}
+    >
       <Card
         title="Коды ТН ВЭД"
         bodyStyle={{ paddingTop: 0 }}
         style={{ width: "100%", boxSizing: "border-box" }}
         extra={
           <Space>
-            <Button size="small" type="link" href="https://www.alta.ru/tnved/" target="_blank" rel="noopener noreferrer">
+            <Button
+              size="small"
+              type="link"
+              href="https://www.alta.ru/tnved/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Коды ТН ВЭД РФ
             </Button>
             <Button
@@ -192,13 +217,15 @@ export default function TnvedCodesMain() {
         }
       >
         {/* подсказка по управлению */}
-        <div style={{ fontSize: 12, color: '#6b7280', margin: '8px 0' }}>
+        <div
+          style={{ fontSize: 12, color: "#6b7280", margin: "8px 0" }}
+        >
           Двойной клик — редактирование; Enter — сохранить; Esc — отменить.
         </div>
 
         {/* баннер «есть изменения» */}
         {hasNew && (
-          <div style={{ margin: '8px 0' }}>
+          <div style={{ margin: "8px 0" }}>
             <Button
               type="primary"
               onClick={async () => {
@@ -222,8 +249,13 @@ export default function TnvedCodesMain() {
         <Form layout="inline" style={{ marginBottom: 16 }} onFinish={handleAdd}>
           <Form.Item label="Код">
             <Input
-              value={newRecord?.code || ""}
-              onChange={(e) => setNewRecord((prev) => ({ ...prev, code: e.target.value }))}
+              value={newRecord.code}
+              onChange={(e) =>
+                setNewRecord((prev) => ({
+                  ...(prev || EMPTY_NEW_RECORD),
+                  code: e.target.value,
+                }))
+              }
               placeholder="Введите код"
             />
           </Form.Item>
@@ -231,8 +263,13 @@ export default function TnvedCodesMain() {
           <Form.Item label="Описание">
             <TextArea
               rows={1}
-              value={newRecord?.description || ""}
-              onChange={(e) => setNewRecord((prev) => ({ ...prev, description: e.target.value }))}
+              value={newRecord.description}
+              onChange={(e) =>
+                setNewRecord((prev) => ({
+                  ...(prev || EMPTY_NEW_RECORD),
+                  description: e.target.value,
+                }))
+              }
               placeholder="Описание"
               style={{ width: 300 }}
             />
@@ -240,19 +277,29 @@ export default function TnvedCodesMain() {
 
           <Form.Item label="Пошлина">
             <InputNumber
-              value={newRecord?.duty_rate ?? null}
+              value={newRecord.duty_rate}
               step={0.01}
               placeholder="%"
               style={{ width: 120 }}
-              onChange={(v) => setNewRecord((prev) => ({ ...prev, duty_rate: v }))}
+              onChange={(v) =>
+                setNewRecord((prev) => ({
+                  ...(prev || EMPTY_NEW_RECORD),
+                  duty_rate: v,
+                }))
+              }
             />
           </Form.Item>
 
           <Form.Item label="Примечания">
             <TextArea
               rows={1}
-              value={newRecord?.notes || ""}
-              onChange={(e) => setNewRecord((prev) => ({ ...prev, notes: e.target.value }))}
+              value={newRecord.notes}
+              onChange={(e) =>
+                setNewRecord((prev) => ({
+                  ...(prev || EMPTY_NEW_RECORD),
+                  notes: e.target.value,
+                }))
+              }
               placeholder="Примечания"
               style={{ width: 200 }}
             />
@@ -279,12 +326,16 @@ export default function TnvedCodesMain() {
         open={importVisible}
         onClose={() => setImportVisible(false)}
         onSuccess={fetchData}
-        type="tnved_code"
+        type="tnved_codes"
         templateUrl="https://storage.googleapis.com/shared-parts-bucket/templates/tnved_codes_template.xlsx"
       />
 
       {logId === "deleted" && (
-        <FullHistoryDialog onlyDeleted entityType="tnved_code" onClose={() => setLogId(null)} />
+        <FullHistoryDialog
+          onlyDeleted
+          entityType="tnved_codes"
+          onClose={() => setLogId(null)}
+        />
       )}
     </Space>
   )
