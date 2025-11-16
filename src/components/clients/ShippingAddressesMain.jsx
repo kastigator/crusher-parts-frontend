@@ -1,16 +1,19 @@
+// src/components/clients/shipping/ShippingAddressesMain.jsx
 import React, { useEffect, useState } from "react"
 import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
-import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
-import ShippingAddressesTable from "./ShippingAddressesTable"
+
 import TableToolbar from "@/components/common/TableToolbar"
+import ShippingAddressesTable from "./ShippingAddressesTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
+import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 
 export default function ShippingAddressesMain({ clientId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
-  const [resetCounter, setResetCounter] = useState(0)
+
   const [search, setSearch] = useState("")
+  const [resetCounter, setResetCounter] = useState(0)
   const [conflict, setConflict] = useState(null)
 
   const [newAddress, setNewAddress] = useState({
@@ -27,32 +30,49 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
     building: "",
     entrance: "",
     comment: "",
-    type: null,
-    is_precise_location: null,
   })
 
+  // ---------------------------
+  // load
+  // ---------------------------
   const fetchData = async () => {
     if (!clientId) return
     setLoading(true)
     try {
-      const res = await axios.get("/client-shipping-addresses", {
-        params: { client_id: clientId },
+      const { data: list } = await axios.get("/client-shipping-addresses", {
+        params: { client_id: clientId, limit: 200, offset: 0 },
       })
-      setData(Array.isArray(res.data) ? res.data : [])
-    } catch (e) {
-      console.error(e)
+      setData(Array.isArray(list) ? list : [])
+    } catch (err) {
+      console.error("Ошибка загрузки адресов доставки:", err)
       message.error("Не удалось загрузить адреса доставки")
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { fetchData() }, [clientId])
+  useEffect(() => {
+    if (!clientId) return
+    fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId])
 
+  // локальные хелперы для списка
+  const replaceRow = (fresh) =>
+    setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+
+  const removeRow = (id) =>
+    setData((prev) => prev.filter((r) => r.id !== id))
+
+  // ---------------------------
+  // create
+  // ---------------------------
   const handleAdd = async () => {
+    if (!clientId) return
     if (!newAddress.formatted_address?.trim()) {
       return message.warning("Поле адреса обязательно")
     }
+
     const payload = {
       client_id: clientId,
       formatted_address: newAddress.formatted_address.trim(),
@@ -68,12 +88,16 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
       building: newAddress.building || null,
       entrance: newAddress.entrance || null,
       comment: newAddress.comment?.trim() || null,
+      // можно оставлять на будущее, backend их понимает
       type: null,
-      is_precise_location: newAddress.is_precise_location ?? null,
+      is_precise_location: 1,
     }
+
     try {
-      const { data: created } = await axios.post("/client-shipping-addresses", payload)
-      setData((prev) => [created, ...prev])
+      const res = await axios.post("/client-shipping-addresses", payload)
+      setData((prev) => [res.data, ...prev])
+
+      // сброс формы
       setNewAddress({
         formatted_address: "",
         place_id: null,
@@ -88,67 +112,93 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
         building: "",
         entrance: "",
         comment: "",
-        type: null,
-        is_precise_location: null,
       })
-      setResetCounter((v) => v + 1)
+      setResetCounter((c) => c + 1)
+
       message.success("Адрес доставки добавлен")
       onChanged?.()
-    } catch (e) {
-      console.error(e)
-      message.error("Не удалось добавить адрес")
+    } catch (err) {
+      console.error("Ошибка добавления адреса доставки:", err)
+      message.error("Не удалось добавить адрес доставки")
     }
   }
 
-  const handleUpdate = async (id, values) => {
+  // ---------------------------
+  // update (optimistic + version)
+  // ---------------------------
+  const handleUpdate = async (id, row) => {
     try {
-      const { data: fresh } = await axios.put(`/client-shipping-addresses/${id}`, {
-        ...values,
-        type: values.type ?? null,
-        is_precise_location: values.is_precise_location ?? null,
-      })
-      setData((prev) => prev.map((r) => (r.id === id ? fresh : r)))
-      message.success("Адрес доставки обновлён")
+      const { data: fresh } = await axios.put(
+        `/client-shipping-addresses/${id}`,
+        {
+          ...row,
+          version: row.version,
+        }
+      )
+
+      replaceRow(fresh)
+      message.success("Изменения сохранены")
       onChanged?.()
     } catch (err) {
-      if (err?.response?.status === 409 && err.response.data?.current) {
-        setConflict({ id, current: err.response.data.current, draft: values })
-      } else {
-        console.error(err)
-        message.error("Не удалось сохранить адрес")
+      const res = err?.response
+      if (res?.status === 409 && res?.data?.current) {
+        setConflict({
+          id,
+          current: res.data.current,
+          draft: row,
+        })
+        return
       }
+      console.error("Ошибка обновления адреса доставки:", err)
+      message.error("Не удалось сохранить адрес доставки")
     }
   }
 
-  const handleDelete = async (record) => {
+  // ---------------------------
+  // delete
+  // ---------------------------
+  const handleDelete = async (row) => {
     try {
-      await axios.delete(`/client-shipping-addresses/${record.id}`, {
-        params: { version: record.version },
+      await axios.delete(`/client-shipping-addresses/${row.id}`, {
+        params: { version: row.version },
       })
-      setData((prev) => prev.filter((r) => r.id !== record.id))
+
+      removeRow(row.id)
       message.success("Адрес доставки удалён")
       onChanged?.()
     } catch (err) {
-      if (err?.response?.status === 409 && err.response.data?.current) {
-        setConflict({ id: record.id, current: err.response.data.current, draft: record })
-      } else {
-        console.error(err)
-        message.error("Не удалось удалить адрес")
+      const res = err?.response
+      if (res?.status === 409 && res?.data?.current) {
+        const current = res.data.current
+        if (current) replaceRow(current)
+        setConflict({
+          id: row.id,
+          current,
+          draft: row,
+        })
+        return
       }
+      console.error("Ошибка удаления адреса доставки:", err)
+      message.error("Не удалось удалить адрес доставки")
     }
   }
 
   const filteredData = search
-    ? data.filter((a) => a.formatted_address?.toLowerCase().includes(search.toLowerCase()))
+    ? data.filter((addr) =>
+        (addr.formatted_address || "")
+          .toLowerCase()
+          .includes(search.toLowerCase())
+      )
     : data
 
   if (!clientId) return null
 
   return (
+    // якорь для выпадающих списков/карт
     <div className="parts-table-wrap">
       <Card size="small" className="table-section">
         <PlaceAddressInput
-          debugId="shipping-form"
+          debugId="shipping-main-form"
           resetTrigger={resetCounter}
           value={{
             address_line: newAddress.formatted_address,
@@ -157,57 +207,155 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
             place_id: newAddress.place_id,
             postal_code: newAddress.postal_code,
           }}
-          onChange={(v) =>
-            setNewAddress((p) => ({
-              ...p,
-              formatted_address: v.address_line,
-              place_id: v.place_id,
-              lat: v.lat,
-              lng: v.lng,
-              postal_code: v.postal_code,
-              country: v.country,
-              region: v.region,
-              city: v.city,
-              street: v.street,
-              house: v.house,
-              building: v.building,
-              entrance: v.entrance,
-              is_precise_location: v.is_precise_location ?? null,
+          onChange={(value) =>
+            setNewAddress((prev) => ({
+              ...prev,
+              formatted_address: value.address_line,
+              place_id: value.place_id,
+              lat: value.lat,
+              lng: value.lng,
+              postal_code: value.postal_code,
+              country: value.country,
+              region: value.region,
+              city: value.city,
+              street: value.street,
+              house: value.house,
+              building: value.building,
+              entrance: value.entrance,
             }))
           }
         />
 
-        {/* поля ввода — синхронно с billing */}
+        {/* поля ввода, как в BillingAddressesMain */}
         <Row gutter={12} className="table-section">
-          <Col span={6}><Input placeholder="Страна" value={newAddress.country}
-            onChange={(e) => setNewAddress((p) => ({ ...p, country: e.target.value }))} /></Col>
-          <Col span={6}><Input placeholder="Регион" value={newAddress.region}
-            onChange={(e) => setNewAddress((p) => ({ ...p, region: e.target.value }))} /></Col>
-          <Col span={6}><Input placeholder="Город" value={newAddress.city}
-            onChange={(e) => setNewAddress((p) => ({ ...p, city: e.target.value }))} /></Col>
-          <Col span={6}><Input placeholder="Индекс" value={newAddress.postal_code}
-            onChange={(e) => setNewAddress((p) => ({ ...p, postal_code: e.target.value }))} /></Col>
+          <Col span={6}>
+            <Input
+              placeholder="Страна"
+              value={newAddress.country}
+              onChange={(e) =>
+                setNewAddress((prev) => ({
+                  ...prev,
+                  country: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Регион"
+              value={newAddress.region}
+              onChange={(e) =>
+                setNewAddress((prev) => ({
+                  ...prev,
+                  region: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Город"
+              value={newAddress.city}
+              onChange={(e) =>
+                setNewAddress((prev) => ({
+                  ...prev,
+                  city: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Индекс"
+              value={newAddress.postal_code}
+              onChange={(e) =>
+                setNewAddress((prev) => ({
+                  ...prev,
+                  postal_code: e.target.value,
+                }))
+              }
+            />
+          </Col>
         </Row>
 
         <Row gutter={12} className="table-section">
-          <Col span={12}><Input placeholder="Улица" value={newAddress.street}
-            onChange={(e) => setNewAddress((p) => ({ ...p, street: e.target.value }))} /></Col>
-          <Col span={4}><Input placeholder="Дом" value={newAddress.house}
-            onChange={(e) => setNewAddress((p) => ({ ...p, house: e.target.value }))} /></Col>
-          <Col span={4}><Input placeholder="Строение" value={newAddress.building}
-            onChange={(e) => setNewAddress((p) => ({ ...p, building: e.target.value }))} /></Col>
-          <Col span={4}><Input placeholder="Подъезд" value={newAddress.entrance}
-            onChange={(e) => setNewAddress((p) => ({ ...p, entrance: e.target.value }))} /></Col>
+          <Col span={12}>
+            <Input
+              placeholder="Улица"
+              value={newAddress.street}
+              onChange={(e) =>
+                setNewAddress((prev) => ({
+                  ...prev,
+                  street: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Дом"
+              value={newAddress.house}
+              onChange={(e) =>
+                setNewAddress((prev) => ({
+                  ...prev,
+                  house: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Строение"
+              value={newAddress.building}
+              onChange={(e) =>
+                setNewAddress((prev) => ({
+                  ...prev,
+                  building: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Подъезд"
+              value={newAddress.entrance}
+              onChange={(e) =>
+                setNewAddress((prev) => ({
+                  ...prev,
+                  entrance: e.target.value,
+                }))
+              }
+            />
+          </Col>
         </Row>
 
         <Row gutter={12} className="table-section">
-          <Col flex="auto"><Input placeholder="Комментарий" value={newAddress.comment}
-            onChange={(e) => setNewAddress((p) => ({ ...p, comment: e.target.value }))} /></Col>
-          <Col><Button type="primary" onClick={handleAdd}>Добавить адрес</Button></Col>
+          <Col flex="auto">
+            <Input
+              placeholder="Комментарий"
+              value={newAddress.comment}
+              onChange={(e) =>
+                setNewAddress((prev) => ({
+                  ...prev,
+                  comment: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col>
+            <Button type="primary" onClick={handleAdd}>
+              Добавить адрес доставки
+            </Button>
+          </Col>
         </Row>
       </Card>
 
-      <TableToolbar className="table-section" search={search} onSearch={setSearch} />
+      {/* Единый тулбар фильтра */}
+      <TableToolbar
+        className="table-section"
+        search={search}
+        onSearch={setSearch}
+      />
 
       <ShippingAddressesTable
         data={filteredData}
@@ -222,7 +370,7 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
           draft={conflict.draft}
           current={conflict.current}
           fields={[
-            { key: "formatted_address", title: "Адрес" },
+            { key: "formatted_address", title: "Адрес доставки" },
             { key: "country", title: "Страна" },
             { key: "region", title: "Регион" },
             { key: "city", title: "Город" },
@@ -233,24 +381,26 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
             { key: "postal_code", title: "Индекс" },
             { key: "comment", title: "Комментарий" },
           ]}
-          onReload={async () => { await fetchData(); setConflict(null); }}
+          onReload={async () => {
+            await fetchData()
+            setConflict(null)
+          }}
           onManualMerge={async () => {
             const base = conflict.current || {}
             const draft = conflict.draft || {}
             const merged = {
               ...base,
-              formatted_address: draft.formatted_address ?? base.formatted_address,
+              formatted_address:
+                draft.formatted_address ?? base.formatted_address,
               country: draft.country ?? base.country,
-              region:  draft.region  ?? base.region,
-              city:    draft.city    ?? base.city,
-              street:  draft.street  ?? base.street,
-              house:   draft.house   ?? base.house,
-              building:draft.building?? base.building,
-              entrance:draft.entrance?? base.entrance,
+              region: draft.region ?? base.region,
+              city: draft.city ?? base.city,
+              street: draft.street ?? base.street,
+              house: draft.house ?? base.house,
+              building: draft.building ?? base.building,
+              entrance: draft.entrance ?? base.entrance,
               postal_code: draft.postal_code ?? base.postal_code,
               comment: draft.comment ?? base.comment,
-              type: draft.type ?? base.type ?? null,
-              is_precise_location: draft.is_precise_location ?? base.is_precise_location ?? null,
               version: base.version,
             }
             await handleUpdate(conflict.id, merged)

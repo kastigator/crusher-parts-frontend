@@ -1,4 +1,3 @@
-// src/components/clients/BillingAddressesMain.jsx
 import React, { useEffect, useState } from "react"
 import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
@@ -12,6 +11,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
   const [loading, setLoading] = useState(false)
   const [resetCounter, setResetCounter] = useState(0)
   const [search, setSearch] = useState("")
+
   const [conflict, setConflict] = useState(null)
 
   const [newAddress, setNewAddress] = useState({
@@ -30,11 +30,14 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
     comment: "",
   })
 
+  // ========== Load ==========
   const fetchData = async () => {
     if (!clientId) return
     setLoading(true)
     try {
-      const res = await axios.get("/client-billing-addresses", { params: { client_id: clientId } })
+      const res = await axios.get("/client-billing-addresses", {
+        params: { client_id: clientId },
+      })
       setData(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       console.error("Ошибка при загрузке адресов:", err)
@@ -45,11 +48,10 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
   }
 
   useEffect(() => {
-    if (!clientId) return
-    fetchData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (clientId) fetchData()
   }, [clientId])
 
+  // ========== Add ==========
   const handleAdd = async () => {
     if (!clientId) return
     if (!newAddress.formatted_address?.trim()) {
@@ -92,7 +94,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
         entrance: "",
         comment: "",
       })
-      setResetCounter((prev) => prev + 1)
+      setResetCounter((p) => p + 1)
       message.success("Адрес добавлен")
       onChanged?.()
     } catch (err) {
@@ -101,22 +103,30 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
     }
   }
 
-  // --- optimistic update/delete ---
-  const replaceRow = (fresh) => setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
-  const removeRow = (id) => setData((prev) => prev.filter((r) => r.id !== id))
+  // ========== Edit / Delete with optimistic update ==========
+
+  const replaceRow = (fresh) =>
+    setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+
+  const removeRow = (id) =>
+    setData((prev) => prev.filter((r) => r.id !== id))
 
   const onUpdate = async (id, row) => {
     try {
-      const { data: fresh } = await axios.put(`/client-billing-addresses/${id}`, {
-        ...row,
-        version: row.version,
-      })
+      const { data: fresh } = await axios.put(
+        `/client-billing-addresses/${id}`,
+        { ...row, version: row.version }
+      )
       replaceRow(fresh)
-      message.success("Изменения сохранены")
       onChanged?.()
+      message.success("Изменения сохранены")
     } catch (err) {
-      if (err?.response?.status === 409 && err?.response?.data?.current) {
-        setConflict({ id, current: err.response.data.current, draft: row })
+      if (err.response?.status === 409 && err.response.data?.current) {
+        setConflict({
+          id,
+          current: err.response.data.current,
+          draft: row,
+        })
         return
       }
       console.error("Ошибка при обновлении адреса:", err)
@@ -130,29 +140,34 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
         params: { version: record.version },
       })
       removeRow(record.id)
-      message.success("Адрес удалён")
       onChanged?.()
+      message.success("Адрес удалён")
     } catch (err) {
-      if (err?.response?.status === 409 && err?.response?.data?.current) {
-        const current = err.response.data.current
-        if (current) replaceRow(current)
-        setConflict({ id: record.id, current, draft: record })
+      if (err.response?.status === 409 && err.response.data?.current) {
+        replaceRow(err.response.data.current)
+        setConflict({
+          id: record.id,
+          current: err.response.data.current,
+          draft: record,
+        })
         return
       }
       console.error("Ошибка при удалении адреса:", err)
       message.error("Не удалось удалить адрес")
     }
   }
-  // ---
 
   const filteredData = search
-    ? data.filter((addr) => (addr.formatted_address || "").toLowerCase().includes(search.toLowerCase()))
+    ? data.filter((a) =>
+        (a.formatted_address || "")
+          .toLowerCase()
+          .includes(search.toLowerCase())
+      )
     : data
 
   if (!clientId) return null
 
   return (
-    // якорь для выпадающих (поля адреса, подсказки и т.п.)
     <div className="parts-table-wrap">
       <Card size="small" className="table-section">
         <PlaceAddressInput
@@ -184,34 +199,42 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
           }
         />
 
-        {/* поля ввода */}
+        {/* Manual fields */}
         <Row gutter={12} className="table-section">
           <Col span={6}>
             <Input
               placeholder="Страна"
               value={newAddress.country}
-              onChange={(e) => setNewAddress((prev) => ({ ...prev, country: e.target.value }))}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, country: e.target.value }))
+              }
             />
           </Col>
           <Col span={6}>
             <Input
               placeholder="Регион"
               value={newAddress.region}
-              onChange={(e) => setNewAddress((prev) => ({ ...prev, region: e.target.value }))}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, region: e.target.value }))
+              }
             />
           </Col>
           <Col span={6}>
             <Input
               placeholder="Город"
               value={newAddress.city}
-              onChange={(e) => setNewAddress((prev) => ({ ...prev, city: e.target.value }))}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, city: e.target.value }))
+              }
             />
           </Col>
           <Col span={6}>
             <Input
               placeholder="Индекс"
               value={newAddress.postal_code}
-              onChange={(e) => setNewAddress((prev) => ({ ...prev, postal_code: e.target.value }))}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, postal_code: e.target.value }))
+              }
             />
           </Col>
         </Row>
@@ -221,28 +244,36 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
             <Input
               placeholder="Улица"
               value={newAddress.street}
-              onChange={(e) => setNewAddress((prev) => ({ ...prev, street: e.target.value }))}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, street: e.target.value }))
+              }
             />
           </Col>
           <Col span={4}>
             <Input
               placeholder="Дом"
               value={newAddress.house}
-              onChange={(e) => setNewAddress((prev) => ({ ...prev, house: e.target.value }))}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, house: e.target.value }))
+              }
             />
           </Col>
           <Col span={4}>
             <Input
               placeholder="Строение"
               value={newAddress.building}
-              onChange={(e) => setNewAddress((prev) => ({ ...prev, building: e.target.value }))}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, building: e.target.value }))
+              }
             />
           </Col>
           <Col span={4}>
             <Input
               placeholder="Подъезд"
               value={newAddress.entrance}
-              onChange={(e) => setNewAddress((prev) => ({ ...prev, entrance: e.target.value }))}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, entrance: e.target.value }))
+              }
             />
           </Col>
         </Row>
@@ -252,7 +283,9 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
             <Input
               placeholder="Комментарий"
               value={newAddress.comment}
-              onChange={(e) => setNewAddress((prev) => ({ ...prev, comment: e.target.value }))}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, comment: e.target.value }))
+              }
             />
           </Col>
           <Col>
@@ -263,8 +296,11 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
         </Row>
       </Card>
 
-      {/* Единый тулбар фильтра */}
-      <TableToolbar className="table-section" search={search} onSearch={setSearch} />
+      <TableToolbar
+        className="table-section"
+        search={search}
+        onSearch={setSearch}
+      />
 
       <BillingAddressesTable
         data={filteredData}
@@ -298,11 +334,13 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
             setConflict(null)
           }}
           onManualMerge={async () => {
-            const base = conflict.current || {}
-            const draft = conflict.draft || {}
+            const base = conflict.current
+            const draft = conflict.draft
+
             const merged = {
               ...base,
-              formatted_address: draft.formatted_address ?? base.formatted_address,
+              formatted_address:
+                draft.formatted_address ?? base.formatted_address,
               country: draft.country ?? base.country,
               region: draft.region ?? base.region,
               city: draft.city ?? base.city,
@@ -314,6 +352,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
               comment: draft.comment ?? base.comment,
               version: base.version,
             }
+
             await onUpdate(conflict.id, merged)
             setConflict(null)
           }}

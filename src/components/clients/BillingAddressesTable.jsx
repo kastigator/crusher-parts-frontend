@@ -1,9 +1,11 @@
+// src/components/clients/BillingAddressesTable.jsx
 import React, { useState } from "react"
 import { Table, Input, Row, Col, Divider, Space, Tooltip, Button } from "antd"
+import { CopyOutlined } from "@ant-design/icons"
+
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
-import { CopyOutlined } from "@ant-design/icons"
 
 const formatFullAddress = (r = {}) => {
   const parts = [
@@ -16,13 +18,13 @@ const formatFullAddress = (r = {}) => {
     r.entrance && `подъезд ${r.entrance}`,
     r.postal_code && `инд. ${r.postal_code}`,
   ].filter(Boolean)
+
   return parts.join(", ")
 }
 
 export default function BillingAddressesTable({
   data = [],
   loading,
-  clientId,
   onUpdate,
   onDelete,
 }) {
@@ -30,6 +32,7 @@ export default function BillingAddressesTable({
   const [editedRow, setEditedRow] = useState(null)
 
   const isEditing = (record) => editingId === record.id
+
   const cancelEdit = () => {
     setEditingId(null)
     setEditedRow(null)
@@ -38,9 +41,10 @@ export default function BillingAddressesTable({
   const handleSave = async () => {
     if (!editedRow?.formatted_address?.trim()) return
     try {
-      await onUpdate(editingId, editedRow)
+      await onUpdate?.(editingId, { ...editedRow })
       cancelEdit()
     } catch (err) {
+      // Конфликты версий/прочее обрабатываются в BillingAddressesMain
       console.error("Ошибка при сохранении адреса:", err)
     }
   }
@@ -50,9 +54,9 @@ export default function BillingAddressesTable({
     if (!confirmed) return
 
     try {
-      await onDelete(record)
+      await onDelete?.(record)
     } catch (err) {
-      console.error("Ошибка при удалении:", err)
+      console.error("Ошибка при удалении адреса:", err)
     }
   }
 

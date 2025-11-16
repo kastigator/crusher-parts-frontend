@@ -30,7 +30,7 @@ export default function BankDetailsMain({ clientId, onChanged }) {
       })
       setData(Array.isArray(data) ? data : [])
     } catch (e) {
-      console.error(e)
+      console.error("Ошибка загрузки банковских реквизитов:", e)
       message.error("Не удалось загрузить банковские реквизиты")
     } finally {
       setLoading(false)
@@ -64,10 +64,10 @@ export default function BankDetailsMain({ clientId, onChanged }) {
     try {
       await axios.post("/client-bank-details", {
         client_id: clientId,
-        bank_name: newBank.bank_name || null,
-        bic: newBank.bic || null,
-        correspondent_account: newBank.correspondent_account || null,
-        account_number: newBank.account_number || null,
+        bank_name: newBank.bank_name?.trim() || null,
+        bic: newBank.bic?.trim() || null,
+        correspondent_account: newBank.correspondent_account?.trim() || null,
+        account_number: newBank.account_number?.trim() || null,
         currency: newBank.currency || null,
       })
       message.success("Реквизиты добавлены")
@@ -81,7 +81,7 @@ export default function BankDetailsMain({ clientId, onChanged }) {
       fetchData()
       onChanged?.()
     } catch (e) {
-      console.error(e)
+      console.error("Ошибка при добавлении реквизитов:", e)
       message.error(
         e?.response?.data?.message || "Не удалось добавить реквизиты"
       )
@@ -90,11 +90,21 @@ export default function BankDetailsMain({ clientId, onChanged }) {
     }
   }
 
+  // --- optimistic update/delete (для VersionConflictModal в таблице) ---
   const onUpdate = async (id, updated) => {
+    const payload = {
+      bank_name: updated.bank_name?.trim() || null,
+      bic: updated.bic?.trim() || null,
+      correspondent_account: updated.correspondent_account?.trim() || null,
+      account_number: updated.account_number?.trim() || null,
+      currency: updated.currency || null,
+      version: updated.version,
+    }
+
     try {
       const { data: fresh } = await axios.put(
         `/client-bank-details/${id}`,
-        updated
+        payload
       )
       setData((prev) => prev.map((r) => (r.id === id ? fresh : r)))
       message.success("Изменения сохранены")
@@ -102,8 +112,10 @@ export default function BankDetailsMain({ clientId, onChanged }) {
     } catch (e) {
       const err = new Error("update failed")
       err.original = e
-      err.isVersionConflict = e?.response?.status === 409
-      err.currentRecord = e?.response?.data?.current || null
+      if (e?.response?.status === 409) {
+        err.isVersionConflict = true
+        err.currentRecord = e?.response?.data?.current || null
+      }
       throw err
     }
   }
@@ -134,27 +146,31 @@ export default function BankDetailsMain({ clientId, onChanged }) {
     setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
   }
 
+  // --- автозаполнение по БИК ---
   const onBicChange = async (bic) => {
     setNewBank((p) => ({ ...p, bic }))
     if (!bic || bic.length < 6) return
+
     try {
       const info = await fetchBankByBic(bic)
       if (info) {
         setNewBank((p) => ({
           ...p,
-          // если из API пришло значение — подставляем, но не мешаем вручную редактировать потом
-          bank_name: info.bank_name || p.bank_name,
+          // поддерживаем оба варианта: bank_name или name
+          bank_name: info.bank_name || info.name || p.bank_name,
           correspondent_account:
             info.correspondent_account || p.correspondent_account,
         }))
       }
     } catch {
-      // если банк по БИК не найден или сервис недоступен — просто даём пользователю заполнить руками
+      // если банк по БИК не найден или сервис недоступен — даём заполнить руками
     }
   }
 
+  if (!clientId) return null
+
   return (
-    <>
+    <div className="parts-table-wrap">
       <TableToolbar
         className="table-section"
         search={search}
@@ -246,6 +262,6 @@ export default function BankDetailsMain({ clientId, onChanged }) {
         onReplaceRow={replaceRow}
         onRefresh={fetchData}
       />
-    </>
+    </div>
   )
 }

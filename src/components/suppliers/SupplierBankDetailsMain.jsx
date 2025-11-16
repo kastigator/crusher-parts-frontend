@@ -1,25 +1,30 @@
 // src/components/suppliers/SupplierBankDetailsMain.jsx
 import React, { useEffect, useState } from "react"
-import { Row, Col, Input, Button, Checkbox, message, Card } from "antd"
+import { Card, Button, Input, Row, Col, Checkbox, message } from "antd"
 import axios from "@/api/axiosInstance"
-import SupplierBankDetailsTable from "./SupplierBankDetailsTable"
+
 import TableToolbar from "@/components/common/TableToolbar"
-import CurrencySelect from "@/components/inputs/CurrencySelect"
+import SupplierBankDetailsTable from "./SupplierBankDetailsTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
+
+const trimOrNull = (v) => {
+  if (v === undefined || v === null) return null
+  const s = String(v).trim()
+  return s === "" ? null : s
+}
 
 export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
-  const [submitting, setSubmitting] = useState(false)
-  const [conflict, setConflict] = useState(null) // { id, current, draft }
+  const [conflict, setConflict] = useState(null)
 
   const [newBank, setNewBank] = useState({
     bank_name: "",
     account_number: "",
-    currency: "", // ISO3
-    bic: "",
     iban: "",
+    bic: "",
+    currency: "",
     correspondent_account: "",
     bank_address: "",
     additional_info: "",
@@ -30,74 +35,69 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
     if (!supplierId) return
     setLoading(true)
     try {
-      const res = await axios.get("/supplier-bank-details", {
+      const { data: list } = await axios.get("/part-suppliers/bank-details", {
         params: { supplier_id: supplierId },
       })
-      setData(Array.isArray(res.data) ? res.data : [])
-    } catch (err) {
-      console.error("Ошибка загрузки реквизитов:", err)
-      message.error("Не удалось загрузить реквизиты")
+      setData(Array.isArray(list) ? list : [])
+    } catch (e) {
+      console.error("Ошибка загрузки банковских реквизитов поставщика:", e)
+      message.error("Не удалось загрузить банковские реквизиты поставщика")
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    if (!supplierId) return
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supplierId])
 
   const handleAdd = async () => {
     if (!supplierId) return
+
     const payload = {
       supplier_id: supplierId,
-      bank_name: newBank.bank_name?.trim(),
-      account_number: newBank.account_number?.trim(),
-      currency: newBank.currency ? String(newBank.currency).trim().toUpperCase().slice(0, 3) : null,
-      bic: newBank.bic?.trim() || null,
-      iban: newBank.iban?.trim() || null,
-      correspondent_account: newBank.correspondent_account?.trim() || null,
-      bank_address: newBank.bank_address?.trim() || null,
-      additional_info: newBank.additional_info?.trim() || null,
+      bank_name: trimOrNull(newBank.bank_name),
+      account_number: trimOrNull(newBank.account_number),
+      iban: trimOrNull(newBank.iban),
+      bic: trimOrNull(newBank.bic),
+      currency: trimOrNull(newBank.currency),
+      correspondent_account: trimOrNull(newBank.correspondent_account),
+      bank_address: trimOrNull(newBank.bank_address),
+      additional_info: trimOrNull(newBank.additional_info),
       is_primary_for_currency: newBank.is_primary_for_currency ? 1 : 0,
     }
 
     if (!payload.bank_name || !payload.account_number) {
-      message.warning("Введите банк и расчётный счёт")
-      return
-    }
-    if (payload.is_primary_for_currency === 1 && !payload.currency) {
-      message.warning("Чтобы пометить «Основной для валюты», выберите валюту (ISO3)")
+      message.warning("Название банка и номер счёта обязательны")
       return
     }
 
-    setSubmitting(true)
     try {
-      const { data: created } = await axios.post("/supplier-bank-details", payload)
+      const { data: created } = await axios.post(
+        "/part-suppliers/bank-details",
+        payload
+      )
       setData((prev) => [created, ...prev])
-
-      if (created.is_primary_for_currency && created.currency) {
-        await fetchData() // чтобы снять флаги у остальных
-      }
-
       setNewBank({
         bank_name: "",
         account_number: "",
-        currency: "",
-        bic: "",
         iban: "",
+        bic: "",
+        currency: "",
         correspondent_account: "",
         bank_address: "",
         additional_info: "",
         is_primary_for_currency: false,
       })
-      message.success("Реквизиты добавлены")
+      message.success("Банковские реквизиты добавлены")
       onChanged?.()
-    } catch (err) {
-      console.error("Ошибка добавления реквизитов:", err)
-      message.error(err?.response?.data?.message || "Не удалось добавить реквизиты")
-    } finally {
-      setSubmitting(false)
+    } catch (e) {
+      console.error("Ошибка добавления банковских реквизитов поставщика:", e)
+      const msg =
+        e?.response?.data?.message || "Не удалось добавить банковские реквизиты"
+      message.error(msg)
     }
   }
 
@@ -109,201 +109,227 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
 
   const handleUpdate = async (id, values) => {
     try {
-      const { data: fresh } = await axios.put(`/supplier-bank-details/${id}`, values)
+      const { data: fresh } = await axios.put(
+        `/part-suppliers/bank-details/${id}`,
+        values
+      )
       replaceRow(fresh)
-
-      if (fresh.is_primary_for_currency && fresh.currency) {
-        await fetchData()
-      }
-
-      message.success("Реквизиты обновлены")
       onChanged?.()
-    } catch (err) {
-      if (err?.response?.status === 409 && err.response.data?.current) {
+    } catch (e) {
+      if (e?.response?.status === 409) {
+        const current = e.response.data?.currentRecord
         setConflict({
           id,
-          current: err.response.data.current,
-          draft: values,
+          current,
+          draft: { id, ...values },
         })
-      } else {
-        console.error("Ошибка при обновлении реквизитов:", err)
-        message.error("Не удалось сохранить изменения")
+        return
       }
+      console.error("Ошибка обновления банковских реквизитов:", e)
+      message.error("Не удалось обновить банковские реквизиты")
     }
   }
 
   const handleDelete = async (record) => {
     try {
-      await axios.delete(`/supplier-bank-details/${record.id}`, {
+      await axios.delete(`/part-suppliers/bank-details/${record.id}`, {
         params: { version: record.version },
       })
       removeRow(record.id)
-      message.success("Реквизиты удалены")
       onChanged?.()
-    } catch (err) {
-      if (err?.response?.status === 409 && err.response.data?.current) {
+    } catch (e) {
+      if (e?.response?.status === 409) {
+        const current = e.response.data?.currentRecord
         setConflict({
           id: record.id,
-          current: err.response.data.current,
+          current,
           draft: record,
         })
-      } else {
-        console.error("Ошибка при удалении реквизитов:", err)
-        message.error("Не удалось удалить реквизиты")
+        return
       }
+      console.error("Ошибка удаления банковских реквизитов:", e)
+      message.error("Не удалось удалить банковские реквизиты")
     }
   }
 
-  const filtered = search
-    ? data.filter((x) =>
-        [x.bank_name, x.account_number, x.currency, x.bic, x.iban]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      )
-    : data
+  const filtered = data.filter((r) => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    return (
+      String(r.bank_name || "").toLowerCase().includes(q) ||
+      String(r.account_number || "").toLowerCase().includes(q) ||
+      String(r.currency || "").toLowerCase().includes(q) ||
+      String(r.bic || "").toLowerCase().includes(q) ||
+      String(r.iban || "").toLowerCase().includes(q)
+    )
+  })
 
-  if (!supplierId) return null
+  if (!supplierId) {
+    return (
+      <Card size="small">
+        Выберите поставщика, чтобы видеть его банковские реквизиты.
+      </Card>
+    )
+  }
 
   return (
     <>
-      <TableToolbar
-        placeholder="Поиск по банку, счёту, валюте, BIC"
-        search={search}
-        onSearch={setSearch}
-      />
-
-      <Card size="small" style={{ marginTop: 8, marginBottom: 12 }}>
-        <Row gutter={12} align="middle" style={{ marginBottom: 8 }}>
+      <Card size="small" style={{ marginBottom: 12 }}>
+        <Row gutter={8} style={{ marginBottom: 8 }}>
           <Col span={6}>
             <Input
-              placeholder="* Банк"
+              size="small"
+              placeholder="Банк"
               value={newBank.bank_name}
-              onChange={(e) => setNewBank((p) => ({ ...p, bank_name: e.target.value }))}
-              onPressEnter={handleAdd}
-              allowClear
-            />
-          </Col>
-
-          <Col span={6}>
-            <Input
-              placeholder="* Расч. счёт"
-              value={newBank.account_number}
-              onChange={(e) => setNewBank((p) => ({ ...p, account_number: e.target.value }))}
-              onPressEnter={handleAdd}
-              allowClear
-            />
-          </Col>
-
-          <Col span={4}>
-            <CurrencySelect
-              value={newBank.currency}
-              onChange={(v) => setNewBank((p) => ({ ...p, currency: v || "" }))}
-              // 👇 якорим выпадашку к раскрытой строке (обёртка у родителя)
-              getPopupContainer={(trigger) =>
-                trigger?.closest(".parts-table-wrap") || document.body
+              onChange={(e) =>
+                setNewBank((p) => ({
+                  ...p,
+                  bank_name: e.target.value,
+                }))
               }
             />
           </Col>
-
+          <Col span={6}>
+            <Input
+              size="small"
+              placeholder="Номер счёта"
+              value={newBank.account_number}
+              onChange={(e) =>
+                setNewBank((p) => ({
+                  ...p,
+                  account_number: e.target.value,
+                }))
+              }
+            />
+          </Col>
           <Col span={4}>
             <Input
+              size="small"
+              placeholder="Валюта (ISO3)"
+              value={newBank.currency}
+              onChange={(e) =>
+                setNewBank((p) => ({
+                  ...p,
+                  currency: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              size="small"
               placeholder="BIC"
               value={newBank.bic}
-              onChange={(e) => setNewBank((p) => ({ ...p, bic: e.target.value }))}
-              onPressEnter={handleAdd}
-              allowClear
-            />
-          </Col>
-
-          <Col span={4}>
-            <Input
-              placeholder="IBAN"
-              value={newBank.iban}
-              onChange={(e) => setNewBank((p) => ({ ...p, iban: e.target.value }))}
-              onPressEnter={handleAdd}
-              allowClear
-            />
-          </Col>
-        </Row>
-
-        <Row gutter={12} align="middle" style={{ marginBottom: 8 }}>
-          <Col span={6}>
-            <Input
-              placeholder="Корр. счёт"
-              value={newBank.correspondent_account}
-              onChange={(e) => setNewBank((p) => ({ ...p, correspondent_account: e.target.value }))}
-              onPressEnter={handleAdd}
-              allowClear
-            />
-          </Col>
-          <Col span={8}>
-            <Input
-              placeholder="Адрес банка"
-              value={newBank.bank_address}
-              onChange={(e) => setNewBank((p) => ({ ...p, bank_address: e.target.value }))}
-              onPressEnter={handleAdd}
-              allowClear
-            />
-          </Col>
-          <Col span={6}>
-            <Input
-              placeholder="Доп. информация"
-              value={newBank.additional_info}
-              onChange={(e) => setNewBank((p) => ({ ...p, additional_info: e.target.value }))}
-              onPressEnter={handleAdd}
-              allowClear
+              onChange={(e) =>
+                setNewBank((p) => ({
+                  ...p,
+                  bic: e.target.value,
+                }))
+              }
             />
           </Col>
           <Col span={4}>
             <Checkbox
               checked={newBank.is_primary_for_currency}
               onChange={(e) =>
-                setNewBank((p) => ({ ...p, is_primary_for_currency: e.target.checked }))
+                setNewBank((p) => ({
+                  ...p,
+                  is_primary_for_currency: e.target.checked,
+                }))
               }
             >
-              Основной для валюты
+              Основной по валюте
             </Checkbox>
           </Col>
         </Row>
 
-        <Row>
-          <Col>
-            <Button type="primary" onClick={handleAdd} loading={submitting}>
-              Добавить
-            </Button>
+        <Row gutter={8} style={{ marginBottom: 8 }}>
+          <Col span={6}>
+            <Input
+              size="small"
+              placeholder="IBAN"
+              value={newBank.iban}
+              onChange={(e) =>
+                setNewBank((p) => ({
+                  ...p,
+                  iban: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              size="small"
+              placeholder="Корр. счёт"
+              value={newBank.correspondent_account}
+              onChange={(e) =>
+                setNewBank((p) => ({
+                  ...p,
+                  correspondent_account: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              size="small"
+              placeholder="Адрес банка"
+              value={newBank.bank_address}
+              onChange={(e) =>
+                setNewBank((p) => ({
+                  ...p,
+                  bank_address: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              size="small"
+              placeholder="Доп. сведения"
+              value={newBank.additional_info}
+              onChange={(e) =>
+                setNewBank((p) => ({
+                  ...p,
+                  additional_info: e.target.value,
+                }))
+              }
+            />
           </Col>
         </Row>
+
+        <Button
+          type="primary"
+          size="small"
+          onClick={handleAdd}
+          disabled={!newBank.bank_name.trim() || !newBank.account_number.trim()}
+        >
+          Добавить реквизиты
+        </Button>
       </Card>
 
-      <SupplierBankDetailsTable
-        data={filtered}
-        loading={loading}
-        onUpdate={handleUpdate}
-        onDelete={handleDelete}
-        onReplaceRow={replaceRow}
-        onRefresh={fetchData}
-      />
-
-      {conflict && (
-        <VersionConflictModal
-          open={!!conflict}
-          entityLabel="Банковские реквизиты поставщика"
-          current={conflict.current}
-          draft={conflict.draft}
-          onResolve={async (choice) => {
-            if (choice === "overwrite") {
-              await handleUpdate(conflict.id, {
-                ...conflict.draft,
-                version: conflict.current.version,
-              })
-            }
-            setConflict(null)
-          }}
-          onCancel={() => setConflict(null)}
+      <Card size="small">
+        <TableToolbar
+          search={search}
+          onSearch={setSearch}
+          placeholder="Поиск по банковским реквизитам поставщика..."
         />
-      )}
+        <SupplierBankDetailsTable
+          data={filtered}
+          loading={loading}
+          onUpdate={handleUpdate}
+          onDelete={handleDelete}
+        />
+      </Card>
+
+      <VersionConflictModal
+        conflict={conflict}
+        onCancel={() => setConflict(null)}
+        onReload={async () => {
+          setConflict(null)
+          await fetchData()
+        }}
+      />
     </>
   )
 }

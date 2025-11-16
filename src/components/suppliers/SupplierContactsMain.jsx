@@ -2,13 +2,22 @@
 import React, { useEffect, useState } from "react"
 import { Card, Button, Input, Row, Col, Checkbox, message } from "antd"
 import axios from "@/api/axiosInstance"
-import SupplierContactsTable from "./SupplierContactsTable"
+
 import TableToolbar from "@/components/common/TableToolbar"
+import SupplierContactsTable from "./SupplierContactsTable"
+import VersionConflictModal from "@/components/common/VersionConflictModal"
+
+const trimOrNull = (v) => {
+  if (v === undefined || v === null) return null
+  const s = String(v).trim()
+  return s === "" ? null : s
+}
 
 export default function SupplierContactsMain({ supplierId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
+  const [conflict, setConflict] = useState(null)
 
   const [newContact, setNewContact] = useState({
     name: "",
@@ -23,31 +32,35 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
     if (!supplierId) return
     setLoading(true)
     try {
-      const res = await axios.get("/supplier-contacts", { params: { supplier_id: supplierId } })
-      setData(Array.isArray(res.data) ? res.data : [])
+      const { data: list } = await axios.get("/part-suppliers/contacts", {
+        params: { supplier_id: supplierId },
+      })
+      setData(Array.isArray(list) ? list : [])
     } catch (e) {
-      console.error("Ошибка загрузки контактов:", e)
-      message.error("Не удалось загрузить контакты")
+      console.error("Ошибка загрузки контактов поставщика:", e)
+      message.error("Не удалось загрузить контакты поставщика")
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    if (!supplierId) return
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supplierId])
 
   const handleAdd = async () => {
     if (!supplierId) return
+
     const payload = {
       supplier_id: supplierId,
       name: newContact.name?.trim(),
-      role: newContact.role?.trim() || null,
-      email: newContact.email?.trim() || null,
-      phone: newContact.phone?.trim() || null,
+      role: trimOrNull(newContact.role),
+      email: trimOrNull(newContact.email),
+      phone: trimOrNull(newContact.phone),
       is_primary: newContact.is_primary ? 1 : 0,
-      notes: newContact.notes?.trim() || null,
+      notes: trimOrNull(newContact.notes),
     }
 
     if (!payload.name) {
@@ -56,9 +69,19 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
     }
 
     try {
-      const { data: created } = await axios.post("/supplier-contacts", payload)
-      setData((prev) => [created, ...prev]) // мгновенно в таблицу
-      setNewContact({ name: "", role: "", email: "", phone: "", is_primary: false, notes: "" })
+      const { data: created } = await axios.post(
+        "/part-suppliers/contacts",
+        payload
+      )
+      setData((prev) => [created, ...prev])
+      setNewContact({
+        name: "",
+        role: "",
+        email: "",
+        phone: "",
+        is_primary: false,
+        notes: "",
+      })
       message.success("Контакт добавлен")
       onChanged?.()
     } catch (e) {
@@ -67,95 +90,192 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
     }
   }
 
-  const filtered = search
-    ? data.filter((c) =>
-        [c.name, c.role, c.email, c.phone, c.notes]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      )
-    : data
+  const replaceRow = (fresh) =>
+    setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
 
-  if (!supplierId) return null
+  const removeRow = (id) =>
+    setData((prev) => prev.filter((r) => r.id !== id))
+
+  const handleUpdate = async (id, values) => {
+    try {
+      const { data: fresh } = await axios.put(
+        `/part-suppliers/contacts/${id}`,
+        values
+      )
+      replaceRow(fresh)
+      onChanged?.()
+    } catch (e) {
+      if (e?.response?.status === 409) {
+        const current = e.response.data?.currentRecord
+        setConflict({
+          id,
+          current,
+          draft: { id, ...values },
+        })
+        return
+      }
+      console.error("Ошибка обновления контакта:", e)
+      message.error("Не удалось обновить контакт")
+    }
+  }
+
+  const handleDelete = async (record) => {
+    try {
+      await axios.delete(`/part-suppliers/contacts/${record.id}`, {
+        params: { version: record.version },
+      })
+      removeRow(record.id)
+      onChanged?.()
+    } catch (e) {
+      if (e?.response?.status === 409) {
+        const current = e.response.data?.currentRecord
+        setConflict({
+          id: record.id,
+          current,
+          draft: record,
+        })
+        return
+      }
+      console.error("Ошибка удаления контакта:", e)
+      message.error("Не удалось удалить контакт")
+    }
+  }
+
+  const filtered = data.filter((r) => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    return (
+      String(r.name || "").toLowerCase().includes(q) ||
+      String(r.role || "").toLowerCase().includes(q) ||
+      String(r.email || "").toLowerCase().includes(q) ||
+      String(r.phone || "").toLowerCase().includes(q)
+    )
+  })
+
+  if (!supplierId) {
+    return (
+      <Card size="small">
+        Выберите поставщика, чтобы видеть его контакты.
+      </Card>
+    )
+  }
 
   return (
-    <div className="parts-table-wrap">
-      {/* Унифицированный тулбар */}
-      <TableToolbar search={search} onSearch={setSearch} />
-
-      {/* Форма добавления */}
-      <Card size="small" style={{ marginTop: 8, marginBottom: 12 }}>
-        <Row gutter={12}>
+    <>
+      <Card size="small" style={{ marginBottom: 12 }}>
+        <Row gutter={8} style={{ marginBottom: 8 }}>
           <Col span={6}>
             <Input
-              placeholder="Имя*"
+              size="small"
+              placeholder="Имя контакта"
               value={newContact.name}
-              onChange={(e) => setNewContact((p) => ({ ...p, name: e.target.value }))}
-              onPressEnter={handleAdd}
-              allowClear
-            />
-          </Col>
-          <Col span={5}>
-            <Input
-              placeholder="Роль"
-              value={newContact.role}
-              onChange={(e) => setNewContact((p) => ({ ...p, role: e.target.value }))}
-              onPressEnter={handleAdd}
-              allowClear
-            />
-          </Col>
-          <Col span={5}>
-            <Input
-              placeholder="Email"
-              type="email"
-              value={newContact.email}
-              onChange={(e) => setNewContact((p) => ({ ...p, email: e.target.value }))}
-              onPressEnter={handleAdd}
-              allowClear
+              onChange={(e) =>
+                setNewContact((prev) => ({
+                  ...prev,
+                  name: e.target.value,
+                }))
+              }
             />
           </Col>
           <Col span={4}>
             <Input
+              size="small"
+              placeholder="Роль / должность"
+              value={newContact.role}
+              onChange={(e) =>
+                setNewContact((prev) => ({
+                  ...prev,
+                  role: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              size="small"
+              placeholder="Email"
+              value={newContact.email}
+              onChange={(e) =>
+                setNewContact((prev) => ({
+                  ...prev,
+                  email: e.target.value,
+                }))
+              }
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              size="small"
               placeholder="Телефон"
               value={newContact.phone}
-              onChange={(e) => setNewContact((p) => ({ ...p, phone: e.target.value }))}
-              onPressEnter={handleAdd}
-              allowClear
+              onChange={(e) =>
+                setNewContact((prev) => ({
+                  ...prev,
+                  phone: e.target.value,
+                }))
+              }
             />
           </Col>
-          <Col span={4} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Col span={4}>
             <Checkbox
               checked={newContact.is_primary}
-              onChange={(e) => setNewContact((p) => ({ ...p, is_primary: e.target.checked }))}
+              onChange={(e) =>
+                setNewContact((prev) => ({
+                  ...prev,
+                  is_primary: e.target.checked,
+                }))
+              }
             >
-              Основной
+              Основной контакт
             </Checkbox>
-            <Button type="primary" onClick={handleAdd}>Добавить</Button>
           </Col>
-        </Row>
-
-        <Row style={{ marginTop: 8 }}>
-          <Col span={24}>
-            <Input.TextArea
-              placeholder="Заметки"
-              autoSize={{ minRows: 1, maxRows: 4 }}
+          <Col span={10} style={{ marginTop: 8 }}>
+            <Input
+              size="small"
+              placeholder="Примечание"
               value={newContact.notes}
-              onChange={(e) => setNewContact((p) => ({ ...p, notes: e.target.value }))}
-              allowClear
+              onChange={(e) =>
+                setNewContact((prev) => ({
+                  ...prev,
+                  notes: e.target.value,
+                }))
+              }
             />
           </Col>
         </Row>
+
+        <Button
+          type="primary"
+          size="small"
+          onClick={handleAdd}
+          disabled={!newContact.name.trim()}
+        >
+          Добавить контакт
+        </Button>
       </Card>
 
-      {/* Таблица */}
-      <SupplierContactsTable
-        data={filtered}
-        loading={loading}
-        supplierId={supplierId}
-        setData={setData}
-        onChanged={onChanged}
+      <Card size="small">
+        <TableToolbar
+          search={search}
+          onSearch={setSearch}
+          placeholder="Поиск по контактам поставщика..."
+        />
+        <SupplierContactsTable
+          data={filtered}
+          loading={loading}
+          onUpdate={handleUpdate}
+          onDelete={handleDelete}
+        />
+      </Card>
+
+      <VersionConflictModal
+        conflict={conflict}
+        onCancel={() => setConflict(null)}
+        onReload={async () => {
+          setConflict(null)
+          await fetchData()
+        }}
       />
-    </div>
+    </>
   )
 }

@@ -1,9 +1,11 @@
+// src/components/clients/shipping/ShippingAddressesTable.jsx
 import React, { useState } from "react"
 import { Table, Input, Divider, Row, Col, Space, Tooltip, Button } from "antd"
+import { CopyOutlined } from "@ant-design/icons"
+
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
-import { CopyOutlined } from "@ant-design/icons"
 
 const formatFull = (r = {}) =>
   [
@@ -35,11 +37,6 @@ export default function ShippingAddressesTable({
     setEditedRow(null)
   }
 
-  const onKey = (e) => {
-    if (e.key === "Enter") handleSave()
-    if (e.key === "Escape") cancelEdit()
-  }
-
   const handleSave = async () => {
     if (!editedRow?.formatted_address?.trim()) return
     try {
@@ -48,6 +45,11 @@ export default function ShippingAddressesTable({
     } catch (e) {
       console.error("Ошибка при сохранении адреса доставки:", e)
     }
+  }
+
+  const onKey = (e) => {
+    if (e.key === "Enter") handleSave()
+    if (e.key === "Escape") cancelEdit()
   }
 
   const handleDelete = async (record) => {
@@ -222,9 +224,7 @@ export default function ShippingAddressesTable({
               setEditedRow({ ...r })
             }}
           >
-            <div className="cell-ellipsis">
-              {oneLine}
-            </div>
+            <div className="cell-ellipsis">{oneLine}</div>
             {r.comment && (
               <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
                 Комментарий: {r.comment}

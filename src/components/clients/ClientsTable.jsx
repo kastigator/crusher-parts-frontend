@@ -55,12 +55,18 @@ export default function ClientsTable({
     }
     try {
       await onUpdate?.(editedRow.id, { ...editedRow })
+      // onUpdate в ClientsMain уже обновляет строку через replaceRow
       cancelEdit()
-      await onReload?.()
     } catch (err) {
-      if (err?.isDuplicateKey) return message.error("Клиент с таким названием уже существует")
+      if (err?.isDuplicateKey) {
+        return message.error("Клиент с таким названием уже существует")
+      }
       if (err?.isVersionConflict) {
-        setConflict({ open: true, current: err.currentRecord || null, draft: editedRow })
+        setConflict({
+          open: true,
+          current: err.currentRecord || null,
+          draft: editedRow,
+        })
         return
       }
       console.error("Ошибка сохранения:", err)
@@ -71,14 +77,21 @@ export default function ClientsTable({
   const deleteClient = async (client) => {
     const { confirmed } = await confirmAction("Удалить клиента?")
     if (!confirmed) return
+
     try {
       await onDelete?.(client)
+      // после удаления нам нужен полный рефетч списка
       await onReload?.()
     } catch (err) {
       if (err?.isVersionConflict) {
-        if (err.currentRecord && typeof onReplaceRow === "function") onReplaceRow(err.currentRecord)
-        else await onReload?.()
-        return message.warning("Запись изменилась и не была удалена. Данные обновлены.")
+        if (err.currentRecord && typeof onReplaceRow === "function") {
+          onReplaceRow(err.currentRecord)
+        } else {
+          await onReload?.()
+        }
+        return message.warning(
+          "Запись изменилась и не была удалена. Данные обновлены."
+        )
       }
       console.error("Ошибка при удалении клиента:", err)
       message.error("Не удалось удалить клиента")
@@ -88,7 +101,9 @@ export default function ClientsTable({
   const renderInput = (field) => (
     <Input
       value={editedRow?.[field] ?? ""}
-      onChange={(e) => setEditedRow((prev) => ({ ...prev, [field]: e.target.value }))}
+      onChange={(e) =>
+        setEditedRow((prev) => ({ ...prev, [field]: e.target.value }))
+      }
       onPressEnter={saveEdit}
       onKeyDown={(e) => {
         if (e.key === "Escape") cancelEdit()
@@ -103,28 +118,44 @@ export default function ClientsTable({
       title: "Компания",
       dataIndex: "company_name",
       render: (_, record) =>
-        isEditing(record) ? renderInput("company_name") : <ValueDisplay value={record.company_name} />,
+        isEditing(record) ? (
+          renderInput("company_name")
+        ) : (
+          <ValueDisplay value={record.company_name} />
+        ),
       onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Контакт",
       dataIndex: "contact_person",
       render: (_, record) =>
-        isEditing(record) ? renderInput("contact_person") : <ValueDisplay value={record.contact_person} />,
+        isEditing(record) ? (
+          renderInput("contact_person")
+        ) : (
+          <ValueDisplay value={record.contact_person} />
+        ),
       onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Телефон",
       dataIndex: "phone",
       render: (_, record) =>
-        isEditing(record) ? renderInput("phone") : <ValueDisplay value={record.phone} />,
+        isEditing(record) ? (
+          renderInput("phone")
+        ) : (
+          <ValueDisplay value={record.phone} />
+        ),
       onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Email",
       dataIndex: "email",
       render: (_, record) =>
-        isEditing(record) ? renderInput("email") : <ValueDisplay value={record.email} type="email" />,
+        isEditing(record) ? (
+          renderInput("email")
+        ) : (
+          <ValueDisplay value={record.email} type="email" />
+        ),
       onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
@@ -203,7 +234,8 @@ export default function ClientsTable({
         expandable={{
           expandedRowRender,
           expandedRowKeys: expandedClientId ? [expandedClientId] : [],
-          onExpand: (expanded, record) => setExpandedClientId(expanded ? record.id : null),
+          onExpand: (expanded, record) =>
+            setExpandedClientId(expanded ? record.id : null),
         }}
         pagination={{ pageSize: 10 }}
         size="middle"
@@ -229,7 +261,9 @@ export default function ClientsTable({
           { key: "email", title: "Email" },
         ]}
         onReload={async () => {
-          if (conflict.current && typeof onReplaceRow === "function") onReplaceRow(conflict.current)
+          if (conflict.current && typeof onReplaceRow === "function") {
+            onReplaceRow(conflict.current)
+          }
           await onReload?.()
           setConflict({ open: false, current: null, draft: null })
           cancelEdit()
@@ -237,17 +271,24 @@ export default function ClientsTable({
         onManualMerge={() => {
           const base = conflict.current || {}
           const draft = conflict.draft || {}
+
           const merged = {
             ...base,
-            company_name:   draft.company_name   ?? base.company_name,
+            company_name: draft.company_name ?? base.company_name,
             contact_person: draft.contact_person ?? base.contact_person,
-            phone:          draft.phone          ?? base.phone,
-            email:          draft.email          ?? base.email,
+            phone: draft.phone ?? base.phone,
+            email: draft.email ?? base.email,
           }
-          if (merged.id) { setEditingId(merged.id); setEditedRow(merged) }
+
+          if (merged.id) {
+            setEditingId(merged.id)
+            setEditedRow(merged)
+          }
           setConflict({ open: false, current: null, draft: null })
         }}
-        onCancel={() => setConflict({ open: false, current: null, draft: null })}
+        onCancel={() =>
+          setConflict({ open: false, current: null, draft: null })
+        }
       />
     </>
   )

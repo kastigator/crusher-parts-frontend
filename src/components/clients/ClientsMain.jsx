@@ -45,17 +45,20 @@ export default function ClientsMain() {
       email: trim(row.email) || null,
       version: row.version,
     }
+
     try {
       const { data: fresh } = await axios.put(`/clients/${id}`, payload)
       replaceRow(fresh)
       message.success("Изменения сохранены")
     } catch (err) {
+      // 409 + current → сигнал для VersionConflictModal в таблице
       if (err?.response?.status === 409 && err?.response?.data?.current) {
         const e = new Error("Version conflict")
         e.isVersionConflict = true
         e.currentRecord = err.response.data.current
         throw e
       }
+      // дубль названия компании
       if (err?.response?.status === 409 && err?.response?.data?.code === "duplicate") {
         const e = new Error("Duplicate")
         e.isDuplicateKey = true
@@ -67,7 +70,9 @@ export default function ClientsMain() {
 
   const onDelete = async (client) => {
     try {
-      await axios.delete(`/clients/${client.id}`, { params: { version: client.version } })
+      await axios.delete(`/clients/${client.id}`, {
+        params: { version: client.version },
+      })
       message.success("Клиент удалён")
     } catch (err) {
       if (err?.response?.status === 409 && err?.response?.data?.current) {
@@ -94,7 +99,9 @@ export default function ClientsMain() {
     }
   }
 
-  useEffect(() => { fetchClients() }, [])
+  useEffect(() => {
+    fetchClients()
+  }, [])
 
   const handleAdd = async () => {
     const payload = {
@@ -107,10 +114,12 @@ export default function ClientsMain() {
       website: newClient.website?.trim() || "",
       notes: newClient.notes?.trim() || "",
     }
+
     if (!payload.company_name) {
       message.warning("Название компании обязательно")
       return
     }
+
     try {
       await axios.post("/clients", payload)
       message.success("Клиент добавлен")
@@ -140,20 +149,31 @@ export default function ClientsMain() {
     )
   }, [clients, search])
 
-  // --- etag helpers (баннер "Появились новые изменения") ---
+  // --- etag helpers (баннер «Появились новые изменения») ---
   const fetchClientsEtag = async () => {
-    const { data } = await axios.get("/clients/etag")
-    return data?.etag || ""
+    try {
+      const { data } = await axios.get("/clients/etag")
+      return data?.etag || ""
+    } catch {
+      return ""
+    }
   }
 
   const fetchChildEtags = async (clientId) => {
     if (!clientId) return ""
     try {
       const [billing, shipping, bank] = await Promise.all([
-        axios.get("/client-billing-addresses/etag",  { params: { client_id: clientId } }),
-        axios.get("/client-shipping-addresses/etag", { params: { client_id: clientId } }),
-        axios.get("/client-bank-details/etag",      { params: { client_id: clientId } }),
+        axios.get("/client-billing-addresses/etag", {
+          params: { client_id: clientId },
+        }),
+        axios.get("/client-shipping-addresses/etag", {
+          params: { client_id: clientId },
+        }),
+        axios.get("/client-bank-details/etag", {
+          params: { client_id: clientId },
+        }),
       ])
+
       return [
         billing.data?.etag || "0:0",
         shipping.data?.etag || "0:0",
@@ -181,22 +201,30 @@ export default function ClientsMain() {
       baselinesRef.current.set(key, tag)
       lastBaselineSetAtRef.current = Date.now()
       setHasNew(false)
-    } catch { /* noop */ }
+    } catch {
+      // noop
+    }
   }
 
   const refreshAllAndResetBaseline = async () => {
     await fetchClients()
-    setReloadKey((k) => k + 1)           // форсим перемонтирование дочерних вкладок
+    setReloadKey((k) => k + 1) // форсим перемонтирование дочерних вкладок
     await setBaselineFor(expandedClientId)
   }
 
+  // после первой загрузки/перезагрузки фиксируем baseline
   useEffect(() => {
-    if (!loading) setBaselineFor(expandedClientId)
+    if (!loading) {
+      setBaselineFor(expandedClientId)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading])
 
+  // поллинг по composite etag (clients + дочерние таблицы)
   useEffect(() => {
-    let t0, timer
+    let t0
+    let timer
+
     const check = async () => {
       if (document.hidden) return
       const key = getKey(expandedClientId)
@@ -204,14 +232,20 @@ export default function ClientsMain() {
         const current = await buildCompositeTag(expandedClientId)
         const baseline = baselinesRef.current.get(key)
         if (!baseline) return
+        // не реагируем на свои же изменения прямо сразу
         if (Date.now() - lastBaselineSetAtRef.current < 2000) return
         if (baseline !== current) setHasNew(true)
-      } catch { /* noop */ }
+      } catch {
+        // noop
+      }
     }
+
     t0 = setTimeout(check, 10000)
     timer = setInterval(check, 30000)
+
     const onVis = () => check()
     document.addEventListener("visibilitychange", onVis)
+
     return () => {
       clearTimeout(t0)
       clearInterval(timer)
@@ -257,7 +291,12 @@ export default function ClientsMain() {
           <Form.Item label="Компания">
             <Input
               value={newClient.company_name}
-              onChange={(e) => setNewClient((prev) => ({ ...prev, company_name: e.target.value }))}
+              onChange={(e) =>
+                setNewClient((prev) => ({
+                  ...prev,
+                  company_name: e.target.value,
+                }))
+              }
               placeholder="Название"
             />
           </Form.Item>
@@ -265,7 +304,12 @@ export default function ClientsMain() {
           <Form.Item label="Контактное лицо">
             <Input
               value={newClient.contact_person}
-              onChange={(e) => setNewClient((prev) => ({ ...prev, contact_person: e.target.value }))}
+              onChange={(e) =>
+                setNewClient((prev) => ({
+                  ...prev,
+                  contact_person: e.target.value,
+                }))
+              }
               placeholder="ФИО"
             />
           </Form.Item>
@@ -273,7 +317,12 @@ export default function ClientsMain() {
           <Form.Item label="Телефон">
             <Input
               value={newClient.phone}
-              onChange={(e) => setNewClient((prev) => ({ ...prev, phone: e.target.value }))}
+              onChange={(e) =>
+                setNewClient((prev) => ({
+                  ...prev,
+                  phone: e.target.value,
+                }))
+              }
               placeholder="+7..."
             />
           </Form.Item>
@@ -281,13 +330,20 @@ export default function ClientsMain() {
           <Form.Item label="Email">
             <Input
               value={newClient.email}
-              onChange={(e) => setNewClient((prev) => ({ ...prev, email: e.target.value }))}
+              onChange={(e) =>
+                setNewClient((prev) => ({
+                  ...prev,
+                  email: e.target.value,
+                }))
+              }
               placeholder="example@mail.com"
             />
           </Form.Item>
 
           <Form.Item>
-            <Button type="primary" htmlType="submit">Добавить</Button>
+            <Button type="primary" htmlType="submit">
+              Добавить
+            </Button>
           </Form.Item>
         </Form>
 
