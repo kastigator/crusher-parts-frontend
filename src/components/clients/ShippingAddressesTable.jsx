@@ -3,7 +3,6 @@ import React, { useState } from "react"
 import { Table, Input, Divider, Row, Col, Space, Tooltip, Button } from "antd"
 import { CopyOutlined } from "@ant-design/icons"
 
-import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 
@@ -72,36 +71,21 @@ export default function ShippingAddressesTable({
         if (editing && editedRow) {
           return (
             <>
-              <PlaceAddressInput
-                debugId={`shipping-table-row-${r.id}`}
-                value={{
-                  address_line: editedRow.formatted_address,
-                  lat: editedRow.lat,
-                  lng: editedRow.lng,
-                  place_id: editedRow.place_id,
-                  postal_code: editedRow.postal_code,
-                }}
-                getPopupContainer={(trigger) =>
-                  trigger?.closest(".parts-table-wrap") || document.body
-                }
-                onChange={(val) =>
-                  setEditedRow((prev) => ({
-                    ...prev,
-                    formatted_address: val.address_line,
-                    place_id: val.place_id,
-                    lat: val.lat,
-                    lng: val.lng,
-                    postal_code: val.postal_code,
-                    country: val.country,
-                    region: val.region,
-                    city: val.city,
-                    street: val.street,
-                    house: val.house,
-                    building: val.building,
-                    entrance: val.entrance,
-                  }))
-                }
-              />
+              <Row className="table-section">
+                <Col span={24}>
+                  <Input
+                    placeholder="Полный адрес"
+                    value={editedRow.formatted_address}
+                    onChange={(e) =>
+                      setEditedRow((p) => ({
+                        ...p,
+                        formatted_address: e.target.value,
+                      }))
+                    }
+                    onKeyDown={onKey}
+                  />
+                </Col>
+              </Row>
 
               <Divider style={{ margin: "8px 0" }} />
 
@@ -228,21 +212,21 @@ export default function ShippingAddressesTable({
             {r.comment && (
               <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
                 Комментарий: {r.comment}
-                <Space size={6} style={{ marginLeft: 8 }}>
-                  <Tooltip title="Скопировать адрес">
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<CopyOutlined />}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        navigator.clipboard.writeText(oneLine)
-                      }}
-                    />
-                  </Tooltip>
-                </Space>
               </div>
             )}
+            <Space size={6} style={{ marginTop: 4 }}>
+              <Tooltip title="Скопировать адрес">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    navigator.clipboard.writeText(oneLine)
+                  }}
+                />
+              </Tooltip>
+            </Space>
           </div>
         )
       },

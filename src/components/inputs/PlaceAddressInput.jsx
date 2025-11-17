@@ -10,8 +10,10 @@ export default function PlaceAddressInput({
   debugId = "?",
   resetTrigger
 }) {
-  const mapRef = useRef(null)
-  const mapInstance = useRef(null)
+  const mapRef = useRef(null)          // DOM-контейнер карты
+  const mapInstance = useRef(null)     // ymaps.Map инстанс
+  const placemarkRef = useRef(null)    // метка (если нужна)
+
   const [query, setQuery] = useState(value?.address_line || "")
   const [loading, setLoading] = useState(false)
   const [options, setOptions] = useState([])
@@ -25,23 +27,29 @@ export default function PlaceAddressInput({
     setOpen(false)
   }, [resetTrigger])
 
-  // инициализация карты
+  // ИНИЦИАЛИЗАЦИЯ КАРТЫ (StrictMode-safe)
   useEffect(() => {
-    if (mapInstance.current || !mapRef.current) return
-
+    if (!mapRef.current) return
     if (typeof window.ymaps === "undefined") {
       console.error("❌ Yandex Maps API не загружен")
       message.error("Не удалось загрузить Яндекс.Карты")
       return
     }
 
-    window.ymaps.ready(() => {
+    let cancelled = false
+
+    const initMap = () => {
+      if (cancelled || !mapRef.current) return
+
+      // убираем возможный старый инстанс/DOM
+      try { mapInstance.current?.destroy?.() } catch {}
+      mapInstance.current = null
+      mapRef.current.innerHTML = ""
+
       const ymaps = window.ymaps
       const { lat, lng } = value || {}
       const center =
-        lat != null && lng != null
-          ? [Number(lat), Number(lng)]
-          : [55.751574, 37.573856]
+        lat != null && lng != null ? [Number(lat), Number(lng)] : [55.751574, 37.573856]
 
       const map = new ymaps.Map(mapRef.current, {
         center,
@@ -51,44 +59,33 @@ export default function PlaceAddressInput({
       mapInstance.current = map
 
       if (lat != null && lng != null) {
-        const marker = new ymaps.Placemark(center, {}, { draggable: false })
-        map.geoObjects.add(marker)
+        placemarkRef.current = new ymaps.Placemark(center, {}, { draggable: false })
+        map.geoObjects.add(placemarkRef.current)
       }
 
       map.events.add("click", (e) => {
         const coords = e.get("coords")
         map.geoObjects.removeAll()
-        const marker = new ymaps.Placemark(coords, {}, { draggable: false })
-        map.geoObjects.add(marker)
+        placemarkRef.current = new ymaps.Placemark(coords, {}, { draggable: false })
+        map.geoObjects.add(placemarkRef.current)
 
         ymaps.geocode(coords).then((res) => {
           const first = res.geoObjects.get(0)
-          if (!first)
-            return message.warning("Не удалось определить адрес по координатам")
+          if (!first) return message.warning("Не удалось определить адрес по координатам")
 
-          const meta = first.properties.get(
-            "metaDataProperty.GeocoderMetaData"
-          )
+          const meta = first.properties.get("metaDataProperty.GeocoderMetaData")
           const addressLine = first.getAddressLine()
           const postalCode = meta.Address.postal_code || ""
-
           const components = meta.Address.Components || []
 
-          const country =
-            components.find((c) => c.kind === "country")?.name || ""
-          const province =
-            components.find((c) => c.kind === "province")?.name || ""
-          const area = components.find((c) => c.kind === "area")?.name || ""
-          const locality =
-            components.find((c) => c.kind === "locality")?.name || ""
-          const street =
-            components.find((c) => c.kind === "street")?.name || ""
-          const house =
-            components.find((c) => c.kind === "house")?.name || ""
-          const building =
-            components.find((c) => c.kind === "building")?.name || ""
-          const entrance =
-            components.find((c) => c.kind === "entrance")?.name || ""
+          const country   = components.find((c) => c.kind === "country")?.name || ""
+          const province  = components.find((c) => c.kind === "province")?.name || ""
+          const area      = components.find((c) => c.kind === "area")?.name || ""
+          const locality  = components.find((c) => c.kind === "locality")?.name || ""
+          const street    = components.find((c) => c.kind === "street")?.name || ""
+          const house     = components.find((c) => c.kind === "house")?.name || ""
+          const building  = components.find((c) => c.kind === "building")?.name || ""
+          const entrance  = components.find((c) => c.kind === "entrance")?.name || ""
 
           setQuery(addressLine)
           setOpen(false)
@@ -109,15 +106,21 @@ export default function PlaceAddressInput({
           })
         })
       })
-    })
+    }
+
+    // важное: если StrictMode сделает "mount→unmount→mount",
+    // первый отложенный ready просто проигнорируем по флагу cancelled
+    window.ymaps.ready(initMap)
 
     return () => {
-      if (mapInstance.current?.destroy) {
-        mapInstance.current.destroy()
-        mapInstance.current = null
-      }
+      cancelled = true
+      try { mapInstance.current?.destroy?.() } catch {}
+      mapInstance.current = null
+      placemarkRef.current = null
+      if (mapRef.current) mapRef.current.innerHTML = ""
     }
-  }, [value])
+    // ИНИЦИАЛИЗИРУЕМ по resetTrigger (и при первом рендере)
+  }, [resetTrigger]) // ⬅️ не зависим от value, чтобы не переинициализировать карту
 
   const handleSearch = () => {
     const ymaps = window.ymaps
@@ -129,7 +132,6 @@ export default function PlaceAddressInput({
       .then((res) => {
         const geoList = res.geoObjects
         const found = geoList.getLength()
-
         if (found === 0) {
           message.warning("Адрес не найден")
           setLoading(false)
@@ -139,9 +141,7 @@ export default function PlaceAddressInput({
         const choices = []
         for (let i = 0; i < found; i++) {
           const obj = geoList.get(i)
-          const meta = obj.properties.get(
-            "metaDataProperty.GeocoderMetaData"
-          )
+          const meta = obj.properties.get("metaDataProperty.GeocoderMetaData")
           const components = meta.Address.Components || []
 
           const parts = [
@@ -155,10 +155,8 @@ export default function PlaceAddressInput({
             components.find((c) => c.kind === "entrance")?.name
           ].filter(Boolean)
 
-          const fullLabel = parts.join(", ")
-
           choices.push({
-            label: fullLabel || obj.getAddressLine(),
+            label: parts.join(", ") || obj.getAddressLine(),
             addressLine: obj.getAddressLine(),
             index: i
           })
@@ -178,6 +176,7 @@ export default function PlaceAddressInput({
 
   const handleSelect = (_, option) => {
     if (!option || !geoObjects) return
+    const ymaps = window.ymaps                // <-- добавлено
     const selected = geoObjects.get(option.index)
     if (!selected) return
 
@@ -187,18 +186,14 @@ export default function PlaceAddressInput({
     const postalCode = meta.Address.postal_code || ""
     const components = meta.Address.Components || []
 
-    const country = components.find((c) => c.kind === "country")?.name || ""
-    const province =
-      components.find((c) => c.kind === "province")?.name || ""
-    const area = components.find((c) => c.kind === "area")?.name || ""
-    const locality =
-      components.find((c) => c.kind === "locality")?.name || ""
-    const street = components.find((c) => c.kind === "street")?.name || ""
-    const house = components.find((c) => c.kind === "house")?.name || ""
-    const building =
-      components.find((c) => c.kind === "building")?.name || ""
-    const entrance =
-      components.find((c) => c.kind === "entrance")?.name || ""
+    const country  = components.find((c) => c.kind === "country")?.name || ""
+    const province = components.find((c) => c.kind === "province")?.name || ""
+    const area     = components.find((c) => c.kind === "area")?.name || ""
+    const locality = components.find((c) => c.kind === "locality")?.name || ""
+    const street   = components.find((c) => c.kind === "street")?.name || ""
+    const house    = components.find((c) => c.kind === "house")?.name || ""
+    const building = components.find((c) => c.kind === "building")?.name || ""
+    const entrance = components.find((c) => c.kind === "entrance")?.name || ""
 
     mapInstance.current.setCenter(coords, 14)
     mapInstance.current.geoObjects.removeAll()

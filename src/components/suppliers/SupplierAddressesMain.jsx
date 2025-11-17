@@ -1,63 +1,55 @@
-// src/components/suppliers/SupplierAddressesMain.jsx
 import React, { useEffect, useState } from "react"
 import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
-
-import TableToolbar from "@/components/common/TableToolbar"
-import SupplierAddressesTable from "./SupplierAddressesTable"
-import VersionConflictModal from "@/components/common/VersionConflictModal"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
-
-const createEmptyAddress = () => ({
-  formatted_address: "",
-  place_id: null,
-  lat: null,
-  lng: null,
-  postal_code: "",
-  country: "",
-  region: "",
-  city: "",
-  street: "",
-  house: "",
-  building: "",
-  entrance: "",
-  comment: "",
-  label: "",
-  type: "",
-})
-
-const trimOrNull = (v) => {
-  if (v === undefined || v === null) return null
-  const s = String(v).trim()
-  return s === "" ? null : s
-}
+import SupplierAddressesTable from "./SupplierAddressesTable"
+import TableToolbar from "@/components/common/TableToolbar"
+import VersionConflictModal from "@/components/common/VersionConflictModal"
 
 export default function SupplierAddressesMain({ supplierId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
-
-  const [search, setSearch] = useState("")
   const [resetCounter, setResetCounter] = useState(0)
-  const [adding, setAdding] = useState(false)
+  const [search, setSearch] = useState("")
   const [conflict, setConflict] = useState(null)
 
-  const [newAddress, setNewAddress] = useState(() => createEmptyAddress())
+  const [newAddress, setNewAddress] = useState({
+    formatted_address: "",
+    place_id: null,
+    lat: null,
+    lng: null,
+    postal_code: "",
+    country: "",
+    region: "",
+    city: "",
+    street: "",
+    house: "",
+    building: "",
+    entrance: "",
+    comment: "",
+    label: "",
+    type: "",
+  })
 
-  const resetNewAddress = () => setNewAddress(createEmptyAddress())
+  const trimToNull = (v) => {
+    if (v === undefined || v === null) return null
+    const s = String(v).trim()
+    return s === "" ? null : s
+  }
 
   const fetchData = async () => {
     if (!supplierId) return
     setLoading(true)
     try {
-      const res = await axios.get("/part-suppliers/addresses", {
+      const res = await axios.get("/supplier-addresses", {
         params: { supplier_id: supplierId },
       })
       setData(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
-      console.error("Ошибка при загрузке адресов:", err)
-      const msg =
+      console.error("Ошибка при загрузке адресов поставщика:", err)
+      message.error(
         err?.response?.data?.message || "Не удалось загрузить адреса поставщика"
-      message.error(msg)
+      )
     } finally {
       setLoading(false)
     }
@@ -69,11 +61,14 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supplierId])
 
-  const replaceRow = (fresh) =>
+  const replaceRow = (fresh) => {
+    if (!fresh?.id) return
     setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+  }
 
-  const removeRow = (id) =>
+  const removeRow = (id) => {
     setData((prev) => prev.filter((r) => r.id !== id))
+  }
 
   const handleAdd = async () => {
     if (!supplierId) return
@@ -88,306 +83,223 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
       place_id: newAddress.place_id || null,
       lat: newAddress.lat ?? null,
       lng: newAddress.lng ?? null,
-      postal_code: trimOrNull(newAddress.postal_code),
-      country: trimOrNull(newAddress.country),
-      region: trimOrNull(newAddress.region),
-      city: trimOrNull(newAddress.city),
-      street: trimOrNull(newAddress.street),
-      house: trimOrNull(newAddress.house),
-      building: trimOrNull(newAddress.building),
-      entrance: trimOrNull(newAddress.entrance),
-      comment: trimOrNull(newAddress.comment),
-      label: trimOrNull(newAddress.label),
-      type: trimOrNull(newAddress.type),
+      postal_code: trimToNull(newAddress.postal_code),
+      country: trimToNull(newAddress.country),
+      region: trimToNull(newAddress.region),
+      city: trimToNull(newAddress.city),
+      street: trimToNull(newAddress.street),
+      house: trimToNull(newAddress.house),
+      building: trimToNull(newAddress.building),
+      entrance: trimToNull(newAddress.entrance),
+      comment: trimToNull(newAddress.comment),
+      label: trimToNull(newAddress.label),
+      type: trimToNull(newAddress.type),
     }
 
-    setAdding(true)
     try {
-      const res = await axios.post("/part-suppliers/addresses", payload)
+      const res = await axios.post("/supplier-addresses", payload)
       setData((prev) => [res.data, ...prev])
-      resetNewAddress()
-      setResetCounter((c) => c + 1)
-      message.success("Адрес поставщика добавлен")
+      setNewAddress({
+        formatted_address: "",
+        place_id: null,
+        lat: null,
+        lng: null,
+        postal_code: "",
+        country: "",
+        region: "",
+        city: "",
+        street: "",
+        house: "",
+        building: "",
+        entrance: "",
+        comment: "",
+        label: "",
+        type: "",
+      })
+      setResetCounter((prev) => prev + 1)
       onChanged?.()
     } catch (err) {
-      console.error("Ошибка при добавлении адреса поставщика:", err)
+      console.error("Ошибка добавления адреса поставщика:", err)
       message.error(
         err?.response?.data?.message || "Не удалось добавить адрес поставщика"
       )
-    } finally {
-      setAdding(false)
     }
   }
 
-  const handleUpdate = async (id, values) => {
+  const handleUpdate = async (id, row) => {
     try {
-      const { data: fresh } = await axios.put(
-        `/part-suppliers/addresses/${id}`,
-        values
-      )
+      const { data: fresh } = await axios.put(`/supplier-addresses/${id}`, {
+        ...row,
+        version: row.version,
+      })
       replaceRow(fresh)
-      message.success("Адрес обновлён")
+      message.success("Адрес поставщика обновлён")
       onChanged?.()
     } catch (err) {
-      if (err?.response?.status === 409) {
-        const current = err.response.data?.currentRecord
+      const res = err?.response
+      if (res?.status === 409 && res?.data?.current) {
         setConflict({
           id,
-          current,
-          draft: { id, ...values },
+          draft: row,
+          current: res.data.current,
           entityLabel: "Адрес поставщика",
         })
         return
       }
-      console.error("Ошибка при обновлении адреса поставщика:", err)
+      console.error("Ошибка обновления адреса поставщика:", err)
       message.error("Не удалось обновить адрес поставщика")
+      throw err
     }
   }
 
-  const handleDelete = async (row) => {
+  const handleDelete = async (record) => {
     try {
-      await axios.delete(`/part-suppliers/addresses/${row.id}`, {
-        params: { version: row.version },
+      await axios.delete(`/supplier-addresses/${record.id}`, {
+        params: { version: record.version },
       })
-      removeRow(row.id)
-      message.success("Адрес удалён")
+      removeRow(record.id)
+      message.success("Адрес поставщика удалён")
       onChanged?.()
     } catch (err) {
-      if (err?.response?.status === 409) {
-        const current = err.response.data?.currentRecord
+      const res = err?.response
+      if (res?.status === 409 && res?.data?.current) {
         setConflict({
-          id: row.id,
-          current,
-          draft: row,
+          id: record.id,
+          draft: record,
+          current: res.data.current,
           entityLabel: "Адрес поставщика",
         })
         return
       }
-      console.error("Ошибка при удалении адреса поставщика:", err)
+      console.error("Ошибка удаления адреса поставщика:", err)
       message.error("Не удалось удалить адрес поставщика")
+      throw err
     }
   }
 
-  const filtered = data.filter((r) => {
-    const q = search.trim().toLowerCase()
-    if (!q) return true
-    return (
-      String(r.formatted_address || "").toLowerCase().includes(q) ||
-      String(r.city || "").toLowerCase().includes(q) ||
-      String(r.label || "").toLowerCase().includes(q) ||
-      String(r.type || "").toLowerCase().includes(q)
-    )
-  })
+  const filteredData = search
+    ? data.filter((addr) =>
+        (addr.formatted_address || "")
+          .toLowerCase()
+          .includes(search.toLowerCase())
+      )
+    : data
 
-  if (!supplierId) {
-    return (
-      <Card size="small">
-        Выберите поставщика, чтобы видеть его адреса.
-      </Card>
-    )
-  }
+  if (!supplierId) return null
 
   return (
-    <>
-      <Card size="small" style={{ marginBottom: 12 }}>
-        <Row gutter={8} style={{ marginBottom: 8 }}>
-          <Col span={24}>
-            <PlaceAddressInput
-              label="Адрес поставщика"
-              value={newAddress}
-              resetCounter={resetCounter}
-              onChange={(value) => {
-                setNewAddress((prev) => ({
-                  ...prev,
-                  ...value,
-                }))
-              }}
-            />
-          </Col>
-        </Row>
+    <div className="parts-table-wrap">
+      {/* Форма с картой — одна на всю вкладку */}
+      <Card size="small" className="table-section">
+        <PlaceAddressInput
+          debugId="supplier-addresses-main"
+          resetTrigger={resetCounter}
+          value={{
+            address_line: newAddress.formatted_address,
+            lat: newAddress.lat,
+            lng: newAddress.lng,
+            place_id: newAddress.place_id,
+            postal_code: newAddress.postal_code,
+            country: newAddress.country,
+            region: newAddress.region,
+            city: newAddress.city,
+            street: newAddress.street,
+            house: newAddress.house,
+            building: newAddress.building,
+            entrance: newAddress.entrance,
+          }}
+          onChange={(value) =>
+            setNewAddress((prev) => ({
+              ...prev,
+              formatted_address: value.address_line,
+              place_id: value.place_id,
+              lat: value.lat,
+              lng: value.lng,
+              postal_code: value.postal_code,
+              country: value.country,
+              region: value.region,
+              city: value.city,
+              street: value.street,
+              house: value.house,
+              building: value.building,
+              entrance: value.entrance,
+            }))
+          }
+        />
 
-        <Row gutter={8} style={{ marginBottom: 8 }}>
+        <Row gutter={8} style={{ marginTop: 8 }}>
           <Col span={4}>
             <Input
-              size="small"
-              placeholder="Метка (например, склад)"
+              placeholder="Метка (склад, офис...)"
               value={newAddress.label}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  label: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, label: e.target.value }))
               }
             />
           </Col>
           <Col span={4}>
             <Input
-              size="small"
-              placeholder="Тип (юр., склад...)"
+              placeholder="Тип (юр., склад и т.п.)"
               value={newAddress.type}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  type: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, type: e.target.value }))
               }
             />
           </Col>
           <Col span={4}>
             <Input
-              size="small"
               placeholder="Индекс"
               value={newAddress.postal_code}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  postal_code: e.target.value,
-                }))
-              }
-            />
-          </Col>
-          <Col span={4}>
-            <Input
-              size="small"
-              placeholder="Страна"
-              value={newAddress.country}
-              onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  country: e.target.value,
-                }))
-              }
-            />
-          </Col>
-          <Col span={4}>
-            <Input
-              size="small"
-              placeholder="Регион"
-              value={newAddress.region}
-              onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  region: e.target.value,
-                }))
-              }
-            />
-          </Col>
-          <Col span={4}>
-            <Input
-              size="small"
-              placeholder="Город"
-              value={newAddress.city}
-              onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  city: e.target.value,
-                }))
-              }
-            />
-          </Col>
-        </Row>
-
-        <Row gutter={8} style={{ marginBottom: 8 }}>
-          <Col span={4}>
-            <Input
-              size="small"
-              placeholder="Улица"
-              value={newAddress.street}
-              onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  street: e.target.value,
-                }))
-              }
-            />
-          </Col>
-          <Col span={4}>
-            <Input
-              size="small"
-              placeholder="Дом"
-              value={newAddress.house}
-              onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  house: e.target.value,
-                }))
-              }
-            />
-          </Col>
-          <Col span={4}>
-            <Input
-              size="small"
-              placeholder="Строение"
-              value={newAddress.building}
-              onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  building: e.target.value,
-                }))
-              }
-            />
-          </Col>
-          <Col span={4}>
-            <Input
-              size="small"
-              placeholder="Подъезд"
-              value={newAddress.entrance}
-              onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  entrance: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, postal_code: e.target.value }))
               }
             />
           </Col>
           <Col span={8}>
             <Input
-              size="small"
               placeholder="Комментарий"
               value={newAddress.comment}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  comment: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, comment: e.target.value }))
               }
             />
           </Col>
+          <Col span={4} style={{ textAlign: "right" }}>
+            <Button type="primary" onClick={handleAdd}>
+              Добавить адрес
+            </Button>
+          </Col>
         </Row>
-
-        <Button
-          type="primary"
-          size="small"
-          onClick={handleAdd}
-          loading={adding}
-          disabled={!newAddress.formatted_address?.trim()}
-        >
-          Добавить адрес
-        </Button>
       </Card>
 
-      <Card size="small">
-        <TableToolbar
-          search={search}
-          onSearch={setSearch}
-          placeholder="Поиск по адресам поставщика..."
-        />
-        <SupplierAddressesTable
-          data={filtered}
-          loading={loading}
-          onUpdate={handleUpdate}
-          onDelete={handleDelete}
-        />
-      </Card>
-
-      <VersionConflictModal
-        conflict={conflict}
-        onCancel={() => setConflict(null)}
-        onReload={async () => {
-          setConflict(null)
-          await fetchData()
-        }}
+      <TableToolbar
+        className="table-section"
+        search={search}
+        onSearch={setSearch}
       />
-    </>
+
+      <SupplierAddressesTable
+        data={filteredData}
+        loading={loading}
+        onUpdate={handleUpdate}
+        onDelete={handleDelete}
+      />
+
+      {conflict && (
+        <VersionConflictModal
+          open={!!conflict}
+          draft={conflict.draft}
+          current={conflict.current}
+          entityLabel={conflict.entityLabel}
+          onClose={() => setConflict(null)}
+          onReload={async () => {
+            if (conflict?.current) replaceRow(conflict.current)
+            await fetchData()
+            setConflict(null)
+          }}
+          onCancel={() => setConflict(null)}
+        />
+      )}
+    </div>
   )
 }

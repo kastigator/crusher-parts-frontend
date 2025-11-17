@@ -1,166 +1,171 @@
 // src/components/suppliers/SuppliersMain.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Card, Row, Col, Button, Form, Input, Space, message, Tag } from "antd"
-import {
-  PlusOutlined,
-  ReloadOutlined,
-  ImportOutlined,
-  TeamOutlined,
-} from "@ant-design/icons"
+import React, { useEffect, useMemo, useState } from "react"
+import { Card, Space, Form, Input, Button, message, Tag } from "antd"
 import axios from "@/api/axiosInstance"
-
-import TableToolbar from "@/components/common/TableToolbar"
 import SuppliersTable from "./SuppliersTable"
+import TableToolbar from "@/components/common/TableToolbar"
 import ImportModal from "@/components/common/ImportModal"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
+import CountrySelect from "@/components/inputs/CountrySelect"
 
 const SUPPLIERS_TEMPLATE_URL =
   "https://storage.googleapis.com/shared-parts-bucket/templates/suppliers_template.xlsx"
 
+const trim = (v) => (typeof v === "string" ? v.trim() : v ?? "")
+
 export default function SuppliersMain() {
-  const [data, setData] = useState([])
+  const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
-  const [importOpen, setImportOpen] = useState(false)
-  const [logsOpen, setLogsOpen] = useState(false)
-
-  const [editingSupplier, setEditingSupplier] = useState(null) // {mode: 'create'|'edit', record?}
-
-  // ETag/баннер изменений по поставщикам
+  const [showDeleted, setShowDeleted] = useState(false)
   const [etagInfo, setEtagInfo] = useState(null)
-  const baselineRef = useRef(null)
+  const [importOpen, setImportOpen] = useState(false)
 
-  const loadSuppliers = async () => {
+  const [form] = Form.useForm()
+
+  const fetchSuppliers = async () => {
     setLoading(true)
     try {
-      const { data: list } = await axios.get("/part-suppliers", {
-        params: { limit: 500, offset: 0 },
-      })
-      setData(Array.isArray(list) ? list : [])
-    } catch (e) {
-      console.error("Ошибка загрузки поставщиков:", e)
+      const res = await axios.get("/suppliers")
+      setSuppliers(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error("Ошибка загрузки поставщиков:", err)
       message.error("Не удалось загрузить поставщиков")
     } finally {
       setLoading(false)
     }
   }
 
-  const loadEtag = async () => {
+  const fetchSuppliersEtag = async () => {
     try {
-      const { data } = await axios.get("/part-suppliers/etag")
+      const { data } = await axios.get("/suppliers/etag")
       setEtagInfo(data)
-    } catch (e) {
-      console.error("Ошибка получения etag поставщиков:", e)
+    } catch (err) {
+      console.error("Ошибка получения etag поставщиков:", err)
     }
   }
 
   useEffect(() => {
-    loadSuppliers()
-    loadEtag()
+    fetchSuppliers()
+    fetchSuppliersEtag()
   }, [])
 
-  const refreshAll = async () => {
-    await loadSuppliers()
-    await loadEtag()
+  const replaceRow = (fresh) =>
+    setSuppliers((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+
+  const removeRow = (id) =>
+    setSuppliers((prev) => prev.filter((r) => r.id !== id))
+
+  const handleCreate = async (values) => {
+    const payload = {
+      name: trim(values.name),
+      vat_number: trim(values.vat_number) || null,
+      country: values.country || null, // ISO2 из CountrySelect
+      website: trim(values.website) || null,
+      contact_person: trim(values.contact_person) || null,
+      email: trim(values.email) || null,
+      phone: trim(values.phone) || null,
+      payment_terms: trim(values.payment_terms) || null,
+      preferred_currency: trim(values.preferred_currency) || null,
+      incoterms: trim(values.incoterms) || null,
+      default_lead_time_days: values.default_lead_time_days ?? null,
+      notes: trim(values.notes) || null,
+    }
+
+    if (!payload.name) {
+      message.warning("Название компании обязательно")
+      return
+    }
+
+    try {
+      const { data: created } = await axios.post("/suppliers", payload)
+      setSuppliers((prev) => [created, ...prev])
+      form.resetFields()
+      fetchSuppliersEtag()
+      message.success("Поставщик добавлен")
+    } catch (err) {
+      console.error("Ошибка создания поставщика:", err)
+      const msg = err?.response?.data?.message || "Не удалось создать поставщика"
+      message.error(msg)
+    }
   }
 
-  const handleSupplierCreated = (created) => {
-    setData((prev) => [created, ...prev])
+  const handleUpdate = async (id, row) => {
+    const payload = { ...row, name: trim(row.name) }
+    try {
+      const { data: fresh } = await axios.put(`/suppliers/${id}`, payload)
+      replaceRow(fresh)
+      fetchSuppliersEtag()
+      return fresh
+    } catch (err) {
+      if (err?.response?.status === 409 && err?.response?.data?.current) {
+        const e = new Error("Version conflict")
+        e.isVersionConflict = true
+        e.currentRecord = err.response.data.current
+        throw e
+      }
+      if (
+        err?.response?.status === 409 &&
+        err?.response?.data?.type === "duplicate_vat"
+      ) {
+        const e = new Error("Duplicate VAT")
+        e.isDuplicateKey = true
+        throw e
+      }
+      console.error("Ошибка обновления поставщика:", err)
+      message.error("Не удалось сохранить изменения по поставщику")
+      throw err
+    }
   }
 
-  const handleSupplierUpdated = (fresh) => {
-    setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+  const handleDelete = async (supplier) => {
+    try {
+      await axios.delete(`/suppliers/${supplier.id}`, {
+        params: { version: supplier.version },
+      })
+      removeRow(supplier.id)
+      fetchSuppliersEtag()
+      message.success("Поставщик удалён")
+    } catch (err) {
+      console.error("Ошибка удаления поставщика:", err)
+      const msg = err?.response?.data?.message || "Не удалось удалить поставщика"
+      message.error(msg)
+    }
   }
 
-  const handleSupplierDeleted = (id) => {
-    setData((prev) => prev.filter((r) => r.id !== id))
+  const handleReloadAll = async () => {
+    await fetchSuppliers()
+    await fetchSuppliersEtag()
   }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return data
-    return data.filter((s) => {
+    if (!q) return suppliers
+    return suppliers.filter((s) => {
       return (
-        String(s.company_name || "").toLowerCase().includes(q) ||
+        String(s.name || "").toLowerCase().includes(q) ||
+        String(s.vat_number || "").toLowerCase().includes(q) ||
         String(s.country || "").toLowerCase().includes(q) ||
-        String(s.city || "").toLowerCase().includes(q) ||
+        String(s.contact_person || "").toLowerCase().includes(q) ||
         String(s.notes || "").toLowerCase().includes(q)
       )
     })
-  }, [data, search])
-
-  const startCreate = () => {
-    setEditingSupplier({ mode: "create" })
-  }
-
-  const startEdit = (record) => {
-    setEditingSupplier({ mode: "edit", record })
-  }
-
-  const closeDrawer = () => setEditingSupplier(null)
-
-  const [form] = Form.useForm()
-
-  useEffect(() => {
-    if (editingSupplier?.mode === "edit" && editingSupplier.record) {
-      form.setFieldsValue(editingSupplier.record)
-    } else if (editingSupplier?.mode === "create") {
-      form.resetFields()
-    }
-  }, [editingSupplier, form])
-
-  const handleSubmit = async () => {
-    try {
-      const values = await form.validateFields()
-      if (editingSupplier.mode === "create") {
-        const { data: created } = await axios.post("/part-suppliers", values)
-        handleSupplierCreated(created)
-        message.success("Поставщик создан")
-      } else {
-        const id = editingSupplier.record.id
-        const { data: fresh } = await axios.put(`/part-suppliers/${id}`, values)
-        handleSupplierUpdated(fresh)
-        message.success("Поставщик обновлён")
-      }
-      closeDrawer()
-    } catch (e) {
-      if (e?.errorFields) return
-      console.error("Ошибка сохранения поставщика:", e)
-      message.error("Не удалось сохранить поставщика")
-    }
-  }
+  }, [suppliers, search])
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Card
         size="small"
         title={
           <Space>
-            <TeamOutlined />
             <span>Поставщики</span>
-            {etagInfo && (
-              <Tag>
-                {etagInfo.cnt} записей / sum_ver {etagInfo.sum_ver}
-              </Tag>
-            )}
+            {etagInfo && <Tag>{etagInfo.cnt} записей / sum_ver {etagInfo.sum_ver}</Tag>}
           </Space>
         }
         extra={
           <Space>
-            <Button
-              icon={<ReloadOutlined />}
-              size="small"
-              onClick={refreshAll}
-            >
-              Обновить
-            </Button>
-            <Button
-              icon={<ImportOutlined />}
-              size="small"
-              onClick={() => setImportOpen(true)}
-            >
-              Импорт
-            </Button>
+            <Button size="small" onClick={handleReloadAll}>Обновить</Button>
+            <Button size="small" onClick={() => setImportOpen(true)}>Импорт</Button>
           </Space>
         }
       >
@@ -168,93 +173,73 @@ export default function SuppliersMain() {
           search={search}
           onSearch={setSearch}
           placeholder="Поиск по поставщикам..."
-          onAdd={startCreate}
-          onShowDeleted={() => setLogsOpen(true)}
+          onShowDeleted={() => setShowDeleted(true)}
         />
 
-        <SuppliersTable
-          data={filtered}
-          loading={loading}
-          onUpdated={handleSupplierUpdated}
-          onDeleted={handleSupplierDeleted}
-          onChanged={refreshAll}
-          onEdit={startEdit}
-        />
+        {/* Форма добавления поставщика */}
+        <Form
+          form={form}
+          layout="inline"
+          onFinish={handleCreate}
+          style={{ marginBottom: 12, flexWrap: "wrap", rowGap: 8 }}
+        >
+          <Form.Item
+            label="Компания"
+            name="name"
+            rules={[{ required: true, message: "Укажите название компании" }]}
+          >
+            <Input placeholder="ООО Ромашка" />
+          </Form.Item>
+
+          <Form.Item label="Страна" name="country">
+            <CountrySelect style={{ width: 200 }} />
+          </Form.Item>
+
+          <Form.Item label="VAT" name="vat_number">
+            <Input placeholder="FI1234567" style={{ width: 140 }} />
+          </Form.Item>
+          <Form.Item label="Контакт" name="contact_person">
+            <Input placeholder="Имя контакта" style={{ width: 160 }} />
+          </Form.Item>
+          <Form.Item label="Телефон" name="phone">
+            <Input style={{ width: 140 }} />
+          </Form.Item>
+          <Form.Item label="Email" name="email">
+            <Input style={{ width: 180 }} />
+          </Form.Item>
+          <Form.Item label="Примечание" name="notes">
+            <Input style={{ width: 200 }} />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit">Добавить</Button>
+          </Form.Item>
+        </Form>
+
+        <div className="parts-table-wrap">
+          <SuppliersTable
+            data={filtered}
+            loading={loading}
+            onUpdate={handleUpdate}
+            onDelete={handleDelete}
+          />
+        </div>
       </Card>
 
-      {/* Форма создания/редактирования поставщика */}
-      {editingSupplier && (
-        <Card
-          size="small"
-          title={
-            editingSupplier.mode === "create"
-              ? "Новый поставщик"
-              : "Редактирование поставщика"
-          }
-          style={{ marginTop: 8 }}
-        >
-          <Form
-            form={form}
-            layout="vertical"
-            onFinish={handleSubmit}
-            autoComplete="off"
-          >
-            <Row gutter={12}>
-              <Col span={8}>
-                <Form.Item
-                  label="Название компании"
-                  name="company_name"
-                  rules={[
-                    { required: true, message: "Укажите название компании" },
-                  ]}
-                >
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col span={4}>
-                <Form.Item label="Страна" name="country">
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col span={4}>
-                <Form.Item label="Город" name="city">
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item label="Примечание" name="notes">
-                  <Input.TextArea rows={2} />
-                </Form.Item>
-              </Col>
-            </Row>
-            <Space>
-              <Button onClick={closeDrawer}>Отмена</Button>
-              <Button type="primary" htmlType="submit">
-                Сохранить
-              </Button>
-            </Space>
-          </Form>
-        </Card>
-      )}
-
-      {/* Импорт поставщиков */}
       <ImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
         type="suppliers"
         templateUrl={SUPPLIERS_TEMPLATE_URL}
-        onImported={refreshAll}
+        onImported={fetchSuppliers}
       />
 
-      {/* Просмотр удалённых поставщиков / логов */}
-      {logsOpen && (
+      {showDeleted && (
         <FullHistoryDialog
-          open={logsOpen}
-          entityType="suppliers"
           onlyDeleted
-          onClose={() => setLogsOpen(false)}
+          entityType="suppliers"
+          onClose={() => setShowDeleted(false)}
         />
       )}
-    </div>
+    </Space>
   )
 }
