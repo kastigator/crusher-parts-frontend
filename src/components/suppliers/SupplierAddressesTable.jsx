@@ -78,7 +78,6 @@ export default function SupplierAddressesTable({
       await onUpdate?.(editedRow.id, editedRow)
       cancelEdit()
     } catch (err) {
-      // конфликты версий и т.п. обрабатывает родитель (VersionConflictModal)
       console.error("Ошибка сохранения адреса поставщика:", err)
     }
   }
@@ -141,7 +140,10 @@ export default function SupplierAddressesTable({
                   <Checkbox
                     checked={!!editedRow.is_precise_location}
                     onChange={(e) =>
-                      updateField("is_precise_location", e.target.checked ? 1 : 0)
+                      updateField(
+                        "is_precise_location",
+                        e.target.checked ? 1 : 0
+                      )
                     }
                   >
                     Точная локация (GPS)
@@ -159,9 +161,8 @@ export default function SupplierAddressesTable({
           <div onDoubleClick={() => startEdit(record)}>
             <Space size={6}>
               <Tooltip title={oneLine}>
-                <span className="cell-ellipsis" style={{ fontWeight: 600 }}>
-                  {oneLine}
-                </span>
+                {/* адрес больше НЕ жирный, как у клиентов */}
+                <span className="cell-ellipsis">{oneLine}</span>
               </Tooltip>
               {oneLine !== "—" && (
                 <Tooltip title="Скопировать адрес">
@@ -205,7 +206,7 @@ export default function SupplierAddressesTable({
             onSave={editing ? handleSave : undefined}
             onCancel={editing ? cancelEdit : undefined}
             onDelete={!editing ? () => handleDelete(record) : undefined}
-            confirmDelete={false} // confirmAction уже вызываем здесь
+            confirmDelete={false}
             size="small"
           />
         )

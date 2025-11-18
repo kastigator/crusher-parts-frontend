@@ -227,6 +227,85 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
           }
         />
 
+        {/* Блок полей, как у клиентов, + label/type */}
+        <Row gutter={8} style={{ marginTop: 8 }}>
+          <Col span={6}>
+            <Input
+              placeholder="Страна"
+              value={newAddress.country}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, country: e.target.value }))
+              }
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Регион"
+              value={newAddress.region}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, region: e.target.value }))
+              }
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Город"
+              value={newAddress.city}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, city: e.target.value }))
+              }
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Индекс"
+              value={newAddress.postal_code}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, postal_code: e.target.value }))
+              }
+            />
+          </Col>
+        </Row>
+
+        <Row gutter={8} style={{ marginTop: 8 }}>
+          <Col span={10}>
+            <Input
+              placeholder="Улица"
+              value={newAddress.street}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, street: e.target.value }))
+              }
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Дом"
+              value={newAddress.house}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, house: e.target.value }))
+              }
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="Строение"
+              value={newAddress.building}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, building: e.target.value }))
+              }
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="Подъезд / вход"
+              value={newAddress.entrance}
+              onChange={(e) =>
+                setNewAddress((p) => ({ ...p, entrance: e.target.value }))
+              }
+            />
+          </Col>
+        </Row>
+
         <Row gutter={8} style={{ marginTop: 8 }}>
           <Col span={4}>
             <Input
@@ -246,16 +325,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
               }
             />
           </Col>
-          <Col span={4}>
-            <Input
-              placeholder="Индекс"
-              value={newAddress.postal_code}
-              onChange={(e) =>
-                setNewAddress((p) => ({ ...p, postal_code: e.target.value }))
-              }
-            />
-          </Col>
-          <Col span={8}>
+          <Col span={12}>
             <Input
               placeholder="Комментарий"
               value={newAddress.comment}
