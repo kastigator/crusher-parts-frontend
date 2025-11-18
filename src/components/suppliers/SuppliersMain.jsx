@@ -1,6 +1,6 @@
 // src/components/suppliers/SuppliersMain.jsx
 import React, { useEffect, useMemo, useState } from "react"
-import { Card, Space, Form, Input, Button, message, Tag } from "antd"
+import { Card, Space, Form, Input, Button, message } from "antd"
 import axios from "@/api/axiosInstance"
 import SuppliersTable from "./SuppliersTable"
 import TableToolbar from "@/components/common/TableToolbar"
@@ -18,11 +18,13 @@ export default function SuppliersMain() {
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
   const [showDeleted, setShowDeleted] = useState(false)
-  const [etagInfo, setEtagInfo] = useState(null)
   const [importOpen, setImportOpen] = useState(false)
 
   const [form] = Form.useForm()
 
+  // ============================
+  // Загрузка поставщиков
+  // ============================
   const fetchSuppliers = async () => {
     setLoading(true)
     try {
@@ -36,19 +38,13 @@ export default function SuppliersMain() {
     }
   }
 
-  const fetchSuppliersEtag = async () => {
-    try {
-      const { data } = await axios.get("/suppliers/etag")
-      setEtagInfo(data)
-    } catch (err) {
-      console.error("Ошибка получения etag поставщиков:", err)
-    }
-  }
-
   useEffect(() => {
     fetchSuppliers()
-    fetchSuppliersEtag()
   }, [])
+
+  // ============================
+  // CRUD операции
+  // ============================
 
   const replaceRow = (fresh) =>
     setSuppliers((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
@@ -60,7 +56,7 @@ export default function SuppliersMain() {
     const payload = {
       name: trim(values.name),
       vat_number: trim(values.vat_number) || null,
-      country: values.country || null, // ISO2 из CountrySelect
+      country: values.country || null,
       website: trim(values.website) || null,
       contact_person: trim(values.contact_person) || null,
       email: trim(values.email) || null,
@@ -81,7 +77,6 @@ export default function SuppliersMain() {
       const { data: created } = await axios.post("/suppliers", payload)
       setSuppliers((prev) => [created, ...prev])
       form.resetFields()
-      fetchSuppliersEtag()
       message.success("Поставщик добавлен")
     } catch (err) {
       console.error("Ошибка создания поставщика:", err)
@@ -95,15 +90,16 @@ export default function SuppliersMain() {
     try {
       const { data: fresh } = await axios.put(`/suppliers/${id}`, payload)
       replaceRow(fresh)
-      fetchSuppliersEtag()
       return fresh
     } catch (err) {
+      // Конфликт версий (optimistic locking)
       if (err?.response?.status === 409 && err?.response?.data?.current) {
         const e = new Error("Version conflict")
         e.isVersionConflict = true
         e.currentRecord = err.response.data.current
         throw e
       }
+      // Дубликат VAT
       if (
         err?.response?.status === 409 &&
         err?.response?.data?.type === "duplicate_vat"
@@ -112,6 +108,7 @@ export default function SuppliersMain() {
         e.isDuplicateKey = true
         throw e
       }
+
       console.error("Ошибка обновления поставщика:", err)
       message.error("Не удалось сохранить изменения по поставщику")
       throw err
@@ -124,7 +121,6 @@ export default function SuppliersMain() {
         params: { version: supplier.version },
       })
       removeRow(supplier.id)
-      fetchSuppliersEtag()
       message.success("Поставщик удалён")
     } catch (err) {
       console.error("Ошибка удаления поставщика:", err)
@@ -133,11 +129,9 @@ export default function SuppliersMain() {
     }
   }
 
-  const handleReloadAll = async () => {
-    await fetchSuppliers()
-    await fetchSuppliersEtag()
-  }
-
+  // ============================
+  // Фильтрация
+  // ============================
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return suppliers
@@ -152,20 +146,19 @@ export default function SuppliersMain() {
     })
   }, [suppliers, search])
 
+  // ============================
+  // Render
+  // ============================
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Card
         size="small"
-        title={
-          <Space>
-            <span>Поставщики</span>
-            {etagInfo && <Tag>{etagInfo.cnt} записей / sum_ver {etagInfo.sum_ver}</Tag>}
-          </Space>
-        }
+        title="Поставщики"
         extra={
           <Space>
-            <Button size="small" onClick={handleReloadAll}>Обновить</Button>
-            <Button size="small" onClick={() => setImportOpen(true)}>Импорт</Button>
+            <Button size="small" onClick={() => setImportOpen(true)}>
+              Импорт
+            </Button>
           </Space>
         }
       >
@@ -176,7 +169,7 @@ export default function SuppliersMain() {
           onShowDeleted={() => setShowDeleted(true)}
         />
 
-        {/* Форма добавления поставщика */}
+        {/* Форма добавления */}
         <Form
           form={form}
           layout="inline"
@@ -198,20 +191,27 @@ export default function SuppliersMain() {
           <Form.Item label="VAT" name="vat_number">
             <Input placeholder="FI1234567" style={{ width: 140 }} />
           </Form.Item>
+
           <Form.Item label="Контакт" name="contact_person">
             <Input placeholder="Имя контакта" style={{ width: 160 }} />
           </Form.Item>
+
           <Form.Item label="Телефон" name="phone">
             <Input style={{ width: 140 }} />
           </Form.Item>
+
           <Form.Item label="Email" name="email">
             <Input style={{ width: 180 }} />
           </Form.Item>
+
           <Form.Item label="Примечание" name="notes">
             <Input style={{ width: 200 }} />
           </Form.Item>
+
           <Form.Item>
-            <Button type="primary" htmlType="submit">Добавить</Button>
+            <Button type="primary" htmlType="submit">
+              Добавить
+            </Button>
           </Form.Item>
         </Form>
 

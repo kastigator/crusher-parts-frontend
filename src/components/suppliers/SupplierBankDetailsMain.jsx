@@ -6,6 +6,8 @@ import axios from "@/api/axiosInstance"
 import TableToolbar from "@/components/common/TableToolbar"
 import SupplierBankDetailsTable from "./SupplierBankDetailsTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
+import CurrencySelect from "@/components/inputs/CurrencySelect"
+
 
 const trimOrNull = (v) => {
   if (v === undefined || v === null) return null
@@ -35,7 +37,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
     if (!supplierId) return
     setLoading(true)
     try {
-      const { data: list } = await axios.get("/part-suppliers/bank-details", {
+      const { data: list } = await axios.get("/supplier-bank-details", {
         params: { supplier_id: supplierId },
       })
       setData(Array.isArray(list) ? list : [])
@@ -76,7 +78,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
 
     try {
       const { data: created } = await axios.post(
-        "/part-suppliers/bank-details",
+        "/supplier-bank-details",
         payload
       )
       setData((prev) => [created, ...prev])
@@ -110,7 +112,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
   const handleUpdate = async (id, values) => {
     try {
       const { data: fresh } = await axios.put(
-        `/part-suppliers/bank-details/${id}`,
+        `/supplier-bank-details/${id}`,
         values
       )
       replaceRow(fresh)
@@ -132,7 +134,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
 
   const handleDelete = async (record) => {
     try {
-      await axios.delete(`/part-suppliers/bank-details/${record.id}`, {
+      await axios.delete(`/supplier-bank-details/${record.id}`, {
         params: { version: record.version },
       })
       removeRow(record.id)
@@ -174,6 +176,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
 
   return (
     <>
+      {/* форма добавления реквизитов */}
       <Card size="small" style={{ marginBottom: 12 }}>
         <Row gutter={8} style={{ marginBottom: 8 }}>
           <Col span={6}>
@@ -203,16 +206,15 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
             />
           </Col>
           <Col span={4}>
-            <Input
-              size="small"
-              placeholder="Валюта (ISO3)"
+            <CurrencySelect
               value={newBank.currency}
-              onChange={(e) =>
+              onChange={(v) =>
                 setNewBank((p) => ({
                   ...p,
-                  currency: e.target.value,
+                  currency: v || "",
                 }))
               }
+              style={{ width: "100%" }}
             />
           </Col>
           <Col span={4}>
@@ -308,6 +310,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
         </Button>
       </Card>
 
+      {/* таблица реквизитов */}
       <Card size="small">
         <TableToolbar
           search={search}

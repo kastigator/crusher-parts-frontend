@@ -2,6 +2,7 @@
 import React, { useState } from "react"
 import { Table, Input, Checkbox, Tag } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
+import ValueDisplay from "@/components/common/ValueDisplay"
 import confirmAction from "@/utils/confirmAction"
 
 export default function SupplierContactsTable({
@@ -35,17 +36,33 @@ export default function SupplierContactsTable({
     }
   }
 
+  const handleKeyDown = (e) => {
+    if (!editingId) return
+
+    if (e.key === "Enter") {
+      e.preventDefault()
+      saveEdit()
+    }
+    if (e.key === "Escape") {
+      e.preventDefault()
+      cancelEdit()
+    }
+  }
+
   const handleDeleteClick = async (record) => {
     const { confirmed } = await confirmAction("Удалить контакт поставщика?")
     if (!confirmed) return
     await onDelete?.(record)
   }
 
-  const renderInput = (key) => ({
+  const renderEditableText = (key, type = "text") => ({
     render: (_, record) => {
-      const value =
-        editingId === record.id ? editedRow?.[key] ?? "" : record[key] ?? ""
-      if (editingId === record.id) {
+      const isEditing = editingId === record.id
+      const value = isEditing
+        ? editedRow?.[key] ?? ""
+        : record[key] ?? ""
+
+      if (isEditing) {
         return (
           <Input
             size="small"
@@ -56,10 +73,19 @@ export default function SupplierContactsTable({
                 [key]: e.target.value,
               }))
             }
+            onKeyDown={handleKeyDown}
           />
         )
       }
-      return value || ""
+
+      // Нередактируемый режим — красивый вывод через ValueDisplay
+      return (
+        <ValueDisplay
+          value={value}
+          type={type}
+          onDoubleClick={() => startEdit(record)}
+        />
+      )
     },
   })
 
@@ -68,37 +94,38 @@ export default function SupplierContactsTable({
       title: "Имя",
       dataIndex: "name",
       key: "name",
-      ...renderInput("name"),
+      ...renderEditableText("name", "text"),
     },
     {
       title: "Роль",
       dataIndex: "role",
       key: "role",
-      ...renderInput("role"),
+      ...renderEditableText("role", "text"),
     },
     {
       title: "Email",
       dataIndex: "email",
       key: "email",
-      ...renderInput("email"),
+      ...renderEditableText("email", "email"),
     },
     {
       title: "Телефон",
       dataIndex: "phone",
       key: "phone",
-      ...renderInput("phone"),
+      ...renderEditableText("phone", "phone"),
     },
     {
       title: "Основной",
       dataIndex: "is_primary",
       key: "is_primary",
-      width: 100,
+      width: 110,
       render: (_, record) => {
-        const checked =
-          editingId === record.id
-            ? !!editedRow?.is_primary
-            : !!record.is_primary
-        if (editingId === record.id) {
+        const isEditing = editingId === record.id
+        const checked = isEditing
+          ? !!editedRow?.is_primary
+          : !!record.is_primary
+
+        if (isEditing) {
           return (
             <Checkbox
               checked={checked}
@@ -108,9 +135,11 @@ export default function SupplierContactsTable({
                   is_primary: e.target.checked ? 1 : 0,
                 }))
               }
+              onKeyDown={handleKeyDown}
             />
           )
         }
+
         return checked ? <Tag color="green">Да</Tag> : <Tag>Нет</Tag>
       },
     },
@@ -118,32 +147,19 @@ export default function SupplierContactsTable({
       title: "Примечание",
       dataIndex: "notes",
       key: "notes",
-      ...renderInput("notes"),
+      ...renderEditableText("notes", "text"),
     },
-    {
-      title: "Версия",
-      dataIndex: "version",
-      key: "version",
-      width: 60,
-      render: (v) => <Tag>{v ?? 1}</Tag>,
-    },
+    // Колонку "Версия" убираем — это тех. поле, в UI не нужно
     {
       title: "Действия",
       key: "actions",
-      width: 140,
-      render: (_, record) => {
-        const editing = editingId === record.id
-        return (
-          <ActionButtons
-            size="small"
-            editing={editing}
-            onEdit={() => startEdit(record)}
-            onCancel={cancelEdit}
-            onSave={saveEdit}
-            onDelete={() => handleDeleteClick(record)}
-          />
-        )
-      },
+      width: 80,
+      render: (_, record) => (
+        <ActionButtons
+          size="small"
+          onDelete={() => handleDeleteClick(record)}
+        />
+      ),
     },
   ]
 
@@ -155,6 +171,9 @@ export default function SupplierContactsTable({
       columns={columns}
       dataSource={data}
       pagination={false}
+      onRow={(record) => ({
+        onDoubleClick: () => startEdit(record),
+      })}
     />
   )
 }

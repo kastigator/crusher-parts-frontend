@@ -12,6 +12,22 @@ import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import CountrySelect from "@/components/inputs/CountrySelect"
 
+// 👇 добавили импорт стран, чтобы по ISO2 показывать полное название
+import countriesLib from "i18n-iso-countries"
+import ru from "i18n-iso-countries/langs/ru.json"
+
+countriesLib.registerLocale(ru)
+
+const getCountryLabel = (code) => {
+  if (!code) return ""
+  try {
+    // вернёт, например, "Австралия" для "AU"
+    return countriesLib.getName(code, "ru") || code
+  } catch {
+    return code
+  }
+}
+
 const { TabPane } = Tabs
 
 export default function SuppliersTable({
@@ -119,25 +135,32 @@ export default function SuppliersTable({
       title: "Страна",
       dataIndex: "country",
       key: "country",
+      width: 220,
       render: (_, record) => {
         const isEdit = editingId === record.id
-        const value = isEdit ? editedRow?.country ?? null : record.country ?? null
+        const code = isEdit ? editedRow?.country ?? null : record.country ?? null
+
         if (isEdit) {
+          // Редактирование — по-прежнему выбираем ISO2 в CountrySelect
           return (
             <CountrySelect
-              value={value}
-              onChange={(code) =>
-                setEditedRow((prev) => ({ ...prev, country: code }))
+              value={code}
+              onChange={(newCode) =>
+                setEditedRow((prev) => ({ ...prev, country: newCode }))
               }
-              style={{ width: 200 }}
+              style={{ width: 220 }}
             />
           )
         }
+
+        // Просмотр — показываем полное название страны
+        const label = getCountryLabel(code)
         return (
-          <div onDoubleClick={() => startEdit(record)}>{value || ""}</div>
+          <div onDoubleClick={() => startEdit(record)} className="cell-ellipsis">
+            {label}
+          </div>
         )
       },
-      width: 200,
     },
     {
       title: "VAT",
@@ -169,7 +192,6 @@ export default function SuppliersTable({
       key: "notes",
       ...renderTextCell("notes", 260),
     },
-    // Колонку "Версия" УДАЛИЛ — техническое поле
     {
       title: "Действия",
       key: "actions",
@@ -177,7 +199,6 @@ export default function SuppliersTable({
       render: (_, record) => (
         <ActionButtons
           size="small"
-          // никаких редактировать/сохранить — редактирование по дабл-клику
           onDelete={() => handleDelete(record)}
           onHistory={() => setLogsSupplierId(record.id)}
           confirmDelete={false}

@@ -2,6 +2,8 @@
 import React, { useState } from "react"
 import { Table, Input, Checkbox, Tag } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
+import ValueDisplay from "@/components/common/ValueDisplay"
+import CurrencySelect from "@/components/inputs/CurrencySelect"
 import confirmAction from "@/utils/confirmAction"
 
 export default function SupplierBankDetailsTable({
@@ -35,6 +37,18 @@ export default function SupplierBankDetailsTable({
     }
   }
 
+  const handleKeyDown = (e) => {
+    if (!editingId) return
+    if (e.key === "Enter") {
+      e.preventDefault()
+      saveEdit()
+    }
+    if (e.key === "Escape") {
+      e.preventDefault()
+      cancelEdit()
+    }
+  }
+
   const handleDeleteClick = async (record) => {
     const { confirmed } = await confirmAction(
       "Удалить банковские реквизиты поставщика?"
@@ -43,11 +57,14 @@ export default function SupplierBankDetailsTable({
     await onDelete?.(record)
   }
 
-  const renderInput = (key, width) => ({
+  const renderEditableText = (key, type = "text", width) => ({
     render: (_, record) => {
-      const value =
-        editingId === record.id ? editedRow?.[key] ?? "" : record[key] ?? ""
-      if (editingId === record.id) {
+      const isEditing = editingId === record.id
+      const value = isEditing
+        ? editedRow?.[key] ?? ""
+        : record[key] ?? ""
+
+      if (isEditing) {
         return (
           <Input
             size="small"
@@ -59,10 +76,19 @@ export default function SupplierBankDetailsTable({
                 [key]: e.target.value,
               }))
             }
+            onKeyDown={handleKeyDown}
           />
         )
       }
-      return value || ""
+
+      return (
+        <ValueDisplay
+          value={value}
+          type={type}
+          maxLength={40}
+          onDoubleClick={() => startEdit(record)}
+        />
+      )
     },
   })
 
@@ -71,43 +97,72 @@ export default function SupplierBankDetailsTable({
       title: "Банк",
       dataIndex: "bank_name",
       key: "bank_name",
-      ...renderInput("bank_name", 160),
+      ...renderEditableText("bank_name", "text", 160),
     },
     {
       title: "Счёт",
       dataIndex: "account_number",
       key: "account_number",
-      ...renderInput("account_number", 160),
+      ...renderEditableText("account_number", "text", 160),
     },
     {
       title: "IBAN",
       dataIndex: "iban",
       key: "iban",
-      ...renderInput("iban", 180),
+      ...renderEditableText("iban", "text", 180),
     },
     {
       title: "BIC",
       dataIndex: "bic",
       key: "bic",
-      ...renderInput("bic", 120),
+      ...renderEditableText("bic", "text", 120),
     },
     {
       title: "Валюта",
       dataIndex: "currency",
       key: "currency",
-      ...renderInput("currency", 80),
+      width: 140,
+      render: (_, record) => {
+        const isEditing = editingId === record.id
+        const value = isEditing ? editedRow?.currency : record.currency
+
+        if (isEditing) {
+          return (
+            <CurrencySelect
+              value={value}
+              onChange={(v) =>
+                setEditedRow((prev) => ({
+                  ...prev,
+                  currency: v || "",
+                }))
+              }
+              style={{ minWidth: 120 }}
+              onKeyDown={handleKeyDown}
+            />
+          )
+        }
+
+        return (
+          <ValueDisplay
+            value={value}
+            type="text"
+            maxLength={16}
+            onDoubleClick={() => startEdit(record)}
+          />
+        )
+      },
     },
     {
       title: "Корр. счёт",
       dataIndex: "correspondent_account",
       key: "correspondent_account",
-      ...renderInput("correspondent_account", 160),
+      ...renderEditableText("correspondent_account", "text", 160),
     },
     {
       title: "Адрес банка",
       dataIndex: "bank_address",
       key: "bank_address",
-      ...renderInput("bank_address", 200),
+      ...renderEditableText("bank_address", "text", 200),
     },
     {
       title: "Основной по валюте",
@@ -115,11 +170,12 @@ export default function SupplierBankDetailsTable({
       key: "is_primary_for_currency",
       width: 160,
       render: (_, record) => {
-        const checked =
-          editingId === record.id
-            ? !!editedRow?.is_primary_for_currency
-            : !!record.is_primary_for_currency
-        if (editingId === record.id) {
+        const isEditing = editingId === record.id
+        const checked = isEditing
+          ? !!editedRow?.is_primary_for_currency
+          : !!record.is_primary_for_currency
+
+        if (isEditing) {
           return (
             <Checkbox
               checked={checked}
@@ -129,9 +185,11 @@ export default function SupplierBankDetailsTable({
                   is_primary_for_currency: e.target.checked ? 1 : 0,
                 }))
               }
+              onKeyDown={handleKeyDown}
             />
           )
         }
+
         return checked ? <Tag color="green">Да</Tag> : <Tag>Нет</Tag>
       },
     },
@@ -139,32 +197,19 @@ export default function SupplierBankDetailsTable({
       title: "Доп. сведения",
       dataIndex: "additional_info",
       key: "additional_info",
-      ...renderInput("additional_info", 200),
+      ...renderEditableText("additional_info", "text", 200),
     },
-    {
-      title: "Версия",
-      dataIndex: "version",
-      key: "version",
-      width: 60,
-      render: (v) => <Tag>{v ?? 1}</Tag>,
-    },
+    // "Версия" убрали — техническое поле
     {
       title: "Действия",
       key: "actions",
-      width: 140,
-      render: (_, record) => {
-        const editing = editingId === record.id
-        return (
-          <ActionButtons
-            size="small"
-            editing={editing}
-            onEdit={() => startEdit(record)}
-            onCancel={cancelEdit}
-            onSave={saveEdit}
-            onDelete={() => handleDeleteClick(record)}
-          />
-        )
-      },
+      width: 80,
+      render: (_, record) => (
+        <ActionButtons
+          size="small"
+          onDelete={() => handleDeleteClick(record)}
+        />
+      ),
     },
   ]
 
@@ -176,6 +221,9 @@ export default function SupplierBankDetailsTable({
       columns={columns}
       dataSource={data}
       pagination={false}
+      onRow={(record) => ({
+        onDoubleClick: () => startEdit(record),
+      })}
     />
   )
 }

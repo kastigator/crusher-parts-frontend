@@ -32,7 +32,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
     if (!supplierId) return
     setLoading(true)
     try {
-      const { data: list } = await axios.get("/part-suppliers/contacts", {
+      const { data: list } = await axios.get("/supplier-contacts", {
         params: { supplier_id: supplierId },
       })
       setData(Array.isArray(list) ? list : [])
@@ -47,7 +47,6 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
   useEffect(() => {
     if (!supplierId) return
     fetchData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supplierId])
 
   const handleAdd = async () => {
@@ -70,7 +69,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
 
     try {
       const { data: created } = await axios.post(
-        "/part-suppliers/contacts",
+        "/supplier-contacts",
         payload
       )
       setData((prev) => [created, ...prev])
@@ -99,7 +98,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
   const handleUpdate = async (id, values) => {
     try {
       const { data: fresh } = await axios.put(
-        `/part-suppliers/contacts/${id}`,
+        `/supplier-contacts/${id}`,
         values
       )
       replaceRow(fresh)
@@ -121,7 +120,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
 
   const handleDelete = async (record) => {
     try {
-      await axios.delete(`/part-suppliers/contacts/${record.id}`, {
+      await axios.delete(`/supplier-contacts/${record.id}`, {
         params: { version: record.version },
       })
       removeRow(record.id)
@@ -145,10 +144,10 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
     const q = search.trim().toLowerCase()
     if (!q) return true
     return (
-      String(r.name || "").toLowerCase().includes(q) ||
-      String(r.role || "").toLowerCase().includes(q) ||
-      String(r.email || "").toLowerCase().includes(q) ||
-      String(r.phone || "").toLowerCase().includes(q)
+      (r.name || "").toLowerCase().includes(q) ||
+      (r.role || "").toLowerCase().includes(q) ||
+      (r.email || "").toLowerCase().includes(q) ||
+      (r.phone || "").toLowerCase().includes(q)
     )
   })
 
@@ -170,52 +169,44 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
               placeholder="Имя контакта"
               value={newContact.name}
               onChange={(e) =>
-                setNewContact((prev) => ({
-                  ...prev,
-                  name: e.target.value,
-                }))
+                setNewContact((prev) => ({ ...prev, name: e.target.value }))
               }
             />
           </Col>
+
           <Col span={4}>
             <Input
               size="small"
-              placeholder="Роль / должность"
+              placeholder="Роль"
               value={newContact.role}
               onChange={(e) =>
-                setNewContact((prev) => ({
-                  ...prev,
-                  role: e.target.value,
-                }))
+                setNewContact((prev) => ({ ...prev, role: e.target.value }))
               }
             />
           </Col>
+
           <Col span={4}>
             <Input
               size="small"
               placeholder="Email"
               value={newContact.email}
               onChange={(e) =>
-                setNewContact((prev) => ({
-                  ...prev,
-                  email: e.target.value,
-                }))
+                setNewContact((prev) => ({ ...prev, email: e.target.value }))
               }
             />
           </Col>
+
           <Col span={4}>
             <Input
               size="small"
               placeholder="Телефон"
               value={newContact.phone}
               onChange={(e) =>
-                setNewContact((prev) => ({
-                  ...prev,
-                  phone: e.target.value,
-                }))
+                setNewContact((prev) => ({ ...prev, phone: e.target.value }))
               }
             />
           </Col>
+
           <Col span={4}>
             <Checkbox
               checked={newContact.is_primary}
@@ -229,16 +220,14 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
               Основной контакт
             </Checkbox>
           </Col>
+
           <Col span={10} style={{ marginTop: 8 }}>
             <Input
               size="small"
               placeholder="Примечание"
               value={newContact.notes}
               onChange={(e) =>
-                setNewContact((prev) => ({
-                  ...prev,
-                  notes: e.target.value,
-                }))
+                setNewContact((prev) => ({ ...prev, notes: e.target.value }))
               }
             />
           </Col>
@@ -258,7 +247,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
         <TableToolbar
           search={search}
           onSearch={setSearch}
-          placeholder="Поиск по контактам поставщика..."
+          placeholder="Поиск по контактам..."
         />
         <SupplierContactsTable
           data={filtered}

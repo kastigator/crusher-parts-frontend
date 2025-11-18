@@ -1,4 +1,3 @@
-// src/components/suppliers/SupplierAddressesTable.jsx
 import React, { useState } from "react"
 import {
   Table,
@@ -54,16 +53,6 @@ export default function SupplierAddressesTable({
     setEditedRow(null)
   }
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      handleSave()
-    } else if (e.key === "Escape") {
-      e.preventDefault()
-      cancelEdit()
-    }
-  }
-
   const updateField = (field, value) =>
     setEditedRow((prev) => ({ ...(prev || {}), [field]: value }))
 
@@ -82,14 +71,21 @@ export default function SupplierAddressesTable({
     }
   }
 
+  const handleKeyDown = (e) => {
+    if (!editingId) return
+    if (e.key === "Enter") {
+      e.preventDefault()
+      handleSave()
+    } else if (e.key === "Escape") {
+      e.preventDefault()
+      cancelEdit()
+    }
+  }
+
   const handleDelete = async (record) => {
     const { confirmed } = await confirmAction("Удалить адрес?")
     if (!confirmed) return
-    try {
-      await onDelete?.(record)
-    } catch (err) {
-      console.error("Ошибка удаления адреса поставщика:", err)
-    }
+    await onDelete?.(record)
   }
 
   const renderInput = (field, placeholder) => (
@@ -145,6 +141,7 @@ export default function SupplierAddressesTable({
                         e.target.checked ? 1 : 0
                       )
                     }
+                    onKeyDown={handleKeyDown}
                   >
                     Точная локация (GPS)
                   </Checkbox>
@@ -161,9 +158,9 @@ export default function SupplierAddressesTable({
           <div onDoubleClick={() => startEdit(record)}>
             <Space size={6}>
               <Tooltip title={oneLine}>
-                {/* адрес больше НЕ жирный, как у клиентов */}
                 <span className="cell-ellipsis">{oneLine}</span>
               </Tooltip>
+
               {oneLine !== "—" && (
                 <Tooltip title="Скопировать адрес">
                   <Button
@@ -177,6 +174,7 @@ export default function SupplierAddressesTable({
                   />
                 </Tooltip>
               )}
+
               {record.is_precise_location ? <Tag color="blue">GPS</Tag> : null}
             </Space>
 
@@ -189,28 +187,19 @@ export default function SupplierAddressesTable({
         )
       },
     },
-    {
-      title: "Создан",
-      dataIndex: "created_at",
-      width: 170,
-      render: (v) => (v ? new Date(v).toLocaleString() : ""),
-    },
+
+    // ❌ Колонку "Создан" полностью убрали — техническая, в UI не нужна
+
     {
       title: "Действия",
       key: "actions",
-      width: 110,
-      render: (_, record) => {
-        const editing = isEditing(record)
-        return (
-          <ActionButtons
-            onSave={editing ? handleSave : undefined}
-            onCancel={editing ? cancelEdit : undefined}
-            onDelete={!editing ? () => handleDelete(record) : undefined}
-            confirmDelete={false}
-            size="small"
-          />
-        )
-      },
+      width: 70,
+      render: (_, record) => (
+        <ActionButtons
+          size="small"
+          onDelete={() => handleDelete(record)}
+        />
+      ),
     },
   ]
 
