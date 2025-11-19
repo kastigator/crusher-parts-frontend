@@ -76,7 +76,7 @@ function OriginalsCell({ row }) {
     <Tooltip
       title={tooltipContent}
       placement="right"
-      onOpenChange={handleOpenChange} // AntD v5
+      onOpenChange={handleOpenChange}
     >
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
         {cats.slice(0, 2).map((cat) => (
@@ -84,6 +84,80 @@ function OriginalsCell({ row }) {
         ))}
         {cats.length > 2 && <Tag>+{cats.length - 2}</Tag>}
       </div>
+    </Tooltip>
+  )
+}
+
+// ===== ячейка "Комплекты" с Tooltip =====
+function BundlesCell({ partId, count }) {
+  const [details, setDetails] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  if (!count || count <= 0) {
+    return <span style={{ color: "#999" }}>—</span>
+  }
+
+  const loadDetails = async () => {
+    if (details !== null || loading) return
+    try {
+      setLoading(true)
+      setError(null)
+      const { data } = await axios.get("/supplier-bundles/usage/detail", {
+        params: { supplier_part_id: partId },
+      })
+      setDetails(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error(e)
+      setError("Не удалось загрузить участие в комплектах")
+      setDetails([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleOpenChange = (open) => {
+    if (open) loadDetails()
+  }
+
+  let content = null
+  if (loading && details === null) {
+    content = "Загрузка…"
+  } else if (error) {
+    content = error
+  } else if (details && details.length) {
+    content = (
+      <div style={{ maxWidth: 420 }}>
+        {details.map((d, idx) => (
+          <div key={`${d.bundle_id}-${idx}`} style={{ marginBottom: 8 }}>
+            <div>
+              <b>
+                Комплект #{d.bundle_id}
+                {d.title ? `: ${d.title}` : ""}
+              </b>
+            </div>
+            <div style={{ fontSize: 12 }}>
+              Роль: {d.role_label} · Кол-во: {d.qty}
+            </div>
+            <div style={{ fontSize: 12, color: "#888" }}>
+              Оригинал: {d.original_cat_number} · {d.manufacturer_name}{" "}
+              {d.model_name}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  } else {
+    content = "Информация по комплектам не найдена"
+  }
+
+  return (
+    <Tooltip
+      title={content}
+      placement="right"
+      onOpenChange={handleOpenChange}
+    >
+      <Tag color="purple">Входит: {count}</Tag>
     </Tooltip>
   )
 }
@@ -140,7 +214,7 @@ export default function SupplierPartsTable({
         setRows(items)
         setTotal(Number(data?.total || 0))
 
-        // участие в комплектах (опционально)
+        // участие в комплектах
         try {
           const ids = items.map((r) => r.id)
           if (ids.length) {
@@ -151,12 +225,22 @@ export default function SupplierPartsTable({
                 signal: controller.signal,
               }
             )
-            if (usage && typeof usage === "object") setUsageCounts(usage)
-            else setUsageCounts({})
+            if (Array.isArray(usage)) {
+              const map = {}
+              for (const u of usage) {
+                if (u && u.supplier_part_id != null) {
+                  map[u.supplier_part_id] = Number(u.uses || 0)
+                }
+              }
+              setUsageCounts(map)
+            } else {
+              setUsageCounts({})
+            }
           } else {
             setUsageCounts({})
           }
         } catch (e) {
+          console.error(e)
           setUsageCounts({})
         }
       } catch (e) {
@@ -296,6 +380,20 @@ export default function SupplierPartsTable({
           ),
       },
       {
+        title: "Комментарий",
+        dataIndex: "comment",
+        width: 260,
+        onCell: (record) => ({
+          onDoubleClick: () => startEditCell(record, "comment"),
+        }),
+        render: (_, record) =>
+          isEditingCell(record, "comment") ? (
+            renderTextInput(record, "comment", { multiline: true })
+          ) : (
+            <ValueDisplay value={record.comment} />
+          ),
+      },
+      {
         title: "Срок поставки, дн",
         dataIndex: "lead_time_days",
         width: 150,
@@ -319,14 +417,10 @@ export default function SupplierPartsTable({
       {
         title: "Комплекты",
         dataIndex: "id",
-        width: 130,
-        render: (id) => {
-          const n = usageCounts?.[id] ?? 0
-          return n > 0 ? (
-            <Tag color="purple">Входит: {n}</Tag>
-          ) : (
-            <span style={{ color: "#999" }}>—</span>
-          )
+        width: 160,
+        render: (_, row) => {
+          const n = usageCounts?.[row.id] ?? 0
+          return <BundlesCell partId={row.id} count={n} />
         },
       },
       {

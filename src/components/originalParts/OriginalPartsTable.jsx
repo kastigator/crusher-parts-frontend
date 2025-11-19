@@ -4,6 +4,7 @@ import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
+import TnvedPicker from "@/components/fields/TnvedPicker"
 
 /**
  * Таблица оригинальных деталей.
@@ -20,7 +21,7 @@ export default function OriginalPartsTable({
 }) {
   const [historyId, setHistoryId] = useState(null)
 
-  // 🔹 справочник групп
+  // 🔹 справочник групп (для редактирования)
   const [groups, setGroups] = useState([])
   const [groupsLoading, setGroupsLoading] = useState(false)
 
@@ -36,8 +37,13 @@ export default function OriginalPartsTable({
     length_cm: null,
     width_cm: null,
     height_cm: null,
+    tech_description: "",
+    tnved: null, // объект от TnvedPicker (или null)
   })
   const [savingEdit, setSavingEdit] = useState(false)
+
+  // 🔹 раскрытые строки (для автораскрытия при редактировании + стили)
+  const [expandedRowKeys, setExpandedRowKeys] = useState([])
 
   /* -----------------------------------------------------------
      Группы
@@ -59,8 +65,10 @@ export default function OriginalPartsTable({
   }, [])
 
   /* -----------------------------------------------------------
-     Варианты для фильтров Производитель / Модель
+     Фильтры для колонок
   ----------------------------------------------------------- */
+
+  // Производитель (для режима showAll)
   const manufacturerFilters = useMemo(() => {
     const set = new Set()
     ;(Array.isArray(data) ? data : []).forEach((r) => {
@@ -71,6 +79,7 @@ export default function OriginalPartsTable({
       .map((name) => ({ text: name, value: name }))
   }, [data])
 
+  // Модель (для режима showAll)
   const modelFilters = useMemo(() => {
     const set = new Set()
     ;(Array.isArray(data) ? data : []).forEach((r) => {
@@ -79,6 +88,29 @@ export default function OriginalPartsTable({
     return Array.from(set)
       .sort((a, b) => a.localeCompare(b))
       .map((name) => ({ text: name, value: name }))
+  }, [data])
+
+  // Группа (работает всегда, если есть group_name)
+  const groupFilters = useMemo(() => {
+    const set = new Set()
+    ;(Array.isArray(data) ? data : []).forEach((r) => {
+      if (r.group_name) set.add(r.group_name)
+    })
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ text: name, value: name }))
+  }, [data])
+
+  // ТН ВЭД (по коду)
+  const tnvedFilters = useMemo(() => {
+    const set = new Set()
+    ;(Array.isArray(data) ? data : []).forEach((r) => {
+      const code = r.tnved_code_text || r.tnved_code
+      if (code) set.add(code)
+    })
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b))
+      .map((code) => ({ text: code, value: code }))
   }, [data])
 
   /* -----------------------------------------------------------
@@ -105,6 +137,17 @@ export default function OriginalPartsTable({
   ----------------------------------------------------------- */
   const startEdit = (record) => {
     setEditingId(record.id)
+
+    // объект ТН ВЭД для пикапера (если есть)
+    let tnvedObj = null
+    if (record.tnved_code_id) {
+      tnvedObj = {
+        id: record.tnved_code_id,
+        code: record.tnved_code_text || record.tnved_code || "",
+        description: record.tnved_description || "",
+      }
+    }
+
     setEditingValues({
       cat_number: record.cat_number || "",
       description_ru: record.description_ru || "",
@@ -130,7 +173,15 @@ export default function OriginalPartsTable({
         record.height_cm === undefined || record.height_cm === null
           ? null
           : Number(record.height_cm),
+      tech_description: record.tech_description || "",
+      tnved: tnvedObj,
     })
+
+    // при входе в редактирование сразу раскрываем строку,
+    // чтобы были видны тех.описание и ТН ВЭД
+    setExpandedRowKeys((prev) =>
+      prev.includes(record.id) ? prev : [...prev, record.id],
+    )
   }
 
   const cancelEdit = () => {
@@ -145,6 +196,8 @@ export default function OriginalPartsTable({
       length_cm: null,
       width_cm: null,
       height_cm: null,
+      tech_description: "",
+      tnved: null,
     })
   }
 
@@ -172,6 +225,11 @@ export default function OriginalPartsTable({
         length_cm: toNum(editingValues.length_cm),
         width_cm: toNum(editingValues.width_cm),
         height_cm: toNum(editingValues.height_cm),
+        tech_description:
+          editingValues.tech_description?.trim() === ""
+            ? null
+            : editingValues.tech_description.trim(),
+        tnved_code_id: editingValues.tnved?.id ?? null,
       }
 
       await axios.put(`/original-parts/${id}`, payload)
@@ -317,6 +375,9 @@ export default function OriginalPartsTable({
       sorter: (a, b) =>
         (a.group_name || "").localeCompare(b.group_name || ""),
       sortDirections: ["ascend", "descend"],
+      filters: groupFilters,
+      onFilter: (value, record) =>
+        (record.group_name || "") === (value || ""),
       render: (text, record) => {
         if (record.id !== editingId) return text
         return (
@@ -342,6 +403,27 @@ export default function OriginalPartsTable({
             }
             onKeyDown={makeKeyHandler(record.id)}
           />
+        )
+      },
+    },
+
+    // 🔹 ТН ВЭД (короткая колонка, полное описание — в раскрытии)
+    {
+      title: "ТН ВЭД",
+      dataIndex: "tnved_code_text", // приходит из JOIN с tnved_codes
+      width: 110,
+      ellipsis: true,
+      filters: tnvedFilters,
+      onFilter: (value, record) =>
+        (record.tnved_code_text || record.tnved_code || "") === (value || ""),
+      render: (_, record) => {
+        const code =
+          record.tnved_code_text || record.tnved_code || "" // fallback
+        if (!code) return ""
+        const tooltipParts = []
+        if (record.tnved_description) tooltipParts.push(record.tnved_description)
+        return (
+          <span title={tooltipParts.join(" ") || undefined}>{code}</span>
         )
       },
     },
@@ -516,9 +598,90 @@ export default function OriginalPartsTable({
             startEdit(record)
           },
         })}
-        rowClassName={(record) =>
-          record.id === selectedId ? "ant-table-row-selected" : ""
-        }
+        rowClassName={(record) => {
+          const classes = []
+          if (record.id === selectedId) classes.push("ant-table-row-selected")
+          if (expandedRowKeys.includes(record.id)) classes.push("op-row-expanded")
+          return classes.join(" ")
+        }}
+        expandable={{
+          expandedRowKeys,
+          onExpand: (expanded, record) => {
+            setExpandedRowKeys((prev) =>
+              expanded
+                ? [...prev, record.id]
+                : prev.filter((id) => id !== record.id),
+            )
+          },
+          expandedRowRender: (record) => {
+            const isEditing = record.id === editingId
+
+            const hasTech = isEditing || !!record.tech_description
+            const hasTnved =
+              isEditing ||
+              !!record.tnved_code_text ||
+              !!record.tnved_code ||
+              !!record.tnved_description
+
+            return (
+              <div className="op-expanded-content">
+                {hasTech && (
+                  <div>
+                    <b>Тех. описание:</b>{" "}
+                    {isEditing ? (
+                      <Input.TextArea
+                        style={{ marginTop: 4 }}
+                        autoSize={{ minRows: 2, maxRows: 6 }}
+                        value={editingValues.tech_description}
+                        onChange={(e) =>
+                          setEditingValues((prev) => ({
+                            ...prev,
+                            tech_description: e.target.value,
+                          }))
+                        }
+                        onKeyDown={makeKeyHandler(record.id)}
+                      />
+                    ) : (
+                      record.tech_description || "—"
+                    )}
+                  </div>
+                )}
+
+                {hasTnved && (
+                  <div>
+                    <b>ТН ВЭД:</b>{" "}
+                    {isEditing ? (
+                      <div style={{ marginTop: 4, maxWidth: 320 }}>
+                        <TnvedPicker
+                          allowClear
+                          style={{ width: "100%" }}
+                          value={editingValues.tnved || null}
+                          onChange={(val) =>
+                            setEditingValues((prev) => ({
+                              ...prev,
+                              tnved: val || null,
+                            }))
+                          }
+                        />
+                      </div>
+                    ) : (
+                      (record.tnved_code_text ||
+                        record.tnved_code ||
+                        "—") +
+                      (record.tnved_description
+                        ? ` — ${record.tnved_description}`
+                        : "")
+                    )}
+                  </div>
+                )}
+
+                {!hasTech && !hasTnved && (
+                  <i>Дополнительной информации нет.</i>
+                )}
+              </div>
+            )
+          },
+        }}
       />
 
       {historyId != null && (

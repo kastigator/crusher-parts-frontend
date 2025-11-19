@@ -57,13 +57,10 @@ export default function OriginalPartsMain() {
   // 🔹 режим "Показать все детали"
   const [showAll, setShowAll] = useState(false)
 
-  // группы
+  // группы — для формы добавления и менеджера групп
   const [groups, setGroups] = useState([])
   const [groupsLoading, setGroupsLoading] = useState(false)
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
-
-  // фильтр по группе
-  const [groupFilter, setGroupFilter] = useState(null)
 
   // deep-link ?focus=<id>
   const [params] = useSearchParams()
@@ -119,7 +116,6 @@ export default function OriginalPartsMain() {
       if (search?.trim()) params.q = search.trim()
       if (onlyAssemblies) params.only_assemblies = 1
       if (onlyParts) params.only_parts = 1
-      if (groupFilter) params.group_id = groupFilter
 
       // можно передавать флажок для ясности (backend он не нужен, но не мешает)
       if (showAll) params.all = 1
@@ -142,7 +138,7 @@ export default function OriginalPartsMain() {
     } finally {
       setLoading(false)
     }
-  }, [model?.id, search, onlyAssemblies, onlyParts, groupFilter, showAll])
+  }, [model?.id, search, onlyAssemblies, onlyParts, showAll])
 
   useEffect(() => {
     const t = setTimeout(fetchParts, 300)
@@ -377,7 +373,7 @@ export default function OriginalPartsMain() {
           </Col>
         </Row>
 
-        {/* Поиск + фильтр по группе */}
+        {/* Поиск (фильтры по группе / ТН ВЭД переехали в колонки таблицы) */}
         <div
           className="table-section"
           style={{
@@ -389,38 +385,14 @@ export default function OriginalPartsMain() {
             border: "1px solid #f0f0f0",
           }}
         >
-          <Space align="center" wrap style={{ width: "100%" }}>
-            <TableToolbar
-              search={search}
-              onSearch={(val) => {
-                setSearch(val)
-                setSelectedPart(null)
-              }}
-              disabled={!model && !showAll}
-            />
-
-            <Space align="center">
-              <span style={{ whiteSpace: "nowrap", color: "#666" }}>
-                Группа:
-              </span>
-              <Select
-                style={{ width: 200 }}
-                placeholder="Все группы"
-                allowClear
-                loading={groupsLoading}
-                disabled={!model && !showAll}
-                value={groupFilter ?? undefined}
-                onChange={(val) => {
-                  setGroupFilter(val ?? null)
-                  setSelectedPart(null)
-                }}
-                options={groups.map((g) => ({
-                  value: g.id,
-                  label: g.name,
-                }))}
-              />
-            </Space>
-          </Space>
+          <TableToolbar
+            search={search}
+            onSearch={(val) => {
+              setSearch(val)
+              setSelectedPart(null)
+            }}
+            disabled={!model && !showAll}
+          />
         </div>
 
         {/* Форма добавления детали — по-прежнему только для выбранной модели */}

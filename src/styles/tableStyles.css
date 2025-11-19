@@ -138,3 +138,34 @@
 ::-webkit-scrollbar-track { background: #fafafa; }
 ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+
+/* =================================================================
+   Подсветка раскрытого блока (Тех. описание / ТН ВЭД)
+   ================================================================= */
+
+/* ячейка expanded-строки — без внутренних отступов, чистый фон
+   (оставляем border-top как выше, чтобы не ломать другие таблицы) */
+.op-table .ant-table-expanded-row > .ant-table-cell {
+  background: #fff !important;
+  padding: 0 !important;
+}
+
+/* контент внутри expanded-строки */
+.op-table .op-expanded-content {
+  padding: 8px 24px 12px 48px;
+  background: #f8faff;              /* мягкий голубоватый фон */
+  border-top: 1px solid #e0e7ff;
+  border-bottom: 1px solid #e0e7ff;
+  white-space: pre-wrap;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* лёгкий акцент у родительской строки с раскрытием */
+.op-table .op-row-expanded > td {
+  background: #fff !important;
+  border-bottom-color: #e0e7ff;
+}

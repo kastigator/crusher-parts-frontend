@@ -101,6 +101,7 @@ export default function SupplierPartsMain() {
         supplier_id: supplier.id,
         supplier_part_number: v.supplier_part_number,
         description: v.description || null,
+        comment: v.comment || null,        // 👈 отправляем комментарий
         lead_time_days: v.lead_time_days ?? null,
       });
       message.success("Деталь поставщика создана");
@@ -153,7 +154,10 @@ export default function SupplierPartsMain() {
         setSupplier({
           id: data.supplier_id,
           company:
-            data.supplier_name || data.company || data.name || `#${data.supplier_id}`,
+            data.supplier_name ||
+            data.company ||
+            data.name ||
+            `#${data.supplier_id}`,
           country: data.supplier_country || null,
           phone: data.supplier_phone || null,
           email: data.supplier_email || null,
@@ -205,7 +209,7 @@ export default function SupplierPartsMain() {
         {/* Поиск */}
         <div className="table-section">
           <TableToolbar
-            placeholder="Поиск по номеру/описанию…"
+            placeholder="Поиск по номеру/описанию/комплектам…"
             search={search}
             onSearch={setSearch}
             disabled={!supplier}
@@ -224,7 +228,14 @@ export default function SupplierPartsMain() {
             </Form.Item>
 
             <Form.Item name="description" label="Описание" style={{ flex: 1 }}>
-              <Input placeholder="Короткое описание" style={{ minWidth: 260 }} />
+              <Input placeholder="Короткое описание" style={{ minWidth: 220 }} />
+            </Form.Item>
+
+            <Form.Item name="comment" label="Комментарий" style={{ flex: 1 }}>
+              <Input
+                placeholder="Внутренний комментарий"
+                style={{ minWidth: 220 }}
+              />
             </Form.Item>
 
             <Form.Item name="lead_time_days" label="Срок поставки, дней">
