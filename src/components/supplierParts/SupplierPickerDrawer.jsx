@@ -1,6 +1,23 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { Drawer, Table, Button, Input, Space, Tooltip, Empty, message } from "antd";
+// src/components/supplierParts/SupplierPickerDrawer.jsx
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
+import {
+  Drawer,
+  Table,
+  Button,
+  Input,
+  Space,
+  Tooltip,
+  Empty,
+  message,
+} from "antd";
 import axios from "@/api/axiosInstance";
+import { getCountryLabel } from "@/components/inputs/CountrySelect";
 
 const { Search } = Input;
 
@@ -16,7 +33,6 @@ export default function SupplierPickerDrawer({
   const [search, setSearch] = useState("");
   const abortRef = useRef(null);
 
-  // синхронизируем selectedId с пропом
   useEffect(() => {
     setSelectedId(initialSupplierId ?? null);
   }, [initialSupplierId]);
@@ -43,7 +59,6 @@ export default function SupplierPickerDrawer({
       const list = Array.isArray(data) ? data : [];
       setRows(list);
 
-      // если выбранный поставщик всё ещё в выдаче — не сбрасываем выбор
       if (selectedId) {
         const stillThere = list.some((r) => r.id === selectedId);
         if (!stillThere) setSelectedId(null);
@@ -59,7 +74,6 @@ export default function SupplierPickerDrawer({
     }
   }, [search, selectedId]);
 
-  // грузим список при открытии и при изменении поисковой строки
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(load, 300);
@@ -74,37 +88,68 @@ export default function SupplierPickerDrawer({
       {
         title: "Компания",
         dataIndex: "name",
+        width: 320,
+        ellipsis: true,
         render: (text) => (
           <Tooltip title={text}>
             <span
-              className="cell-ellipsis"
-              style={{ display: "inline-block", maxWidth: 380 }}
+              style={{
+                display: "inline-block",
+                maxWidth: 300,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
             >
               {text}
             </span>
           </Tooltip>
         ),
       },
-      { title: "Страна", dataIndex: "country", width: 80 },
+      {
+        title: "Страна",
+        dataIndex: "country",
+        width: 160,
+        ellipsis: true,
+        render: (code) => getCountryLabel(code, "ru") || "—",
+      },
       {
         title: "Контакт",
         dataIndex: "contact_person",
-        render: (v) => v || "—",
-        width: 180,
+        width: 150,
         ellipsis: true,
+        render: (v) => v || "—",
       },
       {
         title: "Телефон",
         dataIndex: "phone",
-        render: (v) => v || "—",
         width: 150,
+        ellipsis: true,
+        render: (v) => v || "—",
       },
       {
         title: "Email",
         dataIndex: "email",
-        render: (v) => v || "—",
         width: 220,
         ellipsis: true,
+        render: (v) =>
+          v ? (
+            <Tooltip title={v}>
+              <span
+                style={{
+                  display: "inline-block",
+                  maxWidth: 210,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {v}
+              </span>
+            </Tooltip>
+          ) : (
+            "—"
+          ),
       },
     ],
     []
@@ -122,7 +167,7 @@ export default function SupplierPickerDrawer({
 
   return (
     <Drawer
-      width={900}
+      width={1000}
       title="Выбрать поставщика"
       open={open}
       onClose={handleClose}
@@ -136,14 +181,13 @@ export default function SupplierPickerDrawer({
       }
       footer={null}
     >
-      {/* Поле поиска без отдельной кнопки "Обновить" */}
       <div style={{ marginBottom: 12 }}>
         <Search
           allowClear
           placeholder="Найти поставщика по названию…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          onSearch={load} // Enter или иконка запускают запрос сразу
+          onSearch={load}
         />
       </div>
 
@@ -154,6 +198,8 @@ export default function SupplierPickerDrawer({
         columns={columns}
         locale={{ emptyText: <Empty description="Поставщики не найдены" /> }}
         pagination={{ pageSize: 10 }}
+        size="middle"
+        scroll={{ x: 1000 }}
         rowSelection={{
           type: "radio",
           selectedRowKeys: selectedId ? [selectedId] : [],

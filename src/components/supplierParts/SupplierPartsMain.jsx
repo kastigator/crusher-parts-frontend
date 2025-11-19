@@ -10,13 +10,13 @@ import {
   message,
   Input,
   Form,
-  InputNumber,               // 👈 добавили
+  InputNumber,
 } from "antd";
 import {
   TeamOutlined,
-  ReloadOutlined,
   ImportOutlined,
   PlusOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import TableToolbar from "@/components/common/TableToolbar";
@@ -25,6 +25,7 @@ import SupplierPartsTable from "./SupplierPartsTable";
 import SupplierPartDock from "./SupplierPartDock";
 import ImportModal from "@/components/common/ImportModal";
 import axios from "@/api/axiosInstance";
+import { getCountryLabel } from "@/components/inputs/CountrySelect";
 
 const SUPPLIER_TEMPLATE_URL =
   "https://storage.googleapis.com/shared-parts-bucket/templates/supplier_parts_template.xlsx";
@@ -42,7 +43,7 @@ export default function SupplierPartsMain() {
   // выбранная деталь для нижнего дока
   const [selectedPart, setSelectedPart] = useState(null);
 
-  // ✅ deep-link параметры
+  // deep-link параметры
   const [params] = useSearchParams();
   const focusId = params.get("focus"); // supplier_part_id для авто-открытия
   const supplierIdParam = params.get("supplierId"); // выбрать поставщика без фокуса
@@ -63,10 +64,14 @@ export default function SupplierPartsMain() {
   const supplierSummary = useMemo(() => {
     if (!supplier) return null;
     const title = supplier.company || supplier.name;
+    const countryLabel = supplier.country
+      ? getCountryLabel(supplier.country, "ru")
+      : null;
+
     return (
       <Space wrap size={[8, 8]}>
         <Tag color="geekblue">Поставщик: {title}</Tag>
-        {supplier.country ? <Tag>{supplier.country}</Tag> : null}
+        {countryLabel ? <Tag>{countryLabel}</Tag> : null}
         {supplier.phone ? <Tag>{supplier.phone}</Tag> : null}
         {supplier.email ? <Tag>{supplier.email}</Tag> : null}
         <Button size="small" onClick={clearSupplier} icon={<ReloadOutlined />}>
@@ -96,7 +101,6 @@ export default function SupplierPartsMain() {
         supplier_id: supplier.id,
         supplier_part_number: v.supplier_part_number,
         description: v.description || null,
-        // 👇 новое поле — срок поставки в днях
         lead_time_days: v.lead_time_days ?? null,
       });
       message.success("Деталь поставщика создана");
@@ -113,13 +117,12 @@ export default function SupplierPartsMain() {
     }
   };
 
-  // ✅ Инициализация только по supplierId (когда нет focus)
+  // Инициализация только по supplierId (когда нет focus)
   useEffect(() => {
     const initSupplierOnly = async () => {
       const sid = supplierIdParam && Number(supplierIdParam);
-      if (!sid || focusId) return; // если есть focus — им займётся другой эффект
+      if (!sid || focusId) return;
       try {
-        // Нужен эндпоинт: GET /part-suppliers/:id
         const { data } = await axios.get(`/part-suppliers/${sid}`);
         if (!data) return;
         setSupplier({
@@ -138,17 +141,15 @@ export default function SupplierPartsMain() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supplierIdParam, focusId]);
 
-  // ✅ Инициализация по focus=ID (открыть конкретную деталь)
+  // Инициализация по focus=ID (открыть конкретную деталь)
   useEffect(() => {
     const initFromFocus = async () => {
       const id = focusId && Number(focusId);
       if (!id) return;
       try {
-        // Нужен эндпоинт: GET /supplier-parts/:id
         const { data } = await axios.get(`/supplier-parts/${id}`);
         if (!data) return;
 
-        // 1) выставляем поставщика детали
         setSupplier({
           id: data.supplier_id,
           company:
@@ -158,13 +159,9 @@ export default function SupplierPartsMain() {
           email: data.supplier_email || null,
         });
 
-        // 2) перечитываем список
         setVersion((v) => v + 1);
-
-        // 3) выделяем деталь
         setSelectedPart({ id: data.id, ...data });
 
-        // 4) мягкий скролл к строке после рендера таблицы
         setTimeout(() => {
           const row = document.querySelector(`[data-row-key="${id}"]`);
           if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -227,13 +224,9 @@ export default function SupplierPartsMain() {
             </Form.Item>
 
             <Form.Item name="description" label="Описание" style={{ flex: 1 }}>
-              <Input
-                placeholder="Короткое описание"
-                style={{ minWidth: 260 }}
-              />
+              <Input placeholder="Короткое описание" style={{ minWidth: 260 }} />
             </Form.Item>
 
-            {/* 👇 Новое поле: срок поставки в календарных днях */}
             <Form.Item name="lead_time_days" label="Срок поставки, дней">
               <InputNumber
                 min={0}
