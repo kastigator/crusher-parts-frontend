@@ -1,12 +1,92 @@
 // src/components/supplierParts/SupplierPartsTable.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Table, Empty, message, Tag, Input } from "antd"
+import { Table, Empty, message, Tag, Input, Tooltip } from "antd"
 import axios from "@/api/axiosInstance"
 
 import ValueDisplay from "@/components/common/ValueDisplay"
 import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import confirmAction from "@/utils/confirmAction"
+
+// ===== ячейка "Привязки" с тегами + Tooltip =====
+function OriginalsCell({ row }) {
+  const [items, setItems] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  const cats = row.original_cat_numbers
+    ? String(row.original_cat_numbers)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : []
+
+  // нет привязок — показываем "нет"
+  if (!cats.length) {
+    return <Tag color="default">нет</Tag>
+  }
+
+  const loadOriginals = async () => {
+    if (items !== null || loading) return
+    try {
+      setLoading(true)
+      setError(null)
+      const { data } = await axios.get(`/supplier-parts/${row.id}/originals`)
+      setItems(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error(e)
+      setError("Не удалось загрузить привязки")
+      message.error("Не удалось загрузить привязки к оригиналам")
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleOpenChange = (open) => {
+    if (open) loadOriginals()
+  }
+
+  let tooltipContent = null
+  if (loading && items === null) {
+    tooltipContent = "Загрузка…"
+  } else if (error) {
+    tooltipContent = error
+  } else if (items && items.length) {
+    tooltipContent = (
+      <div style={{ maxWidth: 420 }}>
+        {items.map((o) => (
+          <div key={o.id} style={{ marginBottom: 8 }}>
+            <div>
+              <b>{o.cat_number}</b>{" "}
+              {o.description_ru || o.description_en || ""}
+            </div>
+            <div style={{ fontSize: 12, color: "#888" }}>
+              {o.manufacturer_name} {o.model_name}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  } else {
+    tooltipContent = "Привязки не найдены"
+  }
+
+  return (
+    <Tooltip
+      title={tooltipContent}
+      placement="right"
+      onOpenChange={handleOpenChange} // AntD v5
+    >
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {cats.slice(0, 2).map((cat) => (
+          <Tag key={cat}>{cat}</Tag>
+        ))}
+        {cats.length > 2 && <Tag>+{cats.length - 2}</Tag>}
+      </div>
+    </Tooltip>
+  )
+}
 
 export default function SupplierPartsTable({
   supplierId,
@@ -37,52 +117,60 @@ export default function SupplierPartsTable({
   const abortRef = useRef(null)
   const wrapRef = useRef(null)
 
-  const load = useCallback(async () => {
-    if (!supplierId) {
-      setRows([])
-      setTotal(0)
-      setUsageCounts({})
-      return
-    }
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-    setLoading(true)
-    try {
-      const params = { supplier_id: supplierId, page, page_size: pageSize }
-      if (search?.trim()) params.q = search.trim()
-      const { data } = await axios.get("/supplier-parts", { params, signal: controller.signal })
-      const items = Array.isArray(data?.items) ? data.items : []
-      setRows(items)
-      setTotal(Number(data?.total || 0))
-
-      // Пытаемся подгрузить участие в комплектах (необязательный роут).
+  const load = useCallback(
+    async () => {
+      if (!supplierId) {
+        setRows([])
+        setTotal(0)
+        setUsageCounts({})
+        return
+      }
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+      setLoading(true)
       try {
-        const ids = items.map((r) => r.id)
-        if (ids.length) {
-          const { data: usage } = await axios.get("/supplier-bundles/usage", {
-            params: { part_ids: ids.join(",") },
-            signal: controller.signal,
-          })
-          if (usage && typeof usage === "object") setUsageCounts(usage)
-          else setUsageCounts({})
-        } else {
+        const params = { supplier_id: supplierId, page, page_size: pageSize }
+        if (search?.trim()) params.q = search.trim()
+        const { data } = await axios.get("/supplier-parts", {
+          params,
+          signal: controller.signal,
+        })
+        const items = Array.isArray(data?.items) ? data.items : []
+        setRows(items)
+        setTotal(Number(data?.total || 0))
+
+        // участие в комплектах (опционально)
+        try {
+          const ids = items.map((r) => r.id)
+          if (ids.length) {
+            const { data: usage } = await axios.get(
+              "/supplier-bundles/usage",
+              {
+                params: { part_ids: ids.join(",") },
+                signal: controller.signal,
+              }
+            )
+            if (usage && typeof usage === "object") setUsageCounts(usage)
+            else setUsageCounts({})
+          } else {
+            setUsageCounts({})
+          }
+        } catch (e) {
           setUsageCounts({})
         }
       } catch (e) {
-        // Если роут не подключён или вернулась ошибка — молча игнорируем.
-        setUsageCounts({})
+        const name = e?.name || e?.code
+        if (name !== "AbortError" && name !== "ERR_CANCELED") {
+          console.error(e)
+          message.error("Не удалось загрузить детали поставщика")
+        }
+      } finally {
+        setLoading(false)
       }
-    } catch (e) {
-      const name = e?.name || e?.code
-      if (name !== "AbortError" && name !== "ERR_CANCELED") {
-        console.error(e)
-        message.error("Не удалось загрузить детали поставщика")
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [supplierId, search, page, pageSize])
+    },
+    [supplierId, search, page, pageSize]
+  )
 
   useEffect(() => {
     const t = setTimeout(load, 200)
@@ -138,7 +226,9 @@ export default function SupplierPartsTable({
       <Input.TextArea
         rows={3}
         value={draft?.[field] ?? ""}
-        onChange={(e) => setDraft((p) => ({ ...p, [field]: e.target.value }))}
+        onChange={(e) =>
+          setDraft((p) => ({ ...p, [field]: e.target.value }))
+        }
         onBlur={() => saveField(record, field, draft?.[field] ?? "")}
         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
         autoSize={{ minRows: 2, maxRows: 6 }}
@@ -147,8 +237,12 @@ export default function SupplierPartsTable({
     ) : (
       <Input
         value={draft?.[field] ?? ""}
-        onChange={(e) => setDraft((p) => ({ ...p, [field]: e.target.value }))}
-        onPressEnter={() => saveField(record, field, draft?.[field] ?? "")}
+        onChange={(e) =>
+          setDraft((p) => ({ ...p, [field]: e.target.value }))
+        }
+        onPressEnter={() =>
+          saveField(record, field, draft?.[field] ?? "")
+        }
         onBlur={() => saveField(record, field, draft?.[field] ?? "")}
         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
         autoFocus
@@ -178,7 +272,8 @@ export default function SupplierPartsTable({
         dataIndex: "supplier_part_number",
         width: 220,
         onCell: (record) => ({
-          onDoubleClick: () => startEditCell(record, "supplier_part_number"),
+          onDoubleClick: () =>
+            startEditCell(record, "supplier_part_number"),
         }),
         render: (_, record) =>
           isEditingCell(record, "supplier_part_number") ? (
@@ -217,14 +312,9 @@ export default function SupplierPartsTable({
       },
       {
         title: "Привязки",
-        dataIndex: "original_cat_numbers",
-        width: 130,
-        render: (v) =>
-          v ? (
-            <Tag>{String(v).split(",").length}</Tag>
-          ) : (
-            <Tag color="default">нет</Tag>
-          ),
+        dataIndex: "id",
+        width: 200,
+        render: (_, row) => <OriginalsCell row={row} />,
       },
       {
         title: "Комплекты",
@@ -251,7 +341,9 @@ export default function SupplierPartsTable({
         dataIndex: "latest_price_date",
         width: 160,
         render: (v) => (
-          <ValueDisplay value={v && new Date(v).toLocaleDateString()} />
+          <ValueDisplay
+            value={v && new Date(v).toLocaleDateString()}
+          />
         ),
       },
       {
@@ -296,7 +388,9 @@ export default function SupplierPartsTable({
   )
 
   if (!supplierId)
-    return <Empty description="Выберите поставщика, чтобы увидеть его детали" />
+    return (
+      <Empty description="Выберите поставщика, чтобы увидеть его детали" />
+    )
 
   return (
     <>
