@@ -177,8 +177,7 @@ export default function OriginalPartsTable({
       tnved: tnvedObj,
     })
 
-    // при входе в редактирование сразу раскрываем строку,
-    // чтобы были видны тех.описание и ТН ВЭД
+    // при входе в редактирование сразу раскрываем строку
     setExpandedRowKeys((prev) =>
       prev.includes(record.id) ? prev : [...prev, record.id],
     )
@@ -269,7 +268,7 @@ export default function OriginalPartsTable({
           {
             title: "Производитель",
             dataIndex: "manufacturer_name",
-            width: 180,
+            width: 160,
             ellipsis: true,
             filters: manufacturerFilters,
             onFilter: (value, record) =>
@@ -284,7 +283,7 @@ export default function OriginalPartsTable({
           {
             title: "Модель оборудования",
             dataIndex: "model_name",
-            width: 200,
+            width: 160,
             ellipsis: true,
             filters: modelFilters,
             onFilter: (value, record) =>
@@ -299,7 +298,7 @@ export default function OriginalPartsTable({
     {
       title: "Part number",
       dataIndex: "cat_number",
-      width: 200,
+      width: 160,
       sorter: (a, b) =>
         (a.cat_number || "").localeCompare(b.cat_number || ""),
       sortDirections: ["ascend", "descend"],
@@ -323,11 +322,12 @@ export default function OriginalPartsTable({
       title: "Описание (RU)",
       dataIndex: "description_ru",
       ellipsis: true,
+      width: 260,
       onHeaderCell: () => ({
-        style: { width: 420, minWidth: 420, maxWidth: 420 },
+        style: { width: 260, minWidth: 260, maxWidth: 260 },
       }),
       onCell: () => ({
-        style: { width: 420, minWidth: 420, maxWidth: 420 },
+        style: { width: 260, minWidth: 260, maxWidth: 260 },
       }),
       render: (value, record) => {
         if (record.id !== editingId) return value
@@ -349,6 +349,13 @@ export default function OriginalPartsTable({
       title: "Description (EN)",
       dataIndex: "description_en",
       ellipsis: true,
+      width: 220,
+      onHeaderCell: () => ({
+        style: { width: 220, minWidth: 220, maxWidth: 220 },
+      }),
+      onCell: () => ({
+        style: { width: 220, minWidth: 220, maxWidth: 220 },
+      }),
       render: (value, record) => {
         if (record.id !== editingId) return value
         return (
@@ -370,7 +377,7 @@ export default function OriginalPartsTable({
     {
       title: "Группа",
       dataIndex: "group_name",
-      width: 180,
+      width: 160,
       ellipsis: true,
       sorter: (a, b) =>
         (a.group_name || "").localeCompare(b.group_name || ""),
@@ -411,7 +418,7 @@ export default function OriginalPartsTable({
     {
       title: "ТН ВЭД",
       dataIndex: "tnved_code_text", // приходит из JOIN с tnved_codes
-      width: 110,
+      width: 120,
       ellipsis: true,
       filters: tnvedFilters,
       onFilter: (value, record) =>
@@ -558,7 +565,7 @@ export default function OriginalPartsTable({
     {
       title: "Сборка",
       dataIndex: "is_assembly",
-      width: 100,
+      width: 90,
       render: (v) => (v ? "Да" : "Нет"),
     },
     {

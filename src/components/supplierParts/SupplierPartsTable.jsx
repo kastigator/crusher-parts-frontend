@@ -1,4 +1,3 @@
-// src/components/supplierParts/SupplierPartsTable.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Table, Empty, message, Tag, Input, Tooltip } from "antd"
 import axios from "@/api/axiosInstance"
@@ -169,6 +168,7 @@ export default function SupplierPartsTable({
   onReload,
   selectedId = null,
   onSelectPart = () => {},
+  showAll = false,
 }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -193,7 +193,7 @@ export default function SupplierPartsTable({
 
   const load = useCallback(
     async () => {
-      if (!supplierId) {
+      if (!supplierId && !showAll) {
         setRows([])
         setTotal(0)
         setUsageCounts({})
@@ -204,8 +204,19 @@ export default function SupplierPartsTable({
       abortRef.current = controller
       setLoading(true)
       try {
-        const params = { supplier_id: supplierId, page, page_size: pageSize }
+        const params = {
+          page,
+          page_size: pageSize,
+        }
+
+        if (showAll) {
+          params.all = 1
+        } else if (supplierId) {
+          params.supplier_id = supplierId
+        }
+
         if (search?.trim()) params.q = search.trim()
+
         const { data } = await axios.get("/supplier-parts", {
           params,
           signal: controller.signal,
@@ -253,7 +264,7 @@ export default function SupplierPartsTable({
         setLoading(false)
       }
     },
-    [supplierId, search, page, pageSize]
+    [supplierId, search, page, pageSize, showAll]
   )
 
   useEffect(() => {
@@ -266,7 +277,7 @@ export default function SupplierPartsTable({
 
   useEffect(() => {
     setPage(1)
-  }, [supplierId, search])
+  }, [supplierId, search, showAll])
 
   // ===== редактирование =====
   const isEditingCell = (record, field) =>
@@ -348,9 +359,54 @@ export default function SupplierPartsTable({
     }
   }
 
+  // ===== фильтры по поставщику (для showAll) =====
+  const supplierFilters = useMemo(() => {
+    const set = new Set()
+    ;(rows || []).forEach((r) => {
+      if (r.supplier_name) set.add(r.supplier_name)
+    })
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ text: name, value: name }))
+  }, [rows])
+
   // ===== колонки =====
   const columns = useMemo(
     () => [
+      ...(showAll
+        ? [
+            {
+              title: "Поставщик",
+              dataIndex: "supplier_name",
+              width: 220,
+              filters: supplierFilters,
+              onFilter: (value, record) =>
+                (record.supplier_name || "") === value,
+              sorter: (a, b) =>
+                (a.supplier_name || "").localeCompare(
+                  b.supplier_name || ""
+                ),
+              render: (value) =>
+                value ? (
+                  <Tooltip title={value}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        maxWidth: 200,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {value}
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <span style={{ color: "#999" }}>—</span>
+                ),
+            },
+          ]
+        : []),
       {
         title: "Номер у поставщика",
         dataIndex: "supplier_part_number",
@@ -453,7 +509,7 @@ export default function SupplierPartsTable({
         ),
       },
     ],
-    [editing, draft, usageCounts, selectedId]
+    [editing, draft, usageCounts, selectedId, showAll, supplierFilters]
   )
 
   // ===== пагинация =====
@@ -481,9 +537,9 @@ export default function SupplierPartsTable({
     [page, pageSize, total]
   )
 
-  if (!supplierId)
+  if (!supplierId && !showAll)
     return (
-      <Empty description="Выберите поставщика, чтобы увидеть его детали" />
+      <Empty description="Выберите поставщика или включите режим «Показать все детали»" />
     )
 
   return (

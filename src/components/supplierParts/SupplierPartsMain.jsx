@@ -1,4 +1,3 @@
-// src/components/supplierParts/SupplierPartsMain.jsx
 import React, { useMemo, useState, useEffect } from "react";
 import {
   Card,
@@ -11,6 +10,7 @@ import {
   Input,
   Form,
   InputNumber,
+  Checkbox,
 } from "antd";
 import {
   TeamOutlined,
@@ -43,6 +43,9 @@ export default function SupplierPartsMain() {
   // выбранная деталь для нижнего дока
   const [selectedPart, setSelectedPart] = useState(null);
 
+  // режим "Показать все детали"
+  const [showAll, setShowAll] = useState(false);
+
   // deep-link параметры
   const [params] = useSearchParams();
   const focusId = params.get("focus"); // supplier_part_id для авто-открытия
@@ -58,6 +61,7 @@ export default function SupplierPartsMain() {
     setSupplier(null);
     setSelectedPart(null);
     setSearch("");
+    setShowAll(false); // сбрасываем режим "все"
     setVersion((v) => v + 1);
   };
 
@@ -101,7 +105,7 @@ export default function SupplierPartsMain() {
         supplier_id: supplier.id,
         supplier_part_number: v.supplier_part_number,
         description: v.description || null,
-        comment: v.comment || null,        // 👈 отправляем комментарий
+        comment: v.comment || null,
         lead_time_days: v.lead_time_days ?? null,
       });
       message.success("Деталь поставщика создана");
@@ -184,7 +188,10 @@ export default function SupplierPartsMain() {
         <Row gutter={[12, 12]} align="middle">
           <Col xs={24} md={12}>
             <Space wrap>
-              <Button icon={<TeamOutlined />} onClick={() => setPickerOpen(true)}>
+              <Button
+                icon={<TeamOutlined />}
+                onClick={() => setPickerOpen(true)}
+              >
                 {supplier ? "Изменить поставщика" : "Выбрать поставщика"}
               </Button>
               {supplierSummary}
@@ -194,8 +201,25 @@ export default function SupplierPartsMain() {
           <Col
             xs={24}
             md={12}
-            style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              gap: 12,
+            }}
           >
+            <Checkbox
+              checked={showAll}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setShowAll(checked);
+                setSelectedPart(null);
+                setVersion((v) => v + 1); // перезагрузка таблицы
+              }}
+            >
+              Показать все детали
+            </Checkbox>
+
             <Button
               icon={<ImportOutlined />}
               onClick={handleImportClick}
@@ -212,7 +236,7 @@ export default function SupplierPartsMain() {
             placeholder="Поиск по номеру/описанию/комплектам…"
             search={search}
             onSearch={setSearch}
-            disabled={!supplier}
+            disabled={!supplier && !showAll}
           />
         </div>
 
@@ -228,7 +252,10 @@ export default function SupplierPartsMain() {
             </Form.Item>
 
             <Form.Item name="description" label="Описание" style={{ flex: 1 }}>
-              <Input placeholder="Короткое описание" style={{ minWidth: 220 }} />
+              <Input
+                placeholder="Короткое описание"
+                style={{ minWidth: 220 }}
+              />
             </Form.Item>
 
             <Form.Item name="comment" label="Комментарий" style={{ flex: 1 }}>
@@ -269,6 +296,7 @@ export default function SupplierPartsMain() {
           onReload={() => setVersion((v) => v + 1)}
           selectedId={selectedPart?.id || null}
           onSelectPart={setSelectedPart}
+          showAll={showAll}
         />
       </Card>
 

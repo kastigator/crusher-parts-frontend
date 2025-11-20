@@ -84,7 +84,11 @@ export default function SuppliersTable({
         return
       }
       if (err?.isDuplicateKey) {
-        message.error("Поставщик с таким VAT уже существует")
+        if (err.duplicateField === "public_code") {
+          message.error("Поставщик с таким публичным кодом уже существует")
+        } else {
+          message.error("Поставщик с таким VAT уже существует")
+        }
         cancelEdit()
         return
       }
@@ -130,6 +134,13 @@ export default function SuppliersTable({
       dataIndex: "name",
       key: "name",
       ...renderTextCell("name", 220),
+    },
+    {
+      title: "Код",
+      dataIndex: "public_code",
+      key: "public_code",
+      width: 120,
+      ...renderTextCell("public_code", 120),
     },
     {
       title: "Страна",

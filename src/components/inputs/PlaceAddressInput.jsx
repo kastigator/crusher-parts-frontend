@@ -1,14 +1,11 @@
 import React, { useEffect, useRef, useState } from "react"
-import { Input, Button, Space, message } from "antd"
-import Autocomplete from "@mui/material/Autocomplete"
-import TextField from "@mui/material/TextField"
-import Box from "@mui/material/Box"
+import { Input, Button, Space, message, AutoComplete } from "antd"
 
 export default function PlaceAddressInput({
   value = {},
   onChange,
   debugId = "?",
-  resetTrigger
+  resetTrigger,
 }) {
   const mapRef = useRef(null)          // DOM-контейнер карты
   const mapInstance = useRef(null)     // ymaps.Map инстанс
@@ -24,6 +21,7 @@ export default function PlaceAddressInput({
   useEffect(() => {
     setQuery("")
     setOptions([])
+    setGeoObjects(null)
     setOpen(false)
   }, [resetTrigger])
 
@@ -42,7 +40,9 @@ export default function PlaceAddressInput({
       if (cancelled || !mapRef.current) return
 
       // убираем возможный старый инстанс/DOM
-      try { mapInstance.current?.destroy?.() } catch {}
+      try {
+        mapInstance.current?.destroy?.()
+      } catch {}
       mapInstance.current = null
       mapRef.current.innerHTML = ""
 
@@ -54,7 +54,7 @@ export default function PlaceAddressInput({
       const map = new ymaps.Map(mapRef.current, {
         center,
         zoom: 10,
-        controls: ["zoomControl"]
+        controls: ["zoomControl"],
       })
       mapInstance.current = map
 
@@ -78,14 +78,14 @@ export default function PlaceAddressInput({
           const postalCode = meta.Address.postal_code || ""
           const components = meta.Address.Components || []
 
-          const country   = components.find((c) => c.kind === "country")?.name || ""
-          const province  = components.find((c) => c.kind === "province")?.name || ""
-          const area      = components.find((c) => c.kind === "area")?.name || ""
-          const locality  = components.find((c) => c.kind === "locality")?.name || ""
-          const street    = components.find((c) => c.kind === "street")?.name || ""
-          const house     = components.find((c) => c.kind === "house")?.name || ""
-          const building  = components.find((c) => c.kind === "building")?.name || ""
-          const entrance  = components.find((c) => c.kind === "entrance")?.name || ""
+          const country  = components.find((c) => c.kind === "country")?.name || ""
+          const province = components.find((c) => c.kind === "province")?.name || ""
+          const area     = components.find((c) => c.kind === "area")?.name || ""
+          const locality = components.find((c) => c.kind === "locality")?.name || ""
+          const street   = components.find((c) => c.kind === "street")?.name || ""
+          const house    = components.find((c) => c.kind === "house")?.name || ""
+          const building = components.find((c) => c.kind === "building")?.name || ""
+          const entrance = components.find((c) => c.kind === "entrance")?.name || ""
 
           setQuery(addressLine)
           setOpen(false)
@@ -102,19 +102,19 @@ export default function PlaceAddressInput({
             street,
             house,
             building,
-            entrance
+            entrance,
           })
         })
       })
     }
 
-    // важное: если StrictMode сделает "mount→unmount→mount",
-    // первый отложенный ready просто проигнорируем по флагу cancelled
     window.ymaps.ready(initMap)
 
     return () => {
       cancelled = true
-      try { mapInstance.current?.destroy?.() } catch {}
+      try {
+        mapInstance.current?.destroy?.()
+      } catch {}
       mapInstance.current = null
       placemarkRef.current = null
       if (mapRef.current) mapRef.current.innerHTML = ""
@@ -152,13 +152,13 @@ export default function PlaceAddressInput({
             components.find((c) => c.kind === "street")?.name,
             components.find((c) => c.kind === "house")?.name,
             components.find((c) => c.kind === "building")?.name,
-            components.find((c) => c.kind === "entrance")?.name
+            components.find((c) => c.kind === "entrance")?.name,
           ].filter(Boolean)
 
           choices.push({
             label: parts.join(", ") || obj.getAddressLine(),
             addressLine: obj.getAddressLine(),
-            index: i
+            index: i,
           })
         }
 
@@ -174,9 +174,9 @@ export default function PlaceAddressInput({
       })
   }
 
-  const handleSelect = (_, option) => {
+  const handleSelect = (option) => {
     if (!option || !geoObjects) return
-    const ymaps = window.ymaps                // <-- добавлено
+    const ymaps = window.ymaps
     const selected = geoObjects.get(option.index)
     if (!selected) return
 
@@ -216,9 +216,17 @@ export default function PlaceAddressInput({
       street,
       house,
       building,
-      entrance
+      entrance,
     })
   }
+
+  // преобразуем options в формат AntD AutoComplete
+  const autoOptions = options.map((o) => ({
+    value: String(o.index),
+    label: o.label,
+    index: o.index,
+    addressLine: o.addressLine,
+  }))
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -235,27 +243,25 @@ export default function PlaceAddressInput({
       </Space.Compact>
 
       {open && (
-        <Autocomplete
-          options={options}
+        <AutoComplete
+          style={{ width: "100%" }}
+          options={autoOptions}
           open={open}
-          onClose={() => setOpen(false)}
-          onOpen={() => setOpen(true)}
-          getOptionLabel={(option) => option?.label || ""}
-          isOptionEqualToValue={(option, value) => option.index === value.index}
-          onChange={handleSelect}
-          renderInput={(params) => (
-            <TextField {...params} label="Выберите адрес" size="small" />
-          )}
-        />
+          onDropdownVisibleChange={(v) => setOpen(v)}
+          onSelect={(_, option) => handleSelect(option)}
+          onBlur={() => setOpen(false)}
+        >
+          <Input placeholder="Выберите адрес" size="small" />
+        </AutoComplete>
       )}
 
-      <Box
+      <div
         ref={mapRef}
-        sx={{
+        style={{
           width: "100%",
           height: 300,
-          borderRadius: 1,
-          border: "1px solid #ccc"
+          borderRadius: 4,
+          border: "1px solid #ccc",
         }}
       />
     </div>

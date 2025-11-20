@@ -66,10 +66,15 @@ export default function SuppliersMain() {
       incoterms: trim(values.incoterms) || null,
       default_lead_time_days: values.default_lead_time_days ?? null,
       notes: trim(values.notes) || null,
+      public_code: trim(values.public_code) || null,
     }
 
     if (!payload.name) {
       message.warning("Название компании обязательно")
+      return
+    }
+    if (!payload.public_code) {
+      message.warning("Публичный код поставщика обязателен")
       return
     }
 
@@ -99,14 +104,22 @@ export default function SuppliersMain() {
         e.currentRecord = err.response.data.current
         throw e
       }
-      // Дубликат VAT
-      if (
-        err?.response?.status === 409 &&
-        err?.response?.data?.type === "duplicate_vat"
-      ) {
-        const e = new Error("Duplicate VAT")
-        e.isDuplicateKey = true
-        throw e
+
+      // Конфликт уникальности (VAT / public_code)
+      if (err?.response?.status === 409) {
+        const { type, field } = err.response.data || {}
+        if (type === "duplicate_vat" || field === "vat_number") {
+          const e = new Error("Duplicate VAT")
+          e.isDuplicateKey = true
+          e.duplicateField = "vat_number"
+          throw e
+        }
+        if (type === "duplicate_public_code" || field === "public_code") {
+          const e = new Error("Duplicate public code")
+          e.isDuplicateKey = true
+          e.duplicateField = "public_code"
+          throw e
+        }
       }
 
       console.error("Ошибка обновления поставщика:", err)
@@ -139,6 +152,7 @@ export default function SuppliersMain() {
       return (
         String(s.name || "").toLowerCase().includes(q) ||
         String(s.vat_number || "").toLowerCase().includes(q) ||
+        String(s.public_code || "").toLowerCase().includes(q) ||
         String(s.country || "").toLowerCase().includes(q) ||
         String(s.contact_person || "").toLowerCase().includes(q) ||
         String(s.notes || "").toLowerCase().includes(q)
@@ -182,6 +196,14 @@ export default function SuppliersMain() {
             rules={[{ required: true, message: "Укажите название компании" }]}
           >
             <Input placeholder="ООО Ромашка" />
+          </Form.Item>
+
+          <Form.Item
+            label="Код"
+            name="public_code"
+            rules={[{ required: true, message: "Укажите публичный код" }]}
+          >
+            <Input placeholder="S001" style={{ width: 100 }} />
           </Form.Item>
 
           <Form.Item label="Страна" name="country">
