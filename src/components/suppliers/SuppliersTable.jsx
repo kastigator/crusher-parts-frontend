@@ -47,17 +47,19 @@ export default function SuppliersTable({
 
   // пагинация как у клиентов и ТН ВЭД
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
+  const [pageSize, setPageSize] = useState(10)
 
   const dataSource = Array.isArray(data) ? data : []
 
-  const handleTableChange = (paginationInfo) => {
-    setPage(paginationInfo.current)
-    setPageSize(paginationInfo.pageSize)
-  }
-
   const pagination = useMemo(
-    () => createTablePagination({ page, pageSize, total: dataSource.length }),
+    () =>
+      createTablePagination({
+        page,
+        pageSize,
+        total: dataSource.length,
+        setPage,
+        setPageSize,
+      }),
     [page, pageSize, dataSource.length],
   )
 
@@ -248,69 +250,72 @@ export default function SuppliersTable({
 
   return (
     <>
-      <Table
-        className="op-table"
-        size="small"
-        rowKey="id"
-        loading={loading}
-        columns={columns}
-        dataSource={dataSource}
-        tableLayout="fixed"
-        pagination={pagination}
-        onChange={handleTableChange}
-        expandable={{
-          expandedRowKeys: expandedSupplierId ? [expandedSupplierId] : [],
-          onExpand: (expanded, record) => {
-            setExpandedSupplierId(expanded ? record.id : null)
-          },
-          expandedRowRender: (record) => (
-            <div className="subtable-shell parts-table-wrap table-section">
-              <Tabs
-                className="inner-tabs"
-                size="small"
-                destroyInactiveTabPane
-                defaultActiveKey="addresses"
-                items={[
-                  {
-                    key: "addresses",
-                    label: "Адреса",
-                    children: (
-                      <SupplierAddressesMain
-                        supplierId={record.id}
-                        onChanged={() => {}}
-                      />
-                    ),
-                  },
-                  {
-                    key: "contacts",
-                    label: "Контакты",
-                    children: (
-                      <SupplierContactsMain
-                        supplierId={record.id}
-                        onChanged={() => {}}
-                      />
-                    ),
-                  },
-                  {
-                    key: "bank",
-                    label: "Банковские реквизиты",
-                    children: (
-                      <SupplierBankDetailsMain
-                        supplierId={record.id}
-                        onChanged={() => {}}
-                      />
-                    ),
-                  },
-                ]}
-              />
-            </div>
-          ),
-        }}
-        onRow={(record) => ({
-          onDoubleClick: () => startEdit(record),
-          onKeyDown: onKey,
-        })}
-      />
+      <div style={{ overflowX: "auto" }}>
+        <Table
+          className="op-table"
+          size="small"
+          bordered
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={dataSource}
+          tableLayout="fixed"
+          pagination={pagination}
+          scroll={{ x: true }}
+          expandable={{
+            expandedRowKeys: expandedSupplierId ? [expandedSupplierId] : [],
+            onExpand: (expanded, record) => {
+              setExpandedSupplierId(expanded ? record.id : null)
+            },
+            expandedRowRender: (record) => (
+              <div className="subtable-shell parts-table-wrap table-section">
+                <Tabs
+                  className="inner-tabs"
+                  size="small"
+                  destroyInactiveTabPane
+                  defaultActiveKey="addresses"
+                  items={[
+                    {
+                      key: "addresses",
+                      label: "Адреса",
+                      children: (
+                        <SupplierAddressesMain
+                          supplierId={record.id}
+                          onChanged={() => {}}
+                        />
+                      ),
+                    },
+                    {
+                      key: "contacts",
+                      label: "Контакты",
+                      children: (
+                        <SupplierContactsMain
+                          supplierId={record.id}
+                          onChanged={() => {}}
+                        />
+                      ),
+                    },
+                    {
+                      key: "bank",
+                      label: "Банковские реквизиты",
+                      children: (
+                        <SupplierBankDetailsMain
+                          supplierId={record.id}
+                          onChanged={() => {}}
+                        />
+                      ),
+                    },
+                  ]}
+                />
+              </div>
+            ),
+          }}
+          onRow={(record) => ({
+            onDoubleClick: () => startEdit(record),
+            onKeyDown: onKey,
+          })}
+        />
+      </div>
 
       {logsSupplierId && (
         <FullHistoryDialog
