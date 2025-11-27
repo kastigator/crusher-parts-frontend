@@ -51,13 +51,15 @@ export default function SuppliersTable({
 
   const dataSource = Array.isArray(data) ? data : []
 
-  const handleTableChange = (paginationInfo) => {
-    setPage(paginationInfo.current)
-    setPageSize(paginationInfo.pageSize)
-  }
-
   const pagination = useMemo(
-    () => createTablePagination({ page, pageSize, total: dataSource.length }),
+    () =>
+      createTablePagination({
+        page,
+        pageSize,
+        total: dataSource.length,
+        setPage,
+        setPageSize,
+      }),
     [page, pageSize, dataSource.length],
   )
 
@@ -251,13 +253,14 @@ export default function SuppliersTable({
       <Table
         className="op-table"
         size="small"
+        bordered
         rowKey="id"
         loading={loading}
         columns={columns}
         dataSource={dataSource}
         tableLayout="fixed"
         pagination={pagination}
-        onChange={handleTableChange}
+        scroll={{ x: 1600 }}
         expandable={{
           expandedRowKeys: expandedSupplierId ? [expandedSupplierId] : [],
           onExpand: (expanded, record) => {

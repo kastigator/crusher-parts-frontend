@@ -230,7 +230,7 @@ export default function SuppliersMain() {
           </Form.Item>
         </Form>
 
-        <div className="parts-table-wrap">
+        <div className="parts-table-wrap table-section">
           <SuppliersTable
             data={filtered}
             loading={loading}
