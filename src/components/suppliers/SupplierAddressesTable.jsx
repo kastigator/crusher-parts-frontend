@@ -1,4 +1,3 @@
-// src/components/suppliers/SupplierAddressesTable.jsx
 import React, { useState } from "react"
 import {
   Table,
@@ -140,7 +139,7 @@ export default function SupplierAddressesTable({
                     onChange={(e) =>
                       updateField(
                         "is_precise_location",
-                        e.target.checked ? 1 : 0
+                        e.target.checked ? 1 : 0,
                       )
                     }
                     onKeyDown={handleKeyDown}
@@ -197,7 +196,7 @@ export default function SupplierAddressesTable({
         <ActionButtons
           size="small"
           onDelete={() => handleDelete(record)}
-          confirmDelete={false} // confirmAction уже здесь
+          confirmDelete={false}
         />
       ),
     },

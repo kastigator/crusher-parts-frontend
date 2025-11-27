@@ -1,13 +1,10 @@
-// src/components/suppliers/SupplierBankDetailsMain.jsx
 import React, { useEffect, useState } from "react"
 import { Card, Button, Input, Row, Col, Checkbox, message } from "antd"
 import axios from "@/api/axiosInstance"
 
-import TableToolbar from "@/components/common/TableToolbar"
 import SupplierBankDetailsTable from "./SupplierBankDetailsTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import CurrencySelect from "@/components/inputs/CurrencySelect"
-
 
 const trimOrNull = (v) => {
   if (v === undefined || v === null) return null
@@ -18,7 +15,6 @@ const trimOrNull = (v) => {
 export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
-  const [search, setSearch] = useState("")
   const [conflict, setConflict] = useState(null)
 
   const [newBank, setNewBank] = useState({
@@ -79,7 +75,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
     try {
       const { data: created } = await axios.post(
         "/supplier-bank-details",
-        payload
+        payload,
       )
       setData((prev) => [created, ...prev])
       setNewBank({
@@ -113,7 +109,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
     try {
       const { data: fresh } = await axios.put(
         `/supplier-bank-details/${id}`,
-        values
+        values,
       )
       replaceRow(fresh)
       onChanged?.()
@@ -154,18 +150,6 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
     }
   }
 
-  const filtered = data.filter((r) => {
-    const q = search.trim().toLowerCase()
-    if (!q) return true
-    return (
-      String(r.bank_name || "").toLowerCase().includes(q) ||
-      String(r.account_number || "").toLowerCase().includes(q) ||
-      String(r.currency || "").toLowerCase().includes(q) ||
-      String(r.bic || "").toLowerCase().includes(q) ||
-      String(r.iban || "").toLowerCase().includes(q)
-    )
-  })
-
   if (!supplierId) {
     return (
       <Card size="small">
@@ -175,9 +159,9 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
   }
 
   return (
-    <>
+    <div className="parts-table-wrap">
       {/* форма добавления реквизитов */}
-      <Card size="small" style={{ marginBottom: 12 }}>
+      <Card size="small" className="table-section">
         <Row gutter={8} style={{ marginBottom: 8 }}>
           <Col span={6}>
             <Input
@@ -245,7 +229,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
           </Col>
         </Row>
 
-        <Row gutter={8} style={{ marginBottom: 8 }}>
+        <Row gutter={8}>
           <Col span={6}>
             <Input
               size="small"
@@ -303,6 +287,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
         <Button
           type="primary"
           size="small"
+          style={{ marginTop: 8 }}
           onClick={handleAdd}
           disabled={!newBank.bank_name.trim() || !newBank.account_number.trim()}
         >
@@ -311,14 +296,9 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
       </Card>
 
       {/* таблица реквизитов */}
-      <Card size="small">
-        <TableToolbar
-          search={search}
-          onSearch={setSearch}
-          placeholder="Поиск по банковским реквизитам поставщика..."
-        />
+      <Card size="small" className="table-section">
         <SupplierBankDetailsTable
-          data={filtered}
+          data={data}
           loading={loading}
           onUpdate={handleUpdate}
           onDelete={handleDelete}
@@ -333,6 +313,6 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
           await fetchData()
         }}
       />
-    </>
+    </div>
   )
 }

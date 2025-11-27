@@ -1,4 +1,4 @@
-// src/components/clients/bankDetails/BankDetailsTable.jsx
+// src/components/clients/BankDetailsTable.jsx
 import React, { useState } from "react"
 import { Table, Input, message } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
@@ -72,7 +72,7 @@ export default function BankDetailsTable({
           await onRefresh()
         }
         return message.warning(
-          "Запись изменилась и не была удалена. Данные обновлены."
+          "Запись изменилась и не была удалена. Данные обновлены.",
         )
       }
       console.error("Ошибка при удалении реквизитов:", e)
@@ -203,10 +203,10 @@ export default function BankDetailsTable({
     {
       title: "Действия",
       dataIndex: "actions",
-      width: 70,
+      width: 90,
       render: (_, r) => (
         <ActionButtons
-          // редактирование только двойным кликом — здесь оставляем только удаление
+          // редактирование — только двойным кликом
           onDelete={() => handleDelete(r)}
         />
       ),

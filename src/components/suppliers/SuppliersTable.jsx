@@ -1,6 +1,4 @@
-// src/components/suppliers/SuppliersTable.jsx
-
-import React, { useState } from "react"
+import React, { useState, useMemo } from "react"
 import { Table, Input, Tabs, message } from "antd"
 
 import SupplierAddressesMain from "./SupplierAddressesMain"
@@ -13,6 +11,7 @@ import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import CountrySelect from "@/components/inputs/CountrySelect"
 import ValueDisplay from "@/components/common/ValueDisplay"
+import createTablePagination from "@/utils/tablePagination"
 
 // 👇 библиотека стран: ISO2 → название по-русски
 import countriesLib from "i18n-iso-countries"
@@ -45,6 +44,22 @@ export default function SuppliersTable({
     draft: null,
     id: null,
   })
+
+  // пагинация как у клиентов и ТН ВЭД
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+
+  const dataSource = Array.isArray(data) ? data : []
+
+  const handleTableChange = (paginationInfo) => {
+    setPage(paginationInfo.current)
+    setPageSize(paginationInfo.pageSize)
+  }
+
+  const pagination = useMemo(
+    () => createTablePagination({ page, pageSize, total: dataSource.length }),
+    [page, pageSize, dataSource.length],
+  )
 
   const startEdit = (record) => {
     setEditingId(record.id)
@@ -185,7 +200,7 @@ export default function SuppliersTable({
       title: "VAT",
       dataIndex: "vat_number",
       key: "vat_number",
-      width: 170, // 🔹 сделали пошире, чтобы номер нормально помещался
+      width: 170,
       ...renderTextCell("vat_number", 170),
     },
     {
@@ -239,8 +254,10 @@ export default function SuppliersTable({
         rowKey="id"
         loading={loading}
         columns={columns}
-        dataSource={Array.isArray(data) ? data : []}
-        pagination={{ pageSize: 50 }}
+        dataSource={dataSource}
+        tableLayout="fixed"
+        pagination={pagination}
+        onChange={handleTableChange}
         expandable={{
           expandedRowKeys: expandedSupplierId ? [expandedSupplierId] : [],
           onExpand: (expanded, record) => {

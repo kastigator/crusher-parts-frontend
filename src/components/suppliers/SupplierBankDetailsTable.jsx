@@ -1,4 +1,3 @@
-// src/components/suppliers/SupplierBankDetailsTable.jsx
 import React, { useState } from "react"
 import { Table, Input, Checkbox, Tag } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
@@ -51,7 +50,7 @@ export default function SupplierBankDetailsTable({
 
   const handleDeleteClick = async (record) => {
     const { confirmed } = await confirmAction(
-      "Удалить банковские реквизиты поставщика?"
+      "Удалить банковские реквизиты поставщика?",
     )
     if (!confirmed) return
     await onDelete?.(record)
@@ -60,9 +59,7 @@ export default function SupplierBankDetailsTable({
   const renderEditableText = (key, type = "text", width) => ({
     render: (_, record) => {
       const isEditing = editingId === record.id
-      const value = isEditing
-        ? editedRow?.[key] ?? ""
-        : record[key] ?? ""
+      const value = isEditing ? editedRow?.[key] ?? "" : record[key] ?? ""
 
       if (isEditing) {
         return (
@@ -199,7 +196,6 @@ export default function SupplierBankDetailsTable({
       key: "additional_info",
       ...renderEditableText("additional_info", "text", 200),
     },
-    // "Версия" убрали — техническое поле
     {
       title: "Действия",
       key: "actions",
@@ -215,12 +211,14 @@ export default function SupplierBankDetailsTable({
 
   return (
     <Table
+      className="op-table"
       size="small"
       rowKey="id"
       loading={loading}
       columns={columns}
-      dataSource={data}
+      dataSource={Array.isArray(data) ? data : []}
       pagination={false}
+      tableLayout="fixed"
       onRow={(record) => ({
         onDoubleClick: () => startEdit(record),
       })}

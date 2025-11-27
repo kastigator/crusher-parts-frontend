@@ -1,9 +1,7 @@
-// src/components/suppliers/SupplierContactsMain.jsx
 import React, { useEffect, useState } from "react"
 import { Card, Button, Input, Row, Col, Checkbox, message } from "antd"
 import axios from "@/api/axiosInstance"
 
-import TableToolbar from "@/components/common/TableToolbar"
 import SupplierContactsTable from "./SupplierContactsTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 
@@ -16,7 +14,6 @@ const trimOrNull = (v) => {
 export default function SupplierContactsMain({ supplierId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
-  const [search, setSearch] = useState("")
   const [conflict, setConflict] = useState(null)
 
   const [newContact, setNewContact] = useState({
@@ -140,29 +137,13 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
     }
   }
 
-  const filtered = data.filter((r) => {
-    const q = search.trim().toLowerCase()
-    if (!q) return true
-    return (
-      (r.name || "").toLowerCase().includes(q) ||
-      (r.role || "").toLowerCase().includes(q) ||
-      (r.email || "").toLowerCase().includes(q) ||
-      (r.phone || "").toLowerCase().includes(q)
-    )
-  })
-
-  if (!supplierId) {
-    return (
-      <Card size="small">
-        Выберите поставщика, чтобы видеть его контакты.
-      </Card>
-    )
-  }
+  if (!supplierId) return null
 
   return (
-    <>
-      <Card size="small" style={{ marginBottom: 12 }}>
-        <Row gutter={8} style={{ marginBottom: 8 }}>
+    <div className="parts-table-wrap">
+      <Card size="small" className="table-section">
+        {/* Форма добавления контакта */}
+        <Row gutter={8} className="table-section">
           <Col span={6}>
             <Input
               size="small"
@@ -207,7 +188,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
             />
           </Col>
 
-          <Col span={4}>
+          <Col span={6}>
             <Checkbox
               checked={newContact.is_primary}
               onChange={(e) =>
@@ -220,8 +201,10 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
               Основной контакт
             </Checkbox>
           </Col>
+        </Row>
 
-          <Col span={10} style={{ marginTop: 8 }}>
+        <Row gutter={8} className="table-section">
+          <Col span={18}>
             <Input
               size="small"
               placeholder="Примечание"
@@ -231,26 +214,21 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
               }
             />
           </Col>
+          <Col span={6} style={{ textAlign: "right" }}>
+            <Button
+              type="primary"
+              size="small"
+              onClick={handleAdd}
+              disabled={!newContact.name.trim()}
+            >
+              Добавить контакт
+            </Button>
+          </Col>
         </Row>
 
-        <Button
-          type="primary"
-          size="small"
-          onClick={handleAdd}
-          disabled={!newContact.name.trim()}
-        >
-          Добавить контакт
-        </Button>
-      </Card>
-
-      <Card size="small">
-        <TableToolbar
-          search={search}
-          onSearch={setSearch}
-          placeholder="Поиск по контактам..."
-        />
+        {/* Таблица контактов — без поиска */}
         <SupplierContactsTable
-          data={filtered}
+          data={data}
           loading={loading}
           onUpdate={handleUpdate}
           onDelete={handleDelete}
@@ -265,6 +243,6 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
           await fetchData()
         }}
       />
-    </>
+    </div>
   )
 }

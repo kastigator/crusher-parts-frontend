@@ -1,4 +1,3 @@
-// src/components/suppliers/SupplierContactsTable.jsx
 import React, { useState } from "react"
 import { Table, Input, Checkbox, Tag } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
@@ -58,9 +57,7 @@ export default function SupplierContactsTable({
   const renderEditableText = (key, type = "text") => ({
     render: (_, record) => {
       const isEditing = editingId === record.id
-      const value = isEditing
-        ? editedRow?.[key] ?? ""
-        : record[key] ?? ""
+      const value = isEditing ? editedRow?.[key] ?? "" : record[key] ?? ""
 
       if (isEditing) {
         return (
@@ -78,7 +75,6 @@ export default function SupplierContactsTable({
         )
       }
 
-      // Нередактируемый режим — красивый вывод через ValueDisplay
       return (
         <ValueDisplay
           value={value}
@@ -149,7 +145,6 @@ export default function SupplierContactsTable({
       key: "notes",
       ...renderEditableText("notes", "text"),
     },
-    // Колонку "Версия" убираем — это тех. поле, в UI не нужно
     {
       title: "Действия",
       key: "actions",
@@ -165,12 +160,14 @@ export default function SupplierContactsTable({
 
   return (
     <Table
+      className="op-table"
       size="small"
       rowKey="id"
       loading={loading}
       columns={columns}
-      dataSource={data}
+      dataSource={Array.isArray(data) ? data : []}
       pagination={false}
+      tableLayout="fixed"
       onRow={(record) => ({
         onDoubleClick: () => startEdit(record),
       })}

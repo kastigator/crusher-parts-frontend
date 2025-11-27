@@ -1,4 +1,3 @@
-// src/components/suppliers/SupplierAddressesMain.jsx
 import React, { useEffect, useState } from "react"
 import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
@@ -48,7 +47,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
       console.error("Ошибка при загрузке адресов поставщика:", err)
       message.error(
         err?.response?.data?.message ||
-          "Не удалось загрузить адреса поставщика"
+          "Не удалось загрузить адреса поставщика",
       )
     } finally {
       setLoading(false)
@@ -121,7 +120,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
     } catch (err) {
       console.error("Ошибка добавления адреса поставщика:", err)
       message.error(
-        err?.response?.data?.message || "Не удалось добавить адрес поставщика"
+        err?.response?.data?.message || "Не удалось добавить адрес поставщика",
       )
     }
   }
@@ -334,7 +333,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
         </Row>
       </Card>
 
-      {/* Просто таблица, без поиска во вложенной секции */}
+      {/* Таблица адресов */}
       <div className="table-section">
         <SupplierAddressesTable
           data={data}
