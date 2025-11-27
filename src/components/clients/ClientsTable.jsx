@@ -1,5 +1,5 @@
 // src/components/clients/ClientsTable.jsx
-import React, { useState } from "react"
+import React, { useState, useMemo } from "react"
 import { Table, Input, message, Tabs } from "antd"
 
 import BillingAddressesMain from "./BillingAddressesMain"
@@ -11,30 +11,53 @@ import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
+import createTablePagination from "@/utils/tablePagination"
 
 export default function ClientsTable({
   data,
   loading,
-  expandedClientId,
-  setExpandedClientId,
-  onReload,
-  onChildChanged,
-
-  // из ClientsMain
   onUpdate,
   onDelete,
+  onReload,
+  // управляемое раскрытие + перезагрузка дочерних вкладок
+  expandedClientId: controlledExpandedId,
+  setExpandedClientId: setControlledExpandedId,
+  onChildChanged,
   onReplaceRow,
-  reloadKey,
+  reloadKey: externalReloadKey,
 }) {
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
   const [historyForId, setHistoryForId] = useState(null)
+
+  // локальные fallback-состояния, если сверху ничего не передали
+  const [localExpandedId, setLocalExpandedId] = useState(null)
+  const [localReloadKey, setLocalReloadKey] = useState(0)
+
+  const expandedClientId = controlledExpandedId ?? localExpandedId
+  const reloadKey = externalReloadKey ?? localReloadKey
 
   const [conflict, setConflict] = useState({
     open: false,
     current: null,
     draft: null,
   })
+
+  // локальная пагинация (как в ТН ВЭД)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+
+  const pagination = useMemo(
+    () =>
+      createTablePagination({
+        page,
+        pageSize,
+        total: Array.isArray(data) ? data.length : 0,
+        setPage,
+        setPageSize,
+      }),
+    [page, pageSize, data],
+  )
 
   const isEditing = (record) => record.id === editingId
 
@@ -53,9 +76,9 @@ export default function ClientsTable({
     if (editedRow.version === undefined) {
       return message.error("Нет версии записи для сохранения")
     }
+
     try {
       await onUpdate?.(editedRow.id, { ...editedRow })
-      // onUpdate в ClientsMain уже обновляет строку через replaceRow
       cancelEdit()
     } catch (err) {
       if (err?.isDuplicateKey) {
@@ -69,46 +92,74 @@ export default function ClientsTable({
         })
         return
       }
-      console.error("Ошибка сохранения:", err)
-      message.error("Не удалось сохранить изменения")
+      console.error(err)
+      message.error("Ошибка при сохранении клиента")
     }
   }
 
-  const deleteClient = async (client) => {
+  const handleDelete = async (record) => {
     const { confirmed } = await confirmAction("Удалить клиента?")
     if (!confirmed) return
 
     try {
-      await onDelete?.(client)
-      // после удаления нам нужен полный рефетч списка
-      await onReload?.()
+      // ⬇️ Передаём ВЕСЬ объект клиента, а не только id
+      await onDelete?.(record)
+
+      // если удалили раскрытого клиента — свернуть
+      if (expandedClientId === record.id) {
+        if (setControlledExpandedId) setControlledExpandedId(null)
+        else setLocalExpandedId(null)
+      }
     } catch (err) {
+      // аккуратно обрабатываем конфликт версий
       if (err?.isVersionConflict) {
         if (err.currentRecord && typeof onReplaceRow === "function") {
           onReplaceRow(err.currentRecord)
-        } else {
-          await onReload?.()
+        } else if (typeof onReload === "function") {
+          await onReload()
         }
-        return message.warning(
-          "Запись изменилась и не была удалена. Данные обновлены."
+        message.warning(
+          "Запись изменилась другим пользователем и не была удалена. Данные обновлены.",
         )
+        return
       }
+
       console.error("Ошибка при удалении клиента:", err)
-      message.error("Не удалось удалить клиента")
+      message.error("Ошибка при удалении клиента")
     }
+  }
+
+  const handleChildChanged = () => {
+    if (typeof onChildChanged === "function") {
+      onChildChanged()
+    } else if (typeof onReload === "function") {
+      onReload()
+    } else {
+      // fallback только внутри таблицы
+      setLocalReloadKey((k) => k + 1)
+    }
+  }
+
+  const handleExpandToggle = (expanded, record) => {
+    const id = expanded ? record.id : null
+    if (setControlledExpandedId) setControlledExpandedId(id)
+    else setLocalExpandedId(id)
   }
 
   const renderInput = (field) => (
     <Input
       value={editedRow?.[field] ?? ""}
       onChange={(e) =>
-        setEditedRow((prev) => ({ ...prev, [field]: e.target.value }))
+        setEditedRow((prev) => ({
+          ...prev,
+          [field]: e.target.value,
+        }))
       }
       onPressEnter={saveEdit}
       onKeyDown={(e) => {
         if (e.key === "Escape") cancelEdit()
       }}
-      autoFocus
+      autoFocus={field === "company_name"}
       size="small"
     />
   )
@@ -139,17 +190,19 @@ export default function ClientsTable({
     {
       title: "Телефон",
       dataIndex: "phone",
+      width: 160,
       render: (_, record) =>
         isEditing(record) ? (
           renderInput("phone")
         ) : (
-          <ValueDisplay value={record.phone} />
+          <ValueDisplay value={record.phone} type="phone" />
         ),
       onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Email",
       dataIndex: "email",
+      width: 220,
       render: (_, record) =>
         isEditing(record) ? (
           renderInput("email")
@@ -160,28 +213,27 @@ export default function ClientsTable({
     },
     {
       title: "Действия",
-      key: "actions",
-      width: 160,
-      render: (_, record) => {
-        const editing = isEditing(record)
-        return (
-          <ActionButtons
-            onSave={editing ? saveEdit : undefined}
-            onCancel={editing ? cancelEdit : undefined}
-            onHistory={!editing ? () => setHistoryForId(record.id) : undefined}
-            onDelete={!editing ? () => deleteClient(record) : undefined}
-            size="small"
-          />
-        )
-      },
+      dataIndex: "actions",
+      width: 90,
+      fixed: "right",
+      render: (_, record) => (
+        <ActionButtons
+          // редактирование — только двойным кликом; Enter/Esc
+          onDelete={() => handleDelete(record)}
+          onHistory={() => setHistoryForId(record.id)}
+        />
+      ),
     },
   ]
 
   const expandedRowRender = (client) => {
     if (!client?.id) return null
+
     return (
-      <div className="subtable-shell parts-table-wrap">
+      <div className="subtable-shell parts-table-wrap table-section">
         <Tabs
+          className="inner-tabs"
+          size="small"
           destroyInactiveTabPane
           items={[
             {
@@ -191,7 +243,7 @@ export default function ClientsTable({
                 <BillingAddressesMain
                   key={`billing-${client.id}-${reloadKey}`}
                   clientId={client.id}
-                  onChanged={onChildChanged}
+                  onChanged={handleChildChanged}
                 />
               ),
             },
@@ -202,7 +254,7 @@ export default function ClientsTable({
                 <ShippingAddressesMain
                   key={`shipping-${client.id}-${reloadKey}`}
                   clientId={client.id}
-                  onChanged={onChildChanged}
+                  onChanged={handleChildChanged}
                 />
               ),
             },
@@ -213,7 +265,7 @@ export default function ClientsTable({
                 <BankDetailsMain
                   key={`bank-${client.id}-${reloadKey}`}
                   clientId={client.id}
-                  onChanged={onChildChanged}
+                  onChanged={handleChildChanged}
                 />
               ),
             },
@@ -228,58 +280,45 @@ export default function ClientsTable({
       <Table
         className="op-table"
         rowKey="id"
-        dataSource={data}
+        dataSource={Array.isArray(data) ? data : []}
         columns={columns}
         loading={loading}
+        bordered
+        size="small"
+        tableLayout="fixed"
         expandable={{
           expandedRowRender,
           expandedRowKeys: expandedClientId ? [expandedClientId] : [],
-          onExpand: (expanded, record) =>
-            setExpandedClientId(expanded ? record.id : null),
+          onExpand: handleExpandToggle,
         }}
-        pagination={{ pageSize: 10 }}
-        size="middle"
+        pagination={pagination}
       />
 
       {historyForId && (
         <FullHistoryDialog
           entityType="clients"
           entityId={historyForId}
-          onlyDeleted={false}
           onClose={() => setHistoryForId(null)}
         />
       )}
 
       <VersionConflictModal
         open={conflict.open}
-        draft={conflict.draft}
         current={conflict.current}
-        fields={[
-          { key: "company_name", title: "Компания" },
-          { key: "contact_person", title: "Контактное лицо" },
-          { key: "phone", title: "Телефон" },
-          { key: "email", title: "Email" },
-        ]}
-        onReload={async () => {
-          if (conflict.current && typeof onReplaceRow === "function") {
-            onReplaceRow(conflict.current)
+        draft={conflict.draft}
+        entityName="клиент"
+        onApplyServer={() => {
+          if (conflict.current) {
+            setEditedRow(conflict.current)
+            setEditingId(conflict.current.id)
           }
-          await onReload?.()
           setConflict({ open: false, current: null, draft: null })
-          cancelEdit()
         }}
-        onManualMerge={() => {
-          const base = conflict.current || {}
-          const draft = conflict.draft || {}
-
+        onApplyDraft={() => {
           const merged = {
-            ...base,
-            company_name: draft.company_name ?? base.company_name,
-            contact_person: draft.contact_person ?? base.contact_person,
-            phone: draft.phone ?? base.phone,
-            email: draft.email ?? base.email,
+            ...(conflict.current || {}),
+            ...(conflict.draft || {}),
           }
-
           if (merged.id) {
             setEditingId(merged.id)
             setEditedRow(merged)

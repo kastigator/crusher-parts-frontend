@@ -1,3 +1,4 @@
+// src/components/suppliers/SupplierAddressesTable.jsx
 import React, { useState } from "react"
 import {
   Table,
@@ -68,6 +69,7 @@ export default function SupplierAddressesTable({
       cancelEdit()
     } catch (err) {
       console.error("Ошибка сохранения адреса поставщика:", err)
+      message.error("Не удалось сохранить адрес поставщика")
     }
   }
 
@@ -178,7 +180,7 @@ export default function SupplierAddressesTable({
               {record.is_precise_location ? <Tag color="blue">GPS</Tag> : null}
             </Space>
 
-            {record.comment && (
+            {record.comment && !record.formatted_address && (
               <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
                 Комментарий: {record.comment}
               </div>
@@ -187,9 +189,6 @@ export default function SupplierAddressesTable({
         )
       },
     },
-
-    // ❌ Колонку "Создан" полностью убрали — техническая, в UI не нужна
-
     {
       title: "Действия",
       key: "actions",
@@ -198,6 +197,7 @@ export default function SupplierAddressesTable({
         <ActionButtons
           size="small"
           onDelete={() => handleDelete(record)}
+          confirmDelete={false} // confirmAction уже здесь
         />
       ),
     },
@@ -205,13 +205,14 @@ export default function SupplierAddressesTable({
 
   return (
     <Table
-      className="op-table parts-table"
+      className="op-table"
       rowKey="id"
       columns={columns}
-      dataSource={data}
+      dataSource={Array.isArray(data) ? data : []}
       loading={loading}
       pagination={false}
       size="small"
+      tableLayout="fixed"
     />
   )
 }

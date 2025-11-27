@@ -1,4 +1,5 @@
 // src/components/suppliers/SuppliersTable.jsx
+
 import React, { useState } from "react"
 import { Table, Input, Tabs, message } from "antd"
 
@@ -11,8 +12,9 @@ import confirmAction from "@/utils/confirmAction"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import CountrySelect from "@/components/inputs/CountrySelect"
+import ValueDisplay from "@/components/common/ValueDisplay"
 
-// 👇 добавили импорт стран, чтобы по ISO2 показывать полное название
+// 👇 библиотека стран: ISO2 → название по-русски
 import countriesLib from "i18n-iso-countries"
 import ru from "i18n-iso-countries/langs/ru.json"
 
@@ -21,14 +23,11 @@ countriesLib.registerLocale(ru)
 const getCountryLabel = (code) => {
   if (!code) return ""
   try {
-    // вернёт, например, "Австралия" для "AU"
     return countriesLib.getName(code, "ru") || code
   } catch {
     return code
   }
 }
-
-const { TabPane } = Tabs
 
 export default function SuppliersTable({
   data = [],
@@ -69,6 +68,8 @@ export default function SuppliersTable({
       if (fresh) setEditedRow(fresh)
       setEditingId(null)
       setEditedRow(null)
+
+      // оставляем раскрытие на том же поставщике
       if (expandedSupplierId === editedRow.id) {
         setExpandedSupplierId(editedRow.id)
       }
@@ -102,10 +103,11 @@ export default function SuppliersTable({
     await onDelete?.(record)
   }
 
-  const renderTextCell = (key, width) => ({
+  const renderTextCell = (key, width, valueType = "text") => ({
     render: (_, record) => {
       const isEdit = editingId === record.id
       const value = isEdit ? editedRow?.[key] ?? "" : record[key] ?? ""
+
       if (isEdit) {
         return (
           <Input
@@ -120,11 +122,15 @@ export default function SuppliersTable({
           />
         )
       }
-      return (
-        <div onDoubleClick={() => startEdit(record)} className="cell-ellipsis">
-          {value || ""}
-        </div>
-      )
+
+      const content =
+        valueType === "phone" || valueType === "email" ? (
+          <ValueDisplay value={value} type={valueType} />
+        ) : (
+          <div className="cell-ellipsis">{value || ""}</div>
+        )
+
+      return <div onDoubleClick={() => startEdit(record)}>{content}</div>
     },
   })
 
@@ -133,14 +139,15 @@ export default function SuppliersTable({
       title: "Компания",
       dataIndex: "name",
       key: "name",
-      ...renderTextCell("name", 220),
+      width: 260,
+      ...renderTextCell("name", 260),
     },
     {
       title: "Код",
       dataIndex: "public_code",
       key: "public_code",
-      width: 120,
-      ...renderTextCell("public_code", 120),
+      width: 100,
+      ...renderTextCell("public_code", 100),
     },
     {
       title: "Страна",
@@ -152,7 +159,6 @@ export default function SuppliersTable({
         const code = isEdit ? editedRow?.country ?? null : record.country ?? null
 
         if (isEdit) {
-          // Редактирование — по-прежнему выбираем ISO2 в CountrySelect
           return (
             <CountrySelect
               value={code}
@@ -164,10 +170,12 @@ export default function SuppliersTable({
           )
         }
 
-        // Просмотр — показываем полное название страны
         const label = getCountryLabel(code)
         return (
-          <div onDoubleClick={() => startEdit(record)} className="cell-ellipsis">
+          <div
+            onDoubleClick={() => startEdit(record)}
+            className="cell-ellipsis"
+          >
             {label}
           </div>
         )
@@ -177,36 +185,41 @@ export default function SuppliersTable({
       title: "VAT",
       dataIndex: "vat_number",
       key: "vat_number",
-      ...renderTextCell("vat_number", 160),
+      width: 170, // 🔹 сделали пошире, чтобы номер нормально помещался
+      ...renderTextCell("vat_number", 170),
     },
     {
       title: "Контакт",
       dataIndex: "contact_person",
       key: "contact_person",
+      width: 160,
       ...renderTextCell("contact_person", 160),
     },
     {
       title: "Телефон",
       dataIndex: "phone",
       key: "phone",
-      ...renderTextCell("phone", 160),
+      width: 170,
+      ...renderTextCell("phone", 170, "phone"),
     },
     {
       title: "Email",
       dataIndex: "email",
       key: "email",
-      ...renderTextCell("email", 220),
+      width: 220,
+      ...renderTextCell("email", 220, "email"),
     },
     {
       title: "Примечание",
       dataIndex: "notes",
       key: "notes",
-      ...renderTextCell("notes", 260),
+      width: 220,
+      ...renderTextCell("notes", 220),
     },
     {
       title: "Действия",
       key: "actions",
-      width: 140,
+      width: 110,
       render: (_, record) => (
         <ActionButtons
           size="small"
@@ -221,11 +234,12 @@ export default function SuppliersTable({
   return (
     <>
       <Table
+        className="op-table"
         size="small"
         rowKey="id"
         loading={loading}
         columns={columns}
-        dataSource={data}
+        dataSource={Array.isArray(data) ? data : []}
         pagination={{ pageSize: 50 }}
         expandable={{
           expandedRowKeys: expandedSupplierId ? [expandedSupplierId] : [],
@@ -233,17 +247,46 @@ export default function SuppliersTable({
             setExpandedSupplierId(expanded ? record.id : null)
           },
           expandedRowRender: (record) => (
-            <Tabs defaultActiveKey="addresses" size="small">
-              <TabPane tab="Адреса" key="addresses">
-                <SupplierAddressesMain supplierId={record.id} onChanged={() => {}} />
-              </TabPane>
-              <TabPane tab="Контакты" key="contacts">
-                <SupplierContactsMain supplierId={record.id} onChanged={() => {}} />
-              </TabPane>
-              <TabPane tab="Банковские реквизиты" key="bank">
-                <SupplierBankDetailsMain supplierId={record.id} onChanged={() => {}} />
-              </TabPane>
-            </Tabs>
+            <div className="subtable-shell parts-table-wrap table-section">
+              <Tabs
+                className="inner-tabs"
+                size="small"
+                destroyInactiveTabPane
+                defaultActiveKey="addresses"
+                items={[
+                  {
+                    key: "addresses",
+                    label: "Адреса",
+                    children: (
+                      <SupplierAddressesMain
+                        supplierId={record.id}
+                        onChanged={() => {}}
+                      />
+                    ),
+                  },
+                  {
+                    key: "contacts",
+                    label: "Контакты",
+                    children: (
+                      <SupplierContactsMain
+                        supplierId={record.id}
+                        onChanged={() => {}}
+                      />
+                    ),
+                  },
+                  {
+                    key: "bank",
+                    label: "Банковские реквизиты",
+                    children: (
+                      <SupplierBankDetailsMain
+                        supplierId={record.id}
+                        onChanged={() => {}}
+                      />
+                    ),
+                  },
+                ]}
+              />
+            </div>
           ),
         }}
         onRow={(record) => ({

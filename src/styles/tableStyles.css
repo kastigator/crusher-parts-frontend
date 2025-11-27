@@ -1,171 +1,221 @@
-/* /src/styles/tableStyles.css
-   Унифицированный стиль для всех таблиц и подтаблиц (Ant Design) */
+/* =========================================================
+   Унифицированный стиль рабочих таблиц (.op-table)
+   ========================================================= */
 
-/* === Базовая таблица ========================================== */
+/* Общий контейнер */
 .op-table {
   width: 100%;
-  background: #fff;
+  background: #ffffff;
   border-radius: 8px;
   box-shadow: none;
-  transition: background 0.2s ease;
+  table-layout: fixed;
 }
 
-/* Удаляем лишние рамки/тени у контейнера таблицы */
+/* Убираем стандартные рамки контейнера AntD */
 .op-table .ant-table-container {
   border: none !important;
   box-shadow: none !important;
-  scrollbar-gutter: stable both-edges; /* стабилизирует ширину при появлении скролла */
 }
 
-/* Фиксированная сетка — исключает перерасчёт ширин при раскрытии */
-.op-table .ant-table { table-layout: fixed; }
-
+/* ---------------------------------------------------------
+   Шапка таблицы
+   --------------------------------------------------------- */
 .op-table .ant-table-thead > tr > th {
-  background: #fafafa;
+  background: #f3f4f6;
   font-weight: 500;
-  color: #333;
-  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+  color: #374151;
+  border-bottom: 1px solid #e5e7eb;
   white-space: nowrap;
+  padding: 8px 12px;
 }
+
+/* ---------------------------------------------------------
+   Тело таблицы
+   --------------------------------------------------------- */
 
 .op-table .ant-table-tbody > tr > td {
-  border-bottom: 1px solid #f5f5f5;
-  background: #fff;
-  transition: background 0.15s ease;
-}
-.op-table .ant-table-tbody > tr:hover > td { background: #f6f9ff; }
-
-/* Плотная таблица */
-.ant-table-small .ant-table-tbody > tr > td { padding: 6px 12px; }
-.ant-table-small .ant-table-thead > tr > th { padding: 6px 12px; }
-
-/* Состояние загрузки */
-.op-table .ant-spin-nested-loading > div > .ant-spin { max-height: 60vh; }
-
-/* === Кнопки действий в таблице ================================ */
-.table-actions { display: flex; align-items: center; gap: 6px; }
-.table-actions button { min-width: 22px; }
-
-/* =================================================================
-   РАСКРЫТАЯ СТРОКА: таблица без смещения относительно шапки
-   ================================================================= */
-
-/* 1) фикс ширины колонки с иконкой раскрытия (и для col-варианта тоже) */
-.op-table .ant-table-row-expand-icon-cell,
-.op-table .ant-table-row-expand-icon-col {
-  width: 36px !important;
-  min-width: 36px !important;
-  max-width: 36px !important;
-  padding-inline: 8px !important;
+  background: #ffffff;
+  border-bottom: 1px solid #f0f0f0;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #1f2937;
+  transition: background 0.18s ease;
 }
 
-/* 2) убираем внутренние отступы у ячейки раскрытой строки;
-      далее управляем отступами из .expanded-area */
+/* Чётные строки (зебра) */
+.op-table .ant-table-tbody > tr:nth-child(even) > td {
+  background: #fafafa;
+}
+
+/* Hover — мягкий */
+.op-table .ant-table-tbody > tr:hover > td {
+  background: #eef2ff !important;
+}
+
+/* Убираем transform у hover, чтобы не прыгала таблица */
+.op-table .ant-table-tbody > tr:hover {
+  transform: none !important;
+}
+
+/* ---------------------------------------------------------
+   Размер (small / middle)
+   --------------------------------------------------------- */
+
+.ant-table-small .ant-table-tbody > tr > td,
+.ant-table-small .ant-table-thead > tr > th {
+  padding: 6px 10px;
+}
+
+/* ---------------------------------------------------------
+   Раскрытая строка (общий контейнер)
+   --------------------------------------------------------- */
+
 .op-table .ant-table-expanded-row > .ant-table-cell {
-  background: #fff !important;
-  border-top: 1px solid #f0f0f0;
   padding: 0 !important;
+  background: #ffffff !important;
+  border-top: 1px solid #e5e7eb;
 }
 
-/* 3) контейнер раскрытой области */
-.op-table .ant-table-expanded-row > .ant-table-cell .expanded-area {
-  width: 100%;
-  max-width: 100%;
-  overflow: visible;
-  padding: 8px 0 8px 8px; /* небольшой левый отступ для выравнивания */
+/* Контент простого раскрытия (без подтаблиц) */
+.op-table .op-expanded-content {
+  padding: 12px 24px;
+  background: #f8faff;
+  border-top: 1px solid #dbeafe;
+  border-bottom: 1px solid #dbeafe;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
-/* 4) вложенная таблица растягивается на 100%, без рамок/теней */
-.expanded-area .ant-table-wrapper,
-.expanded-area .ant-table,
-.expanded-area .ant-table-container,
-.expanded-area .ant-table-content {
-  width: 100% !important;
-  max-width: 100% !important;
-  box-sizing: border-box;
-}
-.expanded-area .ant-table { background: transparent !important; }
-.expanded-area .ant-table-container { border: none !important; box-shadow: none !important; }
-
-/* исключаем паразитный левый «отступ» у вложенной таблицы */
-.op-table .ant-table-expanded-row .ant-table {
-  margin-left: 0 !important;
+/* Родительская строка при раскрытии */
+.op-table .op-row-expanded > td {
+  background: #ffffff !important;
+  border-bottom-color: #dbeafe;
 }
 
-/* вкладки во вскрытой области (если используются) */
-.expanded-area .ant-tabs-nav { margin: 0 0 8px 0 !important; }
-.expanded-area .ant-tabs-content-holder {
-  border-top: 1px solid #f0f0f0;
-  padding-top: 8px;
-  background: #fff;
+/* =========================================================
+   Вложенные подтаблицы (клиенты: адреса, банки и т.п.)
+   ========================================================= */
+
+/* Оболочка раскрытой области с вкладками */
+.subtable-shell {
+  padding: 16px 20px 20px;
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
 }
 
-/* =================================================================
-   Прочие общие элементы
-   ================================================================= */
-.ant-btn-primary { border-radius: 6px; font-weight: 500; }
-.ant-btn-dangerous { font-weight: 500; }
-.ant-tooltip-inner { font-size: 13px; line-height: 1.3; }
+/* Общий отступ между логическими секциями внутри раскрытой строки
+   (карта, форма, тулбар, таблица и т.п.) */
+.table-section {
+  margin-top: 12px;
+}
 
-.table-section { margin: 8px 0; }
-.parts-table-wrap { width: 100%; overflow: visible !important; }
+/* Обёртка для форм и таблиц внутри раскрытой строки */
+.parts-table-wrap {
+  margin-top: 8px;
+}
 
-.ant-empty-description { color: #999; font-size: 13px; }
-
-.table-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* Небольшие отступы между полями во вложенных формах,
+   чтобы инпуты не "слипались" вертикально */
+.parts-table-wrap .ant-input,
+.parts-table-wrap .ant-input-number,
+.parts-table-wrap .ant-select-selector,
+.parts-table-wrap .ant-picker {
   margin-bottom: 8px;
 }
 
-.ant-form-inline .ant-form-item { margin-bottom: 8px; }
+/* ---------------------------------------------------------
+   Вкладки внутри раскрытой строки (лёгкий, аккуратный стиль)
+   --------------------------------------------------------- */
 
-.ant-table-tbody > tr { transition: background 0.2s ease, transform 0.1s ease; }
-.ant-table-tbody > tr:hover { transform: translateY(-1px); }
+/* Чуть меньше отступ снизу, чтобы вкладки были ближе к контенту */
+.subtable-shell .ant-tabs-nav {
+  margin-bottom: 10px;
+}
 
-.op-table .ant-table-expanded-row { background: #fff; }
-.op-table .ant-table-expanded-row .ant-tabs-top { margin-top: 4px; }
+/* Чуть более широкие кликабельные зоны, мелкий шрифт */
+.subtable-shell .ant-tabs-tab {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+/* Небольшой “воздух” между вкладками */
+.subtable-shell .ant-tabs-tab + .ant-tabs-tab {
+  margin-left: 10px;
+}
+
+/* Активная вкладка — лёгкий фон и скругление сверху */
+.subtable-shell .ant-tabs-tab-active {
+  background-color: #f3f4ff;
+  border-radius: 6px 6px 0 0;
+}
+
+/* Подсветка текста активной вкладки */
+.subtable-shell .ant-tabs-tab-active .ant-tabs-tab-btn {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+/* Лёгкая линия под активной вкладкой */
+.subtable-shell .ant-tabs-ink-bar {
+  height: 2px;
+  border-radius: 999px;
+}
+
+/* Контент вкладки внутри раскрытой строки немного отделён от границ */
+.subtable-shell .ant-tabs-content-holder {
+  background: transparent;
+}
+
+/* =========================================================
+   Кнопки действий в таблицах
+   ========================================================= */
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.table-actions button {
+  min-width: 22px;
+}
+
+/* =========================================================
+   Tooltip, scrollbars и прочее
+   ========================================================= */
+
+.ant-tooltip-inner {
+  font-size: 13px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c9c9c9;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b3b3b3;
+}
+
+/* =========================================================
+   Формы и инпуты
+   ========================================================= */
 
 .ant-input,
 .ant-select-selector,
 .ant-input-number,
-.ant-picker { border-radius: 6px !important; }
-.ant-message { font-size: 14px; }
-
-/* Скроллбар (webkit) */
-::-webkit-scrollbar { height: 8px; width: 8px; }
-::-webkit-scrollbar-track { background: #fafafa; }
-::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
-
-/* =================================================================
-   Подсветка раскрытого блока (Тех. описание / ТН ВЭД)
-   ================================================================= */
-
-/* ячейка expanded-строки — без внутренних отступов, чистый фон
-   (оставляем border-top как выше, чтобы не ломать другие таблицы) */
-.op-table .ant-table-expanded-row > .ant-table-cell {
-  background: #fff !important;
-  padding: 0 !important;
+.ant-picker {
+  border-radius: 6px !important;
 }
 
-/* контент внутри expanded-строки */
-.op-table .op-expanded-content {
-  padding: 8px 24px 12px 48px;
-  background: #f8faff;              /* мягкий голубоватый фон */
-  border-top: 1px solid #e0e7ff;
-  border-bottom: 1px solid #e0e7ff;
-  white-space: pre-wrap;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-/* лёгкий акцент у родительской строки с раскрытием */
-.op-table .op-row-expanded > td {
-  background: #fff !important;
-  border-bottom-color: #e0e7ff;
+/* Сообщения */
+.ant-message {
+  font-size: 14px;
 }

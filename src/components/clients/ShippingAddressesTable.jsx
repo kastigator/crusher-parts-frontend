@@ -29,7 +29,7 @@ export default function ShippingAddressesTable({
   const [editingId, setEditingId] = useState(null)
   const [editedRow, setEditedRow] = useState(null)
 
-  const isEditing = (r) => editingId !== null && r?.id === editingId
+  const isEditing = (r) => editingId === r?.id
 
   const cancelEdit = () => {
     setEditingId(null)
@@ -71,6 +71,7 @@ export default function ShippingAddressesTable({
         if (editing && editedRow) {
           return (
             <>
+              {/* Полный адрес одной строкой */}
               <Row className="table-section">
                 <Col span={24}>
                   <Input
@@ -100,6 +101,7 @@ export default function ShippingAddressesTable({
                     onKeyDown={onKey}
                   />
                 </Col>
+
                 <Col span={6}>
                   <Input
                     placeholder="Регион"
@@ -110,6 +112,7 @@ export default function ShippingAddressesTable({
                     onKeyDown={onKey}
                   />
                 </Col>
+
                 <Col span={6}>
                   <Input
                     placeholder="Город"
@@ -120,6 +123,7 @@ export default function ShippingAddressesTable({
                     onKeyDown={onKey}
                   />
                 </Col>
+
                 <Col span={6}>
                   <Input
                     placeholder="Индекс"
@@ -146,6 +150,7 @@ export default function ShippingAddressesTable({
                     onKeyDown={onKey}
                   />
                 </Col>
+
                 <Col span={4}>
                   <Input
                     placeholder="Дом"
@@ -156,6 +161,7 @@ export default function ShippingAddressesTable({
                     onKeyDown={onKey}
                   />
                 </Col>
+
                 <Col span={6}>
                   <Input
                     placeholder="Строение"
@@ -166,6 +172,7 @@ export default function ShippingAddressesTable({
                     onKeyDown={onKey}
                   />
                 </Col>
+
                 <Col span={6}>
                   <Input
                     placeholder="Подъезд"
@@ -209,11 +216,13 @@ export default function ShippingAddressesTable({
             }}
           >
             <div className="cell-ellipsis">{oneLine}</div>
+
             {r.comment && (
               <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
                 Комментарий: {r.comment}
               </div>
             )}
+
             <Space size={6} style={{ marginTop: 4 }}>
               <Tooltip title="Скопировать адрес">
                 <Button
@@ -231,9 +240,9 @@ export default function ShippingAddressesTable({
         )
       },
     },
+
     {
       title: "Действия",
-      dataIndex: "actions",
       width: 140,
       render: (_, r) => {
         const editing = isEditing(r)
@@ -252,13 +261,14 @@ export default function ShippingAddressesTable({
 
   return (
     <Table
-      className="op-table parts-table"
+      className="op-table"
       rowKey="id"
       columns={columns}
-      dataSource={data}
+      dataSource={Array.isArray(data) ? data : []}
       loading={loading}
       pagination={false}
       size="small"
+      tableLayout="fixed"
     />
   )
 }

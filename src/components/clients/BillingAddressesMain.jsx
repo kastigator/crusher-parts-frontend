@@ -1,17 +1,15 @@
+// src/components/clients/BillingAddressesMain.jsx
 import React, { useEffect, useState } from "react"
 import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import BillingAddressesTable from "./BillingAddressesTable"
-import TableToolbar from "@/components/common/TableToolbar"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 
 export default function BillingAddressesMain({ clientId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [resetCounter, setResetCounter] = useState(0)
-  const [search, setSearch] = useState("")
-
   const [conflict, setConflict] = useState(null)
 
   const [newAddress, setNewAddress] = useState({
@@ -30,7 +28,9 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
     comment: "",
   })
 
-  // ========== Load ==========
+  // ==========================
+  // Load
+  // ==========================
   const fetchData = async () => {
     if (!clientId) return
     setLoading(true)
@@ -51,7 +51,9 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
     if (clientId) fetchData()
   }, [clientId])
 
-  // ========== Add ==========
+  // ==========================
+  // Add
+  // ==========================
   const handleAdd = async () => {
     if (!clientId) return
     if (!newAddress.formatted_address?.trim()) {
@@ -79,6 +81,8 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
     try {
       const res = await axios.post("/client-billing-addresses", payload)
       setData((prev) => [res.data, ...prev])
+
+      // сброс формы
       setNewAddress({
         formatted_address: "",
         place_id: null,
@@ -95,6 +99,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
         comment: "",
       })
       setResetCounter((p) => p + 1)
+
       message.success("Адрес добавлен")
       onChanged?.()
     } catch (err) {
@@ -103,8 +108,9 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
     }
   }
 
-  // ========== Edit / Delete with optimistic update ==========
-
+  // ==========================
+  // Edit / Delete (optimistic)
+  // ==========================
   const replaceRow = (fresh) =>
     setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
 
@@ -121,10 +127,11 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
       onChanged?.()
       message.success("Изменения сохранены")
     } catch (err) {
-      if (err.response?.status === 409 && err.response.data?.current) {
+      const res = err?.response
+      if (res?.status === 409 && res?.data?.current) {
         setConflict({
           id,
-          current: err.response.data.current,
+          current: res.data.current,
           draft: row,
         })
         return
@@ -143,11 +150,12 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
       onChanged?.()
       message.success("Адрес удалён")
     } catch (err) {
-      if (err.response?.status === 409 && err.response.data?.current) {
-        replaceRow(err.response.data.current)
+      const res = err?.response
+      if (res?.status === 409 && res?.data?.current) {
+        replaceRow(res.data.current)
         setConflict({
           id: record.id,
-          current: err.response.data.current,
+          current: res.data.current,
           draft: record,
         })
         return
@@ -157,18 +165,11 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
     }
   }
 
-  const filteredData = search
-    ? data.filter((a) =>
-        (a.formatted_address || "")
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      )
-    : data
-
   if (!clientId) return null
 
   return (
     <div className="parts-table-wrap">
+      {/* Форма добавления адреса */}
       <Card size="small" className="table-section">
         <PlaceAddressInput
           debugId="billing-main-form"
@@ -199,7 +200,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
           }
         />
 
-        {/* Manual fields */}
+        {/* Поля адреса (верхний ряд) */}
         <Row gutter={12} className="table-section">
           <Col span={6}>
             <Input
@@ -239,6 +240,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
           </Col>
         </Row>
 
+        {/* Поля адреса (нижний ряд) */}
         <Row gutter={12} className="table-section">
           <Col span={12}>
             <Input
@@ -278,6 +280,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
           </Col>
         </Row>
 
+        {/* Комментарий + кнопка */}
         <Row gutter={12} className="table-section">
           <Col flex="auto">
             <Input
@@ -296,14 +299,9 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
         </Row>
       </Card>
 
-      <TableToolbar
-        className="table-section"
-        search={search}
-        onSearch={setSearch}
-      />
-
+      {/* Таблица адресов (без строки поиска) */}
       <BillingAddressesTable
-        data={filteredData}
+        data={data}
         loading={loading}
         clientId={clientId}
         onUpdate={onUpdate}
@@ -312,6 +310,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
         onRefresh={fetchData}
       />
 
+      {/* Конфликт версий */}
       {conflict && (
         <VersionConflictModal
           open={!!conflict}

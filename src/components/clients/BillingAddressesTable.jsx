@@ -72,7 +72,7 @@ export default function BillingAddressesTable({
         if (editing && editedRow) {
           return (
             <>
-              {/* Полный адрес одной строкой (без карты) */}
+              {/* Полный адрес одной строкой */}
               <Row className="table-section">
                 <Col span={24}>
                   <Input
@@ -211,11 +211,13 @@ export default function BillingAddressesTable({
             }}
           >
             <div className="cell-ellipsis">{oneLine}</div>
+
             {record.comment && (
               <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
                 Комментарий: {record.comment}
               </div>
             )}
+
             <Space size={6} style={{ marginTop: 4 }}>
               <Tooltip title="Скопировать адрес">
                 <Button
@@ -244,7 +246,7 @@ export default function BillingAddressesTable({
             onSave={editing ? handleSave : undefined}
             onCancel={editing ? cancelEdit : undefined}
             onDelete={!editing ? () => handleDelete(record) : undefined}
-            confirmDelete={false}
+            confirmDelete={false} // подтверждение уже через confirmAction
             size="small"
           />
         )
@@ -254,13 +256,14 @@ export default function BillingAddressesTable({
 
   return (
     <Table
-      className="op-table parts-table"
+      className="op-table"
       rowKey="id"
       columns={columns}
-      dataSource={data}
+      dataSource={Array.isArray(data) ? data : []}
       loading={loading}
       pagination={false}
       size="small"
+      tableLayout="fixed"
     />
   )
 }

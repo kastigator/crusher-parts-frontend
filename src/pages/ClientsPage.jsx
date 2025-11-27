@@ -1,11 +1,15 @@
 // src/pages/ClientsPage.jsx
-import TabRendererPage from "@/components/common/TabRendererPage";
-import ClientsMain from "@/components/clients/ClientsMain";
+import React from "react"
+import TabRendererPage from "@/components/common/TabRendererPage"
+import ClientsMain from "@/components/clients/ClientsMain"
 
 export default function ClientsPage() {
   return (
-    <TabRendererPage tabKey="clients">
+    <TabRendererPage
+      tabKey="clients"
+      helpText="Двойной клик — редактирование; Enter — сохранить; Esc — отменить."
+    >
       <ClientsMain />
     </TabRendererPage>
-  );
+  )
 }

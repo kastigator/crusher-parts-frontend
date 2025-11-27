@@ -13,7 +13,7 @@ const LayoutBody = () => {
       style={{
         display: "flex",
         height: "100vh",
-        overflow: "hidden", // одна область прокрутки
+        overflow: "hidden", // одна область прокрутки — внутри контент-зоны
       }}
     >
       <Sidebar />
@@ -24,20 +24,20 @@ const LayoutBody = () => {
           display: "flex",
           flexDirection: "column",
           minHeight: 0,
-          overflow: "hidden", // 🚫 не прокручиваем тут
+          overflow: "hidden",
         }}
       >
         <Header />
 
-        {/* Главная область контента */}
+        {/* Главная зона прокрутки */}
         <div
           style={{
             flex: 1,
-            overflowY: "auto",       // ✅ только здесь скролл
+            overflowY: "auto",
             overflowX: "hidden",
             minHeight: 0,
             background: "#f9fafb",
-            scrollbarGutter: "stable both-edges", // ✅ предотвращает сдвиги при появлении скролла
+            scrollbarGutter: "stable both-edges",
           }}
         >
           {loading ? (

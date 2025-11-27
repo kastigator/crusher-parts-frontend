@@ -1,6 +1,6 @@
-import React from "react";
-import { Tooltip } from "antd";
-import * as AntIcons from "@ant-design/icons";
+import React from "react"
+import { Tooltip } from "antd"
+import * as AntIcons from "@ant-design/icons"
 import {
   FaIndustry,
   FaCogs,
@@ -12,11 +12,11 @@ import {
   FaHammer,
   FaHardHat,
   FaRobot,
-} from "react-icons/fa";
-import { useNavigate, useLocation } from "react-router-dom";
-import { useTabs } from "@/context/TabsContext";
+} from "react-icons/fa"
+import { useNavigate, useLocation } from "react-router-dom"
+import { useTabs } from "@/context/TabsContext"
 
-// Набор тех‑иконок (react-icons/fa)
+// Набор тех-иконок (react-icons/fa)
 const techIcons = {
   FaIndustry,
   FaCogs,
@@ -28,33 +28,32 @@ const techIcons = {
   FaHammer,
   FaHardHat,
   FaRobot,
-};
+}
 
 const Sidebar = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { tabs = [], permissions = [], loading } = useTabs();
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { tabs = [], permissions = [], loading } = useTabs()
 
   const visibleTabs = tabs
     .filter((tab) => permissions.includes(tab.id))
-    .sort((a, b) => a.sort_order - b.sort_order);
+    .sort((a, b) => a.sort_order - b.sort_order)
 
-  const ICON_SIZE = 28; // 👈 размер иконок (поменяешь тут — обновится везде)
+  const ICON_SIZE = 24
 
-  // Безопасный рендер иконки по имени из БД (поддерживает AntD и react-icons)
   const renderIcon = (iconNameRaw) => {
-    const name = (iconNameRaw || "").trim();
+    const name = (iconNameRaw || "").trim()
     if (name && AntIcons[name]) {
-      const C = AntIcons[name];
-      return <C style={{ fontSize: ICON_SIZE }} />;
+      const C = AntIcons[name]
+      return <C style={{ fontSize: ICON_SIZE }} />
     }
     if (name && techIcons[name]) {
-      const C = techIcons[name];
-      return <C size={ICON_SIZE} />;
+      const C = techIcons[name]
+      return <C size={ICON_SIZE} />
     }
-    const Q = AntIcons.QuestionOutlined;
-    return <Q style={{ fontSize: ICON_SIZE }} />;
-  };
+    const Q = AntIcons.QuestionOutlined
+    return <Q style={{ fontSize: ICON_SIZE }} />
+  }
 
   return (
     <div
@@ -63,8 +62,8 @@ const Sidebar = () => {
         minWidth: 72,
         flexShrink: 0,
         height: "100%",
-        backgroundColor: "#f7f7f7",
-        borderRight: "1px solid #e5e5e5",
+        backgroundColor: "#f3f4f6",
+        borderRight: "1px solid #e5e7eb",
         display: "flex",
         flexDirection: "column",
         alignItems: "stretch",
@@ -72,19 +71,35 @@ const Sidebar = () => {
       }}
     >
       {loading ? (
-        <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", paddingTop: 12 }}>
+        <div
+          style={{
+            fontSize: 12,
+            color: "#9ca3af",
+            textAlign: "center",
+            paddingTop: 12,
+          }}
+        >
           Загрузка…
         </div>
       ) : visibleTabs.length === 0 ? (
         <Tooltip title="Нет доступных вкладок" placement="right">
-          <div style={{ fontSize: 10, color: "#999", textAlign: "center", padding: 8 }}>
+          <div
+            style={{
+              fontSize: 10,
+              color: "#9ca3af",
+              textAlign: "center",
+              padding: 8,
+            }}
+          >
             Нет вкладок
           </div>
         </Tooltip>
       ) : (
         visibleTabs.map((tab) => {
           const selected =
-            location.pathname === tab.path || location.pathname === `/${tab.path}`;
+            location.pathname === tab.path ||
+            location.pathname === `/${tab.path}`
+
           return (
             <Tooltip
               key={tab.id}
@@ -94,7 +109,9 @@ const Sidebar = () => {
             >
               <div
                 onClick={() =>
-                  navigate(tab.path?.startsWith("/") ? tab.path : `/${tab.path}`)
+                  navigate(
+                    tab.path?.startsWith("/") ? tab.path : `/${tab.path}`,
+                  )
                 }
                 style={{
                   height: 56,
@@ -103,15 +120,21 @@ const Sidebar = () => {
                   justifyContent: "center",
                   position: "relative",
                   cursor: "pointer",
-                  color: selected ? "#2563eb" : "#444",
-                  background: selected ? "#eef2ff" : "transparent",
-                  transition: "background 0.15s ease, color 0.15s ease, transform 0.05s ease-in-out",
+                  color: selected ? "#2563eb" : "#4b5563",
+                  background: selected ? "#e5edff" : "transparent",
+                  transition:
+                    "background 0.15s ease, color 0.15s ease, transform 0.05s ease-in-out",
                 }}
-                onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
-                onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-                onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                onMouseDown={(e) =>
+                  (e.currentTarget.style.transform = "scale(0.98)")
+                }
+                onMouseUp={(e) =>
+                  (e.currentTarget.style.transform = "scale(1)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.transform = "scale(1)")
+                }
               >
-                {/* активная полоса слева */}
                 {selected && (
                   <div
                     style={{
@@ -125,6 +148,7 @@ const Sidebar = () => {
                     }}
                   />
                 )}
+
                 <div
                   style={{
                     display: "flex",
@@ -140,11 +164,11 @@ const Sidebar = () => {
                 </div>
               </div>
             </Tooltip>
-          );
+          )
         })
       )}
     </div>
-  );
-};
+  )
+}
 
-export default Sidebar;
+export default Sidebar

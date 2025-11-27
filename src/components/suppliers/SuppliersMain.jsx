@@ -85,7 +85,8 @@ export default function SuppliersMain() {
       message.success("Поставщик добавлен")
     } catch (err) {
       console.error("Ошибка создания поставщика:", err)
-      const msg = err?.response?.data?.message || "Не удалось создать поставщика"
+      const msg =
+        err?.response?.data?.message || "Не удалось создать поставщика"
       message.error(msg)
     }
   }
@@ -137,7 +138,8 @@ export default function SuppliersMain() {
       message.success("Поставщик удалён")
     } catch (err) {
       console.error("Ошибка удаления поставщика:", err)
-      const msg = err?.response?.data?.message || "Не удалось удалить поставщика"
+      const msg =
+        err?.response?.data?.message || "Не удалось удалить поставщика"
       message.error(msg)
     }
   }
@@ -165,22 +167,13 @@ export default function SuppliersMain() {
   // ============================
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
-      <Card
-        size="small"
-        title="Поставщики"
-        extra={
-          <Space>
-            <Button size="small" onClick={() => setImportOpen(true)}>
-              Импорт
-            </Button>
-          </Space>
-        }
-      >
+      <Card size="small">
         <TableToolbar
           search={search}
           onSearch={setSearch}
           placeholder="Поиск по поставщикам..."
           onShowDeleted={() => setShowDeleted(true)}
+          onImport={() => setImportOpen(true)}
         />
 
         {/* Форма добавления */}

@@ -6,6 +6,17 @@ import ClientsTable from "./ClientsTable"
 import TableToolbar from "@/components/common/TableToolbar"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 
+const EMPTY_CLIENT = {
+  company_name: "",
+  contact_person: "",
+  phone: "",
+  email: "",
+  registration_number: "",
+  tax_id: "",
+  website: "",
+  notes: "",
+}
+
 export default function ClientsMain() {
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(false)
@@ -14,140 +25,18 @@ export default function ClientsMain() {
   const [showDeletedModal, setShowDeletedModal] = useState(false)
   const [hasNew, setHasNew] = useState(false)
 
-  // 🔑 ключ для форс-перемонтирования дочерних вкладок (billing/shipping/bank)
+  // 🔑 ключ для форс-перемонта вложенных блоков (billing/shipping/bank)
   const [reloadKey, setReloadKey] = useState(0)
 
   // baseline по «ключу состояния» (global / client:<id>)
   const baselinesRef = useRef(new Map())
   const lastBaselineSetAtRef = useRef(0)
 
-  const [newClient, setNewClient] = useState({
-    company_name: "",
-    contact_person: "",
-    phone: "",
-    email: "",
-    registration_number: "",
-    tax_id: "",
-    website: "",
-    notes: "",
-  })
+  const [newClient, setNewClient] = useState(EMPTY_CLIENT)
 
-  // ===== CRUD клиентов (родитель даёт их в таблицу) =====
+  // ===== CRUD клиентов =====
   const replaceRow = (fresh) =>
     setClients((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
-
-  const onUpdate = async (id, row) => {
-    const trim = (v) => (typeof v === "string" ? v.trim() : v)
-    const payload = {
-      company_name: trim(row.company_name) || null,
-      contact_person: trim(row.contact_person) || null,
-      phone: trim(row.phone) || null,
-      email: trim(row.email) || null,
-      version: row.version,
-    }
-
-    try {
-      const { data: fresh } = await axios.put(`/clients/${id}`, payload)
-      replaceRow(fresh)
-      message.success("Изменения сохранены")
-    } catch (err) {
-      // 409 + current → сигнал для VersionConflictModal в таблице
-      if (err?.response?.status === 409 && err?.response?.data?.current) {
-        const e = new Error("Version conflict")
-        e.isVersionConflict = true
-        e.currentRecord = err.response.data.current
-        throw e
-      }
-      // дубль названия компании
-      if (err?.response?.status === 409 && err?.response?.data?.code === "duplicate") {
-        const e = new Error("Duplicate")
-        e.isDuplicateKey = true
-        throw e
-      }
-      throw err
-    }
-  }
-
-  const onDelete = async (client) => {
-    try {
-      await axios.delete(`/clients/${client.id}`, {
-        params: { version: client.version },
-      })
-      message.success("Клиент удалён")
-    } catch (err) {
-      if (err?.response?.status === 409 && err?.response?.data?.current) {
-        const e = new Error("Version conflict")
-        e.isVersionConflict = true
-        e.currentRecord = err.response.data.current
-        throw e
-      }
-      throw err
-    }
-  }
-  // ======================================================
-
-  const fetchClients = async () => {
-    setLoading(true)
-    try {
-      const res = await axios.get("/clients")
-      setClients(Array.isArray(res.data) ? res.data : [])
-    } catch (err) {
-      console.error("Ошибка загрузки клиентов:", err)
-      message.error("Не удалось загрузить клиентов")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchClients()
-  }, [])
-
-  const handleAdd = async () => {
-    const payload = {
-      company_name: newClient.company_name.trim(),
-      contact_person: newClient.contact_person?.trim() || "",
-      phone: newClient.phone?.trim() || "",
-      email: newClient.email?.trim() || "",
-      registration_number: newClient.registration_number?.trim() || "",
-      tax_id: newClient.tax_id?.trim() || "",
-      website: newClient.website?.trim() || "",
-      notes: newClient.notes?.trim() || "",
-    }
-
-    if (!payload.company_name) {
-      message.warning("Название компании обязательно")
-      return
-    }
-
-    try {
-      await axios.post("/clients", payload)
-      message.success("Клиент добавлен")
-      setNewClient({
-        company_name: "",
-        contact_person: "",
-        phone: "",
-        email: "",
-        registration_number: "",
-        tax_id: "",
-        website: "",
-        notes: "",
-      })
-      await refreshAllAndResetBaseline()
-    } catch (err) {
-      console.error("Ошибка при добавлении клиента:", err)
-      message.error("Не удалось добавить клиента")
-    }
-  }
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase()
-    return clients.filter(
-      (r) =>
-        r.company_name?.toLowerCase().includes(q) ||
-        r.contact_person?.toLowerCase().includes(q)
-    )
-  }, [clients, search])
 
   // --- etag helpers (баннер «Появились новые изменения») ---
   const fetchClientsEtag = async () => {
@@ -206,11 +95,30 @@ export default function ClientsMain() {
     }
   }
 
+  const fetchClients = async () => {
+    setLoading(true)
+    try {
+      const { data } = await axios.get("/clients", {
+        params: { limit: 200, offset: 0 },
+      })
+      setClients(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error("Ошибка загрузки клиентов:", err)
+      message.error("Не удалось загрузить клиентов")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const refreshAllAndResetBaseline = async () => {
     await fetchClients()
     setReloadKey((k) => k + 1) // форсим перемонтирование дочерних вкладок
     await setBaselineFor(expandedClientId)
   }
+
+  useEffect(() => {
+    fetchClients()
+  }, [])
 
   // после первой загрузки/перезагрузки фиксируем baseline
   useEffect(() => {
@@ -253,13 +161,113 @@ export default function ClientsMain() {
     }
   }, [expandedClientId])
 
+  const onUpdate = async (id, row) => {
+    const trim = (v) => (typeof v === "string" ? v.trim() : v)
+    const payload = {
+      company_name: trim(row.company_name) || null,
+      contact_person: trim(row.contact_person) || null,
+      phone: trim(row.phone) || null,
+      email: trim(row.email) || null,
+      version: row.version,
+    }
+
+    try {
+      const { data: fresh } = await axios.put(`/clients/${id}`, payload)
+      replaceRow(fresh)
+      message.success("Изменения сохранены")
+      // обновляем baseline, чтобы не появлялся баннер «Появились новые изменения»
+      await setBaselineFor(expandedClientId)
+    } catch (err) {
+      // конфликт версии → таблица покажет VersionConflictModal
+      if (err?.response?.status === 409 && err?.response?.data?.current) {
+        const e = new Error("Version conflict")
+        e.isVersionConflict = true
+        e.currentRecord = err.response.data.current
+        throw e
+      }
+      // дубль названия компании
+      if (
+        err?.response?.status === 409 &&
+        err?.response?.data?.code === "duplicate"
+      ) {
+        const e = new Error("Duplicate")
+        e.isDuplicateKey = true
+        throw e
+      }
+      throw err
+    }
+  }
+
+  const onDelete = async (client) => {
+    const params = {}
+    if (client?.version !== undefined && client?.version !== null) {
+      params.version = client.version
+    }
+
+    try {
+      await axios.delete(`/clients/${client.id}`, { params })
+
+      // сразу убираем клиента из списка
+      setClients((prev) => prev.filter((r) => r.id !== client.id))
+
+      message.success("Клиент удалён")
+      await setBaselineFor(expandedClientId)
+    } catch (err) {
+      if (err?.response?.status === 409 && err?.response?.data?.current) {
+        const e = new Error("Version conflict")
+        e.isVersionConflict = true
+        e.currentRecord = err.response.data.current
+        throw e
+      }
+      throw err
+    }
+  }
+
+  const handleAdd = async () => {
+    const payload = {
+      company_name: newClient.company_name.trim(),
+      contact_person: newClient.contact_person?.trim() || "",
+      phone: newClient.phone?.trim() || "",
+      email: newClient.email?.trim() || "",
+      registration_number: newClient.registration_number?.trim() || "",
+      tax_id: newClient.tax_id?.trim() || "",
+      website: newClient.website?.trim() || "",
+      notes: newClient.notes?.trim() || "",
+    }
+
+    if (!payload.company_name) {
+      message.warning("Название компании обязательно")
+      return
+    }
+
+    try {
+      await axios.post("/clients", payload)
+      message.success("Клиент добавлен")
+      setNewClient(EMPTY_CLIENT)
+      await refreshAllAndResetBaseline()
+    } catch (err) {
+      console.error("Ошибка при добавлении клиента:", err)
+      message.error("Не удалось добавить клиента")
+    }
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return clients.filter(
+      (r) =>
+        r.company_name?.toLowerCase().includes(q) ||
+        r.contact_person?.toLowerCase().includes(q),
+    )
+  }, [clients, search])
+
   const handleChildChanged = async () => {
     await setBaselineFor(expandedClientId)
   }
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
-      <Card title="Клиенты" bodyStyle={{ paddingTop: 0 }}>
+      <Card bodyStyle={{ paddingTop: 0 }}>
+        {/* 🔔 баннер «появились новые изменения» */}
         {hasNew && (
           <div style={{ margin: "8px 0" }}>
             <Button
@@ -274,81 +282,78 @@ export default function ClientsMain() {
           </div>
         )}
 
-        {/* 🔹 тулбар всегда с единым отступом */}
+        {/* 🔹 тулбар — поиск + кнопка «Удалённые» */}
         <TableToolbar
-          className="table-section"
           search={search}
           onSearch={setSearch}
           onShowDeleted={() => setShowDeletedModal(true)}
         />
 
-        {/* 🔹 форма добавления клиента также с единым отступом */}
-        <Form
-          layout="inline"
-          className="table-section"
-          onFinish={handleAdd}
-        >
-          <Form.Item label="Компания">
-            <Input
-              value={newClient.company_name}
-              onChange={(e) =>
-                setNewClient((prev) => ({
-                  ...prev,
-                  company_name: e.target.value,
-                }))
-              }
-              placeholder="Название"
-            />
-          </Form.Item>
+        {/* 🔹 форма добавления клиента */}
+        <div className="table-section">
+          <Form layout="inline" onFinish={handleAdd}>
+            <Form.Item label="Компания">
+              <Input
+                value={newClient.company_name}
+                onChange={(e) =>
+                  setNewClient((prev) => ({
+                    ...prev,
+                    company_name: e.target.value,
+                  }))
+                }
+                placeholder="Название"
+              />
+            </Form.Item>
 
-          <Form.Item label="Контактное лицо">
-            <Input
-              value={newClient.contact_person}
-              onChange={(e) =>
-                setNewClient((prev) => ({
-                  ...prev,
-                  contact_person: e.target.value,
-                }))
-              }
-              placeholder="ФИО"
-            />
-          </Form.Item>
+            <Form.Item label="Контактное лицо">
+              <Input
+                value={newClient.contact_person}
+                onChange={(e) =>
+                  setNewClient((prev) => ({
+                    ...prev,
+                    contact_person: e.target.value,
+                  }))
+                }
+                placeholder="ФИО"
+              />
+            </Form.Item>
 
-          <Form.Item label="Телефон">
-            <Input
-              value={newClient.phone}
-              onChange={(e) =>
-                setNewClient((prev) => ({
-                  ...prev,
-                  phone: e.target.value,
-                }))
-              }
-              placeholder="+7..."
-            />
-          </Form.Item>
+            <Form.Item label="Телефон">
+              <Input
+                value={newClient.phone}
+                onChange={(e) =>
+                  setNewClient((prev) => ({
+                    ...prev,
+                    phone: e.target.value,
+                  }))
+                }
+                placeholder="+7..."
+              />
+            </Form.Item>
 
-          <Form.Item label="Email">
-            <Input
-              value={newClient.email}
-              onChange={(e) =>
-                setNewClient((prev) => ({
-                  ...prev,
-                  email: e.target.value,
-                }))
-              }
-              placeholder="example@mail.com"
-            />
-          </Form.Item>
+            <Form.Item label="Email">
+              <Input
+                value={newClient.email}
+                onChange={(e) =>
+                  setNewClient((prev) => ({
+                    ...prev,
+                    email: e.target.value,
+                  }))
+                }
+                placeholder="example@mail.com"
+              />
+            </Form.Item>
 
-          <Form.Item>
-            <Button type="primary" htmlType="submit">
-              Добавить
-            </Button>
-          </Form.Item>
-        </Form>
+            <Form.Item>
+              <Button type="primary" htmlType="submit">
+                Добавить
+              </Button>
+            </Form.Item>
+          </Form>
+        </div>
 
-        {/* Якорь для всех вложенных выпадашек/календарей + правильная ширина */}
-        <div className="parts-table-wrap">
+        {/* Якорь + отступ для вложенных таблиц */}
+        <div className="parts-table-wrap table-section">
           <ClientsTable
             data={filtered}
             loading={loading}

@@ -1,9 +1,8 @@
-// src/components/clients/shipping/ShippingAddressesMain.jsx
+// src/components/clients/ShippingAddressesMain.jsx
 import React, { useEffect, useState } from "react"
 import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
 
-import TableToolbar from "@/components/common/TableToolbar"
 import ShippingAddressesTable from "./ShippingAddressesTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
@@ -12,7 +11,6 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const [search, setSearch] = useState("")
   const [resetCounter, setResetCounter] = useState(0)
   const [conflict, setConflict] = useState(null)
 
@@ -54,10 +52,9 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
   useEffect(() => {
     if (!clientId) return
     fetchData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId])
 
-  // локальные хелперы для списка
+  // helpers
   const replaceRow = (fresh) =>
     setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
 
@@ -88,7 +85,6 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
       building: newAddress.building || null,
       entrance: newAddress.entrance || null,
       comment: newAddress.comment?.trim() || null,
-      // можно оставлять на будущее, backend их понимает
       type: null,
       is_precise_location: 1,
     }
@@ -124,16 +120,13 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
   }
 
   // ---------------------------
-  // update (optimistic + version)
+  // update
   // ---------------------------
   const handleUpdate = async (id, row) => {
     try {
       const { data: fresh } = await axios.put(
         `/client-shipping-addresses/${id}`,
-        {
-          ...row,
-          version: row.version,
-        }
+        { ...row, version: row.version }
       )
 
       replaceRow(fresh)
@@ -183,20 +176,12 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
     }
   }
 
-  const filteredData = search
-    ? data.filter((addr) =>
-        (addr.formatted_address || "")
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      )
-    : data
-
   if (!clientId) return null
 
   return (
-    // якорь для выпадающих списков/карт
     <div className="parts-table-wrap">
       <Card size="small" className="table-section">
+        {/* Поле выбора адреса (с картой) */}
         <PlaceAddressInput
           debugId="shipping-main-form"
           resetTrigger={resetCounter}
@@ -226,17 +211,14 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
           }
         />
 
-        {/* поля ввода, как в BillingAddressesMain */}
+        {/* Поля (верхний ряд) */}
         <Row gutter={12} className="table-section">
           <Col span={6}>
             <Input
               placeholder="Страна"
               value={newAddress.country}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  country: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, country: e.target.value }))
               }
             />
           </Col>
@@ -245,10 +227,7 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
               placeholder="Регион"
               value={newAddress.region}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  region: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, region: e.target.value }))
               }
             />
           </Col>
@@ -257,10 +236,7 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
               placeholder="Город"
               value={newAddress.city}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  city: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, city: e.target.value }))
               }
             />
           </Col>
@@ -269,25 +245,20 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
               placeholder="Индекс"
               value={newAddress.postal_code}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  postal_code: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, postal_code: e.target.value }))
               }
             />
           </Col>
         </Row>
 
+        {/* Поля (нижний ряд) */}
         <Row gutter={12} className="table-section">
           <Col span={12}>
             <Input
               placeholder="Улица"
               value={newAddress.street}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  street: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, street: e.target.value }))
               }
             />
           </Col>
@@ -296,10 +267,7 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
               placeholder="Дом"
               value={newAddress.house}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  house: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, house: e.target.value }))
               }
             />
           </Col>
@@ -308,10 +276,7 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
               placeholder="Строение"
               value={newAddress.building}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  building: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, building: e.target.value }))
               }
             />
           </Col>
@@ -320,25 +285,20 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
               placeholder="Подъезд"
               value={newAddress.entrance}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  entrance: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, entrance: e.target.value }))
               }
             />
           </Col>
         </Row>
 
+        {/* Комментарий + кнопка */}
         <Row gutter={12} className="table-section">
           <Col flex="auto">
             <Input
               placeholder="Комментарий"
               value={newAddress.comment}
               onChange={(e) =>
-                setNewAddress((prev) => ({
-                  ...prev,
-                  comment: e.target.value,
-                }))
+                setNewAddress((p) => ({ ...p, comment: e.target.value }))
               }
             />
           </Col>
@@ -350,20 +310,15 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
         </Row>
       </Card>
 
-      {/* Единый тулбар фильтра */}
-      <TableToolbar
-        className="table-section"
-        search={search}
-        onSearch={setSearch}
-      />
-
+      {/* Таблица (без строки поиска) */}
       <ShippingAddressesTable
-        data={filteredData}
+        data={data}
         loading={loading}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
       />
 
+      {/* Конфликт версий */}
       {conflict && (
         <VersionConflictModal
           open={!!conflict}

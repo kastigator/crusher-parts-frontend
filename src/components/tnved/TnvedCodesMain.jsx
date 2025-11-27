@@ -1,4 +1,3 @@
-// src/components/tnved/TnvedCodesMain.jsx
 import React, { useState, useEffect } from "react"
 import { Card, Space, message, Button, Input, InputNumber, Form } from "antd"
 import axios from "@/api/axiosInstance"
@@ -24,13 +23,11 @@ export default function TnvedCodesMain() {
   const [newRecord, setNewRecord] = useState(EMPTY_NEW_RECORD)
   const [logId, setLogId] = useState(null)
 
-  // баннер «появились изменения»
   const [hasNew, setHasNew] = useState(false)
-  // маркер состояния таблицы (COUNT:SUM(version))
   const [etag, setEtag] = useState(null)
 
-  // ---------- helpers ----------
   const toNull = (v) => (v === "" || v === undefined ? null : v)
+
   const toNumberOrNull = (v) => {
     if (v === "" || v === null || v === undefined) return null
     const n = Number(v)
@@ -40,7 +37,9 @@ export default function TnvedCodesMain() {
   const replaceRow = (fresh) => {
     setData((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
   }
-  const removeRow = (id) => setData((prev) => prev.filter((r) => r.id !== id))
+
+  const removeRow = (id) =>
+    setData((prev) => prev.filter((r) => r.id !== id))
 
   // ---------- API ----------
   const fetchEtag = async () => {
@@ -57,7 +56,7 @@ export default function TnvedCodesMain() {
     try {
       const res = await axios.get("/tnved-codes")
       setData(res.data || [])
-      // подтянем свежий маркер состояния и погасим баннер
+
       const freshEtag = await fetchEtag()
       setEtag(freshEtag)
       setHasNew(false)
@@ -73,7 +72,7 @@ export default function TnvedCodesMain() {
     fetchData()
   }, [])
 
-  // ---------- поллинг по ETag (ловим add/edit/delete в других окнах) ----------
+  // ---------- поллинг по ETag ----------
   useEffect(() => {
     let timer
     const checkChanged = async () => {
@@ -84,8 +83,8 @@ export default function TnvedCodesMain() {
       }
     }
 
-    const t0 = setTimeout(checkChanged, 10000) // первый через 10с
-    timer = setInterval(checkChanged, 30000) // далее каждые 30с
+    const t0 = setTimeout(checkChanged, 10000)
+    timer = setInterval(checkChanged, 30000)
     const vis = () => checkChanged()
     document.addEventListener("visibilitychange", vis)
 
@@ -112,26 +111,27 @@ export default function TnvedCodesMain() {
 
     try {
       const { data: created } = await axios.post("/tnved-codes", payload)
-      // локально добавим запись в начало — быстрее, чем полный refetch
       setData((prev) => [created, ...prev])
       setNewRecord(EMPTY_NEW_RECORD)
       setHasNew(false)
-      // обновим локальный etag, чтобы поллинг не мигал
+
       const freshEtag = await fetchEtag()
       setEtag(freshEtag)
       message.success("Запись добавлена")
     } catch (err) {
       console.error("Ошибка при добавлении:", err)
       const t = err?.response?.data?.type
-      if (t === "duplicate_key") message.error("Код уже существует")
-      else
+      if (t === "duplicate_key") {
+        message.error("Запись с таким кодом и описанием уже существует")
+      } else {
         message.error(
-          err?.response?.data?.message || "Не удалось добавить запись"
+          err?.response?.data?.message || "Не удалось добавить запись",
         )
+      }
     }
   }
 
-  // ---------- update (optimistic locking) ----------
+  // ---------- update ----------
   const handleUpdate = async (id, updated) => {
     try {
       const { data: fresh } = await axios.put(`/tnved-codes/${id}`, {
@@ -142,17 +142,16 @@ export default function TnvedCodesMain() {
         version: updated.version,
       })
       replaceRow(fresh)
-      // подтянем etag (изменился version)
+
       const freshEtag = await fetchEtag()
       setEtag(freshEtag)
       message.success("Изменения сохранены")
     } catch (err) {
-      // пробрасываем — таблица покажет модалку конфликта
       throw err
     }
   }
 
-  // ---------- delete (с ?version=) ----------
+  // ---------- delete ----------
   const handleDelete = async (record) => {
     try {
       await axios.delete(`/tnved-codes/${record.id}`, {
@@ -166,7 +165,7 @@ export default function TnvedCodesMain() {
       if (err?.isVersionConflict) {
         if (err.currentRecord) replaceRow(err.currentRecord)
         message.warning(
-          "Запись изменилась и не была удалена. Обновили строку."
+          "Запись изменилась и не была удалена. Обновили строку.",
         )
         return
       }
@@ -175,12 +174,12 @@ export default function TnvedCodesMain() {
     }
   }
 
-  // ---------- фильтр ----------
+  // ---------- фильтр по строке поиска ----------
   const filteredData = data.filter(
     (item) =>
       item.code?.toLowerCase().includes(search.toLowerCase()) ||
       item.description?.toLowerCase().includes(search.toLowerCase()) ||
-      item.notes?.toLowerCase().includes(search.toLowerCase())
+      item.notes?.toLowerCase().includes(search.toLowerCase()),
   )
 
   return (
@@ -190,8 +189,7 @@ export default function TnvedCodesMain() {
       size={16}
     >
       <Card
-        title="Коды ТН ВЭД"
-        bodyStyle={{ paddingTop: 0 }}
+        bodyStyle={{ paddingTop: 16 }}
         style={{ width: "100%", boxSizing: "border-box" }}
         extra={
           <Space>
@@ -216,16 +214,8 @@ export default function TnvedCodesMain() {
           </Space>
         }
       >
-        {/* подсказка по управлению */}
-        <div
-          style={{ fontSize: 12, color: "#6b7280", margin: "8px 0" }}
-        >
-          Двойной клик — редактирование; Enter — сохранить; Esc — отменить.
-        </div>
-
-        {/* баннер «есть изменения» */}
         {hasNew && (
-          <div style={{ margin: "8px 0" }}>
+          <div style={{ marginBottom: 12 }}>
             <Button
               type="primary"
               onClick={async () => {
@@ -233,7 +223,7 @@ export default function TnvedCodesMain() {
                 message.success("Список обновлён")
               }}
             >
-              Появились изменения — Обновить
+              Появились изменения — обновить
             </Button>
           </div>
         )}
@@ -301,7 +291,7 @@ export default function TnvedCodesMain() {
                 }))
               }
               placeholder="Примечания"
-              style={{ width: 200 }}
+              style={{ width: 220 }}
             />
           </Form.Item>
 

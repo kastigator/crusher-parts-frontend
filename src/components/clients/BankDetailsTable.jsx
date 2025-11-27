@@ -1,15 +1,10 @@
 // src/components/clients/bankDetails/BankDetailsTable.jsx
 import React, { useState } from "react"
-import { Table, Input, Select, message } from "antd"
+import { Table, Input, message } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
-
-const CURRENCY_OPTIONS = [
-  { value: "RUB", label: "RUB — Russian Ruble" },
-  { value: "USD", label: "USD — US Dollar" },
-  { value: "EUR", label: "EUR — Euro" },
-]
+import CurrencySelect from "@/components/inputs/CurrencySelect"
 
 export default function BankDetailsTable({
   data = [],
@@ -30,6 +25,11 @@ export default function BankDetailsTable({
 
   const isEditing = (r) => r.id === editingId
 
+  const startEdit = (record) => {
+    setEditingId(record.id)
+    setEdited({ ...record }) // важно сохранить version
+  }
+
   const cancel = () => {
     setEditingId(null)
     setEdited(null)
@@ -38,9 +38,9 @@ export default function BankDetailsTable({
   const save = async () => {
     if (!edited) return
     if (edited.version === undefined) {
-      message.error("Нет версии записи для сохранения")
-      return
+      return message.error("Нет версии записи для сохранения")
     }
+
     try {
       await onUpdate(editingId, edited)
       cancel()
@@ -53,7 +53,7 @@ export default function BankDetailsTable({
         })
         return
       }
-      console.error("Ошибка при сохранении реквизитов:", e)
+      console.error("Ошибка сохранения банковских реквизитов:", e)
       message.error("Не удалось сохранить изменения")
     }
   }
@@ -63,16 +63,17 @@ export default function BankDetailsTable({
     if (!confirmed) return
 
     try {
-      await onDelete?.(record)
+      await onDelete(record)
     } catch (e) {
       if (e?.isVersionConflict) {
-        if (e.currentRecord && typeof onReplaceRow === "function") {
+        if (e.currentRecord && onReplaceRow) {
           onReplaceRow(e.currentRecord)
-        } else if (typeof onRefresh === "function") {
+        } else if (onRefresh) {
           await onRefresh()
         }
-        message.warning("Запись изменилась и не была удалена. Данные обновлены.")
-        return
+        return message.warning(
+          "Запись изменилась и не была удалена. Данные обновлены."
+        )
       }
       console.error("Ошибка при удалении реквизитов:", e)
       message.error("Не удалось удалить реквизиты")
@@ -97,6 +98,7 @@ export default function BankDetailsTable({
       render: (_, r) =>
         isEditing(r) ? (
           <Input
+            autoFocus
             value={edited.bank_name}
             onChange={(e) =>
               setEdited((p) => ({ ...p, bank_name: e.target.value }))
@@ -106,6 +108,9 @@ export default function BankDetailsTable({
         ) : (
           r.bank_name || "—"
         ),
+      onCell: (record) => ({
+        onDoubleClick: () => startEdit(record),
+      }),
     },
     {
       title: "БИК",
@@ -123,6 +128,9 @@ export default function BankDetailsTable({
         ) : (
           r.bic || "—"
         ),
+      onCell: (record) => ({
+        onDoubleClick: () => startEdit(record),
+      }),
     },
     {
       title: "Кор. счёт",
@@ -142,17 +150,25 @@ export default function BankDetailsTable({
         ) : (
           r.correspondent_account || "—"
         ),
+      onCell: (record) => ({
+        onDoubleClick: () => startEdit(record),
+      }),
     },
     {
       title: "Валюта",
       dataIndex: "currency",
-      width: 200,
+      width: 220,
       render: (_, r) =>
         isEditing(r) ? (
-          <Select
-            options={CURRENCY_OPTIONS}
+          <CurrencySelect
             value={edited.currency || "RUB"}
-            onChange={(v) => setEdited((p) => ({ ...p, currency: v }))}
+            onChange={(v) =>
+              setEdited((p) => ({
+                ...p,
+                currency: v || "RUB",
+              }))
+            }
+            allowClear={false}
             style={{ width: "100%" }}
             getPopupContainer={(trigger) =>
               trigger?.closest(".parts-table-wrap") || document.body
@@ -161,6 +177,9 @@ export default function BankDetailsTable({
         ) : (
           r.currency || "RUB"
         ),
+      onCell: (record) => ({
+        onDoubleClick: () => startEdit(record),
+      }),
     },
     {
       title: "Расч. счёт",
@@ -177,44 +196,34 @@ export default function BankDetailsTable({
         ) : (
           r.account_number || "—"
         ),
+      onCell: (record) => ({
+        onDoubleClick: () => startEdit(record),
+      }),
     },
     {
       title: "Действия",
       dataIndex: "actions",
-      width: 160,
-      render: (_, r) => {
-        const editing = isEditing(r)
-        return (
-          <ActionButtons
-            onSave={editing ? save : undefined}
-            onCancel={editing ? cancel : undefined}
-            onDelete={!editing ? () => handleDelete(r) : undefined}
-            confirmDelete={false}
-            size="small"
-            onEdit={
-              !editing
-                ? () => {
-                    setEditingId(r.id)
-                    setEdited({ ...r })
-                  }
-                : undefined
-            }
-          />
-        )
-      },
+      width: 70,
+      render: (_, r) => (
+        <ActionButtons
+          // редактирование только двойным кликом — здесь оставляем только удаление
+          onDelete={() => handleDelete(r)}
+        />
+      ),
     },
   ]
 
   return (
     <>
       <Table
-        className="op-table parts-table"
+        className="op-table"
         rowKey="id"
         columns={columns}
-        dataSource={data}
+        dataSource={Array.isArray(data) ? data : []}
         loading={loading}
         pagination={false}
         size="small"
+        tableLayout="fixed"
       />
 
       <VersionConflictModal
@@ -229,9 +238,9 @@ export default function BankDetailsTable({
           { key: "currency", title: "Валюта" },
         ]}
         onReload={async () => {
-          if (conflict.current && typeof onReplaceRow === "function") {
+          if (conflict.current && onReplaceRow) {
             onReplaceRow(conflict.current)
-          } else if (typeof onRefresh === "function") {
+          } else if (onRefresh) {
             await onRefresh()
           }
           setConflict({ open: false, current: null, draft: null })
@@ -240,22 +249,16 @@ export default function BankDetailsTable({
         onManualMerge={() => {
           const base = conflict.current || {}
           const draft = conflict.draft || {}
-          const merged = {
-            ...base,
-            bank_name: draft.bank_name ?? base.bank_name,
-            bic: draft.bic ?? base.bic,
-            correspondent_account:
-              draft.correspondent_account ?? base.correspondent_account,
-            account_number: draft.account_number ?? base.account_number,
-            currency: draft.currency ?? base.currency,
-          }
+          const merged = { ...base, ...draft }
           if (merged.id) {
             setEditingId(merged.id)
             setEdited(merged)
           }
           setConflict({ open: false, current: null, draft: null })
         }}
-        onCancel={() => setConflict({ open: false, current: null, draft: null })}
+        onCancel={() =>
+          setConflict({ open: false, current: null, draft: null })
+        }
       />
     </>
   )

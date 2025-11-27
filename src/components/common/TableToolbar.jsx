@@ -1,24 +1,35 @@
-// src/components/common/TableToolbar.jsx
-
 import React from "react"
 import { Row, Col, Input, Button, Tooltip, Space, Typography } from "antd"
-import { PlusOutlined, DeleteOutlined, UploadOutlined } from "@ant-design/icons"
+import {
+  PlusOutlined,
+  DeleteOutlined,
+  UploadOutlined,
+} from "@ant-design/icons"
 
 const { Title } = Typography
 
 export default function TableToolbar({
-  title,          // заголовок, если нужен
-  search,         // значение поиска
-  onSearch,       // функция изменения поиска
-  onAdd,          // обработчик "Добавить"
-  onImport,       // обработчик "Импорт"
-  onShowDeleted   // обработчик "Удалённые записи"
+  title,        // строка заголовка (опционально)
+  search,       // значение поиска
+  onSearch,     // (value: string) => void
+  onAdd,        // () => void
+  onImport,     // () => void
+  onShowDeleted // () => void
 }) {
   return (
-    <Row justify="space-between" align="middle" style={{ marginBottom: 16 }} gutter={16}>
+    <Row
+      justify="space-between"
+      align="middle"
+      style={{ marginBottom: 16 }}
+      gutter={16}
+    >
       <Col flex="auto">
         <Space direction="horizontal">
-          {title && <Title level={5} style={{ margin: 0 }}>{title}</Title>}
+          {title && (
+            <Title level={5} style={{ margin: 0 }}>
+              {title}
+            </Title>
+          )}
 
           {onSearch && (
             <Input.Search
@@ -26,7 +37,7 @@ export default function TableToolbar({
               placeholder="Поиск..."
               value={search}
               onChange={(e) => onSearch(e.target.value)}
-              style={{ width: 300 }}
+              style={{ width: 320 }}
             />
           )}
         </Space>
@@ -36,7 +47,11 @@ export default function TableToolbar({
         <Space>
           {onAdd && (
             <Tooltip title="Добавить">
-              <Button type="primary" icon={<PlusOutlined />} onClick={onAdd}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={onAdd}
+              >
                 Добавить
               </Button>
             </Tooltip>
@@ -52,7 +67,11 @@ export default function TableToolbar({
 
           {onShowDeleted && (
             <Tooltip title="Удалённые записи">
-              <Button icon={<DeleteOutlined />} onClick={onShowDeleted}>
+              <Button
+                icon={<DeleteOutlined />}
+                onClick={onShowDeleted}
+                danger
+              >
                 Удалённые
               </Button>
             </Tooltip>

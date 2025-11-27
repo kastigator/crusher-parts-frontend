@@ -1,16 +1,15 @@
+// src/components/suppliers/SupplierAddressesMain.jsx
 import React, { useEffect, useState } from "react"
 import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import SupplierAddressesTable from "./SupplierAddressesTable"
-import TableToolbar from "@/components/common/TableToolbar"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 
 export default function SupplierAddressesMain({ supplierId, onChanged }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [resetCounter, setResetCounter] = useState(0)
-  const [search, setSearch] = useState("")
   const [conflict, setConflict] = useState(null)
 
   const [newAddress, setNewAddress] = useState({
@@ -48,7 +47,8 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
     } catch (err) {
       console.error("Ошибка при загрузке адресов поставщика:", err)
       message.error(
-        err?.response?.data?.message || "Не удалось загрузить адреса поставщика"
+        err?.response?.data?.message ||
+          "Не удалось загрузить адреса поставщика"
       )
     } finally {
       setLoading(false)
@@ -176,14 +176,6 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
       throw err
     }
   }
-
-  const filteredData = search
-    ? data.filter((addr) =>
-        (addr.formatted_address || "")
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      )
-    : data
 
   if (!supplierId) return null
 
@@ -342,18 +334,15 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
         </Row>
       </Card>
 
-      <TableToolbar
-        className="table-section"
-        search={search}
-        onSearch={setSearch}
-      />
-
-      <SupplierAddressesTable
-        data={filteredData}
-        loading={loading}
-        onUpdate={handleUpdate}
-        onDelete={handleDelete}
-      />
+      {/* Просто таблица, без поиска во вложенной секции */}
+      <div className="table-section">
+        <SupplierAddressesTable
+          data={data}
+          loading={loading}
+          onUpdate={handleUpdate}
+          onDelete={handleDelete}
+        />
+      </div>
 
       {conflict && (
         <VersionConflictModal

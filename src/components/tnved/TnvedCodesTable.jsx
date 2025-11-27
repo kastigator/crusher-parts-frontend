@@ -1,9 +1,12 @@
-import React, { useState } from "react"
+// src/components/tnved/TnvedCodesTable.jsx
+
+import React, { useState, useMemo } from "react"
 import { Table, Input, InputNumber, message } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
+import createTablePagination from "@/utils/tablePagination"
 
 const { TextArea } = Input
 
@@ -13,7 +16,7 @@ export default function TnvedCodesTable({
   onUpdate,
   onDelete,
   onReplaceRow, // (freshRow) => void
-  onRefresh,    // () => void
+  onRefresh, // () => void
 }) {
   const [editingKey, setEditingKey] = useState("")
   const [editedRow, setEditedRow] = useState(null)
@@ -24,6 +27,10 @@ export default function TnvedCodesTable({
     current: null,
     draft: null,
   })
+
+  // локальная пагинация (данные уже все на клиенте)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const isEditing = (record) => record.id === editingKey
 
@@ -43,9 +50,17 @@ export default function TnvedCodesTable({
       // успех показывается родителем (TnvedCodesMain)
       cancelEdit()
     } catch (err) {
-      if (err?.isDuplicateKey) return message.error("Код уже существует")
+      if (err?.isDuplicateKey) {
+        return message.error(
+          "Запись с таким кодом и описанием уже существует"
+        )
+      }
       if (err?.isVersionConflict) {
-        setConflict({ open: true, current: err.currentRecord || null, draft: editedRow })
+        setConflict({
+          open: true,
+          current: err.currentRecord || null,
+          draft: editedRow,
+        })
         return
       }
       console.error("Ошибка сохранения:", err)
@@ -60,9 +75,14 @@ export default function TnvedCodesTable({
       await onDelete(record) // родитель добавит ?version= и покажет сообщение об успехе
     } catch (err) {
       if (err?.isVersionConflict) {
-        if (err.currentRecord && typeof onReplaceRow === "function") onReplaceRow(err.currentRecord)
-        else if (typeof onRefresh === "function") onRefresh()
-        return message.warning("Запись изменилась и не была удалена. Обновили данные.")
+        if (err.currentRecord && typeof onReplaceRow === "function") {
+          onReplaceRow(err.currentRecord)
+        } else if (typeof onRefresh === "function") {
+          onRefresh()
+        }
+        return message.warning(
+          "Запись изменилась и не была удалена. Обновили данные."
+        )
       }
       console.error("Ошибка удаления:", err)
       message.error("Не удалось удалить запись")
@@ -78,7 +98,9 @@ export default function TnvedCodesTable({
         isEditing(record) ? (
           <Input
             value={editedRow.code}
-            onChange={(e) => setEditedRow({ ...editedRow, code: e.target.value })}
+            onChange={(e) =>
+              setEditedRow({ ...editedRow, code: e.target.value })
+            }
             onPressEnter={saveEdit}
             onBlur={saveEdit}
           />
@@ -94,14 +116,20 @@ export default function TnvedCodesTable({
         isEditing(record) ? (
           <TextArea
             value={editedRow.description || ""}
-            onChange={(e) => setEditedRow({ ...editedRow, description: e.target.value })}
+            onChange={(e) =>
+              setEditedRow({
+                ...editedRow,
+                description: e.target.value,
+              })
+            }
             autoSize={{ minRows: 2, maxRows: 6 }}
             onBlur={saveEdit}
           />
+        ) : record.description ? (
+          record.description.slice(0, 100) +
+          (record.description.length > 100 ? "…" : "")
         ) : (
-          record.description
-            ? record.description.slice(0, 100) + (record.description.length > 100 ? "…" : "")
-            : ""
+          ""
         ),
     },
     {
@@ -114,7 +142,9 @@ export default function TnvedCodesTable({
             value={editedRow.duty_rate}
             step={0.01}
             style={{ width: "100%" }}
-            onChange={(v) => setEditedRow({ ...editedRow, duty_rate: v })}
+            onChange={(v) =>
+              setEditedRow({ ...editedRow, duty_rate: v })
+            }
             onPressEnter={saveEdit}
             onBlur={saveEdit}
           />
@@ -130,12 +160,17 @@ export default function TnvedCodesTable({
         isEditing(record) ? (
           <TextArea
             value={editedRow.notes || ""}
-            onChange={(e) => setEditedRow({ ...editedRow, notes: e.target.value })}
+            onChange={(e) =>
+              setEditedRow({ ...editedRow, notes: e.target.value })
+            }
             autoSize={{ minRows: 2, maxRows: 4 }}
             onBlur={saveEdit}
           />
+        ) : record.notes ? (
+          record.notes.slice(0, 80) +
+          (record.notes.length > 80 ? "…" : "")
         ) : (
-          record.notes ? record.notes.slice(0, 80) + (record.notes.length > 80 ? "…" : "") : ""
+          ""
         ),
     },
     {
@@ -146,7 +181,7 @@ export default function TnvedCodesTable({
         const editing = isEditing(record)
         return (
           <ActionButtons
-            // редактирование — только по двойному клику
+            // редактирование — только по двойному клику (см. onRow ниже)
             onSave={editing ? saveEdit : undefined}
             onCancel={editing ? cancelEdit : undefined}
             onDelete={!editing ? () => handleDelete(record) : undefined}
@@ -158,6 +193,19 @@ export default function TnvedCodesTable({
     },
   ]
 
+  // ===== пагинация — общий helper, как в деталях поставщиков =====
+  const pagination = useMemo(
+    () =>
+      createTablePagination({
+        page,
+        pageSize,
+        total: Array.isArray(data) ? data.length : 0,
+        setPage,
+        setPageSize,
+      }),
+    [page, pageSize, data]
+  )
+
   return (
     <>
       <div style={{ overflowX: "auto" }}>
@@ -167,7 +215,7 @@ export default function TnvedCodesTable({
           columns={columns}
           rowKey="id"
           loading={loading}
-          pagination={{ pageSize: 10 }}
+          pagination={pagination}
           bordered
           size="small"
           onRow={(record) => ({
@@ -175,7 +223,12 @@ export default function TnvedCodesTable({
           })}
           expandable={{
             expandedRowRender: (record) => (
-              <div style={{ whiteSpace: "pre-wrap", padding: "8px 24px" }}>
+              <div
+                style={{
+                  whiteSpace: "pre-wrap",
+                  padding: "8px 24px",
+                }}
+              >
                 <b>Описание:</b> {record.description || "—"}
                 <br />
                 <b>Примечания:</b> {record.notes || "—"}
@@ -188,7 +241,7 @@ export default function TnvedCodesTable({
       {logId && (
         <FullHistoryDialog
           entityId={logId}
-          entityType="tnved_code"
+          entityType="tnved_codes"
           onClose={() => setLogId(null)}
         />
       )}
@@ -198,13 +251,19 @@ export default function TnvedCodesTable({
         draft={conflict.draft}
         current={conflict.current}
         fields={[
-          { key: "code",        title: "Код" },
+          { key: "code", title: "Код" },
           { key: "description", title: "Описание" },
-          { key: "duty_rate",   title: "Пошлина (%)", format: (v) => (v ?? "") === "" ? "—" : String(v) },
-          { key: "notes",       title: "Примечания" },
+          {
+            key: "duty_rate",
+            title: "Пошлина (%)",
+            format: (v) =>
+              (v ?? "") === "" ? "—" : String(v),
+          },
+          { key: "notes", title: "Примечания" },
         ]}
         onReload={() => {
-          if (conflict.current && typeof onReplaceRow === "function") onReplaceRow(conflict.current)
+          if (conflict.current && typeof onReplaceRow === "function")
+            onReplaceRow(conflict.current)
           else if (typeof onRefresh === "function") onRefresh()
           else message.info("Обновите список — запись изменилась")
           setConflict({ open: false, current: null, draft: null })
@@ -225,7 +284,9 @@ export default function TnvedCodesTable({
           }
           setConflict({ open: false, current: null, draft: null })
         }}
-        onCancel={() => setConflict({ open: false, current: null, draft: null })}
+        onCancel={() =>
+          setConflict({ open: false, current: null, draft: null })
+        }
       />
     </>
   )
