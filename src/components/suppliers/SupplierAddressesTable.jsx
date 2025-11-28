@@ -67,8 +67,8 @@ export default function SupplierAddressesTable({
       await onUpdate?.(editedRow.id, editedRow)
       cancelEdit()
     } catch (err) {
-      console.error("Ошибка сохранения адреса поставщика:", err)
-      message.error("Не удалось сохранить адрес поставщика")
+      console.error("Ошибка при обновлении адреса поставщика:", err)
+      message.error("Не удалось обновить адрес поставщика")
     }
   }
 
@@ -144,7 +144,7 @@ export default function SupplierAddressesTable({
                     }
                     onKeyDown={handleKeyDown}
                   >
-                    Точная локация (GPS)
+                    Точный адрес (GPS)
                   </Checkbox>
                 </Col>
               </Row>
@@ -153,7 +153,7 @@ export default function SupplierAddressesTable({
         }
 
         const oneLine =
-          record.formatted_address?.trim() || formatFull(record) || "—"
+          record.formatted_address?.trim() || formatFull(record) || "-"
 
         return (
           <div onDoubleClick={() => startEdit(record)}>
@@ -162,7 +162,7 @@ export default function SupplierAddressesTable({
                 <span className="cell-ellipsis">{oneLine}</span>
               </Tooltip>
 
-              {oneLine !== "—" && (
+              {oneLine !== "-" && (
                 <Tooltip title="Скопировать адрес">
                   <Button
                     type="text"
@@ -191,7 +191,8 @@ export default function SupplierAddressesTable({
     {
       title: "Действия",
       key: "actions",
-      width: 70,
+      width: 90,
+      align: "center",
       render: (_, record) => (
         <ActionButtons
           size="small"

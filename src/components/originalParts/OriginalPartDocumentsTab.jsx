@@ -54,8 +54,15 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
       message.warning("Сначала выберите деталь")
       return
     }
+    const rawFile = file?.originFileObj || file
+    if (!rawFile) {
+      message.error("Не удалось прочитать файл")
+      return
+    }
+
     const formData = new FormData()
-    formData.append("file", file)
+    formData.append("file", rawFile, rawFile.name || file?.name || "document")
+    formData.append("file_name", rawFile.name || file?.name || rawFile.type || "document")
 
     setUploading(true)
     try {
@@ -147,6 +154,8 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
     {
       title: "Файл",
       dataIndex: "file_name",
+      ellipsis: true,
+      width: 220,
       render: (text, record) => {
         let decodedName = text || ""
         try {
@@ -167,18 +176,19 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
     {
       title: "Тип",
       dataIndex: "file_type",
-      width: 160,
+      width: 120,
     },
     {
       title: "Размер",
       dataIndex: "file_size",
-      width: 120,
+      width: 110,
       render: (v) => bytesToSize(v),
     },
     {
       title: "Описание",
       dataIndex: "description",
       ellipsis: true,
+      width: 220,
       render: (text, record) => {
         if (record.id !== editingId) return text || ""
         return (
@@ -195,7 +205,7 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
     {
       title: "Загружено",
       dataIndex: "uploaded_at",
-      width: 180,
+      width: 160,
       render: (v) => (v ? new Date(v).toLocaleString() : ""),
     },
     {
@@ -221,33 +231,50 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={12}>
-      <Upload
-        multiple={false}
-        accept=".pdf,.png,.jpg,.jpeg,.svg,.dwg,.dxf"
-        customRequest={handleUpload}
-        showUploadList={false}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
       >
-        <Button
-          icon={<UploadOutlined />}
-          type="primary"
-          disabled={!partId}
-          loading={uploading}
+        <Upload
+          multiple={false}
+          accept=".pdf,.png,.jpg,.jpeg,.svg,.dwg,.dxf"
+          customRequest={handleUpload}
+          showUploadList={false}
         >
-          Загрузить файл
-        </Button>
-      </Upload>
+          <Button
+            icon={<UploadOutlined />}
+            type="primary"
+            disabled={!partId}
+            loading={uploading}
+          >
+            Загрузить файл
+          </Button>
+        </Upload>
 
-      <Table
-        rowKey="id"
-        size="small"
-        columns={columns}
-        dataSource={rows}
-        loading={loading}
-        pagination={false}
-        onRow={(record) => ({
-          onDoubleClick: () => startEdit(record),
-        })}
-      />
+        <span style={{ color: "#8c8c8c", fontSize: 12 }}>
+          Двойной клик — редактирование описания.
+        </span>
+      </div>
+
+      <div className="parts-table-wrap table-section" style={{ marginTop: 0 }}>
+        <Table
+          className="op-table"
+          rowKey="id"
+          size="small"
+          columns={columns}
+          dataSource={rows}
+          loading={loading}
+          pagination={false}
+          tableLayout="fixed"
+          onRow={(record) => ({
+            onDoubleClick: () => startEdit(record),
+          })}
+        />
+      </div>
     </Space>
   )
 }

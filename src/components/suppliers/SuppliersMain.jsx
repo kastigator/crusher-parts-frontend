@@ -31,7 +31,7 @@ export default function SuppliersMain() {
       const res = await axios.get("/suppliers")
       setSuppliers(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
-      console.error("Ошибка загрузки поставщиков:", err)
+      console.error("Ошибка при загрузке поставщиков:", err)
       message.error("Не удалось загрузить поставщиков")
     } finally {
       setLoading(false)
@@ -70,11 +70,11 @@ export default function SuppliersMain() {
     }
 
     if (!payload.name) {
-      message.warning("Название компании обязательно")
+      message.warning("Название поставщика обязательно")
       return
     }
     if (!payload.public_code) {
-      message.warning("Публичный код поставщика обязателен")
+      message.warning("Код поставщика обязателен")
       return
     }
 
@@ -82,9 +82,9 @@ export default function SuppliersMain() {
       const { data: created } = await axios.post("/suppliers", payload)
       setSuppliers((prev) => [created, ...prev])
       form.resetFields()
-      message.success("Поставщик добавлен")
+      message.success("Поставщик создан")
     } catch (err) {
-      console.error("Ошибка создания поставщика:", err)
+      console.error("Ошибка при создании поставщика:", err)
       const msg =
         err?.response?.data?.message || "Не удалось создать поставщика"
       message.error(msg)
@@ -98,7 +98,7 @@ export default function SuppliersMain() {
       replaceRow(fresh)
       return fresh
     } catch (err) {
-      // Конфликт версий (optimistic locking)
+      // конфликт версий (optimistic locking)
       if (err?.response?.status === 409 && err?.response?.data?.current) {
         const e = new Error("Version conflict")
         e.isVersionConflict = true
@@ -106,7 +106,7 @@ export default function SuppliersMain() {
         throw e
       }
 
-      // Конфликт уникальности (VAT / public_code)
+      // дубликаты ключей (VAT / public_code)
       if (err?.response?.status === 409) {
         const { type, field } = err.response.data || {}
         if (type === "duplicate_vat" || field === "vat_number") {
@@ -123,7 +123,7 @@ export default function SuppliersMain() {
         }
       }
 
-      console.error("Ошибка обновления поставщика:", err)
+      console.error("Ошибка при обновлении поставщика:", err)
       message.error("Не удалось сохранить изменения по поставщику")
       throw err
     }
@@ -135,9 +135,9 @@ export default function SuppliersMain() {
         params: { version: supplier.version },
       })
       removeRow(supplier.id)
-      message.success("Поставщик удалён")
+      message.success("Поставщик удален")
     } catch (err) {
-      console.error("Ошибка удаления поставщика:", err)
+      console.error("Ошибка при удалении поставщика:", err)
       const msg =
         err?.response?.data?.message || "Не удалось удалить поставщика"
       message.error(msg)
@@ -176,7 +176,7 @@ export default function SuppliersMain() {
           onImport={() => setImportOpen(true)}
         />
 
-        {/* Форма добавления */}
+        {/* Форма создания */}
         <Form
           form={form}
           layout="inline"
@@ -184,17 +184,17 @@ export default function SuppliersMain() {
           style={{ marginBottom: 12, flexWrap: "wrap", rowGap: 8 }}
         >
           <Form.Item
-            label="Компания"
+            label="Название"
             name="name"
-            rules={[{ required: true, message: "Укажите название компании" }]}
+            rules={[{ required: true, message: "Введите название поставщика" }]}
           >
-            <Input placeholder="ООО Ромашка" />
+            <Input placeholder="Название поставщика" />
           </Form.Item>
 
           <Form.Item
             label="Код"
             name="public_code"
-            rules={[{ required: true, message: "Укажите публичный код" }]}
+            rules={[{ required: true, message: "Введите код" }]}
           >
             <Input placeholder="S001" style={{ width: 100 }} />
           </Form.Item>

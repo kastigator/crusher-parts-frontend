@@ -144,7 +144,7 @@ export default function SuppliersTable({
         valueType === "phone" || valueType === "email" ? (
           <ValueDisplay value={value} type={valueType} />
         ) : (
-          <div className="cell-ellipsis">{value || ""}</div>
+          <ValueDisplay value={value} />
         )
 
       return <div onDoubleClick={() => startEdit(record)}>{content}</div>

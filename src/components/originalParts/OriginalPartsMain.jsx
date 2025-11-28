@@ -12,7 +12,6 @@ import {
   InputNumber,
   Tag,
   Empty,
-  Typography,
   Select,
 } from "antd"
 import {
@@ -27,10 +26,7 @@ import ImportModal from "@/components/common/ImportModal"
 import OriginalPartsTable from "./OriginalPartsTable"
 import ManufacturerModelPicker from "@/components/originalParts/ManufacturerModelPicker"
 import TnvedPicker from "@/components/fields/TnvedPicker"
-import DetailDock from "@/components/originalParts/DetailDock"
 import OriginalPartGroupsManager from "@/components/originalParts/OriginalPartGroupsManager"
-
-const { Title } = Typography
 
 const TEMPLATE_URL =
   "https://storage.googleapis.com/shared-parts-bucket/templates/original_parts_template.xlsx"
@@ -50,7 +46,7 @@ export default function OriginalPartsMain() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [addForm] = Form.useForm()
 
-  const [selectedPart, setSelectedPart] = useState(null)
+  const [expandedId, setExpandedId] = useState(null)
 
   const partsAbortRef = useRef(null)
 
@@ -94,7 +90,7 @@ export default function OriginalPartsMain() {
     // просто очищаем таблицу
     if (!modelId && !showAll) {
       setRows([])
-      setSelectedPart(null)
+      setExpandedId(null)
       return
     }
 
@@ -152,14 +148,12 @@ export default function OriginalPartsMain() {
 
   /* ------------- синхронизация выбранной детали --------------- */
   useEffect(() => {
-    if (!selectedPart) return
-    const fresh = rows.find((r) => r.id === selectedPart.id)
+    if (!expandedId) return
+    const fresh = rows.find((r) => r.id === expandedId)
     if (!fresh) {
-      setSelectedPart(null)
-    } else if (fresh !== selectedPart) {
-      setSelectedPart(fresh)
+      setExpandedId(null)
     }
-  }, [rows, selectedPart])
+  }, [rows, expandedId])
 
   /* ------------- обработка pendingFocusId ---------------------- */
   useEffect(() => {
@@ -167,7 +161,7 @@ export default function OriginalPartsMain() {
     const focusRow = rows.find((r) => r.id === pendingFocusId)
     if (!focusRow) return
 
-    setSelectedPart(focusRow)
+    setExpandedId(focusRow.id)
 
     requestAnimationFrame(() => {
       const rowEl = document.querySelector(
@@ -221,13 +215,13 @@ export default function OriginalPartsMain() {
     setManufacturer(null)
     setModel(null)
     setRows([])
-    setSelectedPart(null)
+    setExpandedId(null)
     setPendingFocusId(null)
     setShowAll(false) // при сбросе также выключаем режим "все"
   }
 
   useEffect(() => {
-    setSelectedPart(null)
+    setExpandedId(null)
     setPendingFocusId(null)
   }, [model?.id])
 
@@ -275,11 +269,7 @@ export default function OriginalPartsMain() {
       style={{ width: "100%", minHeight: "calc(100vh - 180px)" }}
       size={16}
     >
-      <Card
-        title={<Title level={4} style={{ margin: 0 }}>Оригинальные детали</Title>}
-        bodyStyle={{ paddingTop: 8 }}
-        style={{ width: "100%", minHeight: 400 }}
-      >
+      <Card bodyStyle={{ paddingTop: 8 }} style={{ width: "100%", minHeight: 400 }}>
         <Row gutter={[12, 12]} align="middle">
           <Col xs={24} md={12}>
             <Space wrap>
@@ -352,7 +342,7 @@ export default function OriginalPartsMain() {
               checked={showAll}
               onChange={(e) => {
                 setShowAll(e.target.checked)
-                setSelectedPart(null)
+                setExpandedId(null)
               }}
             >
               Показать все детали
@@ -374,22 +364,12 @@ export default function OriginalPartsMain() {
         </Row>
 
         {/* Поиск (фильтры по группе / ТН ВЭД переехали в колонки таблицы) */}
-        <div
-          className="table-section"
-          style={{
-            marginTop: 12,
-            marginBottom: 16,
-            padding: "8px 12px",
-            background: "#fafafa",
-            borderRadius: 6,
-            border: "1px solid #f0f0f0",
-          }}
-        >
+        <div className="table-section">
           <TableToolbar
             search={search}
             onSearch={(val) => {
               setSearch(val)
-              setSelectedPart(null)
+              setExpandedId(null)
             }}
             disabled={!model && !showAll}
           />
@@ -402,7 +382,13 @@ export default function OriginalPartsMain() {
           onFinish={submitAddPart}
           disabled={!model}
           className="table-section"
-          style={{ marginTop: 8, marginBottom: 8 }}
+          style={{
+            marginTop: 8,
+            marginBottom: 8,
+            flexWrap: "wrap",
+            rowGap: 8,
+            columnGap: 12,
+          }}
         >
           <Form.Item
             name="cat_number"
@@ -432,25 +418,27 @@ export default function OriginalPartsMain() {
             <TnvedPicker style={{ width: 240 }} allowClear />
           </Form.Item>
 
-          <Form.Item name="group_id" label="Группа">
-            <Select
-              style={{ width: 220 }}
-              placeholder="Не выбрано"
-              loading={groupsLoading}
-              allowClear
-              options={groups.map((g) => ({
-                value: g.id,
-                label: g.name,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item>
-            <Button
-              type="text"
-              icon={<SettingOutlined />}
-              onClick={() => setGroupManagerOpen(true)}
-              style={{ padding: 0 }}
-            />
+          <Form.Item label="Группа">
+            <Input.Group compact>
+              <Form.Item name="group_id" noStyle>
+                <Select
+                  style={{ width: 220 }}
+                  placeholder="Не выбрано"
+                  loading={groupsLoading}
+                  allowClear
+                  options={groups.map((g) => ({
+                    value: g.id,
+                    label: g.name,
+                  }))}
+                />
+              </Form.Item>
+              <Button
+                type="text"
+                icon={<SettingOutlined />}
+                onClick={() => setGroupManagerOpen(true)}
+                style={{ height: "100%", borderRadius: 0 }}
+              />
+            </Input.Group>
           </Form.Item>
 
           <Form.Item name="length_cm" label="Дл., см">
@@ -484,10 +472,10 @@ export default function OriginalPartsMain() {
               onReload={fetchParts}
               onRemove={(id) => {
                 setRows((prev) => prev.filter((r) => r.id !== id))
-                if (selectedPart?.id === id) setSelectedPart(null)
+                if (expandedId === id) setExpandedId(null)
               }}
-              onSelect={(row) => setSelectedPart(row)}
-              selectedId={selectedPart?.id || null}
+              expandedId={expandedId}
+              onExpandChange={setExpandedId}
             />
           ) : (
             <Empty
@@ -497,14 +485,6 @@ export default function OriginalPartsMain() {
             />
           )}
         </div>
-
-        <DetailDock
-          part={selectedPart}
-          modelId={model?.id || null}
-          manufacturerName={manufacturer?.name || null}
-          modelName={model?.model_name || null}
-          onPartsChanged={fetchParts}
-        />
       </Card>
 
       <ImportModal

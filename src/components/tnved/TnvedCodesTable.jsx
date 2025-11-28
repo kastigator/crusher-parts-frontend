@@ -7,6 +7,7 @@ import confirmAction from "@/utils/confirmAction"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import createTablePagination from "@/utils/tablePagination"
+import ValueDisplay from "@/components/common/ValueDisplay"
 
 const { TextArea } = Input
 
@@ -15,8 +16,8 @@ export default function TnvedCodesTable({
   loading,
   onUpdate,
   onDelete,
-  onReplaceRow, // (freshRow) => void
-  onRefresh, // () => void
+  onReplaceRow,
+  onRefresh,
 }) {
   const [editingKey, setEditingKey] = useState("")
   const [editedRow, setEditedRow] = useState(null)
@@ -28,7 +29,6 @@ export default function TnvedCodesTable({
     draft: null,
   })
 
-  // локальная пагинация (данные уже все на клиенте)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
 
@@ -36,7 +36,7 @@ export default function TnvedCodesTable({
 
   const startEdit = (record) => {
     setEditingKey(record.id)
-    setEditedRow({ ...record }) // важно сохранить version
+    setEditedRow({ ...record })
   }
 
   const cancelEdit = () => {
@@ -46,14 +46,11 @@ export default function TnvedCodesTable({
 
   const saveEdit = async () => {
     try {
-      await onUpdate(editingKey, { ...editedRow }) // version внутри editedRow
-      // успех показывается родителем (TnvedCodesMain)
+      await onUpdate(editingKey, { ...editedRow })
       cancelEdit()
     } catch (err) {
       if (err?.isDuplicateKey) {
-        return message.error(
-          "Запись с таким кодом и описанием уже существует"
-        )
+        return message.error("Код уже существует")
       }
       if (err?.isVersionConflict) {
         setConflict({
@@ -64,7 +61,7 @@ export default function TnvedCodesTable({
         return
       }
       console.error("Ошибка сохранения:", err)
-      message.error("Не удалось сохранить изменения")
+      message.error("Не удалось сохранить строку")
     }
   }
 
@@ -72,7 +69,7 @@ export default function TnvedCodesTable({
     const { confirmed } = await confirmAction(`Удалить код ${record.code}?`)
     if (!confirmed) return
     try {
-      await onDelete(record) // родитель добавит ?version= и покажет сообщение об успехе
+      await onDelete(record)
     } catch (err) {
       if (err?.isVersionConflict) {
         if (err.currentRecord && typeof onReplaceRow === "function") {
@@ -81,11 +78,11 @@ export default function TnvedCodesTable({
           onRefresh()
         }
         return message.warning(
-          "Запись изменилась и не была удалена. Обновили данные."
+          "Строка изменилась и не была удалена. Обновите данные.",
         )
       }
       console.error("Ошибка удаления:", err)
-      message.error("Не удалось удалить запись")
+      message.error("Не удалось удалить строку")
     }
   }
 
@@ -94,6 +91,7 @@ export default function TnvedCodesTable({
       title: "Код",
       dataIndex: "code",
       width: 140,
+      ellipsis: true,
       render: (_, record) =>
         isEditing(record) ? (
           <Input
@@ -105,13 +103,14 @@ export default function TnvedCodesTable({
             onBlur={saveEdit}
           />
         ) : (
-          record.code || ""
+          <ValueDisplay value={record.code} />
         ),
     },
     {
       title: "Описание",
       dataIndex: "description",
       width: 360,
+      ellipsis: true,
       render: (_, record) =>
         isEditing(record) ? (
           <TextArea
@@ -125,11 +124,8 @@ export default function TnvedCodesTable({
             autoSize={{ minRows: 2, maxRows: 6 }}
             onBlur={saveEdit}
           />
-        ) : record.description ? (
-          record.description.slice(0, 100) +
-          (record.description.length > 100 ? "…" : "")
         ) : (
-          ""
+          <ValueDisplay value={record.description} />
         ),
     },
     {
@@ -149,13 +145,14 @@ export default function TnvedCodesTable({
             onBlur={saveEdit}
           />
         ) : (
-          record.duty_rate ?? ""
+          <ValueDisplay value={record.duty_rate} />
         ),
     },
     {
-      title: "Примечания",
+      title: "Примечание",
       dataIndex: "notes",
       width: 260,
+      ellipsis: true,
       render: (_, record) =>
         isEditing(record) ? (
           <TextArea
@@ -166,11 +163,8 @@ export default function TnvedCodesTable({
             autoSize={{ minRows: 2, maxRows: 4 }}
             onBlur={saveEdit}
           />
-        ) : record.notes ? (
-          record.notes.slice(0, 80) +
-          (record.notes.length > 80 ? "…" : "")
         ) : (
-          ""
+          <ValueDisplay value={record.notes} />
         ),
     },
     {
@@ -181,7 +175,6 @@ export default function TnvedCodesTable({
         const editing = isEditing(record)
         return (
           <ActionButtons
-            // редактирование — только по двойному клику (см. onRow ниже)
             onSave={editing ? saveEdit : undefined}
             onCancel={editing ? cancelEdit : undefined}
             onDelete={!editing ? () => handleDelete(record) : undefined}
@@ -193,7 +186,6 @@ export default function TnvedCodesTable({
     },
   ]
 
-  // ===== пагинация — общий helper, как в деталях поставщиков =====
   const pagination = useMemo(
     () =>
       createTablePagination({
@@ -203,7 +195,7 @@ export default function TnvedCodesTable({
         setPage,
         setPageSize,
       }),
-    [page, pageSize, data]
+    [page, pageSize, data],
   )
 
   return (
@@ -218,6 +210,8 @@ export default function TnvedCodesTable({
           pagination={pagination}
           bordered
           size="small"
+          tableLayout="fixed"
+          scroll={{ x: 900 }}
           onRow={(record) => ({
             onDoubleClick: () => startEdit(record),
           })}
@@ -229,9 +223,9 @@ export default function TnvedCodesTable({
                   padding: "8px 24px",
                 }}
               >
-                <b>Описание:</b> {record.description || "—"}
+                <b>Описание:</b> {record.description || "-"}
                 <br />
-                <b>Примечания:</b> {record.notes || "—"}
+                <b>Примечание:</b> {record.notes || "-"}
               </div>
             ),
           }}
@@ -256,16 +250,15 @@ export default function TnvedCodesTable({
           {
             key: "duty_rate",
             title: "Пошлина (%)",
-            format: (v) =>
-              (v ?? "") === "" ? "—" : String(v),
+            format: (v) => ((v ?? "") === "" ? "-" : String(v)),
           },
-          { key: "notes", title: "Примечания" },
+          { key: "notes", title: "Примечание" },
         ]}
         onReload={() => {
           if (conflict.current && typeof onReplaceRow === "function")
             onReplaceRow(conflict.current)
           else if (typeof onRefresh === "function") onRefresh()
-          else message.info("Обновите список — запись изменилась")
+          else message.info("Строка изменилась — обновите данные")
           setConflict({ open: false, current: null, draft: null })
           cancelEdit()
         }}

@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useMemo } from "react"
+import React, { useState, useEffect, useMemo, useRef } from "react"
 import { Table, message, Input, InputNumber, Select, Checkbox } from "antd"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import TnvedPicker from "@/components/fields/TnvedPicker"
+import ValueDisplay from "@/components/common/ValueDisplay"
+import DetailDock from "./DetailDock"
+import createTablePagination from "@/utils/tablePagination"
 
 /**
  * Таблица оригинальных деталей.
@@ -15,8 +18,8 @@ export default function OriginalPartsTable({
   modelId = null, // сейчас не используется, но оставляем на будущее
   onReload,
   onRemove,
-  onSelect,
-  selectedId = null,
+  expandedId = null,
+  onExpandChange = () => {},
   showAll = false, // 🔹 режим "Показать все детали"
 }) {
   const [historyId, setHistoryId] = useState(null)
@@ -41,9 +44,9 @@ export default function OriginalPartsTable({
     tnved: null, // объект от TnvedPicker (или null)
   })
   const [savingEdit, setSavingEdit] = useState(false)
-
-  // 🔹 раскрытые строки (для автораскрытия при редактировании + стили)
-  const [expandedRowKeys, setExpandedRowKeys] = useState([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+  const tableWrapRef = useRef(null)
 
   /* -----------------------------------------------------------
      Группы
@@ -177,10 +180,7 @@ export default function OriginalPartsTable({
       tnved: tnvedObj,
     })
 
-    // при входе в редактирование сразу раскрываем строку
-    setExpandedRowKeys((prev) =>
-      prev.includes(record.id) ? prev : [...prev, record.id],
-    )
+    onExpandChange(record.id)
   }
 
   const cancelEdit = () => {
@@ -303,7 +303,7 @@ export default function OriginalPartsTable({
         (a.cat_number || "").localeCompare(b.cat_number || ""),
       sortDirections: ["ascend", "descend"],
       render: (value, record) => {
-        if (record.id !== editingId) return value
+        if (record.id !== editingId) return <ValueDisplay value={value} />
         return (
           <Input
             value={editingValues.cat_number}
@@ -330,7 +330,8 @@ export default function OriginalPartsTable({
         style: { width: 260, minWidth: 260, maxWidth: 260 },
       }),
       render: (value, record) => {
-        if (record.id !== editingId) return value
+        if (record.id !== editingId)
+          return <ValueDisplay value={value} />
         return (
           <Input
             value={editingValues.description_ru}
@@ -357,7 +358,8 @@ export default function OriginalPartsTable({
         style: { width: 220, minWidth: 220, maxWidth: 220 },
       }),
       render: (value, record) => {
-        if (record.id !== editingId) return value
+        if (record.id !== editingId)
+          return <ValueDisplay value={value} />
         return (
           <Input
             value={editingValues.description_en}
@@ -386,7 +388,7 @@ export default function OriginalPartsTable({
       onFilter: (value, record) =>
         (record.group_name || "") === (value || ""),
       render: (text, record) => {
-        if (record.id !== editingId) return text
+        if (record.id !== editingId) return <ValueDisplay value={text} />
         return (
           <Select
             style={{ width: "100%" }}
@@ -587,109 +589,123 @@ export default function OriginalPartsTable({
 
   return (
     <>
-      <Table
-        className="op-table"
-        rowKey="id"
-        columns={columns}
-        dataSource={Array.isArray(data) ? data : []}
-        loading={loading || savingEdit}
-        pagination={{ pageSize: 50 }}
-        tableLayout="fixed"
-        scroll={{ x: true, y: 480 }}
-        size="middle"
-        onRow={(record) => ({
-          onClick: () => {
-            if (typeof onSelect === "function") onSelect(record)
-          },
-          onDoubleClick: () => {
-            startEdit(record)
-          },
-        })}
-        rowClassName={(record) => {
-          const classes = []
-          if (record.id === selectedId) classes.push("ant-table-row-selected")
-          if (expandedRowKeys.includes(record.id)) classes.push("op-row-expanded")
-          return classes.join(" ")
-        }}
-        expandable={{
-          expandedRowKeys,
-          onExpand: (expanded, record) => {
-            setExpandedRowKeys((prev) =>
-              expanded
-                ? [...prev, record.id]
-                : prev.filter((id) => id !== record.id),
-            )
-          },
-          expandedRowRender: (record) => {
-            const isEditing = record.id === editingId
+      <div ref={tableWrapRef}>
+        <Table
+          className="op-table"
+          rowKey="id"
+          columns={columns}
+          dataSource={Array.isArray(data) ? data : []}
+          loading={loading || savingEdit}
+          pagination={createTablePagination({
+            page,
+            pageSize,
+            total: Array.isArray(data) ? data.length : 0,
+            setPage,
+            setPageSize,
+            getPopupContainer: () => tableWrapRef.current || document.body,
+          })}
+          tableLayout="fixed"
+          scroll={{ x: true, y: 480 }}
+          size="middle"
+          onRow={(record) => ({
+            onDoubleClick: () => {
+              startEdit(record)
+            },
+          })}
+          rowClassName={(record) => {
+            const classes = []
+            if (expandedId && record.id === expandedId)
+              classes.push("ant-table-row-selected", "op-row-expanded")
+            return classes.join(" ")
+          }}
+          expandable={{
+            expandedRowKeys: expandedId ? [expandedId] : [],
+            onExpand: (expanded, record) =>
+              onExpandChange(expanded ? record.id : null),
+            expandedRowRender: (record) => {
+              const isEditing = record.id === editingId
 
-            const hasTech = isEditing || !!record.tech_description
-            const hasTnved =
-              isEditing ||
-              !!record.tnved_code_text ||
-              !!record.tnved_code ||
-              !!record.tnved_description
+              const hasTech = isEditing || !!record.tech_description
+              const hasTnved =
+                isEditing ||
+                !!record.tnved_code_text ||
+                !!record.tnved_code ||
+                !!record.tnved_description
 
-            return (
-              <div className="op-expanded-content">
-                {hasTech && (
-                  <div>
-                    <b>Тех. описание:</b>{" "}
-                    {isEditing ? (
-                      <Input.TextArea
-                        style={{ marginTop: 4 }}
-                        autoSize={{ minRows: 2, maxRows: 6 }}
-                        value={editingValues.tech_description}
-                        onChange={(e) =>
-                          setEditingValues((prev) => ({
-                            ...prev,
-                            tech_description: e.target.value,
-                          }))
-                        }
-                        onKeyDown={makeKeyHandler(record.id)}
-                      />
-                    ) : (
-                      record.tech_description || "—"
-                    )}
+              return (
+                <div className="subtable-shell table-section">
+                  {(hasTech || hasTnved) && (
+                    <div className="op-expanded-content">
+                      {hasTech && (
+                        <div>
+                          <b>Тех. описание:</b>{" "}
+                          {isEditing ? (
+                            <Input.TextArea
+                              style={{ marginTop: 4 }}
+                              autoSize={{ minRows: 2, maxRows: 6 }}
+                              value={editingValues.tech_description}
+                              onChange={(e) =>
+                                setEditingValues((prev) => ({
+                                  ...prev,
+                                  tech_description: e.target.value,
+                                }))
+                              }
+                              onKeyDown={makeKeyHandler(record.id)}
+                            />
+                          ) : (
+                            record.tech_description || "-"
+                          )}
+                        </div>
+                      )}
+
+                      {hasTnved && (
+                        <div>
+                          <b>ТН ВЭД:</b>{" "}
+                          {isEditing ? (
+                            <div style={{ marginTop: 4, maxWidth: 320 }}>
+                              <TnvedPicker
+                                allowClear
+                                style={{ width: "100%" }}
+                                value={editingValues.tnved || null}
+                                onChange={(val) =>
+                                  setEditingValues((prev) => ({
+                                    ...prev,
+                                    tnved: val || null,
+                                  }))
+                                }
+                              />
+                            </div>
+                          ) : (
+                            (record.tnved_code_text ||
+                              record.tnved_code ||
+                              "-") +
+                            (record.tnved_description
+                              ? ` - ${record.tnved_description}`
+                              : "")
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div
+                    className="parts-table-wrap"
+                    style={{ marginTop: hasTech || hasTnved ? 12 : 0 }}
+                  >
+                    <DetailDock
+                      part={record}
+                      modelId={record.equipment_model_id || modelId || null}
+                      manufacturerName={record.manufacturer_name}
+                      modelName={record.model_name}
+                      onPartsChanged={onReload}
+                    />
                   </div>
-                )}
-
-                {hasTnved && (
-                  <div>
-                    <b>ТН ВЭД:</b>{" "}
-                    {isEditing ? (
-                      <div style={{ marginTop: 4, maxWidth: 320 }}>
-                        <TnvedPicker
-                          allowClear
-                          style={{ width: "100%" }}
-                          value={editingValues.tnved || null}
-                          onChange={(val) =>
-                            setEditingValues((prev) => ({
-                              ...prev,
-                              tnved: val || null,
-                            }))
-                          }
-                        />
-                      </div>
-                    ) : (
-                      (record.tnved_code_text ||
-                        record.tnved_code ||
-                        "—") +
-                      (record.tnved_description
-                        ? ` — ${record.tnved_description}`
-                        : "")
-                    )}
-                  </div>
-                )}
-
-                {!hasTech && !hasTnved && (
-                  <i>Дополнительной информации нет.</i>
-                )}
-              </div>
-            )
-          },
-        }}
-      />
+                </div>
+              )
+            },
+          }}
+        />
+      </div>
 
       {historyId != null && (
         <FullHistoryDialog

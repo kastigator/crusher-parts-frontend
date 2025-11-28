@@ -4,7 +4,10 @@ import SupplierPartsMain from "@/components/supplierParts/SupplierPartsMain";
 
 export default function SupplierPartsPage() {
   return (
-    <TabRendererPage tabKey="supplier-parts">
+    <TabRendererPage
+      tabKey="supplier-parts"
+      helpText="Двойной клик — редактирование; Enter — сохранить; Esc — отменить."
+    >
       <SupplierPartsMain />
     </TabRendererPage>
   );

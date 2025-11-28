@@ -34,7 +34,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
       })
       setData(Array.isArray(list) ? list : [])
     } catch (e) {
-      console.error("Ошибка загрузки контактов поставщика:", e)
+      console.error("Ошибка при загрузке контактов поставщика:", e)
       message.error("Не удалось загрузить контакты поставщика")
     } finally {
       setLoading(false)
@@ -81,8 +81,8 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
       message.success("Контакт добавлен")
       onChanged?.()
     } catch (e) {
-      console.error("Ошибка добавления контакта:", e)
-      message.error(e?.response?.data?.message || "Не удалось добавить контакт")
+      console.error("Ошибка при создании контакта:", e)
+      message.error(e?.response?.data?.message || "Не удалось создать контакт")
     }
   }
 
@@ -110,7 +110,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
         })
         return
       }
-      console.error("Ошибка обновления контакта:", e)
+      console.error("Ошибка при обновлении контакта:", e)
       message.error("Не удалось обновить контакт")
     }
   }
@@ -132,7 +132,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
         })
         return
       }
-      console.error("Ошибка удаления контакта:", e)
+      console.error("Ошибка при удалении контакта:", e)
       message.error("Не удалось удалить контакт")
     }
   }
@@ -142,7 +142,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
   return (
     <div className="parts-table-wrap">
       <Card size="small" className="table-section">
-        {/* Форма добавления контакта */}
+        {/* Форма для добавления контакта */}
         <Row gutter={8} className="table-section">
           <Col span={6}>
             <Input
@@ -158,7 +158,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
           <Col span={4}>
             <Input
               size="small"
-              placeholder="Роль"
+              placeholder="Роль / должность"
               value={newContact.role}
               onChange={(e) =>
                 setNewContact((prev) => ({ ...prev, role: e.target.value }))
@@ -225,15 +225,15 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
             </Button>
           </Col>
         </Row>
-
-        {/* Таблица контактов — без поиска */}
-        <SupplierContactsTable
-          data={data}
-          loading={loading}
-          onUpdate={handleUpdate}
-          onDelete={handleDelete}
-        />
       </Card>
+
+      {/* Таблица контактов */}
+      <SupplierContactsTable
+        data={data}
+        loading={loading}
+        onUpdate={handleUpdate}
+        onDelete={handleDelete}
+      />
 
       <VersionConflictModal
         conflict={conflict}

@@ -32,7 +32,10 @@ export default function SupplierBankDetailsTable({
       setEditedRow(null)
     } catch (e) {
       if (e?.isVersionConflict) return
-      console.error("Ошибка сохранения банковских реквизитов поставщика:", e)
+      console.error(
+        "Ошибка при обновлении банковских реквизитов поставщика:",
+        e,
+      )
     }
   }
 
@@ -97,7 +100,7 @@ export default function SupplierBankDetailsTable({
       ...renderEditableText("bank_name", "text", 160),
     },
     {
-      title: "Счёт",
+      title: "Счет",
       dataIndex: "account_number",
       key: "account_number",
       ...renderEditableText("account_number", "text", 160),
@@ -150,7 +153,7 @@ export default function SupplierBankDetailsTable({
       },
     },
     {
-      title: "Корр. счёт",
+      title: "Корр. счет",
       dataIndex: "correspondent_account",
       key: "correspondent_account",
       ...renderEditableText("correspondent_account", "text", 160),

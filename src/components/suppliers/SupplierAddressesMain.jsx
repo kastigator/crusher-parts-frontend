@@ -72,7 +72,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
   const handleAdd = async () => {
     if (!supplierId) return
     if (!newAddress.formatted_address?.trim()) {
-      message.warning("Поле адреса обязательно")
+      message.warning("Адрес обязателен")
       return
     }
 
@@ -118,9 +118,9 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
       setResetCounter((prev) => prev + 1)
       onChanged?.()
     } catch (err) {
-      console.error("Ошибка добавления адреса поставщика:", err)
+      console.error("Ошибка при создании адреса поставщика:", err)
       message.error(
-        err?.response?.data?.message || "Не удалось добавить адрес поставщика",
+        err?.response?.data?.message || "Не удалось создать адрес поставщика",
       )
     }
   }
@@ -132,7 +132,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
         version: row.version,
       })
       replaceRow(fresh)
-      message.success("Адрес поставщика обновлён")
+      message.success("Адрес поставщика обновлен")
       onChanged?.()
     } catch (err) {
       const res = err?.response
@@ -145,7 +145,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
         })
         return
       }
-      console.error("Ошибка обновления адреса поставщика:", err)
+      console.error("Ошибка при обновлении адреса поставщика:", err)
       message.error("Не удалось обновить адрес поставщика")
       throw err
     }
@@ -157,7 +157,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
         params: { version: record.version },
       })
       removeRow(record.id)
-      message.success("Адрес поставщика удалён")
+      message.success("Адрес поставщика удален")
       onChanged?.()
     } catch (err) {
       const res = err?.response
@@ -170,7 +170,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
         })
         return
       }
-      console.error("Ошибка удаления адреса поставщика:", err)
+      console.error("Ошибка при удалении адреса поставщика:", err)
       message.error("Не удалось удалить адрес поставщика")
       throw err
     }
@@ -180,7 +180,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
 
   return (
     <div className="parts-table-wrap">
-      {/* Форма с картой — одна на всю вкладку */}
+      {/* Форма с Яндекс-картой */}
       <Card size="small" className="table-section">
         <PlaceAddressInput
           debugId="supplier-addresses-main"
@@ -218,7 +218,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
           }
         />
 
-        {/* Блок полей, как у клиентов, + label/type */}
+        {/* Страна, регион, город, индекс */}
         <Row gutter={8} style={{ marginTop: 8 }}>
           <Col span={6}>
             <Input
@@ -334,14 +334,12 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
       </Card>
 
       {/* Таблица адресов */}
-      <div className="table-section">
-        <SupplierAddressesTable
-          data={data}
-          loading={loading}
-          onUpdate={handleUpdate}
-          onDelete={handleDelete}
-        />
-      </div>
+      <SupplierAddressesTable
+        data={data}
+        loading={loading}
+        onUpdate={handleUpdate}
+        onDelete={handleDelete}
+      />
 
       {conflict && (
         <VersionConflictModal

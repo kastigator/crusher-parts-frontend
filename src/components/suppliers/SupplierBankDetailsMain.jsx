@@ -38,7 +38,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
       })
       setData(Array.isArray(list) ? list : [])
     } catch (e) {
-      console.error("Ошибка загрузки банковских реквизитов поставщика:", e)
+      console.error("Ошибка при загрузке банковских реквизитов поставщика:", e)
       message.error("Не удалось загрузить банковские реквизиты поставщика")
     } finally {
       setLoading(false)
@@ -68,7 +68,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
     }
 
     if (!payload.bank_name || !payload.account_number) {
-      message.warning("Название банка и номер счёта обязательны")
+      message.warning("Название банка и счет обязательны")
       return
     }
 
@@ -92,9 +92,13 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
       message.success("Банковские реквизиты добавлены")
       onChanged?.()
     } catch (e) {
-      console.error("Ошибка добавления банковских реквизитов поставщика:", e)
+      console.error(
+        "Ошибка при создании банковских реквизитов поставщика:",
+        e,
+      )
       const msg =
-        e?.response?.data?.message || "Не удалось добавить банковские реквизиты"
+        e?.response?.data?.message ||
+        "Не удалось создать банковские реквизиты"
       message.error(msg)
     }
   }
@@ -123,7 +127,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
         })
         return
       }
-      console.error("Ошибка обновления банковских реквизитов:", e)
+      console.error("Ошибка при обновлении банковских реквизитов:", e)
       message.error("Не удалось обновить банковские реквизиты")
     }
   }
@@ -134,6 +138,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
         params: { version: record.version },
       })
       removeRow(record.id)
+      message.success("Банковские реквизиты удалены")
       onChanged?.()
     } catch (e) {
       if (e?.response?.status === 409) {
@@ -145,7 +150,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
         })
         return
       }
-      console.error("Ошибка удаления банковских реквизитов:", e)
+      console.error("Ошибка при удалении банковских реквизитов:", e)
       message.error("Не удалось удалить банковские реквизиты")
     }
   }
@@ -153,14 +158,14 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
   if (!supplierId) {
     return (
       <Card size="small">
-        Выберите поставщика, чтобы видеть его банковские реквизиты.
+        Выберите поставщика, чтобы добавить банковские реквизиты.
       </Card>
     )
   }
 
   return (
     <div className="parts-table-wrap">
-      {/* форма добавления реквизитов */}
+      {/* Форма ввода реквизитов */}
       <Card size="small" className="table-section">
         <Row gutter={8} style={{ marginBottom: 8 }}>
           <Col span={6}>
@@ -179,7 +184,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
           <Col span={6}>
             <Input
               size="small"
-              placeholder="Номер счёта"
+              placeholder="Счет"
               value={newBank.account_number}
               onChange={(e) =>
                 setNewBank((p) => ({
@@ -246,7 +251,7 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
           <Col span={6}>
             <Input
               size="small"
-              placeholder="Корр. счёт"
+              placeholder="Корр. счет"
               value={newBank.correspondent_account}
               onChange={(e) =>
                 setNewBank((p) => ({
@@ -295,15 +300,13 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
         </Button>
       </Card>
 
-      {/* таблица реквизитов */}
-      <Card size="small" className="table-section">
-        <SupplierBankDetailsTable
-          data={data}
-          loading={loading}
-          onUpdate={handleUpdate}
-          onDelete={handleDelete}
-        />
-      </Card>
+      {/* Таблица реквизитов */}
+      <SupplierBankDetailsTable
+        data={data}
+        loading={loading}
+        onUpdate={handleUpdate}
+        onDelete={handleDelete}
+      />
 
       <VersionConflictModal
         conflict={conflict}

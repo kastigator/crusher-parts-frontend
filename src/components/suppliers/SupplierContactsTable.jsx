@@ -31,7 +31,7 @@ export default function SupplierContactsTable({
       setEditedRow(null)
     } catch (e) {
       if (e?.isVersionConflict) return
-      console.error("Ошибка сохранения контакта поставщика:", e)
+      console.error("Ошибка при обновлении контакта поставщика:", e)
     }
   }
 

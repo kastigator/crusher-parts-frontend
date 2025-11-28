@@ -1,27 +1,32 @@
 // src/components/common/ValueDisplay.jsx
-// Универсальный компонент отображения значений для таблиц Ant Design.
-// Email и телефон кликабельны, телефон форматируется через libphonenumber-js.
+// Унифицированный вывод значений с обрезкой текста и тултипом по переполнению.
 
-import React from "react"
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { Tag, Tooltip, Typography } from "antd"
 import { parsePhoneNumberFromString } from "libphonenumber-js"
 
 const STATUS_MAP = {
-  new: { label: "Новая", color: "blue" },
+  new: { label: "Новый", color: "blue" },
   pending: { label: "Ожидает", color: "orange" },
-  approved: { label: "Подтверждена", color: "green" },
-  rejected: { label: "Отклонена", color: "red" },
-  done: { label: "Завершена", color: "default" },
+  approved: { label: "Одобрено", color: "green" },
+  rejected: { label: "Отклонено", color: "red" },
+  done: { label: "Выполнено", color: "default" },
   draft: { label: "Черновик", color: "default" },
 }
 
-const DEFAULT_PHONE_REGION = "RU" // базовая страна, если номер без кода
+const DEFAULT_PHONE_REGION = "RU"
 
 const formatDate = (val) => {
   try {
     return new Date(val).toLocaleDateString("ru-RU")
   } catch {
-    return "—"
+    return "-"
   }
 }
 
@@ -32,7 +37,7 @@ const formatTime = (val) => {
       minute: "2-digit",
     })
   } catch {
-    return "—"
+    return "-"
   }
 }
 
@@ -47,7 +52,7 @@ const formatDateTime = (val) => {
       },
     )}`
   } catch {
-    return "—"
+    return "-"
   }
 }
 
@@ -63,35 +68,107 @@ const formatCurrency = (val, currency = "RUB") => {
   }
 }
 
-// Универсальное форматирование телефона через libphonenumber-js
 const formatPhone = (value, defaultRegion = DEFAULT_PHONE_REGION) => {
   if (!value) return ""
 
   const raw = String(value).trim()
 
   try {
-    // если номер уже с +, даём libphonenumber самому определить страну
     const phone = raw.startsWith("+")
       ? parsePhoneNumberFromString(raw)
       : parsePhoneNumberFromString(raw, defaultRegion)
 
     if (!phone) return raw
-
-    // читаемый международный формат: +375 44 719 52 53
     return phone.formatInternational()
   } catch {
     return raw
   }
 }
 
+const EllipsisText = ({
+  text,
+  onDoubleClick,
+  copyable,
+  maxLength, // опционально: мягко обрезать длинные значения перед рендером
+}) => {
+  const spanRef = useRef(null)
+  const [overflow, setOverflow] = useState(false)
+
+  const rendered = useMemo(() => {
+    if (!text && text !== 0) return ""
+    const str = String(text)
+    if (maxLength && str.length > maxLength) {
+      return `${str.slice(0, maxLength)}…`
+    }
+    return str
+  }, [text, maxLength])
+
+  const measure = useCallback(() => {
+    const el = spanRef.current
+    if (!el) return
+    const hasOverflow = el.scrollWidth - el.clientWidth > 1
+    setOverflow(hasOverflow)
+  }, [])
+
+  useEffect(() => {
+    measure()
+  }, [rendered, measure])
+
+  useEffect(() => {
+    const el = spanRef.current
+    if (!el) return
+
+    const ro = new ResizeObserver(() => measure())
+    ro.observe(el)
+    window.addEventListener("resize", measure)
+
+    return () => {
+      ro.disconnect()
+      window.removeEventListener("resize", measure)
+    }
+  }, [measure])
+
+  const inner = (
+    <span
+      ref={spanRef}
+      className="cell-ellipsis"
+      style={{
+        display: "inline-block",
+        maxWidth: "100%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        verticalAlign: "middle",
+      }}
+      onDoubleClick={onDoubleClick}
+    >
+      {rendered}
+    </span>
+  )
+
+  const content = copyable ? (
+    <Typography.Text
+      style={{ margin: 0 }}
+      copyable={{ text: String(text ?? "") }}
+    >
+      {inner}
+    </Typography.Text>
+  ) : (
+    inner
+  )
+
+  return <Tooltip title={overflow ? String(text) : null}>{content}</Tooltip>
+}
+
 export default function ValueDisplay({
   value,
   type = "text",
-  emptySymbol = "—",
+  emptySymbol = "-",
   currency,
   href,
-  maxLength = 60,
+  maxLength,
   onDoubleClick,
+  copyable = false,
 }) {
   if (value === null || value === undefined || value === "") return emptySymbol
 
@@ -101,24 +178,6 @@ export default function ValueDisplay({
     } catch {
       return emptySymbol
     }
-  }
-
-  const renderWithTooltip = (text) => {
-    const str = safeStr(text)
-    const isTruncated = str.length > maxLength
-    const displayText = isTruncated ? `${str.slice(0, maxLength)}…` : str
-
-    return (
-      <Tooltip title={str}>
-        <Typography.Text
-          style={{ maxWidth: 240 }}
-          ellipsis
-          onDoubleClick={onDoubleClick}
-        >
-          {displayText}
-        </Typography.Text>
-      </Tooltip>
-    )
   }
 
   switch (type) {
@@ -132,7 +191,7 @@ export default function ValueDisplay({
       return formatDateTime(value)
 
     case "boolean":
-      return value ? "✔️" : emptySymbol
+      return value ? "Да" : emptySymbol
 
     case "percent":
       return `${parseFloat(value).toFixed(2)}%`
@@ -144,7 +203,14 @@ export default function ValueDisplay({
     }
 
     case "array":
-      return renderWithTooltip(Array.isArray(value) ? value.join(", ") : "")
+      return (
+        <EllipsisText
+          text={Array.isArray(value) ? value.join(", ") : ""}
+          onDoubleClick={onDoubleClick}
+          copyable={copyable}
+          maxLength={maxLength}
+        />
+      )
 
     case "number":
       return isNaN(Number(value)) ? emptySymbol : value
@@ -156,34 +222,55 @@ export default function ValueDisplay({
       return <Tag color={status.color}>{status.label}</Tag>
     }
 
-    case "email":
+    case "email": {
+      const str = safeStr(value)
       return (
-        <Tooltip title={value}>
-          <a href={`mailto:${value}`} onDoubleClick={onDoubleClick}>
-            {safeStr(value)}
+        <Tooltip title={str}>
+          <a
+            href={`mailto:${str}`}
+            onDoubleClick={onDoubleClick}
+            className="cell-ellipsis"
+            style={{ display: "inline-block", maxWidth: "100%" }}
+          >
+            {str}
           </a>
         </Tooltip>
       )
+    }
 
     case "phone": {
       const display = formatPhone(value)
+      const raw = safeStr(value)
       return (
         <Tooltip title={display}>
-          <a href={`tel:${safeStr(value)}`} onDoubleClick={onDoubleClick}>
+          <a
+            href={`tel:${raw}`}
+            onDoubleClick={onDoubleClick}
+            className="cell-ellipsis"
+            style={{ display: "inline-block", maxWidth: "100%" }}
+          >
             {display}
           </a>
         </Tooltip>
       )
     }
 
-    case "link":
+    case "link": {
+      const str = safeStr(value)
       return (
-        <Tooltip title={value}>
-          <a href={href || value} target="_blank" rel="noopener noreferrer">
-            {safeStr(value)}
+        <Tooltip title={str}>
+          <a
+            href={href || str}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="cell-ellipsis"
+            style={{ display: "inline-block", maxWidth: "100%" }}
+          >
+            {str}
           </a>
         </Tooltip>
       )
+    }
 
     case "tnved":
       return safeStr(value).replace(/\s+/g, "")
@@ -196,6 +283,13 @@ export default function ValueDisplay({
 
     case "text":
     default:
-      return renderWithTooltip(value)
+      return (
+        <EllipsisText
+          text={value}
+          onDoubleClick={onDoubleClick}
+          copyable={copyable}
+          maxLength={maxLength}
+        />
+      )
   }
 }

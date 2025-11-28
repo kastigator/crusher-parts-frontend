@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react"
 import {
   Card,
   Row,
@@ -11,66 +11,60 @@ import {
   Form,
   InputNumber,
   Checkbox,
-} from "antd";
+} from "antd"
 import {
   TeamOutlined,
   ImportOutlined,
   PlusOutlined,
   ReloadOutlined,
-} from "@ant-design/icons";
-import { useSearchParams } from "react-router-dom";
-import TableToolbar from "@/components/common/TableToolbar";
-import SupplierPickerDrawer from "./SupplierPickerDrawer";
-import SupplierPartsTable from "./SupplierPartsTable";
-import SupplierPartDock from "./SupplierPartDock";
-import ImportModal from "@/components/common/ImportModal";
-import axios from "@/api/axiosInstance";
-import { getCountryLabel } from "@/components/inputs/CountrySelect";
+} from "@ant-design/icons"
+import { useSearchParams } from "react-router-dom"
+import TableToolbar from "@/components/common/TableToolbar"
+import SupplierPickerDrawer from "./SupplierPickerDrawer"
+import SupplierPartsTable from "./SupplierPartsTable"
+import ImportModal from "@/components/common/ImportModal"
+import axios from "@/api/axiosInstance"
+import { getCountryLabel } from "@/components/inputs/CountrySelect"
 
 const SUPPLIER_TEMPLATE_URL =
-  "https://storage.googleapis.com/shared-parts-bucket/templates/supplier_parts_template.xlsx";
+  "https://storage.googleapis.com/shared-parts-bucket/templates/supplier_parts_template.xlsx"
 
 export default function SupplierPartsMain() {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [supplier, setSupplier] = useState(null);
-  const [search, setSearch] = useState("");
-  const [version, setVersion] = useState(0);
-  const [importOpen, setImportOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [supplier, setSupplier] = useState(null)
+  const [search, setSearch] = useState("")
+  const [version, setVersion] = useState(0)
+  const [importOpen, setImportOpen] = useState(false)
 
-  const [form] = Form.useForm();
-  const [adding, setAdding] = useState(false);
+  const [form] = Form.useForm()
+  const [adding, setAdding] = useState(false)
 
-  // выбранная деталь для нижнего дока
-  const [selectedPart, setSelectedPart] = useState(null);
+  const [expandedId, setExpandedId] = useState(null)
+  const [showAll, setShowAll] = useState(false)
 
-  // режим "Показать все детали"
-  const [showAll, setShowAll] = useState(false);
+  const [params] = useSearchParams()
+  const focusId = params.get("focus")
+  const supplierIdParam = params.get("supplierId")
 
-  // deep-link параметры
-  const [params] = useSearchParams();
-  const focusId = params.get("focus"); // supplier_part_id для авто-открытия
-  const supplierIdParam = params.get("supplierId"); // выбрать поставщика без фокуса
-
-  // при смене поставщика — сбрасываем выбор и поиск
   useEffect(() => {
-    setSelectedPart(null);
-    setSearch("");
-  }, [supplier?.id]);
+    setExpandedId(null)
+    setSearch("")
+  }, [supplier?.id])
 
   const clearSupplier = () => {
-    setSupplier(null);
-    setSelectedPart(null);
-    setSearch("");
-    setShowAll(false); // сбрасываем режим "все"
-    setVersion((v) => v + 1);
-  };
+    setSupplier(null)
+    setExpandedId(null)
+    setSearch("")
+    setShowAll(false)
+    setVersion((v) => v + 1)
+  }
 
   const supplierSummary = useMemo(() => {
-    if (!supplier) return null;
-    const title = supplier.company || supplier.name;
+    if (!supplier) return null
+    const title = supplier.company || supplier.name
     const countryLabel = supplier.country
       ? getCountryLabel(supplier.country, "ru")
-      : null;
+      : null
 
     return (
       <Space wrap size={[8, 8]}>
@@ -82,78 +76,76 @@ export default function SupplierPartsMain() {
           Сбросить
         </Button>
       </Space>
-    );
-  }, [supplier]);
+    )
+  }, [supplier])
 
   const handleImportClick = () => {
     if (!supplier?.id) {
-      message.warning("Сначала выберите поставщика");
-      return;
+      message.warning("Сначала выберите поставщика")
+      return
     }
-    setImportOpen(true);
-  };
+    setImportOpen(true)
+  }
 
   const handleAdd = async () => {
     if (!supplier?.id) {
-      message.warning("Сначала выберите поставщика");
-      return;
+      message.warning("Сначала выберите поставщика")
+      return
     }
     try {
-      const v = await form.validateFields();
-      setAdding(true);
+      const v = await form.validateFields()
+      setAdding(true)
       await axios.post("/supplier-parts", {
         supplier_id: supplier.id,
         supplier_part_number: v.supplier_part_number,
         description: v.description || null,
         comment: v.comment || null,
         lead_time_days: v.lead_time_days ?? null,
-      });
-      message.success("Деталь поставщика создана");
-      form.resetFields();
-      setVersion((x) => x + 1);
+      })
+      message.success("Деталь поставщика добавлена")
+      form.resetFields()
+      setVersion((x) => x + 1)
     } catch (e) {
-      if (e?.response?.data?.message) message.error(e.response.data.message);
+      if (e?.response?.data?.message) message.error(e.response.data.message)
       else if (!e?.errorFields) {
-        console.error(e);
-        message.error("Не удалось создать деталь");
+        console.error(e)
+        message.error("Не удалось создать деталь")
       }
     } finally {
-      setAdding(false);
+      setAdding(false)
     }
-  };
+  }
 
-  // Инициализация только по supplierId (когда нет focus)
   useEffect(() => {
     const initSupplierOnly = async () => {
-      const sid = supplierIdParam && Number(supplierIdParam);
-      if (!sid || focusId) return;
+      const sid = supplierIdParam && Number(supplierIdParam)
+      if (!sid || focusId) return
       try {
-        const { data } = await axios.get(`/part-suppliers/${sid}`);
-        if (!data) return;
+        const { data } = await axios.get(`/part-suppliers/${sid}`)
+        if (!data) return
         setSupplier({
           id: data.id,
           company: data.company || data.name || `#${data.id}`,
           country: data.country || null,
           phone: data.phone || null,
           email: data.email || null,
-        });
-        setVersion((v) => v + 1);
+        })
+        setVersion((v) => v + 1)
       } catch (e) {
-        console.error("supplierId init failed", e);
+        console.error("supplierId init failed", e)
       }
-    };
-    initSupplierOnly();
+    }
+    initSupplierOnly()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supplierIdParam, focusId]);
+  }, [supplierIdParam, focusId])
 
-  // Инициализация по focus=ID (открыть конкретную деталь)
   useEffect(() => {
     const initFromFocus = async () => {
-      const id = focusId && Number(focusId);
-      if (!id) return;
+      const id = focusId && Number(focusId)
+      if (!id) return
       try {
-        const { data } = await axios.get(`/supplier-parts/${id}`);
-        if (!data) return;
+        const { data } = await axios.get(`/supplier-parts/${id}`)
+        if (!data) return
 
         setSupplier({
           id: data.supplier_id,
@@ -165,26 +157,25 @@ export default function SupplierPartsMain() {
           country: data.supplier_country || null,
           phone: data.supplier_phone || null,
           email: data.supplier_email || null,
-        });
+        })
 
-        setVersion((v) => v + 1);
-        setSelectedPart({ id: data.id, ...data });
+        setVersion((v) => v + 1)
+        setExpandedId(data.id)
 
         setTimeout(() => {
-          const row = document.querySelector(`[data-row-key="${id}"]`);
-          if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
-        }, 150);
+          const row = document.querySelector(`[data-row-key="${id}"]`)
+          if (row) row.scrollIntoView({ block: "center", behavior: "smooth" })
+        }, 150)
       } catch (e) {
-        console.error("focus open failed", e);
+        console.error("focus open failed", e)
       }
-    };
-    initFromFocus();
-  }, [focusId]);
+    }
+    initFromFocus()
+  }, [focusId])
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Card bodyStyle={{ paddingTop: 8 }}>
-        {/* Ряд 1: выбор поставщика и действия */}
         <Row gutter={[12, 12]} align="middle">
           <Col xs={24} md={12}>
             <Space wrap>
@@ -211,10 +202,10 @@ export default function SupplierPartsMain() {
             <Checkbox
               checked={showAll}
               onChange={(e) => {
-                const checked = e.target.checked;
-                setShowAll(checked);
-                setSelectedPart(null);
-                setVersion((v) => v + 1); // перезагрузка таблицы
+                const checked = e.target.checked
+                setShowAll(checked)
+                setExpandedId(null)
+                setVersion((v) => v + 1)
               }}
             >
               Показать все детали
@@ -230,23 +221,26 @@ export default function SupplierPartsMain() {
           </Col>
         </Row>
 
-        {/* Поиск */}
         <div className="table-section">
           <TableToolbar
-            placeholder="Поиск по номеру/описанию/комплектам…"
+            placeholder="Поиск по номеру/описанию/комментариям"
             search={search}
             onSearch={setSearch}
             disabled={!supplier && !showAll}
           />
         </div>
 
-        {/* Форма добавления */}
         <div className="table-section">
-          <Form form={form} layout="inline" disabled={!supplier}>
+          <Form
+            form={form}
+            layout="inline"
+            disabled={!supplier}
+            style={{ flexWrap: "wrap", rowGap: 8, columnGap: 12 }}
+          >
             <Form.Item
               name="supplier_part_number"
               label="№ у поставщика"
-              rules={[{ required: true, message: "Укажите номер" }]}
+              rules={[{ required: true, message: "Введите номер" }]}
             >
               <Input placeholder="например, P-12345" style={{ width: 240 }} />
             </Form.Item>
@@ -288,37 +282,28 @@ export default function SupplierPartsMain() {
           </Form>
         </div>
 
-        {/* Таблица */}
         <SupplierPartsTable
-          supplierId={supplier?.id || null}
+          supplierId={showAll ? null : supplier?.id || null}
           search={search}
           version={version}
           onReload={() => setVersion((v) => v + 1)}
-          selectedId={selectedPart?.id || null}
-          onSelectPart={setSelectedPart}
+          expandedId={expandedId}
+          onExpandChange={setExpandedId}
           showAll={showAll}
         />
       </Card>
 
-      {/* Нижняя панель с вкладками по выбранной детали */}
-      <SupplierPartDock
-        part={selectedPart}
-        onChanged={() => setVersion((v) => v + 1)}
-      />
-
-      {/* Drawer выбора поставщика */}
       <SupplierPickerDrawer
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onPick={(s) => {
-          setSupplier(s);
-          setPickerOpen(false);
-          setVersion((v) => v + 1);
+          setSupplier(s)
+          setPickerOpen(false)
+          setVersion((v) => v + 1)
         }}
         initialSupplierId={supplier?.id ?? null}
       />
 
-      {/* Импорт */}
       <ImportModal
         open={importOpen}
         type="supplier_parts"
@@ -326,11 +311,11 @@ export default function SupplierPartsMain() {
         extraParams={{ supplier_id: supplier?.id }}
         onClose={() => setImportOpen(false)}
         onSuccess={() => {
-          setImportOpen(false);
-          setVersion((v) => v + 1);
-          message.success("Импорт выполнен");
+          setImportOpen(false)
+          setVersion((v) => v + 1)
+          message.success("Импорт выполнен")
         }}
       />
     </Space>
-  );
+  )
 }
