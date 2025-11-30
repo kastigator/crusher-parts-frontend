@@ -1,282 +1,385 @@
-// src/components/orders/ClientOrdersMain.jsx
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState, useCallback } from "react"
 import {
   Card,
   Space,
   message,
-  Modal,
-  Form,
-  Input,
-  InputNumber,
+  Table,
+  Tag,
+  Select,
   DatePicker,
   Button,
-  Divider,
+  Tooltip,
+  Badge,
 } from "antd"
 import dayjs from "dayjs"
+import {
+  ReloadOutlined,
+  PlusOutlined,
+  EyeOutlined,
+  FilePdfOutlined,
+} from "@ant-design/icons"
+import ActionButtons from "@/components/common/ActionButtons"
 import axios from "@/api/axiosInstance"
 import TableToolbar from "@/components/common/TableToolbar"
-import ClientOrdersTable from "./ClientOrdersTable"
+import confirmAction from "@/utils/confirmAction"
+import { useAuth } from "@/auth/AuthContext"
+import OrderDrawer from "./OrderDrawer"
+import createTablePagination from "@/utils/tablePagination"
+import ProposalPreviewModal from "./ProposalPreviewModal"
 
-const { TextArea } = Input
+const ORDER_STATUS_META = {
+  draft: { color: "default", label: "Черновик" },
+  new: { color: "blue", label: "Новый" },
+  submitted: { color: "processing", label: "Отправлен" },
+  confirmed: { color: "success", label: "Подтверждён" },
+  rework: { color: "orange", label: "Доработка" },
+  cancelled: { color: "error", label: "Отменён" },
+}
 
-const trim = (v) => (typeof v === "string" ? v.trim() : v ?? "")
+const VIEW_AS_OPTIONS = [
+  { value: "actual", label: "Мои права" },
+  { value: "prodavec", label: "Просмотр как: Продавец" },
+  { value: "komplektovshchik", label: "Просмотр как: Комплектовщик" },
+]
+
+const getRoleSlug = (user) =>
+  (user?.role_slug || user?.role || "").toString().toLowerCase()
 
 export default function ClientOrdersMain() {
+  const { user } = useAuth()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
-  const [createOpen, setCreateOpen] = useState(false)
+  const [statusFilter, setStatusFilter] = useState(null)
+  const [dateFrom, setDateFrom] = useState(null)
+  const [dateTo, setDateTo] = useState(null)
+  const [selected, setSelected] = useState(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [viewAs, setViewAs] = useState("actual")
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [total, setTotal] = useState(0)
+  const [deletingId, setDeletingId] = useState(null)
+  const [proposalOpen, setProposalOpen] = useState(false)
+  const [proposalOrder, setProposalOrder] = useState(null)
+  const [proposalItems, setProposalItems] = useState([])
+  const [proposalLoading, setProposalLoading] = useState(false)
 
-  const [form] = Form.useForm()
+  const roleSlug = getRoleSlug(user)
+  const isAdmin = useMemo(
+    () =>
+      !!(
+        user &&
+        (roleSlug === "admin" || user.role_id === 1 || user.is_admin === true)
+      ),
+    [user, roleSlug],
+  )
 
-  // ============================
-  // Загрузка заказов
-  // ============================
+  const appliedRole = useMemo(() => {
+    if (!isAdmin || viewAs === "actual") return roleSlug
+    return viewAs // slug из опции
+  }, [roleSlug, isAdmin, viewAs])
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await axios.get("/client-orders")
-      const rows = Array.isArray(res.data) ? res.data : []
+      const params = { page, pageSize }
+      if (statusFilter) params.status = statusFilter
+      if (search.trim()) params.search = search.trim()
+      if (dateFrom) params.created_from = dateFrom.format("YYYY-MM-DD")
+      if (dateTo) params.created_to = dateTo.format("YYYY-MM-DD")
+
+      const { data } = await axios.get("/client-orders", { params })
+      const rows = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data)
+          ? data
+          : []
       setOrders(rows)
+      const pg = data?.pagination
+      if (pg) {
+        setPage(pg.page || 1)
+        setPageSize(pg.pageSize || pageSize)
+        setTotal(pg.total || rows.length)
+      } else {
+        setTotal(rows.length)
+      }
     } catch (err) {
-      console.error("Ошибка загрузки заказов клиентов:", err)
-      message.error("Не удалось загрузить заказы клиентов")
+      console.error("Ошибка загрузки заказов:", err)
+      message.error("Не удалось загрузить заказы")
     } finally {
       setLoading(false)
     }
-  }
+  }, [statusFilter, search, dateFrom, dateTo, page, pageSize])
 
   useEffect(() => {
     fetchOrders()
-  }, [])
-
-  // ============================
-  // CRUD
-  // ============================
-
-  const addRow = (order) =>
-    setOrders((prev) => [order, ...prev])
-
-  const removeRow = (id) =>
-    setOrders((prev) => prev.filter((o) => o.id !== id))
+  }, [fetchOrders])
 
   const handleOpenCreate = () => {
-    form.resetFields()
-    // по умолчанию одна строка товара
-    form.setFieldsValue({
-      items: [{ original_part_id: null, quantity: 1 }],
-    })
-    setCreateOpen(true)
+    setSelected(null)
+    setDrawerOpen(true)
   }
 
-  const handleCreate = async () => {
-    try {
-      const values = await form.validateFields()
-
-      const payload = {
-        client_id: values.client_id,
-        client_comment: trim(values.client_comment) || null,
-        internal_comment: trim(values.internal_comment) || null,
-        requested_delivery_date: values.requested_delivery_date
-          ? values.requested_delivery_date.format("YYYY-MM-DD")
-          : null,
-        items: (values.items || [])
-          .map((it) => ({
-            original_part_id: it.original_part_id || null,
-            quantity: it.quantity ?? null,
-          }))
-          .filter((it) => it.original_part_id && it.quantity),
-      }
-
-      if (!payload.client_id) {
-        message.warning("Укажите ID клиента")
-        return
-      }
-
-      if (!payload.items.length) {
-        message.warning("Добавьте хотя бы одну позицию в заказе")
-        return
-      }
-
-      const { data: created } = await axios.post("/client-orders", payload)
-      addRow(created)
-      setCreateOpen(false)
-      message.success("Заказ создан")
-    } catch (err) {
-      if (err?.errorFields) {
-        // валидация формы — уже подсветилась
-        return
-      }
-      console.error("Ошибка создания заказа клиента:", err)
-      const msg =
-        err?.response?.data?.message || "Не удалось создать заказ клиента"
-      message.error(msg)
-    }
+  const handleRowOpen = (record) => {
+    setSelected(record)
+    setDrawerOpen(true)
   }
 
   const handleDelete = async (order) => {
+    const { confirmed } = await confirmAction("Удалить заказ?")
+    if (!confirmed) return
+    setDeletingId(order.id)
     try {
-      await axios.delete(`/client-orders/${order.id}`, {
-        // на будущее: если в роуте будет оптимистичная блокировка
-        params: { version: order.version },
-      })
-      removeRow(order.id)
+      await axios.delete(`/client-orders/${order.id}`)
+      setOrders((prev) => prev.filter((o) => o.id !== order.id))
       message.success("Заказ удалён")
     } catch (err) {
-      console.error("Ошибка удаления заказа клиента:", err)
-      const msg =
-        err?.response?.data?.message || "Не удалось удалить заказ клиента"
+      console.error("Ошибка удаления заказа", err)
+      const msg = err?.response?.data?.message || "Не удалось удалить заказ"
       message.error(msg)
+    } finally {
+      setDeletingId(null)
     }
   }
 
-  // ============================
-  // Фильтрация
-  // ============================
+  const handleOpenProposal = async (order) => {
+    if (!order?.id) return
+    setProposalLoading(true)
+    try {
+      const { data } = await axios.get(`/client-orders/${order.id}`)
+      setProposalOrder(data?.order || null)
+      setProposalItems(Array.isArray(data?.items) ? data.items : [])
+      setProposalOpen(true)
+    } catch (e) {
+      console.error("load proposal error", e)
+      message.error("Не удалось открыть предложение")
+    } finally {
+      setProposalLoading(false)
+    }
+  }
+
+  const columns = useMemo(
+    () => [
+      {
+        title: "№",
+        dataIndex: "order_number",
+        key: "order_number",
+        width: 150,
+        render: (v) => v || "—",
+      },
+      {
+        title: "Заказ клиента",
+        dataIndex: "client_po_number",
+        key: "client_po_number",
+        width: 160,
+        render: (v) => v || "—",
+      },
+      {
+        title: "Клиент",
+        dataIndex: "client_company_name",
+        key: "client_company_name",
+        ellipsis: true,
+        render: (_, r) =>
+          r.client_company_name ||
+          (r.client_id ? `Клиент #${r.client_id}` : "—"),
+      },
+      {
+        title: "Статус",
+        dataIndex: "status",
+        key: "status",
+        width: 140,
+        render: (v) => {
+          const meta = ORDER_STATUS_META[v] || { color: "default", label: v || "—" }
+          return <Tag color={meta.color}>{meta.label}</Tag>
+        },
+      },
+      {
+        title: "Желаемая дата",
+        dataIndex: "requested_delivery_date",
+        width: 140,
+        render: (v) => (v ? String(v).slice(0, 10) : "—"),
+      },
+      {
+        title: "Создан",
+        dataIndex: "created_at",
+        width: 160,
+        render: (v) => (v ? String(v).replace("T", " ").slice(0, 19) : "—"),
+      },
+      {
+        title: "Ответственный",
+        dataIndex: "responsible_name",
+        width: 180,
+        render: (_, r) =>
+          r.responsible_name
+            ? r.responsible_name
+            : r.responsible_user_id
+              ? `#${r.responsible_user_id}`
+              : "—",
+      },
+      {
+        title: "Комментарий",
+        dataIndex: "comment_internal",
+        ellipsis: true,
+        render: (v, r) =>
+          v || r.comment_client ? (
+            <Tooltip title={v || r.comment_client}>
+              <Badge color="blue" text={v || r.comment_client} />
+            </Tooltip>
+          ) : (
+            "—"
+          ),
+      },
+      {
+        title: "Действия",
+        key: "actions",
+        width: 110,
+        render: (_, record) => (
+          <div onClick={(e) => e.stopPropagation()}>
+            <ActionButtons
+              size="small"
+              onDelete={() => handleDelete(record)}
+              loadingDelete={deletingId === record.id}
+              titles={{ delete: "Удалить" }}
+              extraButtons={[
+                {
+                  key: "proposal",
+                  label: "Предложение",
+                  icon: <EyeOutlined />,
+                  type: "text",
+                  showText: false,
+                  onClick: () => handleOpenProposal(record),
+                },
+              ]}
+            />
+          </div>
+        ),
+      },
+    ],
+    [handleDelete, deletingId],
+  )
 
   const filtered = useMemo(() => {
+    // серверный фильтр, но оставим лёгкий клиентский
     const q = search.trim().toLowerCase()
     if (!q) return orders
-
     return orders.filter((o) => {
       return (
         String(o.order_number || "").toLowerCase().includes(q) ||
-        String(o.client_name || "").toLowerCase().includes(q) ||
-        String(o.status || "").toLowerCase().includes(q) ||
-        String(o.client_comment || "").toLowerCase().includes(q) ||
-        String(o.internal_comment || "").toLowerCase().includes(q)
+        String(o.client_company_name || "").toLowerCase().includes(q) ||
+        String(o.comment_internal || "").toLowerCase().includes(q) ||
+        String(o.comment_client || "").toLowerCase().includes(q)
       )
     })
   }, [orders, search])
 
-  // ============================
-  // Render
-  // ============================
+  const pagination = useMemo(
+    () =>
+      createTablePagination({
+        page,
+        pageSize,
+        total,
+        setPage,
+        setPageSize,
+      }),
+    [page, pageSize, total],
+  )
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
-      <Card size="small" title="Заказы клиентов">
-        <TableToolbar
-          search={search}
-          onSearch={setSearch}
-          title={null}
-          onAdd={handleOpenCreate}
-        />
-
-        <div className="parts-table-wrap">
-          <ClientOrdersTable
-            data={filtered}
-            loading={loading}
-            onDelete={handleDelete}
+      <Card
+        size="small"
+        title={null}
+        extra={
+          <Space>
+            {isAdmin && (
+              <Select
+                size="small"
+                value={viewAs}
+                onChange={setViewAs}
+                options={VIEW_AS_OPTIONS}
+                style={{ width: 200 }}
+              />
+            )}
+            <Button icon={<ReloadOutlined />} onClick={fetchOrders}>
+              Обновить
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleOpenCreate}
+            >
+              Новый заказ
+            </Button>
+          </Space>
+        }
+      >
+        <Space
+          style={{ width: "100%", marginBottom: 12 }}
+          align="center"
+          wrap
+        >
+          <TableToolbar
+            title={null}
+            search={search}
+            onSearch={setSearch}
+            onAdd={null}
           />
-        </div>
+          <Select
+            allowClear
+            placeholder="Статус"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            style={{ width: 160 }}
+            options={Object.entries(ORDER_STATUS_META).map(([value, meta]) => ({
+              value,
+              label: meta.label,
+            }))}
+          />
+          <DatePicker
+            placeholder="Создан с"
+            value={dateFrom}
+            onChange={setDateFrom}
+          />
+          <DatePicker
+            placeholder="Создан до"
+            value={dateTo}
+            onChange={setDateTo}
+          />
+        </Space>
+
+        <Table
+          size="small"
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={filtered}
+          pagination={pagination}
+          className="op-table"
+          onRow={(record) => ({
+            onClick: () => handleRowOpen(record),
+            style: { cursor: "pointer" },
+          })}
+          rowClassName={() => "clickable-row"}
+        />
       </Card>
 
-      <Modal
-        title="Новый заказ клиента"
-        open={createOpen}
-        onCancel={() => setCreateOpen(false)}
-        onOk={handleCreate}
-        okText="Создать заказ"
-        cancelText="Отмена"
-        width={720}
-        destroyOnClose
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{
-            items: [{ original_part_id: null, quantity: 1 }],
-          }}
-        >
-          <Form.Item
-            label="ID клиента"
-            name="client_id"
-            rules={[{ required: true, message: "Укажите ID клиента" }]}
-          >
-            <InputNumber style={{ width: "100%" }} min={1} />
-          </Form.Item>
+      <OrderDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        orderId={selected?.id || null}
+        initialOrder={selected}
+        onSaved={fetchOrders}
+        viewRole={appliedRole}
+      />
 
-          <Form.Item label="Желаемая дата поставки" name="requested_delivery_date">
-            <DatePicker
-              style={{ width: "100%" }}
-              format="YYYY-MM-DD"
-              disabledDate={(d) => d && d < dayjs().startOf("day")}
-            />
-          </Form.Item>
-
-          <Form.Item label="Комментарий клиента" name="client_comment">
-            <TextArea rows={2} />
-          </Form.Item>
-
-          <Form.Item label="Внутренний комментарий" name="internal_comment">
-            <TextArea rows={2} />
-          </Form.Item>
-
-          <Divider orientation="left">Позиции заказа</Divider>
-
-          <Form.List name="items">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map((field, index) => (
-                  <Space
-                    key={field.key}
-                    align="baseline"
-                    style={{ display: "flex", marginBottom: 8 }}
-                  >
-                    <Form.Item
-                      {...field}
-                      name={[field.name, "original_part_id"]}
-                      fieldKey={[field.fieldKey, "original_part_id"]}
-                      label={index === 0 ? "ID оригинальной детали" : ""}
-                      rules={[
-                        {
-                          required: true,
-                          message: "Укажите ID оригинальной детали",
-                        },
-                      ]}
-                    >
-                      <InputNumber min={1} style={{ width: 220 }} />
-                    </Form.Item>
-
-                    <Form.Item
-                      {...field}
-                      name={[field.name, "quantity"]}
-                      fieldKey={[field.fieldKey, "quantity"]}
-                      label={index === 0 ? "Кол-во" : ""}
-                      rules={[
-                        { required: true, message: "Укажите количество" },
-                      ]}
-                    >
-                      <InputNumber
-                        min={1}
-                        style={{ width: 120 }}
-                      />
-                    </Form.Item>
-
-                    {fields.length > 1 && (
-                      <Button
-                        type="link"
-                        danger
-                        onClick={() => remove(field.name)}
-                      >
-                        Удалить
-                      </Button>
-                    )}
-                  </Space>
-                ))}
-
-                <Form.Item>
-                  <Button type="dashed" onClick={() => add()} block>
-                    Добавить позицию
-                  </Button>
-                </Form.Item>
-              </>
-            )}
-          </Form.List>
-        </Form>
-      </Modal>
+      <ProposalPreviewModal
+        open={proposalOpen}
+        onClose={() => setProposalOpen(false)}
+        order={proposalOrder}
+        items={proposalItems}
+        viewRole={appliedRole}
+      />
     </Space>
   )
 }

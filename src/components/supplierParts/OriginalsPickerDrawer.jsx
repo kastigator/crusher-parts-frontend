@@ -66,6 +66,11 @@ export default function OriginalsPickerDrawer({
     abortRef.current = null;
   };
 
+  const excludeKey = useMemo(
+    () => (excludeIds || []).map((id) => Number(id)).sort().join(","),
+    [excludeIds],
+  )
+
   const fetchList = useCallback(async () => {
     if (!open) return;
 
@@ -108,15 +113,7 @@ export default function OriginalsPickerDrawer({
     } finally {
       setLoading(false);
     }
-  }, [
-    open,
-    manufacturer?.id,
-    model?.id,
-    q,
-    onlyAssemblies,
-    onlyParts,
-    excludeIds,
-  ]);
+  }, [open, manufacturer?.id, model?.id, q, onlyAssemblies, onlyParts, excludeKey]);
 
   // авто-загрузка при изменении фильтров/поиска
   useEffect(() => {

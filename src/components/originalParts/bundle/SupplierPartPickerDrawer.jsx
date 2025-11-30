@@ -9,6 +9,9 @@ export default function SupplierPartPickerDrawer({
   onClose,
   excludeIds = [],
   onPick,
+  initialQuery = "",
+  getContainer,
+  zIndex,
 }) {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState([]);
@@ -53,16 +56,19 @@ export default function SupplierPartPickerDrawer({
 
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => doSearch(q), 250);
+    const queryToUse = q?.trim() ? q : initialQuery?.trim?.() || "";
+    const t = setTimeout(() => doSearch(queryToUse), 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, open, (excludeIds || []).join(",")]);
+  }, [q, open, (excludeIds || []).join(","), initialQuery]);
 
   useEffect(() => {
     if (!open) {
       setQ("");
       setRows([]);
       setSelectedRowKeys([]);
+    } else if (initialQuery && !q) {
+      setQ(initialQuery);
     }
   }, [open]);
 
@@ -128,6 +134,8 @@ export default function SupplierPartPickerDrawer({
       destroyOnClose
       keyboard
       maskClosable
+      getContainer={getContainer}
+      zIndex={zIndex}
       styles={{ body: { paddingTop: 8 } }}
       extra={
         <Space>

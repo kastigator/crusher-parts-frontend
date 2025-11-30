@@ -25,6 +25,7 @@ export default function ActionButtons({
   onCancel,
   onDelete,
   onHistory,
+  extraButtons, // [{ key, label, onClick, icon, type, danger, disabled }]
   loadingSave = false,
   loadingDelete = false,
   disabledEdit = false,
@@ -108,6 +109,23 @@ export default function ActionButtons({
           />
         </Tooltip>
       )}
+
+      {Array.isArray(extraButtons) &&
+        extraButtons.map((btn) => (
+          <Tooltip title={btn.label} key={btn.key}>
+            <Button
+              aria-label={btn.label}
+              icon={btn.icon}
+              size={size}
+              type={btn.type || "default"}
+              danger={btn.danger}
+              disabled={btn.disabled}
+              onClick={btn.onClick}
+            >
+              {btn.showText === false ? null : (btn.text || btn.label)}
+            </Button>
+          </Tooltip>
+        ))}
     </Space>
   )
 }
