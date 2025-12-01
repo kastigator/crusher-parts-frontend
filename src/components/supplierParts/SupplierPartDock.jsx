@@ -3,6 +3,7 @@ import React, { useMemo, useState } from "react"
 import { Card, Tabs, Space, Tag, Typography, Empty } from "antd"
 import PriceHistoryTab from "./PriceHistoryTab"
 import OriginalsLinkTab from "./OriginalsLinkTab"
+import SupplierPartMaterialsTab from "./SupplierPartMaterialsTab"
 
 const { Text } = Typography
 
@@ -41,16 +42,21 @@ export default function SupplierPartDock({ part, onChanged = () => {} }) {
           onChange={setActiveKey}
           destroyInactiveTabPane
           items={[
-            {
-              key: "prices",
-              label: "История цен",
-              children: <PriceHistoryTab supplierPartId={part.id} onChanged={onChanged} />,
-            },
-            {
-              key: "links",
-              label: (
-                <Space size={6}>
-                  Привязки к оригиналам
+          {
+            key: "prices",
+            label: "История цен",
+            children: <PriceHistoryTab supplierPartId={part.id} onChanged={onChanged} />,
+          },
+          {
+            key: "materials",
+            label: "Материалы",
+            children: <SupplierPartMaterialsTab supplierPartId={part.id} />,
+          },
+          {
+            key: "links",
+            label: (
+              <Space size={6}>
+                Привязки к оригиналам
                   <Tag color="blue">
                     {part.original_cat_numbers ? part.original_cat_numbers.split(",").length : 0}
                   </Tag>

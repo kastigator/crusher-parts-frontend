@@ -8,6 +8,7 @@ import AltOriginalsTable from "./AltOriginalsTable"
 import SuppliersLinksTab from "./SuppliersLinksTab"
 import BundleTab from "./bundle/BundleTab"
 import OriginalPartDocumentsTab from "./OriginalPartDocumentsTab"
+import OriginalPartMaterialsTab from "./OriginalPartMaterialsTab"
 
 const { Text } = Typography
 
@@ -80,6 +81,11 @@ export default function DetailDock({
             key: "suppliers",
             label: "Связанные поставщики",
             children: <SuppliersLinksTab originalPartId={partId} />,
+          },
+          {
+            key: "materials",
+            label: "Материалы",
+            children: <OriginalPartMaterialsTab partId={partId} />,
           },
           {
             key: "bundle",

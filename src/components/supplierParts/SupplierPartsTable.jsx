@@ -379,6 +379,22 @@ export default function SupplierPartsTable({
     })
 
     cols.push({
+      title: "Материалы",
+      dataIndex: "default_material_name",
+      width: 180,
+      render: (_, record) => {
+        const cnt = record.materials_count || 0
+        if (record.default_material_name) {
+          return <Tag color="blue">{record.default_material_name}</Tag>
+        }
+        if (cnt > 0) {
+          return <Tag>{cnt}</Tag>
+        }
+        return <span style={{ color: "#9ca3af" }}>—</span>
+      },
+    })
+
+    cols.push({
       title: "Срок поставки, дн",
       dataIndex: "lead_time_days",
       width: 130,

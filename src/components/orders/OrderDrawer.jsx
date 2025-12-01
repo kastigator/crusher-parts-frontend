@@ -469,7 +469,12 @@ export default function OrderDrawer({
         render: (_, record) => (
           <Button
             size="small"
-            onClick={() => setOfferModalItem(record)}
+            onClick={() =>
+              setOfferModalItem({
+                ...record,
+                order_currency: order?.currency || record?.order_currency || null,
+              })
+            }
           >
             {record.offers?.length ? `Офферы (${record.offers.length})` : "Добавить оффер"}
           </Button>

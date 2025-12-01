@@ -20,6 +20,7 @@ import {
 import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
 import cc from "currency-codes"
+import SupplierPartMaterialsTab from "./SupplierPartMaterialsTab"
 import {
   LineChart,
   Line,
@@ -28,6 +29,7 @@ import {
   CartesianGrid,
   Tooltip as ReTooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts"
 import ActionButtons from "@/components/common/ActionButtons"
 
@@ -44,12 +46,26 @@ const minDay = (dates) =>
 const maxDay = (dates) =>
   dates.reduce((max, d) => (!max || d.isAfter(max) ? d : max), null)
 
+const COLORS = [
+  "#4f46e5",
+  "#22c55e",
+  "#eab308",
+  "#ec4899",
+  "#06b6d4",
+  "#a855f7",
+  "#f97316",
+  "#0ea5e9",
+]
+
 export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [adding, setAdding] = useState(false)
   const [form] = Form.useForm()
   const abortRef = useRef(null)
+
+  const [materials, setMaterials] = useState([])
+  const [materialFilter, setMaterialFilter] = useState(null)
 
   // inline-edit
   const [editingId, setEditingId] = useState(null)
@@ -58,6 +74,11 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
   // фильтр для графика
   const [periodPreset, setPeriodPreset] = useState("all") // all | 3m | 1y | custom
   const [customRange, setCustomRange] = useState([null, null])
+
+  // конвертация валют для графика
+  const [baseCurrency, setBaseCurrency] = useState("raw") // raw | ISO3
+  const [fxRates, setFxRates] = useState({})
+  const [fxProblem, setFxProblem] = useState(null)
 
   const popupContainer = (trigger) =>
     trigger?.closest(".dock-shell") ||
@@ -71,13 +92,23 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
         setRows([])
         return
       }
+      // загрузим допустимые материалы для детали
+      try {
+        const { data } = await axios.get(`/supplier-part-materials/${supplierPartId}`)
+        setMaterials(Array.isArray(data) ? data : [])
+      } catch (e) {
+        console.warn("Не удалось загрузить материалы детали", e)
+      }
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
       setLoading(true)
       try {
         const { data } = await axios.get("/supplier-part-prices", {
-          params: { supplier_part_id: supplierPartId },
+          params: {
+            supplier_part_id: supplierPartId,
+            material_id: materialFilter || undefined,
+          },
           signal: controller.signal,
         })
         const arr = Array.isArray(data) ? data : []
@@ -94,7 +125,7 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
         setLoading(false)
       }
     },
-    [supplierPartId]
+    [supplierPartId, materialFilter]
   )
 
   useEffect(() => {
@@ -103,7 +134,54 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
       clearTimeout(t)
       abortRef.current?.abort()
     }
-  }, [load, supplierPartId])
+  }, [load, supplierPartId, materialFilter])
+
+  const availableCurrencies = useMemo(() => {
+    const set = new Set(
+      rows.map((r) => r.currency).filter((c) => typeof c === "string" && c)
+    )
+    return Array.from(set)
+  }, [rows])
+
+  useEffect(() => {
+    const loadFx = async () => {
+      if (baseCurrency === "raw") {
+        setFxRates({})
+        setFxProblem(null)
+        return
+      }
+      const symbols = availableCurrencies.filter((c) => c !== baseCurrency)
+      if (!symbols.length) {
+        setFxRates({})
+        setFxProblem(null)
+        return
+      }
+      try {
+        const { data } = await axios.get("/fx/rates", {
+          params: { base: baseCurrency, symbols: symbols.join(",") },
+        })
+        const rates = {}
+        Object.entries(data?.rates || {}).forEach(([code, val]) => {
+          if (val && Number.isFinite(val.rate)) rates[code] = Number(val.rate)
+        })
+        const missing = symbols.filter((s) => rates[s] === undefined)
+        if (missing.length) {
+          setFxProblem(
+            `Не удалось получить курсы: ${missing.join(", ")}. Показаны без конвертации для этих валют.`
+          )
+        } else {
+          setFxProblem(null)
+        }
+        setFxRates(rates)
+      } catch (e) {
+        console.error(e)
+        setFxProblem("Не удалось загрузить курсы валют — показано без конвертации.")
+        setFxRates({})
+      }
+    }
+    loadFx()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseCurrency, availableCurrencies.join(",")])
 
   // ----- добавление -----
   const addPrice = async () => {
@@ -116,6 +194,7 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
       setAdding(true)
       await axios.post("/supplier-part-prices", {
         supplier_part_id: supplierPartId,
+        material_id: v.material_id || null,
         price: v.price,
         currency: v.currency || null,
         date: v.date ? v.date.startOf("day").toDate() : new Date(),
@@ -159,6 +238,7 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
       currency: row.currency || null,
       date: row.date ? dayjs(row.date) : null,
       comment: row.comment || "",
+      material_id: row.material_id || null,
     })
   }
 
@@ -177,6 +257,7 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
           ? editingDraft.date.startOf("day").toDate()
           : null,
         comment: editingDraft.comment || null,
+        material_id: editingDraft.material_id || null,
       }
       await axios.put(`/supplier-part-prices/${editingId}`, payload)
       message.success("Запись обновлена")
@@ -202,9 +283,36 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
   }
 
   // ----- данные для графика -----
-  const { chartData, fullMin, fullMax } = useMemo(() => {
+  const convertPrice = useCallback(
+    (price, currency) => {
+      if (price == null) return null
+      const cur = currency || ""
+      if (baseCurrency === "raw" || !baseCurrency) {
+        return { value: Number(price), currency: cur }
+      }
+      if (!cur) {
+        return { value: Number(price), currency: "" }
+      }
+      if (cur === baseCurrency) {
+        return { value: Number(price), currency: baseCurrency }
+      }
+      const rate = fxRates?.[cur]
+      if (!rate || !Number.isFinite(rate)) {
+        // нет курса — показываем сырые данные, чтобы точка не пропадала
+        return { value: Number(price), currency: cur, sourceCurrency: cur, noRate: true }
+      }
+      return {
+        value: Number(price) / Number(rate),
+        currency: baseCurrency,
+        sourceCurrency: cur,
+      }
+    },
+    [baseCurrency, fxRates]
+  )
+
+  const { chartData, fullMin, fullMax, chartSeries } = useMemo(() => {
     if (!rows.length) {
-      return { chartData: [], fullMin: null, fullMax: null }
+      return { chartData: [], fullMin: null, fullMax: null, chartSeries: [] }
     }
 
     const sortedAsc = [...rows].sort(
@@ -241,15 +349,59 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
       return true
     })
 
-    const data = filtered.map((r) => ({
-      date: dayjs(r.date).format("YYYY-MM-DD"),
-      price: Number(r.price),
-      currency: r.currency,
-      comment: r.comment,
-    }))
+    const materialInfo = {}
+    materials.forEach((m) => {
+      materialInfo[m.material_id || 0] = {
+        name: m.material_name,
+        standard: m.material_standard,
+      }
+    })
+    filtered.forEach((r) => {
+      if (!materialInfo[r.material_id || 0]) {
+        materialInfo[r.material_id || 0] = {
+          name: r.material_name || "Без материала",
+          standard: r.material_standard || "",
+        }
+      }
+    })
 
-    return { chartData: data, fullMin: minD, fullMax: maxD }
-  }, [rows, periodPreset, customRange])
+    const pointsMap = new Map()
+    filtered.forEach((r) => {
+      const dateKey = dayjs(r.date).format("YYYY-MM-DD")
+      const converted = convertPrice(r.price, r.currency)
+      if (!converted) return
+      const matId = r.material_id || 0
+      const seriesKey = `m_${matId}`
+      if (!pointsMap.has(dateKey)) pointsMap.set(dateKey, { date: dateKey })
+      const obj = pointsMap.get(dateKey)
+      obj[seriesKey] = converted.value
+      obj[`${seriesKey}__currency`] =
+        converted.currency || converted.sourceCurrency || r.currency || ""
+      obj[`${seriesKey}__source`] = r.currency || ""
+    })
+
+    const data = Array.from(pointsMap.values()).sort(
+      (a, b) => dayjs(a.date).valueOf() - dayjs(b.date).valueOf()
+    )
+
+    const series = Object.entries(materialInfo)
+      .map(([id, meta]) => {
+        const key = `m_${id}`
+        const hasData = data.some((row) => row[key] != null)
+        return hasData
+          ? {
+              key,
+              materialId: Number(id),
+              name: meta.standard
+                ? `${meta.name} (${meta.standard})`
+                : meta.name,
+            }
+          : null
+      })
+      .filter(Boolean)
+
+    return { chartData: data, fullMin: minD, fullMax: maxD, chartSeries: series }
+  }, [rows, periodPreset, customRange, materials, convertPrice])
 
   const handlePresetClick = (preset) => {
     setPeriodPreset(preset)
@@ -336,6 +488,29 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
         ),
     },
     {
+      title: "Материал",
+      dataIndex: "material_name",
+      width: 200,
+      render: (v, row) =>
+        editingId === row.id ? (
+          <Select
+            allowClear
+            size="small"
+            style={{ width: 200 }}
+            value={editingDraft?.material_id || null}
+            onChange={(val) =>
+              setEditingDraft((d) => ({ ...d, material_id: val || null }))
+            }
+            options={materials.map((m) => ({
+              value: m.material_id,
+              label: `${m.material_name}${m.material_standard ? " · " + m.material_standard : ""}`,
+            }))}
+          />
+        ) : (
+          v || "—"
+        ),
+    },
+    {
       title: "Комментарий",
       dataIndex: "comment",
       render: (v, row) =>
@@ -368,6 +543,23 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
 
   return (
     <div className="parts-table-wrap subtable-shell dock-shell">
+      {/* фильтр по материалу */}
+      <Space style={{ marginBottom: 8 }} wrap>
+        <span style={{ fontSize: 12, color: "#6b7280" }}>Фильтр по материалу:</span>
+        <Select
+          allowClear
+          size="small"
+          style={{ width: 240 }}
+          placeholder="Все материалы"
+          value={materialFilter}
+          onChange={(v) => setMaterialFilter(v || null)}
+          options={materials.map((m) => ({
+            value: m.material_id,
+            label: `${m.material_name}${m.material_standard ? " · " + m.material_standard : ""}`,
+          }))}
+        />
+      </Space>
+
       {/* форма добавления */}
       <Form
         form={form}
@@ -407,6 +599,17 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
 
         <Form.Item name="comment" label="Комментарий" style={{ flex: 1 }}>
           <Input placeholder="По прайсу №…" style={{ minWidth: 220 }} />
+        </Form.Item>
+        <Form.Item name="material_id" label="Материал">
+          <Select
+            allowClear
+            placeholder="Не выбран"
+            style={{ width: 220 }}
+            options={materials.map((m) => ({
+              value: m.material_id,
+              label: `${m.material_name}${m.material_standard ? " · " + m.material_standard : ""}`,
+            }))}
+          />
         </Form.Item>
 
         <Form.Item>
@@ -459,6 +662,22 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
             <span style={{ fontWeight: 500 }}>График изменений цены</span>
 
             <Space size={8} wrap>
+              <span style={{ fontSize: 12, color: "#6b7280" }}>
+                Валюта для графика:
+              </span>
+              <Select
+                size="small"
+                style={{ width: 200 }}
+                value={baseCurrency}
+                onChange={(v) => setBaseCurrency(v)}
+                options={[
+                  { value: "raw", label: "Без конвертации" },
+                  ...availableCurrencies.map((c) => ({
+                    value: c,
+                    label: `В ${c}`,
+                  })),
+                ]}
+              />
               <span>Период:</span>
               <RangePicker
                 allowEmpty={[true, true]}
@@ -508,29 +727,89 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
               </div>
             ) : (
               <ResponsiveContainer>
-                <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 20, left: 0 }}>
+                <LineChart
+                  data={chartData}
+                  margin={{ top: 10, right: 10, bottom: 20, left: 0 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis
                     dataKey="date"
                     tickFormatter={(v) => dayjs(v).format("DD.MM.YYYY")}
                     minTickGap={20}
                   />
-                  <YAxis />
-                  <ReTooltip
-                    formatter={(value, name, props) => [
-                      Number(value).toFixed(2),
-                      "Цена",
-                    ]}
-                    labelFormatter={(label) =>
-                      dayjs(label).format("DD.MM.YYYY")
+                  <YAxis
+                    label={
+                      baseCurrency !== "raw"
+                        ? { value: baseCurrency, position: "insideTopRight", offset: 8 }
+                        : undefined
                     }
                   />
-                  <Line
-                    type="linear"
-                    dataKey="price"
-                    dot={{ r: 3 }}
-                    activeDot={{ r: 5 }}
+                  <ReTooltip
+                    content={({ label, payload }) => {
+                      if (!payload || !payload.length) return null
+                      return (
+                        <div
+                          style={{
+                            background: "#fff",
+                            border: "1px solid #e5e7eb",
+                            padding: 8,
+                            borderRadius: 6,
+                          }}
+                        >
+                          <div style={{ marginBottom: 4, fontWeight: 600 }}>
+                            {dayjs(label).format("DD.MM.YYYY")}
+                          </div>
+                          {payload.map((p) => {
+                            const currency =
+                              p.payload?.[`${p.dataKey}__currency`] || ""
+                            const sourceCur =
+                              p.payload?.[`${p.dataKey}__source`] || currency
+                            return (
+                              <div
+                                key={p.dataKey}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  marginBottom: 2,
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    width: 10,
+                                    height: 10,
+                                    background: p.color,
+                                    display: "inline-block",
+                                    borderRadius: 2,
+                                  }}
+                                />
+                                <span style={{ flex: 1 }}>{p.name}:</span>
+                                <span>
+                                  {Number(p.value).toFixed(2)} {currency}
+                                  {baseCurrency !== "raw" && sourceCur
+                                    ? ` (из ${sourceCur})`
+                                    : ""}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    }}
                   />
+                  <Legend />
+                  {chartSeries.map((s, idx) => (
+                    <Line
+                      key={s.key}
+                      name={s.name}
+                      type="linear"
+                      dataKey={s.key}
+                      stroke={COLORS[idx % COLORS.length]}
+                      dot={{ r: 3 }}
+                      activeDot={{ r: 5 }}
+                      connectNulls
+                    />
+                  ))}
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -541,6 +820,16 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
               Период данных:{" "}
               {fullMin.format("DD.MM.YYYY")} —{" "}
               {fullMax.format("DD.MM.YYYY")}
+            </div>
+          )}
+          {fxProblem && (
+            <div style={{ marginTop: 4, fontSize: 11, color: "#d97706" }}>
+              {fxProblem}
+            </div>
+          )}
+          {availableCurrencies.length > 1 && baseCurrency === "raw" && (
+            <div style={{ marginTop: 4, fontSize: 11, color: "#999" }}>
+              В данных несколько валют. Выберите конвертацию, чтобы корректно сравнить линии.
             </div>
           )}
         </div>

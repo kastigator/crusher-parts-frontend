@@ -13,12 +13,20 @@ import {
   Checkbox,
   Alert,
   Typography,
+  Tabs,
+  Card,
+  Descriptions,
+  Tooltip,
 } from "antd"
+import { InfoCircleOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import SupplierPartPickerDrawer from "@/components/originalParts/bundle/SupplierPartPickerDrawer"
 import CurrencySelect from "@/components/inputs/CurrencySelect"
 
 const { Text } = Typography
+
+const fmtMoney = (v, cur) =>
+  v == null || Number.isNaN(Number(v)) ? "—" : `${Number(v).toFixed(2)} ${cur || ""}`
 
 const OFFER_STATUS_META = {
   draft: { color: "default", label: "Черновик" },
@@ -41,6 +49,7 @@ const INITIAL_FORM = {
   packaging: "",
   markup_pct: null,
   markup_abs: null,
+  material_id: null,
   client_price: null,
   client_currency: "USD",
   status: "proposed",
@@ -72,6 +81,17 @@ export default function OfferModal({
   const [offersLoading, setOffersLoading] = useState(false)
   const [selectedVariantKeys, setSelectedVariantKeys] = useState([])
   const [selectedVariants, setSelectedVariants] = useState([])
+  const [activeTab, setActiveTab] = useState("ready")
+  const [materials, setMaterials] = useState([])
+  const [materialsLoading, setMaterialsLoading] = useState(false)
+  const [calc, setCalc] = useState(null)
+  const [calcLoading, setCalcLoading] = useState(false)
+  const [readyMarkupPct, setReadyMarkupPct] = useState(null)
+  const [readyMarkupAbs, setReadyMarkupAbs] = useState(null)
+  const [readyRouteId, setReadyRouteId] = useState(null)
+  const [readyCalcs, setReadyCalcs] = useState({})
+  const [readyCalcLoading, setReadyCalcLoading] = useState(false)
+  const [readyRouteByKey, setReadyRouteByKey] = useState({})
 
   useEffect(() => {
     if (!open) {
@@ -81,8 +101,22 @@ export default function OfferModal({
       setOffers([])
       setSelectedVariantKeys([])
       setSelectedVariants([])
+      setMaterials([])
+      setCalc(null)
+      setReadyCalcs({})
+      setReadyRouteByKey({})
       return
     }
+    setActiveTab("ready")
+    setCalc(null)
+    if (item?.order_currency) {
+      setFormValues((prev) => ({ ...prev, client_currency: item.order_currency }))
+    }
+    setReadyMarkupPct(null)
+    setReadyMarkupAbs(null)
+    setReadyRouteId(null)
+    setReadyCalcs({})
+    setReadyRouteByKey({})
     const loadRoutes = async () => {
       try {
         const { data } = await axios.get("/logistics-routes")
@@ -145,6 +179,168 @@ export default function OfferModal({
     }
   }
 
+  const loadMaterials = async (supplierPartId) => {
+    if (!supplierPartId) {
+      setMaterials([])
+      return
+    }
+    setMaterialsLoading(true)
+    try {
+      const { data } = await axios.get(`/supplier-part-materials/${supplierPartId}`)
+      setMaterials(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error("load materials error", e)
+      setMaterials([])
+    } finally {
+      setMaterialsLoading(false)
+    }
+  }
+
+  const convertFx = async (amount, from, to) => {
+    const fromCur = (from || "").trim().toUpperCase()
+    const toCur = (to || "").trim().toUpperCase()
+    if (amount == null || !Number.isFinite(Number(amount))) {
+      return { value: null, rate: null }
+    }
+    if (!fromCur || !toCur || fromCur === toCur) {
+      return { value: Number(amount), rate: 1 }
+    }
+    const { data } = await axios.get("/fx/convert", {
+      params: { from: fromCur, to: toCur, amount: amount },
+    })
+    return {
+      value: data?.converted ?? Number(amount) * (data?.rate || 1),
+      rate: data?.rate || null,
+    }
+  }
+
+  const handleCalculate = async () => {
+    try {
+      setCalcLoading(true)
+      const targetCurrency =
+        formValues.client_currency ||
+        item?.order_currency ||
+        formValues.supplier_currency ||
+        "USD"
+      const supplierCurrency = formValues.supplier_currency || targetCurrency
+      const route = routes.find((r) => r.id === formValues.logistics_route_id)
+      const rawLogi =
+        formValues.logistics_cost != null
+          ? Number(formValues.logistics_cost)
+          : route?.cost != null
+            ? Number(route.cost)
+            : null
+      const surchargePct = route?.surcharge_pct != null ? Number(route.surcharge_pct) : 0
+      const surchargeAbs = route?.surcharge_abs != null ? Number(route.surcharge_abs) : 0
+      const logiWithSurcharge =
+        rawLogi != null ? rawLogi * (1 + surchargePct / 100) + surchargeAbs : null
+      const logisticsCurrency =
+        formValues.logistics_currency || route?.currency || targetCurrency
+
+      const supplierPrice = formValues.supplier_price != null ? Number(formValues.supplier_price) : null
+      const supplierConv = await convertFx(supplierPrice, supplierCurrency, targetCurrency)
+      const logisticsConv = await convertFx(logiWithSurcharge, logisticsCurrency, targetCurrency)
+
+      const dutyRate = item?.tnved_duty_rate != null ? Number(item.tnved_duty_rate) : null
+      const dutyAmount =
+        dutyRate != null && (supplierConv.value != null || logisticsConv.value != null)
+          ? ((supplierConv.value || 0) + (logisticsConv.value || 0)) * dutyRate * 0.01
+          : null
+
+      const landed =
+        supplierConv.value != null || logisticsConv.value != null || dutyAmount != null
+          ? (supplierConv.value || 0) + (logisticsConv.value || 0) + (dutyAmount || 0)
+          : null
+      const mp = formValues.markup_pct != null ? Number(formValues.markup_pct) : 0
+      const ma = formValues.markup_abs != null ? Number(formValues.markup_abs) : 0
+      const clientPrice = landed != null ? landed * (1 + mp / 100) + ma : null
+
+      setCalc({
+        target_currency: targetCurrency,
+        supplier: { amount: supplierPrice, currency: supplierCurrency, converted: supplierConv.value, fx_rate: supplierConv.rate },
+        logistics: {
+          amount: rawLogi,
+          currency: logisticsCurrency,
+          surcharge_pct: surchargePct || null,
+          surcharge_abs: surchargeAbs || null,
+          with_surcharge: logiWithSurcharge,
+          converted: logisticsConv.value,
+          fx_rate: logisticsConv.rate,
+        },
+        duty_amount: dutyAmount,
+        duty_rate: dutyRate,
+        landed_cost: landed,
+        markup_pct: formValues.markup_pct,
+        markup_abs: formValues.markup_abs,
+        client_price: clientPrice,
+        eta: route?.eta_days != null || formValues.lead_time_days != null
+          ? (Number(formValues.lead_time_days || 0) + Number(route?.eta_days || 0))
+          : null,
+      })
+    } catch (e) {
+      console.error("calc error", e)
+      message.error("Не удалось пересчитать цену")
+    } finally {
+      setCalcLoading(false)
+    }
+  }
+
+  const computeReadyCalcs = async () => {
+    setReadyCalcLoading(true)
+    try {
+      const targetCurrency =
+        item?.order_currency ||
+        formValues.client_currency ||
+        formValues.supplier_currency ||
+        "USD"
+      const res = {}
+      for (const row of suggestionRows) {
+        const routeId = readyRouteByKey[row.key] ?? readyRouteId
+        const route = routes.find((r) => r.id === routeId)
+        const supplierPrice = row.latest_price != null ? Number(row.latest_price) : null
+        const supplierCurrency = row.latest_price_currency || targetCurrency
+        const rawLogi =
+          route?.cost != null ? Number(route.cost) : null
+        const surchargePct = route?.surcharge_pct != null ? Number(route.surcharge_pct) : 0
+        const surchargeAbs = route?.surcharge_abs != null ? Number(route.surcharge_abs) : 0
+        const logiWithSurcharge =
+          rawLogi != null ? rawLogi * (1 + surchargePct / 100) + surchargeAbs : null
+        const logisticsCurrency = route?.currency || targetCurrency
+
+        const supplierConv = await convertFx(supplierPrice, supplierCurrency, targetCurrency)
+        const logisticsConv = await convertFx(logiWithSurcharge, logisticsCurrency, targetCurrency)
+
+        const dutyRate = item?.tnved_duty_rate != null ? Number(item.tnved_duty_rate) : null
+        const dutyAmount =
+          dutyRate != null && (supplierConv.value != null || logisticsConv.value != null)
+            ? ((supplierConv.value || 0) + (logisticsConv.value || 0)) * dutyRate * 0.01
+            : null
+
+        const landed =
+          supplierConv.value != null || logisticsConv.value != null || dutyAmount != null
+            ? (supplierConv.value || 0) + (logisticsConv.value || 0) + (dutyAmount || 0)
+            : null
+
+        const mp = readyMarkupPct != null ? Number(readyMarkupPct) : 0
+        const ma = readyMarkupAbs != null ? Number(readyMarkupAbs) : 0
+        const clientPrice = landed != null ? landed * (1 + mp / 100) + ma : null
+        const eta = (route?.eta_days != null ? Number(route.eta_days) : 0) + 0
+
+        res[row.key] = {
+          client_price: clientPrice,
+          currency: targetCurrency,
+          eta: Number.isFinite(eta) && eta > 0 ? eta : null,
+        }
+      }
+      setReadyCalcs(res)
+    } catch (e) {
+      console.error("ready calc error", e)
+      message.error("Не удалось пересчитать варианты")
+    } finally {
+      setReadyCalcLoading(false)
+    }
+  }
+
   const loadOffers = async (orderItemId) => {
     if (!orderItemId) {
       setOffers([])
@@ -175,15 +371,20 @@ export default function OfferModal({
   }
 
   const quickAddSelected = async () => {
-    if (!item?.id || !selectedSuggestions.length) return
+    const rows = selectedVariants
+    if (!item?.id || !rows.length) return
     try {
       await Promise.all(
-        selectedSuggestions.map(async (row) => {
+        rows.map(async (row) => {
           await linkToOriginal(row.supplier_part_id)
           await axios.post(`/client-orders/items/${item.id}/offers`, {
             supplier_part_id: row.supplier_part_id,
+            material_id: row.material_id || null,
             supplier_price: row.latest_price ?? null,
             supplier_currency: row.latest_price_currency || null,
+            markup_pct: readyMarkupPct,
+            markup_abs: readyMarkupAbs,
+            logistics_route_id: readyRouteByKey[row.key] ?? readyRouteId,
             status: "proposed",
           })
         }),
@@ -203,8 +404,12 @@ export default function OfferModal({
     await linkToOriginal(row.supplier_part_id)
     await axios.post(`/client-orders/items/${item.id}/offers`, {
       supplier_part_id: row.supplier_part_id,
+      material_id: row.material_id || null,
       supplier_price: row.latest_price ?? null,
       supplier_currency: row.latest_price_currency || null,
+      markup_pct: readyMarkupPct,
+      markup_abs: readyMarkupAbs,
+      logistics_route_id: readyRouteByKey[row.key] ?? readyRouteId,
       status: "proposed",
     })
   }
@@ -274,6 +479,7 @@ export default function OfferModal({
       await loadOffers(item.id)
       onOffersUpdated?.()
       setFormValues(INITIAL_FORM)
+      setCalc(null)
     } catch (e) {
       console.error("add offer error", e)
       message.error(e?.response?.data?.message || "Не удалось добавить оффер")
@@ -375,12 +581,12 @@ export default function OfferModal({
       },
       {
         title: "Деталь / Комплектация",
-        dataIndex: "supplier_part_number",
+        dataIndex: "supplier_part_description",
         width: 220,
         ellipsis: true,
         render: (v, r) => (
           <Space direction="vertical" size={2}>
-            <span>{v || "—"}</span>
+            <span>{v || r.comment_internal || "—"}</span>
             {r.bundle_id && r.comment_internal && (
               <Text type="secondary" style={{ fontSize: 12 }}>
                 {r.comment_internal}
@@ -548,6 +754,601 @@ export default function OfferModal({
 
   const editingDisabled = !item?.id
 
+  const suggestionRows = useMemo(() => {
+    const rows = []
+    suggestions.forEach((s) => {
+      if (Array.isArray(s.materials) && s.materials.length) {
+        s.materials.forEach((m) => {
+          rows.push({
+            key: `part-${s.supplier_part_id}-mat-${m.material_id}`,
+            type: "part",
+            supplier_name: s.supplier_name,
+            supplier_public_code: s.supplier_public_code,
+            supplier_part_number: s.supplier_part_number,
+            supplier_description: s.description,
+            material_label: m.material_name || m.material_code || m.material_id,
+            material_id: m.material_id,
+            latest_price: m.latest_price != null ? m.latest_price : s.latest_price,
+            latest_price_currency: m.latest_currency || s.latest_price_currency,
+            raw: { ...s, material: m },
+          })
+        })
+      } else {
+        rows.push({
+          key: `part-${s.supplier_part_id}`,
+          type: "part",
+          supplier_name: s.supplier_name,
+          supplier_public_code: s.supplier_public_code,
+          supplier_part_number: s.supplier_part_number,
+          supplier_description: s.description,
+          latest_price: s.latest_price,
+          latest_price_currency: s.latest_price_currency,
+          raw: s,
+        })
+      }
+    })
+    return rows
+  }, [suggestions])
+
+  const readyTabContent = (
+    <>
+      <Divider orientation="left" style={{ margin: "4px 0" }}>
+        Варианты для добавления (чекбоксами можно выбрать несколько)
+      </Divider>
+      <Space wrap align="center" style={{ marginBottom: 8 }}>
+        <Select
+          placeholder="Маршрут для быстрых добавлений"
+          allowClear
+          style={{ minWidth: 220 }}
+          value={readyRouteId}
+          onChange={setReadyRouteId}
+          options={routes.map((r) => ({ value: r.id, label: r.name || `Маршрут #${r.id}` }))}
+        />
+        <InputNumber
+          placeholder="Маржа, %"
+          value={readyMarkupPct}
+          onChange={setReadyMarkupPct}
+          addonAfter={
+            <Tooltip title="Процент наценки от себестоимости (цена пост. + логистика + пошлина)">
+              <InfoCircleOutlined />
+            </Tooltip>
+          }
+        />
+        <InputNumber
+          placeholder="Маржа, ед."
+          value={readyMarkupAbs}
+          onChange={setReadyMarkupAbs}
+          addonAfter={
+            <Tooltip title="Фиксированная наценка в валюте заказа, прибавляется после процента">
+              <InfoCircleOutlined />
+            </Tooltip>
+          }
+        />
+        <Button size="small" type="primary" onClick={computeReadyCalcs} loading={readyCalcLoading}>
+          Пересчитать варианты
+        </Button>
+        <Text type="secondary">Применится ко всем выбранным быстрым офферам.</Text>
+      </Space>
+      <div
+        style={{
+          overflowX: "auto",
+          border: "1px solid #f0f0f0",
+          borderRadius: 8,
+          padding: 12,
+          background: "#fff",
+        }}
+      >
+        <Table
+          rowKey="key"
+          size="small"
+          className="op-table"
+          columns={[
+            {
+              title: "Тип",
+              dataIndex: "type",
+              width: 110,
+              render: (v) =>
+                v === "bundle" ? (
+                  <Tag color="geekblue">Комплект</Tag>
+                ) : (
+                  <Tag>Деталь</Tag>
+                ),
+            },
+            {
+              title: "Поставщик / роль",
+              dataIndex: "supplier",
+              width: 220,
+              render: (_, r) => (
+                <Space direction="vertical" size={2}>
+                  {renderSupplier(r)}
+                  {r.role_label && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Роль: {r.role_label}
+                    </Text>
+                  )}
+                </Space>
+              ),
+            },
+            {
+              title: "Материал",
+              dataIndex: "material_label",
+              width: 160,
+              ellipsis: true,
+              render: (v) => v || "—",
+            },
+            {
+              title: "Cat# пост.",
+              dataIndex: "supplier_part_number",
+              width: 140,
+              ellipsis: true,
+            },
+            {
+              title: "Маршрут",
+              dataIndex: "route",
+              width: 190,
+              render: (_, r) => (
+                <Select
+                  allowClear
+                  placeholder="Маршрут"
+                  value={readyRouteByKey[r.key] ?? readyRouteId}
+                  style={{ width: 180 }}
+                  onChange={(v) =>
+                    setReadyRouteByKey((prev) => ({
+                      ...prev,
+                      [r.key]: v || null,
+                    }))
+                  }
+                  options={routes.map((rt) => ({
+                    value: rt.id,
+                    label: rt.name || `Маршрут #${rt.id}`,
+                  }))}
+                />
+              ),
+            },
+            {
+              title: "Деталь / Комплектация",
+              dataIndex: "part",
+              ellipsis: true,
+              render: (_, r) =>
+                r.type === "bundle" ? (
+                  <Space direction="vertical" size={2}>
+                    <Text strong>{r.title}</Text>
+                    {(r.defaults || []).map((d) => (
+                      <Text key={`${d.role_label}-${d.supplier_part_number}`} type="secondary" style={{ fontSize: 12 }}>
+                        {d.role_label || "деталь"}: {d.supplier_part_number} · {d.supplier_name || d.supplier_public_code || ""}
+                        {d.last_price != null && ` · ${d.last_price} ${d.last_currency || ""}`}
+                      </Text>
+                    ))}
+                  </Space>
+                ) : (
+                  <span>{r.supplier_description || "—"}</span>
+                ),
+            },
+            {
+              title: "Цена",
+              dataIndex: "price",
+              width: 130,
+              render: (v) => (v ? v : "—"),
+            },
+            {
+              title: "Цена клиенту",
+              dataIndex: "client_price",
+              width: 150,
+              render: (_, r) => {
+                const calcRow = readyCalcs[r.key]
+                return calcRow?.client_price != null
+                  ? `${calcRow.client_price.toFixed(2)} ${calcRow.currency || ""}`
+                  : "—"
+              },
+            },
+            {
+              title: "ETA",
+              dataIndex: "eta",
+              width: 90,
+              render: (_, r) => {
+                const calcRow = readyCalcs[r.key]
+                return calcRow?.eta != null ? `${calcRow.eta} дн.` : "—"
+              },
+            },
+            {
+              title: "Приоритет",
+              dataIndex: "priority",
+              width: 120,
+              render: (_, r) => {
+                const calcRow = readyCalcs[r.key]
+                if (!calcRow || calcRow.client_price == null) return null
+                const prices = Object.values(readyCalcs)
+                  .map((c) => c.client_price)
+                  .filter((v) => v != null)
+                const etas = Object.values(readyCalcs)
+                  .map((c) => c.eta)
+                  .filter((v) => v != null)
+                const minPrice = prices.length ? Math.min(...prices) : null
+                const minEta = etas.length ? Math.min(...etas) : null
+                const tags = []
+                if (minPrice != null && calcRow.client_price === minPrice) {
+                  tags.push(<Tag color="green" key="best-price">Лучшая цена</Tag>)
+                }
+                if (minEta != null && calcRow.eta === minEta) {
+                  tags.push(<Tag color="blue" key="best-eta">Быстрее</Tag>)
+                }
+                return tags.length ? <Space size={[4, 4]} wrap>{tags}</Space> : null
+              },
+            },
+          ]}
+          dataSource={[
+            ...bundles.map((b) => ({
+              key: `bundle-${b.id}`,
+              type: "bundle",
+              title: b.title || `Комплект #${b.id}`,
+              price:
+                Array.isArray(b.totals) && b.totals[0]
+                  ? `${b.totals[0].total_price} ${b.totals[0].currency_iso3 || ""}`
+                  : "",
+              defaults: Array.isArray(b.options)
+                ? b.options.filter((o) => o.is_default)
+                : [],
+              supplier_name: (() => {
+                const d = Array.isArray(b.options) ? b.options.find((o) => o.is_default) : null
+                return d?.supplier_name || null
+              })(),
+              supplier_public_code: (() => {
+                const d = Array.isArray(b.options) ? b.options.find((o) => o.is_default) : null
+                return d?.supplier_public_code || null
+              })(),
+              supplier_part_number: (() => {
+                const d = Array.isArray(b.options) ? b.options.find((o) => o.is_default) : null
+                return d?.supplier_part_number || null
+              })(),
+              supplier_description: (() => {
+                const d = Array.isArray(b.options) ? b.options.find((o) => o.is_default) : null
+                return d?.role_label || null
+              })(),
+              raw: b,
+            })),
+            ...suggestionRows.map((s) => ({
+              ...s,
+              price:
+                s.latest_price != null
+                  ? `${s.latest_price} ${s.latest_price_currency || ""}`
+                  : "",
+              raw: s.raw,
+            })),
+          ]}
+          pagination={false}
+          loading={bundlesLoading || suggestionsLoading}
+          locale={{ emptyText: "Готовых вариантов нет" }}
+          rowSelection={{
+            selectedRowKeys: selectedVariantKeys,
+            onChange: (_, rows) => {
+              setSelectedVariantKeys(rows.map((r) => r.key))
+              setSelectedVariants(rows)
+              setSelectedSuggestions(rows)
+            },
+          }}
+        />
+        <div style={{ marginTop: 8, display: "flex", gap: 12, alignItems: "center" }}>
+          <Button
+            type="primary"
+            size="small"
+            onClick={async () => {
+              if (!item?.id) {
+                message.warning("Сохраните заказ и позицию, чтобы добавить офферы")
+                return
+              }
+              if (!selectedVariants.length) {
+                message.info("Выберите варианты для добавления")
+                return
+              }
+              try {
+                for (const v of selectedVariants) {
+                  if (v.type === "bundle") {
+                    // добавляем комплект целиком
+                    // eslint-disable-next-line no-await-in-loop
+                    await quickAddBundle(v.raw, { silent: true })
+                  } else if (v.type === "part") {
+                    // eslint-disable-next-line no-await-in-loop
+                    await addSupplierPartOffer(v.raw)
+                  }
+                }
+                message.success("Выбранные варианты добавлены")
+                setSelectedVariantKeys([])
+                setSelectedVariants([])
+                await loadOffers(item.id)
+                onOffersUpdated?.()
+              } catch (e) {
+                console.error("add selected variants error", e)
+                message.error("Не удалось добавить выбранные варианты")
+              }
+            }}
+            disabled={editingDisabled}
+          >
+            Добавить выбранные ({selectedVariants.length})
+          </Button>
+          <Text type="secondary">
+            Комплект добавляется целиком (по вариантам по умолчанию), деталь — как отдельный оффер.
+          </Text>
+        </div>
+      </div>
+    </>
+  )
+
+  const offersTabContent = (
+    <div
+      style={{
+        overflowX: "auto",
+        border: "1px solid #f0f0f0",
+        borderRadius: 8,
+        padding: 12,
+        background: "#fafafa",
+      }}
+    >
+      <Table
+        rowKey="id"
+        size="small"
+        className="op-table"
+        columns={columnsOffers}
+        dataSource={offers}
+        pagination={false}
+        scroll={{ x: 940 }}
+        loading={offersLoading}
+        locale={{ emptyText: offersLoading ? "Загрузка..." : "Офферы пока не добавлены" }}
+        title={() => "Текущие офферы (для клиента отметьте галочкой в колонке «Для клиента»)"}
+      />
+    </div>
+  )
+
+  const newOfferTabContent = (
+    <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <Space direction="vertical" style={{ flex: 1, minWidth: 620 }} size="middle">
+        <Space wrap>
+          <Input
+            placeholder="Деталь поставщика (выберите через поиск)"
+            value={
+              formValues.supplier_part_id
+                ? `Выбрана деталь: ${formValues.supplier_part_number || formValues.supplier_part_id}${
+                    formValues.supplier_part_description
+                      ? ` — ${formValues.supplier_part_description}`
+                      : ""
+                  }`
+                : ""
+            }
+            readOnly
+            style={{ width: 320 }}
+          />
+          <Button onClick={() => setSupplierPartPickerOpen(true)} disabled={editingDisabled}>
+            Найти деталь поставщика
+          </Button>
+          <InputNumber
+            placeholder="Цена пост."
+            value={formValues.supplier_price}
+            onChange={(v) =>
+              setFormValues((prev) => ({ ...prev, supplier_price: v }))
+            }
+          />
+          <CurrencySelect
+            value={formValues.supplier_currency}
+            onChange={(v) =>
+              setFormValues((prev) => ({
+                ...prev,
+                supplier_currency: v || null,
+              }))
+            }
+            style={{ minWidth: 120 }}
+          />
+          <InputNumber
+            placeholder="Срок, дн."
+            value={formValues.lead_time_days}
+            onChange={(v) =>
+              setFormValues((prev) => ({ ...prev, lead_time_days: v }))
+            }
+          />
+          <InputNumber
+            placeholder="MOQ"
+            value={formValues.moq}
+            onChange={(v) =>
+              setFormValues((prev) => ({ ...prev, moq: v }))
+            }
+          />
+        </Space>
+        <Space wrap>
+          <Input
+            placeholder="Упаковка"
+            style={{ width: 200 }}
+            value={formValues.packaging}
+            onChange={(e) =>
+              setFormValues((prev) => ({ ...prev, packaging: e.target.value }))
+            }
+          />
+          <Select
+            placeholder="Материал"
+            allowClear
+            loading={materialsLoading}
+            style={{ minWidth: 200 }}
+            value={formValues.material_id || undefined}
+            onChange={(v) =>
+              setFormValues((prev) => ({
+                ...prev,
+                material_id: v || null,
+              }))
+            }
+            options={materials.map((m) => ({
+              value: m.material_id,
+              label: m.material_name || m.material_code || m.material_id,
+            }))}
+          />
+          <InputNumber
+            placeholder="Маржа, %"
+            value={formValues.markup_pct}
+            onChange={(v) =>
+              setFormValues((prev) => ({ ...prev, markup_pct: v }))
+            }
+            addonAfter={
+              <Tooltip title="Процент наценки от себестоимости (цена пост. + логистика + пошлина)">
+                <InfoCircleOutlined />
+              </Tooltip>
+            }
+            style={{ minWidth: 180 }}
+          />
+          <InputNumber
+            placeholder="Маржа, ед."
+            value={formValues.markup_abs}
+            onChange={(v) =>
+              setFormValues((prev) => ({ ...prev, markup_abs: v }))
+            }
+            addonAfter={
+              <Tooltip title="Фиксированная наценка в валюте заказа, прибавляется после процента">
+                <InfoCircleOutlined />
+              </Tooltip>
+            }
+            style={{ minWidth: 180 }}
+          />
+          <Select
+            placeholder="Маршрут"
+            allowClear
+            style={{ width: 200 }}
+            value={formValues.logistics_route_id}
+            onChange={(v) =>
+              setFormValues((prev) => ({ ...prev, logistics_route_id: v }))
+            }
+            options={routes.map((r) => ({
+              value: r.id,
+              label: r.name || `Маршрут #${r.id}`,
+            }))}
+            suffixIcon={
+              <Tooltip title="Стоимость и надбавки маршрута попадут в логистику и ETA">
+                <InfoCircleOutlined />
+              </Tooltip>
+            }
+          />
+          <InputNumber
+            placeholder="Логистика"
+            value={formValues.logistics_cost}
+            onChange={(v) =>
+              setFormValues((prev) => ({ ...prev, logistics_cost: v }))
+            }
+          />
+          <CurrencySelect
+            value={formValues.logistics_currency}
+            onChange={(v) =>
+              setFormValues((prev) => ({
+                ...prev,
+                logistics_currency: v || null,
+              }))
+            }
+            style={{ minWidth: 140 }}
+          />
+          <CurrencySelect
+            value={formValues.client_currency}
+            onChange={(v) =>
+              setFormValues((prev) => ({
+                ...prev,
+                client_currency: v || null,
+              }))
+            }
+            style={{ minWidth: 140 }}
+            placeholder="Валюта клиента"
+          />
+          <Select
+            value={formValues.status}
+            style={{ width: 180 }}
+            onChange={(v) =>
+              setFormValues((prev) => ({ ...prev, status: v }))
+            }
+            options={Object.entries(OFFER_STATUS_META).map(([value, m]) => ({
+              value,
+              label: m.label,
+            }))}
+          />
+          <Checkbox
+            checked={linkWhenAdding}
+            onChange={(e) => setLinkWhenAdding(e.target.checked)}
+          >
+            Привязать к оригиналу
+          </Checkbox>
+          <Checkbox
+            checked={!!formValues.client_visible}
+            onChange={(e) =>
+              setFormValues((prev) => ({
+                ...prev,
+                client_visible: e.target.checked,
+              }))
+            }
+          >
+            Показать клиенту
+          </Checkbox>
+          <Button
+            type="primary"
+            onClick={handleAdd}
+            loading={adding}
+            disabled={!formValues.supplier_part_id || editingDisabled}
+          >
+            Добавить оффер
+          </Button>
+        </Space>
+        <Input.TextArea
+          rows={2}
+          placeholder="Внутренний комментарий"
+          value={formValues.comment_internal}
+          onChange={(e) =>
+            setFormValues((prev) => ({ ...prev, comment_internal: e.target.value }))
+          }
+        />
+        <Input.TextArea
+          rows={2}
+          placeholder="Комментарий для клиента"
+          value={formValues.comment_client}
+          onChange={(e) =>
+            setFormValues((prev) => ({ ...prev, comment_client: e.target.value }))
+          }
+        />
+      </Space>
+      <Card
+        size="small"
+        title="Калькулятор цены"
+        style={{ minWidth: 300, maxWidth: 360 }}
+        extra={
+          <Button size="small" type="primary" onClick={handleCalculate} loading={calcLoading}>
+            Пересчитать
+          </Button>
+        }
+      >
+        <Space direction="vertical" size={8} style={{ width: "100%" }}>
+          <Text type="secondary">
+            Использует цену пост., логистику, маршрут (наценка), ТН ВЭД: {item?.tnved_code_value || "—"}.
+            Маржа % от себестоимости (пост.+логистика+пошлина), маржа ед. добавляется сверху.
+          </Text>
+          {calc ? (
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="Целевая валюта">{calc.target_currency || item?.order_currency || "—"}</Descriptions.Item>
+              <Descriptions.Item label="Пост. в целевой">
+                {fmtMoney(calc.supplier.converted, calc.target_currency)}
+                {calc.supplier.fx_rate ? ` (FX ${calc.supplier.fx_rate})` : ""}
+              </Descriptions.Item>
+              <Descriptions.Item label="Логистика (с надб.)">
+                {fmtMoney(calc.logistics.converted, calc.target_currency)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Пошлина">
+                {calc.duty_amount != null
+                  ? `${fmtMoney(calc.duty_amount, calc.target_currency)} (${calc.duty_rate || 0}%)`
+                  : "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Себестоимость">{fmtMoney(calc.landed_cost, calc.target_currency)}</Descriptions.Item>
+              <Descriptions.Item label="Маржа">
+                {calc.markup_pct != null ? `${calc.markup_pct || 0}%` : ""}{" "}
+                {calc.markup_abs != null && `+ ${fmtMoney(calc.markup_abs, calc.target_currency)}`}
+              </Descriptions.Item>
+              <Descriptions.Item label="Цена клиенту">{fmtMoney(calc.client_price, calc.target_currency)}</Descriptions.Item>
+              <Descriptions.Item label="ETA">{calc.eta != null ? `${calc.eta} дн.` : "—"}</Descriptions.Item>
+            </Descriptions>
+          ) : (
+            <Text type="secondary">Заполните цену, логистику и нажмите «Пересчитать», чтобы увидеть цепочку.</Text>
+          )}
+        </Space>
+      </Card>
+    </div>
+  )
+
   return (
     <>
       <Modal
@@ -577,360 +1378,15 @@ export default function OfferModal({
               </div>
             }
           />
-
-          <Divider orientation="left" style={{ margin: "4px 0" }}>
-            Варианты для добавления (чекбоксами можно выбрать несколько)
-          </Divider>
-          <div
-            style={{
-              overflowX: "auto",
-              border: "1px solid #f0f0f0",
-              borderRadius: 8,
-              padding: 12,
-              background: "#fff",
-            }}
-          >
-            <Table
-              rowKey="key"
-              size="small"
-              className="op-table"
-              columns={[
-                {
-                  title: "Тип",
-                  dataIndex: "type",
-                  width: 110,
-                  render: (v) =>
-                    v === "bundle" ? (
-                      <Tag color="geekblue">Комплект</Tag>
-                    ) : (
-                      <Tag>Деталь</Tag>
-                    ),
-                },
-                {
-                  title: "Поставщик / роль",
-                  dataIndex: "supplier",
-                  width: 220,
-                  render: (_, r) => (
-                    <Space direction="vertical" size={2}>
-                      {renderSupplier(r)}
-                      {r.role_label && (
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          Роль: {r.role_label}
-                        </Text>
-                      )}
-                    </Space>
-                  ),
-                },
-                {
-                  title: "Cat# пост.",
-                  dataIndex: "supplier_part_number",
-                  width: 140,
-                  ellipsis: true,
-                },
-                {
-                  title: "Деталь / Комплектация",
-                  dataIndex: "part",
-                  ellipsis: true,
-                  render: (_, r) =>
-                    r.type === "bundle" ? (
-                      <Space direction="vertical" size={2}>
-                        <Text strong>{r.title}</Text>
-                        {(r.defaults || []).map((d) => (
-                          <Text key={`${d.role_label}-${d.supplier_part_number}`} type="secondary" style={{ fontSize: 12 }}>
-                            {d.role_label || "деталь"}: {d.supplier_part_number} · {d.supplier_name || d.supplier_public_code || ""}
-                            {d.last_price != null && ` · ${d.last_price} ${d.last_currency || ""}`}
-                          </Text>
-                        ))}
-                      </Space>
-                    ) : (
-                      <span>{r.supplier_description || "—"}</span>
-                    ),
-                },
-                {
-                  title: "Цена",
-                  dataIndex: "price",
-                  width: 130,
-                  render: (v) => (v ? v : "—"),
-                },
-              ]}
-              dataSource={[
-                ...bundles.map((b) => ({
-                  key: `bundle-${b.id}`,
-                  type: "bundle",
-                  title: b.title || `Комплект #${b.id}`,
-                  price:
-                    Array.isArray(b.totals) && b.totals[0]
-                      ? `${b.totals[0].total_price} ${b.totals[0].currency_iso3 || ""}`
-                      : "",
-                  defaults: Array.isArray(b.options)
-                    ? b.options.filter((o) => o.is_default)
-                    : [],
-                  supplier_name: (() => {
-                    const d = Array.isArray(b.options) ? b.options.find((o) => o.is_default) : null
-                    return d?.supplier_name || null
-                  })(),
-                  supplier_public_code: (() => {
-                    const d = Array.isArray(b.options) ? b.options.find((o) => o.is_default) : null
-                    return d?.supplier_public_code || null
-                  })(),
-                  supplier_part_number: (() => {
-                    const d = Array.isArray(b.options) ? b.options.find((o) => o.is_default) : null
-                    return d?.supplier_part_number || null
-                  })(),
-                  supplier_description: (() => {
-                    const d = Array.isArray(b.options) ? b.options.find((o) => o.is_default) : null
-                    return d?.role_label || null
-                  })(),
-                  raw: b,
-                })),
-                ...suggestions.map((s) => ({
-                  key: `part-${s.supplier_part_id}`,
-                  type: "part",
-                  supplier_name: s.supplier_name,
-                  supplier_public_code: s.supplier_public_code,
-                  supplier_part_number: s.supplier_part_number,
-                  supplier_description: s.description,
-                  price:
-                    s.latest_price != null
-                      ? `${s.latest_price} ${s.latest_price_currency || ""}`
-                      : "",
-                  raw: s,
-                })),
-              ]}
-              pagination={false}
-              loading={bundlesLoading || suggestionsLoading}
-              locale={{ emptyText: "Готовых вариантов нет" }}
-              rowSelection={{
-                selectedRowKeys: selectedVariantKeys,
-                onChange: (_, rows) => {
-                  setSelectedVariantKeys(rows.map((r) => r.key))
-                  setSelectedVariants(rows)
-                },
-              }}
-            />
-            <div style={{ marginTop: 8, display: "flex", gap: 12, alignItems: "center" }}>
-              <Button
-                type="primary"
-                size="small"
-                onClick={async () => {
-                  if (!item?.id) {
-                    message.warning("Сохраните заказ и позицию, чтобы добавить офферы")
-                    return
-                  }
-                  if (!selectedVariants.length) {
-                    message.info("Выберите варианты для добавления")
-                    return
-                  }
-                  try {
-                    for (const v of selectedVariants) {
-                      if (v.type === "bundle") {
-                        // добавляем комплект целиком
-                        // eslint-disable-next-line no-await-in-loop
-                        await quickAddBundle(v.raw, { silent: true })
-                      } else if (v.type === "part") {
-                        // eslint-disable-next-line no-await-in-loop
-                        await addSupplierPartOffer(v.raw)
-                      }
-                    }
-                    message.success("Выбранные варианты добавлены")
-                    setSelectedVariantKeys([])
-                    setSelectedVariants([])
-                    await loadOffers(item.id)
-                    onOffersUpdated?.()
-                  } catch (e) {
-                    console.error("add selected variants error", e)
-                    message.error("Не удалось добавить выбранные варианты")
-                  }
-                }}
-                disabled={editingDisabled}
-              >
-                Добавить выбранные ({selectedVariants.length})
-              </Button>
-              <Text type="secondary">
-                Комплект добавляется целиком (по вариантам по умолчанию), деталь — как отдельный оффер.
-              </Text>
-            </div>
-          </div>
-
-          <div
-            style={{
-              overflowX: "auto",
-              border: "1px solid #f0f0f0",
-              borderRadius: 8,
-              padding: 12,
-              background: "#fafafa",
-            }}
-          >
-            <Table
-              rowKey="id"
-              size="small"
-              className="op-table"
-              columns={columnsOffers}
-              dataSource={offers}
-              pagination={false}
-              scroll={{ x: 940 }}
-              loading={offersLoading}
-              locale={{ emptyText: offersLoading ? "Загрузка..." : "Офферы пока не добавлены" }}
-              title={() => "Текущие офферы (для клиента отметьте галочкой в колонке «Для клиента»)"}
-            />
-          </div>
-
-          {canEditOffers && (
-            <>
-              <Divider orientation="left">Новый оффер</Divider>
-              <Space direction="vertical" style={{ width: "100%" }} size="middle">
-                <Space wrap>
-          <Input
-            placeholder="Деталь поставщика (выберите через поиск)"
-            value={
-              formValues.supplier_part_id
-                ? `Выбрана деталь: ${formValues.supplier_part_number || formValues.supplier_part_id}${
-                    formValues.supplier_part_description
-                      ? ` — ${formValues.supplier_part_description}`
-                      : ""
-                  }`
-                : ""
-            }
-            readOnly
-            style={{ width: 320 }}
+          <Tabs
+            activeKey={activeTab}
+            onChange={setActiveTab}
+            items={[
+              { key: "ready", label: "Готовые варианты", children: readyTabContent },
+              { key: "list", label: `Текущие офферы (${offers.length || 0})`, children: offersTabContent },
+              { key: "new", label: "Новый оффер", children: canEditOffers ? newOfferTabContent : <Alert type="warning" message="Добавление офферов недоступно для вашей роли" /> },
+            ]}
           />
-                  <Button onClick={() => setSupplierPartPickerOpen(true)} disabled={editingDisabled}>
-                    Найти деталь поставщика
-                  </Button>
-                  <InputNumber
-                    placeholder="Цена пост."
-                    value={formValues.supplier_price}
-                    onChange={(v) =>
-                      setFormValues((prev) => ({ ...prev, supplier_price: v }))
-                    }
-                  />
-                  <CurrencySelect
-                    value={formValues.supplier_currency}
-                    onChange={(v) =>
-                      setFormValues((prev) => ({
-                        ...prev,
-                        supplier_currency: v || null,
-                      }))
-                    }
-                    style={{ minWidth: 120 }}
-                  />
-                  <InputNumber
-                    placeholder="Срок, дн."
-                    value={formValues.lead_time_days}
-                    onChange={(v) =>
-                      setFormValues((prev) => ({ ...prev, lead_time_days: v }))
-                    }
-                  />
-                  <InputNumber
-                    placeholder="MOQ"
-                    value={formValues.moq}
-                    onChange={(v) =>
-                      setFormValues((prev) => ({ ...prev, moq: v }))
-                    }
-                  />
-                </Space>
-                <Space wrap>
-                  <Input
-                    placeholder="Упаковка"
-                    style={{ width: 200 }}
-                    value={formValues.packaging}
-                    onChange={(e) =>
-                      setFormValues((prev) => ({ ...prev, packaging: e.target.value }))
-                    }
-                  />
-                  <InputNumber
-                    placeholder="Маржа, %"
-                    value={formValues.markup_pct}
-                    onChange={(v) =>
-                      setFormValues((prev) => ({ ...prev, markup_pct: v }))
-                    }
-                  />
-                  <Select
-                    placeholder="Маршрут"
-                    allowClear
-                    style={{ width: 200 }}
-                    value={formValues.logistics_route_id}
-                    onChange={(v) =>
-                      setFormValues((prev) => ({ ...prev, logistics_route_id: v }))
-                    }
-                    options={routes.map((r) => ({
-                      value: r.id,
-                      label: r.name || `Маршрут #${r.id}`,
-                    }))}
-                  />
-                  <InputNumber
-                    placeholder="Логистика"
-                    value={formValues.logistics_cost}
-                    onChange={(v) =>
-                      setFormValues((prev) => ({ ...prev, logistics_cost: v }))
-                    }
-                  />
-                  <CurrencySelect
-                    value={formValues.logistics_currency}
-                    onChange={(v) =>
-                      setFormValues((prev) => ({
-                        ...prev,
-                        logistics_currency: v || null,
-                      }))
-                    }
-                    style={{ minWidth: 140 }}
-                  />
-                  <Select
-                    value={formValues.status}
-                    style={{ width: 180 }}
-                    onChange={(v) =>
-                      setFormValues((prev) => ({ ...prev, status: v }))
-                    }
-                    options={Object.entries(OFFER_STATUS_META).map(([value, m]) => ({
-                      value,
-                      label: m.label,
-                    }))}
-                  />
-                  <Checkbox
-                    checked={linkWhenAdding}
-                    onChange={(e) => setLinkWhenAdding(e.target.checked)}
-                  >
-                    Привязать к оригиналу
-                  </Checkbox>
-                  <Checkbox
-                    checked={!!formValues.client_visible}
-                    onChange={(e) =>
-                      setFormValues((prev) => ({
-                        ...prev,
-                        client_visible: e.target.checked,
-                      }))
-                    }
-                  >
-                    Показать клиенту
-                  </Checkbox>
-                  <Button
-                    type="primary"
-                    onClick={handleAdd}
-                    loading={adding}
-                    disabled={!formValues.supplier_part_id || editingDisabled}
-                  >
-                    Добавить оффер
-                  </Button>
-                </Space>
-                <Input.TextArea
-                  rows={2}
-                  placeholder="Внутренний комментарий"
-                  value={formValues.comment_internal}
-                  onChange={(e) =>
-                    setFormValues((prev) => ({ ...prev, comment_internal: e.target.value }))
-                  }
-                />
-                <Input.TextArea
-                  rows={2}
-                  placeholder="Комментарий для клиента"
-                  value={formValues.comment_client}
-                  onChange={(e) =>
-                    setFormValues((prev) => ({ ...prev, comment_client: e.target.value }))
-                  }
-                />
-              </Space>
-            </>
-          )}
         </Space>
       </Modal>
 
@@ -940,6 +1396,7 @@ export default function OfferModal({
         onPick={(rows) => {
           const r = rows?.[0]
           if (r) {
+            loadMaterials(r.id)
             setFormValues((prev) => ({
               ...prev,
               supplier_part_id: r.id,
