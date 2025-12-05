@@ -5,32 +5,30 @@
 /* Общий контейнер */
 .op-table {
   width: 100%;
+  max-width: 100%;
   background: #ffffff;
   border-radius: 8px;
   box-shadow: none;
-  table-layout: fixed;
 }
 
 /* Убираем стандартные рамки контейнера AntD */
 .op-table .ant-table-container {
   border: none !important;
   box-shadow: none !important;
+  max-width: 100%;
 }
 
-/* Запрещаем горизонтальный скролл внутри таблицы — пусть тянется страница */
+/* Держим таблицу внутри карточки, при нехватке места показываем скролл */
 .op-table .ant-table-content,
 .op-table .ant-table-body {
-  overflow-x: visible !important;
+  overflow-x: auto !important;
 }
 
-/* Если таблица не помещается, пусть контейнер страницы прокручивается */
+/* Если таблица шире контейнера — горизонтальный скролл внутри самой таблицы */
 .op-table .ant-table {
   width: 100%;
-}
-
-/* Снимаем фиксированную ширину, если где-то table-layout фикс: делаем auto */
-.op-table {
   table-layout: auto;
+  min-width: 100%;
 }
 
 /* ---------------------------------------------------------

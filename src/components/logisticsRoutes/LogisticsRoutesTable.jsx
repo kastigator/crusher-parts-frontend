@@ -325,6 +325,7 @@ export default function LogisticsRoutesTable({
       columns={columns}
       pagination={pagination}
       size="middle"
+      scroll={{ x: "max-content" }}
       rowClassName={(record) =>
         record.id === editingKey ? "editable-row" : ""
       }

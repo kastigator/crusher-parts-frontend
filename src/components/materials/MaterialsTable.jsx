@@ -1,6 +1,6 @@
 import React from "react"
-import { Table, Tag, Tooltip, Button, Space, Popconfirm } from "antd"
-import { FileOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons"
+import { Table, Tooltip, Button, Popconfirm } from "antd"
+import { DeleteOutlined } from "@ant-design/icons"
 import "@/styles/tableStyles.css"
 
 export default function MaterialsTable({
@@ -54,39 +54,31 @@ export default function MaterialsTable({
         ),
     },
     {
-      title: "",
+      title: "Действие",
       key: "actions",
-      width: 60,
+      width: 72,
+      align: "center",
       render: (_, record) => (
-        <Space>
-          <Tooltip title="Редактировать">
+        <Popconfirm
+          title="Удалить материал?"
+          okText="Да"
+          cancelText="Нет"
+          onConfirm={(e) => {
+            e?.stopPropagation?.()
+            onDelete?.(record)
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Tooltip title="Удалить">
             <Button
               size="small"
-              icon={<EditOutlined />}
-              onClick={(e) => {
-                e.stopPropagation()
-                onEdit?.(record)
-              }}
-            />
-          </Tooltip>
-          <Popconfirm
-            title="Удалить материал?"
-            okText="Да"
-            cancelText="Нет"
-            onConfirm={(e) => {
-              e?.stopPropagation?.()
-              onDelete?.(record)
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Button
-              size="small"
+              type="text"
               danger
               icon={<DeleteOutlined />}
               onClick={(e) => e.stopPropagation()}
             />
-          </Popconfirm>
-        </Space>
+          </Tooltip>
+        </Popconfirm>
       ),
     },
   ]
@@ -102,6 +94,7 @@ export default function MaterialsTable({
       pagination={pagination}
       onRow={(record) => ({
         onClick: () => onRowClick?.(record),
+        onDoubleClick: () => onEdit?.(record),
       })}
       locale={{
         emptyText: "Нет данных",
