@@ -6,7 +6,6 @@ import SuppliersTable from "./SuppliersTable"
 import TableToolbar from "@/components/common/TableToolbar"
 import ImportModal from "@/components/common/ImportModal"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
-import CountrySelect from "@/components/inputs/CountrySelect"
 
 const SUPPLIERS_TEMPLATE_URL =
   "https://storage.googleapis.com/shared-parts-bucket/templates/suppliers_template.xlsx"
@@ -56,11 +55,7 @@ export default function SuppliersMain() {
     const payload = {
       name: trim(values.name),
       vat_number: trim(values.vat_number) || null,
-      country: values.country || null,
       website: trim(values.website) || null,
-      contact_person: trim(values.contact_person) || null,
-      email: trim(values.email) || null,
-      phone: trim(values.phone) || null,
       payment_terms: trim(values.payment_terms) || null,
       preferred_currency: trim(values.preferred_currency) || null,
       incoterms: trim(values.incoterms) || null,
@@ -199,24 +194,8 @@ export default function SuppliersMain() {
             <Input placeholder="S001" style={{ width: 100 }} />
           </Form.Item>
 
-          <Form.Item label="Страна" name="country">
-            <CountrySelect style={{ width: 200 }} />
-          </Form.Item>
-
           <Form.Item label="VAT" name="vat_number">
             <Input placeholder="FI1234567" style={{ width: 140 }} />
-          </Form.Item>
-
-          <Form.Item label="Контакт" name="contact_person">
-            <Input placeholder="Имя контакта" style={{ width: 160 }} />
-          </Form.Item>
-
-          <Form.Item label="Телефон" name="phone">
-            <Input style={{ width: 140 }} />
-          </Form.Item>
-
-          <Form.Item label="Email" name="email">
-            <Input style={{ width: 180 }} />
           </Form.Item>
 
           <Form.Item label="Примечание" name="notes">

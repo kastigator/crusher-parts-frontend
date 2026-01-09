@@ -189,6 +189,33 @@ export default function SupplierAddressesTable({
       },
     },
     {
+      title: "Основной",
+      dataIndex: "is_primary",
+      key: "is_primary",
+      width: 110,
+      align: "center",
+      render: (_, record) => {
+        const editing = isEditing(record)
+        const checked = editing
+          ? !!editedRow?.is_primary
+          : !!record.is_primary
+
+        if (editing) {
+          return (
+            <Checkbox
+              checked={checked}
+              onChange={(e) =>
+                updateField("is_primary", e.target.checked ? 1 : 0)
+              }
+              onKeyDown={handleKeyDown}
+            />
+          )
+        }
+
+        return checked ? <Tag color="green">Да</Tag> : <Tag>Нет</Tag>
+      },
+    },
+    {
       title: "Действия",
       key: "actions",
       width: 90,

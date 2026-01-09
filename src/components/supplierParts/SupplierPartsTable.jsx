@@ -303,6 +303,16 @@ export default function SupplierPartsTable({
     }
   }
 
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      handleSave()
+    } else if (e.key === "Escape") {
+      e.preventDefault()
+      cancelEdit()
+    }
+  }
+
   const handleDelete = async (id) => {
     const { confirmed } = await confirmAction("Удалить деталь?")
     if (!confirmed) return
@@ -323,9 +333,9 @@ export default function SupplierPartsTable({
       onChange={(e) =>
         setDraft((prev) => ({ ...(prev || {}), [field]: e.target.value }))
       }
-      onPressEnter={handleSave}
-      onBlur={handleSave}
+      onKeyDown={handleKeyDown}
       autoFocus
+      size="small"
     />
   )
 
@@ -347,6 +357,12 @@ export default function SupplierPartsTable({
       dataIndex: "supplier_part_number",
       width: 160,
       ellipsis: true,
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "supplier_part_number")) return
+          startEditCell(record, "supplier_part_number")
+        },
+      }),
       render: (value, record) => {
         if (isEditingCell(record, "supplier_part_number"))
           return renderTextInput(record, "supplier_part_number")
@@ -359,6 +375,12 @@ export default function SupplierPartsTable({
       dataIndex: "description",
       width: 200,
       ellipsis: true,
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "description")) return
+          startEditCell(record, "description")
+        },
+      }),
       render: (value, record) => {
         if (isEditingCell(record, "description"))
           return renderTextInput(record, "description")
@@ -371,6 +393,12 @@ export default function SupplierPartsTable({
       dataIndex: "comment",
       width: 200,
       ellipsis: true,
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "comment")) return
+          startEditCell(record, "comment")
+        },
+      }),
       render: (value, record) => {
         if (isEditingCell(record, "comment"))
           return renderTextInput(record, "comment")
@@ -400,7 +428,10 @@ export default function SupplierPartsTable({
       width: 130,
       align: "right",
       onCell: (record) => ({
-        onDoubleClick: () => startEditCell(record, "lead_time_days"),
+        onDoubleClick: () => {
+          if (isEditingCell(record, "lead_time_days")) return
+          startEditCell(record, "lead_time_days")
+        },
       }),
       render: (_, record) =>
         isEditingCell(record, "lead_time_days") ? (

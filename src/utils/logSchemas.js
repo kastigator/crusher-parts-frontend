@@ -107,7 +107,7 @@ export const logSchemas = {
       // мастер (part_suppliers)
       name: "Название / Имя",
       vat_number: "VAT/ИНН",
-      country: "Страна (ISO2)",
+      country: "Страна",
       website: "Сайт",
       contact_person: "Контактное лицо",
       email: "Email",

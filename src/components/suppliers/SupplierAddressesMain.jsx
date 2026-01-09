@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react"
-import { Card, Button, message, Input, Row, Col } from "antd"
+import { Card, Button, message, Input, Row, Col, Checkbox } from "antd"
 import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import SupplierAddressesTable from "./SupplierAddressesTable"
@@ -27,6 +27,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
     comment: "",
     label: "",
     type: "",
+    is_primary: false,
   })
 
   const trimToNull = (v) => {
@@ -93,11 +94,17 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
       comment: trimToNull(newAddress.comment),
       label: trimToNull(newAddress.label),
       type: trimToNull(newAddress.type),
+      is_primary: newAddress.is_primary ? 1 : 0,
     }
 
     try {
       const res = await axios.post("/supplier-addresses", payload)
-      setData((prev) => [res.data, ...prev])
+      setData((prev) => {
+        if (res.data?.is_primary) {
+          return [res.data, ...prev.map((r) => ({ ...r, is_primary: 0 }))]
+        }
+        return [res.data, ...prev]
+      })
       setNewAddress({
         formatted_address: "",
         place_id: null,
@@ -114,6 +121,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
         comment: "",
         label: "",
         type: "",
+        is_primary: false,
       })
       setResetCounter((prev) => prev + 1)
       onChanged?.()
@@ -131,7 +139,15 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
         ...row,
         version: row.version,
       })
-      replaceRow(fresh)
+      if (fresh?.is_primary) {
+        setData((prev) =>
+          prev.map((r) =>
+            r.id === fresh.id ? fresh : { ...r, is_primary: 0 },
+          ),
+        )
+      } else {
+        replaceRow(fresh)
+      }
       message.success("Адрес поставщика обновлен")
       onChanged?.()
     } catch (err) {
@@ -316,7 +332,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
               }
             />
           </Col>
-          <Col span={12}>
+          <Col span={8}>
             <Input
               placeholder="Комментарий"
               value={newAddress.comment}
@@ -324,6 +340,19 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
                 setNewAddress((p) => ({ ...p, comment: e.target.value }))
               }
             />
+          </Col>
+          <Col span={4}>
+            <Checkbox
+              checked={newAddress.is_primary}
+              onChange={(e) =>
+                setNewAddress((p) => ({
+                  ...p,
+                  is_primary: e.target.checked,
+                }))
+              }
+            >
+              Основной
+            </Checkbox>
           </Col>
           <Col span={4} style={{ textAlign: "right" }}>
             <Button type="primary" onClick={handleAdd}>

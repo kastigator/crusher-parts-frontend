@@ -9,7 +9,6 @@ import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
-import CountrySelect from "@/components/inputs/CountrySelect"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import createTablePagination from "@/utils/tablePagination"
 
@@ -172,30 +171,8 @@ export default function SuppliersTable({
       key: "country",
       width: 220,
       render: (_, record) => {
-        const isEdit = editingId === record.id
-        const code = isEdit ? editedRow?.country ?? null : record.country ?? null
-
-        if (isEdit) {
-          return (
-            <CountrySelect
-              value={code}
-              onChange={(newCode) =>
-                setEditedRow((prev) => ({ ...prev, country: newCode }))
-              }
-              style={{ width: 220 }}
-            />
-          )
-        }
-
-        const label = getCountryLabel(code)
-        return (
-          <div
-            onDoubleClick={() => startEdit(record)}
-            className="cell-ellipsis"
-          >
-            {label}
-          </div>
-        )
+        const label = getCountryLabel(record.country)
+        return <ValueDisplay value={label} />
       },
     },
     {
@@ -210,21 +187,25 @@ export default function SuppliersTable({
       dataIndex: "contact_person",
       key: "contact_person",
       width: 160,
-      ...renderTextCell("contact_person", 160),
+      render: (_, record) => <ValueDisplay value={record.contact_person} />,
     },
     {
       title: "Телефон",
       dataIndex: "phone",
       key: "phone",
       width: 170,
-      ...renderTextCell("phone", 170, "phone"),
+      render: (_, record) => (
+        <ValueDisplay value={record.phone} type="phone" />
+      ),
     },
     {
       title: "Email",
       dataIndex: "email",
       key: "email",
       width: 220,
-      ...renderTextCell("email", 220, "email"),
+      render: (_, record) => (
+        <ValueDisplay value={record.email} type="email" />
+      ),
     },
     {
       title: "Примечание",
