@@ -7,7 +7,7 @@ export default function ClientOrdersPage() {
   return (
     <TabRendererPage
       tabKey="client-orders"
-      helpText="Двойной клик — редактирование; Enter — сохранить; Esc — отменить."
+      helpText="Клик по строке — открыть заказ; +/− — раскрыть позиции и подбор."
     >
       <ClientOrdersMain />
     </TabRendererPage>

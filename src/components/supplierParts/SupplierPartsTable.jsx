@@ -371,19 +371,37 @@ export default function SupplierPartsTable({
     })
 
     cols.push({
-      title: "Описание",
-      dataIndex: "description",
-      width: 200,
+      title: "Описание (RU)",
+      dataIndex: "description_ru",
+      width: 220,
       ellipsis: true,
       onCell: (record) => ({
         onDoubleClick: () => {
-          if (isEditingCell(record, "description")) return
-          startEditCell(record, "description")
+          if (isEditingCell(record, "description_ru")) return
+          startEditCell(record, "description_ru")
         },
       }),
       render: (value, record) => {
-        if (isEditingCell(record, "description"))
-          return renderTextInput(record, "description")
+        if (isEditingCell(record, "description_ru"))
+          return renderTextInput(record, "description_ru")
+        return <ValueDisplay value={value} />
+      },
+    })
+
+    cols.push({
+      title: "Description (EN)",
+      dataIndex: "description_en",
+      width: 220,
+      ellipsis: true,
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "description_en")) return
+          startEditCell(record, "description_en")
+        },
+      }),
+      render: (value, record) => {
+        if (isEditingCell(record, "description_en"))
+          return renderTextInput(record, "description_en")
         return <ValueDisplay value={value} />
       },
     })

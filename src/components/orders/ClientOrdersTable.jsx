@@ -9,6 +9,7 @@ const STATUS_COLORS = {
   new: "blue",
   submitted: "processing",
   confirmed: "success",
+  rework: "orange",
   cancelled: "error",
 }
 
@@ -17,6 +18,7 @@ const STATUS_LABELS = {
   new: "Новый",
   submitted: "Отправлен",
   confirmed: "Подтверждён",
+  rework: "Доработка",
   cancelled: "Отменён",
 }
 

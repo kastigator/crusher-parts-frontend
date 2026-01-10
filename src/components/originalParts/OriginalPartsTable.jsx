@@ -9,6 +9,18 @@ import ValueDisplay from "@/components/common/ValueDisplay"
 import DetailDock from "./DetailDock"
 import createTablePagination from "@/utils/tablePagination"
 
+const UOM_OPTIONS = [
+  { value: "pcs", label: "шт" },
+  { value: "kg", label: "кг" },
+  { value: "set", label: "компл." },
+]
+
+const getUomLabel = (value) => {
+  if (!value) return ""
+  const normalized = String(value).toLowerCase()
+  return UOM_OPTIONS.find((opt) => opt.value === normalized)?.label || value
+}
+
 /**
  * Таблица оригинальных деталей.
  */
@@ -35,6 +47,7 @@ export default function OriginalPartsTable({
     description_ru: "",
     description_en: "",
     weight_kg: null,
+    uom: "pcs",
     group_id: null,
     has_drawing: false,
     length_cm: null,
@@ -159,6 +172,7 @@ export default function OriginalPartsTable({
         record.weight_kg === undefined || record.weight_kg === null
           ? null
           : Number(record.weight_kg),
+      uom: record.uom ? String(record.uom).toLowerCase() : "pcs",
       group_id:
         record.group_id === undefined || record.group_id === null
           ? null
@@ -190,6 +204,7 @@ export default function OriginalPartsTable({
       description_ru: "",
       description_en: "",
       weight_kg: null,
+      uom: "pcs",
       group_id: null,
       has_drawing: false,
       length_cm: null,
@@ -214,6 +229,7 @@ export default function OriginalPartsTable({
         description_ru: editingValues.description_ru || null,
         description_en: editingValues.description_en || null,
         weight_kg: toNum(editingValues.weight_kg),
+        uom: editingValues.uom || null,
         group_id:
           editingValues.group_id === undefined ||
           editingValues.group_id === null ||
@@ -458,6 +474,28 @@ export default function OriginalPartsTable({
                 ...prev,
                 weight_kg: val,
               }))
+            }
+            onKeyDown={makeKeyHandler(record.id)}
+          />
+        )
+      },
+    },
+
+    {
+      title: "Ед. изм.",
+      dataIndex: "uom",
+      width: 110,
+      render: (value, record) => {
+        if (record.id !== editingId) {
+          return getUomLabel(value)
+        }
+        return (
+          <Select
+            style={{ width: "100%" }}
+            value={editingValues.uom || undefined}
+            options={UOM_OPTIONS}
+            onChange={(val) =>
+              setEditingValues((prev) => ({ ...prev, uom: val }))
             }
             onKeyDown={makeKeyHandler(record.id)}
           />

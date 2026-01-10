@@ -42,7 +42,8 @@ export default function SuppliersLinksTab({ originalPartId }) {
             supplier_id: it.supplier_id,
             supplier_name: it.supplier_name || "—",
             supplier_part_number: it.supplier_part_number || null,
-            description: it.description || null,
+            description:
+              it.description_ru || it.description_en || it.description || null,
             last_price: it.latest_price ?? null,
             last_currency: it.latest_currency ?? null,
             last_price_date: it.latest_price_date ?? null,

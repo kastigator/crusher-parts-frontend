@@ -23,7 +23,9 @@ import axios from "@/api/axiosInstance"
 import TableToolbar from "@/components/common/TableToolbar"
 import confirmAction from "@/utils/confirmAction"
 import { useAuth } from "@/auth/AuthContext"
+import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import OrderDrawer from "./OrderDrawer"
+import OrderInlinePanel from "./OrderInlinePanel"
 import createTablePagination from "@/utils/tablePagination"
 import ProposalPreviewModal from "./ProposalPreviewModal"
 
@@ -64,6 +66,9 @@ export default function ClientOrdersMain() {
   const [proposalOrder, setProposalOrder] = useState(null)
   const [proposalItems, setProposalItems] = useState([])
   const [proposalLoading, setProposalLoading] = useState(false)
+  const [expandedOrderId, setExpandedOrderId] = useState(null)
+  const [inlineResetToken, setInlineResetToken] = useState(0)
+  const [historyForId, setHistoryForId] = useState(null)
 
   const roleSlug = getRoleSlug(user)
   const isAdmin = useMemo(
@@ -116,6 +121,12 @@ export default function ClientOrdersMain() {
     fetchOrders()
   }, [fetchOrders])
 
+  useEffect(() => {
+    if (!expandedOrderId) return
+    const exists = orders.some((o) => o.id === expandedOrderId)
+    if (!exists) setExpandedOrderId(null)
+  }, [orders, expandedOrderId])
+
   const handleOpenCreate = () => {
     setSelected(null)
     setDrawerOpen(true)
@@ -124,6 +135,19 @@ export default function ClientOrdersMain() {
   const handleRowOpen = (record) => {
     setSelected(record)
     setDrawerOpen(true)
+  }
+
+  const handleRowClick = (record) => (event) => {
+    const target = event.target
+    if (
+      target.closest(".ant-table-row-expand-icon") ||
+      target.closest(".ant-table-row-expand-icon-cell") ||
+      target.closest("button") ||
+      target.closest("a")
+    ) {
+      return
+    }
+    handleRowOpen(record)
   }
 
   const handleDelete = async (order) => {
@@ -238,9 +262,10 @@ export default function ClientOrdersMain() {
           <div onClick={(e) => e.stopPropagation()}>
             <ActionButtons
               size="small"
+              onHistory={() => setHistoryForId(record.id)}
               onDelete={() => handleDelete(record)}
               loadingDelete={deletingId === record.id}
-              titles={{ delete: "Удалить" }}
+              titles={{ delete: "Удалить", history: "История изменений" }}
               extraButtons={[
                 {
                   key: "proposal",
@@ -357,10 +382,33 @@ export default function ClientOrdersMain() {
           pagination={pagination}
           className="op-table"
           onRow={(record) => ({
-            onClick: () => handleRowOpen(record),
+            onClick: handleRowClick(record),
             style: { cursor: "pointer" },
           })}
-          rowClassName={() => "clickable-row"}
+          rowClassName={(record) => {
+            const classes = ["clickable-row"]
+            if (expandedOrderId && record.id === expandedOrderId) {
+              classes.push("ant-table-row-selected", "op-row-expanded")
+            }
+            return classes.join(" ")
+          }}
+          expandable={{
+            expandedRowKeys: expandedOrderId ? [expandedOrderId] : [],
+            onExpand: (expanded, record) => {
+              setExpandedOrderId(expanded ? record.id : null)
+              setInlineResetToken((prev) => prev + 1)
+            },
+            expandedRowRender: (record) => (
+              <div className="subtable-shell table-section">
+                <OrderInlinePanel
+                  orderId={record.id}
+                  viewRole={appliedRole}
+                  onOpenOrder={() => handleRowOpen(record)}
+                  resetToken={inlineResetToken}
+                />
+              </div>
+            ),
+          }}
         />
       </Card>
 
@@ -380,6 +428,14 @@ export default function ClientOrdersMain() {
         items={proposalItems}
         viewRole={appliedRole}
       />
+
+      {historyForId != null && (
+        <FullHistoryDialog
+          entityType="client_orders"
+          entityId={historyForId}
+          onClose={() => setHistoryForId(null)}
+        />
+      )}
     </Space>
   )
 }

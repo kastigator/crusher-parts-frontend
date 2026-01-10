@@ -22,7 +22,8 @@ export default function SupplierPartDock({ part, onChanged = () => {} }) {
       <Space wrap size={8}>
         <Text type="secondary">Деталь:</Text>
         <Text strong>{part.supplier_part_number || "—"}</Text>
-        {part.description ? <Tag>{part.description}</Tag> : null}
+        {part.description_ru ? <Tag color="blue">{part.description_ru}</Tag> : null}
+        {part.description_en ? <Tag>{part.description_en}</Tag> : null}
         {part.latest_price != null ? (
           <Tag color="geekblue">последняя цена: {String(part.latest_price)}</Tag>
         ) : (

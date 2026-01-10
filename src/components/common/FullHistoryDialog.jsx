@@ -24,6 +24,8 @@ const ENTITY_LABELS = {
   client_billing_addresses: "Юр. адрес",
   client_shipping_addresses: "Адрес доставки",
   client_bank_details: "Банковские реквизиты",
+  client_orders: "Заказ клиента",
+  client_order_items: "Позиция заказа",
   tnved_code: "ТН ВЭД",
   tnved_codes: "ТН ВЭД",
   suppliers: "Поставщик",

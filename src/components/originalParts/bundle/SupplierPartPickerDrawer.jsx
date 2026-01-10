@@ -83,7 +83,9 @@ export default function SupplierPartPickerDrawer({
           <div style={{ lineHeight: 1.2 }}>
             <Text>{r.supplier_part_number || "—"}</Text>
             <br />
-            <Text type="secondary">{r.description || "—"}</Text>
+            <Text type="secondary">
+              {r.description_ru || r.description_en || r.description || "—"}
+            </Text>
           </div>
         ),
       },
@@ -148,7 +150,7 @@ export default function SupplierPartPickerDrawer({
     >
       <Space direction="vertical" style={{ width: "100%" }} size="middle">
         <Input
-          placeholder="Поиск по номеру/описанию..."
+          placeholder="Поиск по номеру/описанию RU/EN..."
           allowClear
           value={q}
           onChange={(e) => setQ(e.target.value)}

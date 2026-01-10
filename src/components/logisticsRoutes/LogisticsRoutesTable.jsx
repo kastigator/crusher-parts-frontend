@@ -18,9 +18,52 @@ export const ROUTE_TYPE_OPTIONS = [
   { value: "other", label: "Другое" },
 ]
 
+export const PRICING_MODEL_OPTIONS = [
+  { value: "fixed", label: "Фикс" },
+  { value: "per_kg", label: "За кг" },
+  { value: "per_cbm", label: "За м³" },
+  { value: "per_kg_or_cbm_max", label: "За кг/объём (max)" },
+]
+
 const typeLabel = Object.fromEntries(
   ROUTE_TYPE_OPTIONS.map((t) => [t.value, t.label]),
 )
+const pricingLabel = Object.fromEntries(
+  PRICING_MODEL_OPTIONS.map((t) => [t.value, t.label]),
+)
+
+const fmtRate = (rate, unit, currency) => {
+  if (rate == null) return null
+  const cur = currency || ""
+  return `${rate} ${cur}/${unit}`.trim()
+}
+
+const formatPricingSummary = (record) => {
+  const model = record.pricing_model || "fixed"
+  const cur = record.currency || ""
+  if (model === "fixed") return pricingLabel.fixed
+  if (model === "per_kg") {
+    const main = fmtRate(record.rate_per_kg, "кг", cur)
+    const extra = record.min_cost != null ? `мин ${record.min_cost} ${cur}`.trim() : null
+    return [main, extra].filter(Boolean).join(" · ")
+  }
+  if (model === "per_cbm") {
+    const main = fmtRate(record.rate_per_cbm, "м³", cur)
+    const extra = record.min_cost != null ? `мин ${record.min_cost} ${cur}`.trim() : null
+    return [main, extra].filter(Boolean).join(" · ")
+  }
+  if (model === "per_kg_or_cbm_max") {
+    const main = fmtRate(record.rate_per_kg, "кг", cur) || fmtRate(record.rate_per_cbm, "м³", cur)
+    const extra = [
+      record.min_cost != null ? `мин ${record.min_cost} ${cur}`.trim() : null,
+      record.volumetric_kg_per_cbm != null ? `${record.volumetric_kg_per_cbm} кг/м³` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ")
+    return [main, extra].filter(Boolean).join(" · ")
+  }
+  return pricingLabel[model] || model
+}
 
 export default function LogisticsRoutesTable({
   data = [],
@@ -186,14 +229,16 @@ export default function LogisticsRoutesTable({
       render: (_, record) =>
         isEditing(record) ? (
           <Space size={8} wrap>
-            <InputNumber
-              min={0}
-              value={editedRow.cost}
-              onChange={(v) =>
-                setEditedRow({ ...editedRow, cost: v ?? null })
-              }
-              style={{ width: 110 }}
-            />
+            {(editedRow.pricing_model || "fixed") === "fixed" && (
+              <InputNumber
+                min={0}
+                value={editedRow.cost}
+                onChange={(v) =>
+                  setEditedRow({ ...editedRow, cost: v ?? null })
+                }
+                style={{ width: 110 }}
+              />
+            )}
             <CurrencySelect
               value={editedRow.currency}
               onChange={(v) =>
@@ -205,11 +250,106 @@ export default function LogisticsRoutesTable({
         ) : (
           <ValueDisplay
             value={
-              record.cost != null
+              (record.pricing_model || "fixed") === "fixed" && record.cost != null
                 ? `${record.cost} ${record.currency || ""}`.trim()
                 : null
             }
           />
+        ),
+    },
+    {
+      title: "Тариф",
+      dataIndex: "pricing_model",
+      width: 280,
+      render: (_, record) =>
+        isEditing(record) ? (
+          <Space size={8} wrap>
+            <Select
+              size="small"
+              value={editedRow.pricing_model || "fixed"}
+              onChange={(v) =>
+                setEditedRow({ ...editedRow, pricing_model: v || "fixed" })
+              }
+              options={PRICING_MODEL_OPTIONS}
+              style={{ minWidth: 160 }}
+            />
+            {["per_kg", "per_kg_or_cbm_max"].includes(
+              editedRow.pricing_model || "fixed",
+            ) && (
+              <InputNumber
+                min={0}
+                placeholder="за кг"
+                value={editedRow.rate_per_kg}
+                onChange={(v) =>
+                  setEditedRow({ ...editedRow, rate_per_kg: v ?? null })
+                }
+                style={{ width: 110 }}
+              />
+            )}
+            {["per_cbm", "per_kg_or_cbm_max"].includes(
+              editedRow.pricing_model || "fixed",
+            ) && (
+              <InputNumber
+                min={0}
+                placeholder="за м³"
+                value={editedRow.rate_per_cbm}
+                onChange={(v) =>
+                  setEditedRow({ ...editedRow, rate_per_cbm: v ?? null })
+                }
+                style={{ width: 110 }}
+              />
+            )}
+            {editedRow.pricing_model !== "fixed" && (
+              <InputNumber
+                min={0}
+                placeholder="мин."
+                value={editedRow.min_cost}
+                onChange={(v) =>
+                  setEditedRow({ ...editedRow, min_cost: v ?? null })
+                }
+                style={{ width: 100 }}
+              />
+            )}
+            {(editedRow.pricing_model || "fixed") === "per_kg_or_cbm_max" && (
+              <InputNumber
+                min={0}
+                placeholder="кг/м³"
+                value={editedRow.volumetric_kg_per_cbm}
+                onChange={(v) =>
+                  setEditedRow({ ...editedRow, volumetric_kg_per_cbm: v ?? null })
+                }
+                style={{ width: 110 }}
+              />
+            )}
+            {["per_kg", "per_kg_or_cbm_max"].includes(
+              editedRow.pricing_model || "fixed",
+            ) && (
+              <InputNumber
+                min={0}
+                placeholder="шаг кг"
+                value={editedRow.round_step_kg}
+                onChange={(v) =>
+                  setEditedRow({ ...editedRow, round_step_kg: v ?? null })
+                }
+                style={{ width: 100 }}
+              />
+            )}
+            {["per_cbm", "per_kg_or_cbm_max"].includes(
+              editedRow.pricing_model || "fixed",
+            ) && (
+              <InputNumber
+                min={0}
+                placeholder="шаг м³"
+                value={editedRow.round_step_cbm}
+                onChange={(v) =>
+                  setEditedRow({ ...editedRow, round_step_cbm: v ?? null })
+                }
+                style={{ width: 100 }}
+              />
+            )}
+          </Space>
+        ) : (
+          <ValueDisplay value={formatPricingSummary(record)} />
         ),
     },
     {

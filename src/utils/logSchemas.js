@@ -19,6 +19,7 @@ export const logSchemas = {
       description_en: "Description (EN)",
       tech_description: "Тех. описание",
       weight_kg: "Вес, кг",
+      uom: "Ед. изм.",
       tnved_code_id: "ТН ВЭД",
       equipment_model_id: "Модель оборудования",
     },
@@ -160,6 +161,8 @@ export const logSchemas = {
   supplier_parts: {
     fields: {
       supplier_part_number: "Номер у поставщика",
+      description_ru: "Описание (RU)",
+      description_en: "Description (EN)",
       description: "Описание",
       currency: "Валюта (ISO3)",
       lead_time_days: "Срок поставки, дни",
@@ -190,6 +193,68 @@ export const logSchemas = {
       comment: "Комментарий",
     },
     excludeFields: ["id"],
+  },
+
+  // === Заказы клиентов ===
+  client_orders: {
+    fields: {
+      order_number: "Номер заказа",
+      status: "Статус",
+      contact_name: "Контакт",
+      contact_phone: "Телефон",
+      contact_email: "Email",
+      billing_address_id: "Юридический адрес",
+      shipping_address_id: "Адрес доставки",
+      comment_internal: "Комментарий (внутр.)",
+      comment_client: "Комментарий (клиент)",
+      requested_delivery_date: "Желаемая дата",
+      responsible_user_id: "Ответственный",
+      currency: "Валюта",
+      incoterms: "Инкотермс",
+      payment_terms: "Условия оплаты",
+      client_po_number: "Номер заказа клиента",
+    },
+    excludeFields: [
+      "id",
+      "client_id",
+      "created_at",
+      "updated_at",
+      "version",
+      "assigned_to_user_id",
+      "approved_at",
+      "approved_by_user_id",
+      "proposal_version",
+      "proposal_file_url",
+      "proposal_generated_at",
+      "proposal_generated_by",
+    ],
+  },
+
+  // === Позиции заказа клиента ===
+  client_order_items: {
+    fields: {
+      original_part_id: "Оригинальная деталь",
+      equipment_model_id: "Модель оборудования",
+      client_part_number: "Номер клиента",
+      client_description: "Описание клиента",
+      client_line_text: "Строка клиента",
+      requested_qty: "Количество",
+      uom: "Ед. изм.",
+      required_date: "Требуемая дата",
+      priority: "Приоритет",
+      status: "Статус строки",
+      internal_comment: "Комментарий (внутр.)",
+      client_comment: "Комментарий (клиент)",
+    },
+    excludeFields: [
+      "id",
+      "order_id",
+      "line_number",
+      "decision_offer_id",
+      "created_at",
+      "updated_at",
+      "version",
+    ],
   },
 
   // === Связи «деталь поставщика ↔ оригинальная деталь» ===

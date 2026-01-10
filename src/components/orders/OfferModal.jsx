@@ -29,6 +29,111 @@ const { Text } = Typography
 const fmtMoney = (v, cur) =>
   v == null || Number.isNaN(Number(v)) ? "—" : `${Number(v).toFixed(2)} ${cur || ""}`
 
+const toNum = (v) => {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+const roundUp = (value, step) => {
+  const base = toNum(value)
+  const stepNum = toNum(step)
+  if (base == null) return null
+  if (!stepNum || stepNum <= 0) return base
+  return Math.ceil(base / stepNum) * stepNum
+}
+
+const getItemMetrics = (item) => {
+  const qty = toNum(item?.requested_qty) ?? 1
+  const unitWeight = toNum(item?.weight_kg ?? item?.op_weight_kg)
+  const weightKg = unitWeight != null && unitWeight > 0 ? unitWeight * qty : null
+  const length = toNum(item?.length_cm ?? item?.op_length_cm)
+  const width = toNum(item?.width_cm ?? item?.op_width_cm)
+  const height = toNum(item?.height_cm ?? item?.op_height_cm)
+  const unitVolumeCbm =
+    length != null && width != null && height != null && length > 0 && width > 0 && height > 0
+      ? (length * width * height) / 1e6
+      : null
+  const volumeCbm = unitVolumeCbm != null ? unitVolumeCbm * qty : null
+  return {
+    qty,
+    unit_weight_kg: unitWeight,
+    weight_kg: weightKg,
+    unit_volume_cbm: unitVolumeCbm,
+    volume_cbm: volumeCbm,
+  }
+}
+
+const computeRouteLogistics = (route, item) => {
+  if (!route) return { amount: null, currency: null, meta: null }
+  const model = (route.pricing_model || "fixed").toLowerCase()
+  const ratePerKg = toNum(route.rate_per_kg)
+  const ratePerCbm = toNum(route.rate_per_cbm)
+  const minCost = toNum(route.min_cost)
+  const volCoef = toNum(route.volumetric_kg_per_cbm) ?? 167
+  const roundKg = toNum(route.round_step_kg)
+  const roundCbm = toNum(route.round_step_cbm)
+
+  const metrics = getItemMetrics(item)
+  const weightTotal = toNum(metrics.weight_kg)
+  const volumeTotal = toNum(metrics.volume_cbm)
+  const roundedWeight = weightTotal != null ? roundUp(weightTotal, roundKg) : null
+  const roundedVolume = volumeTotal != null ? roundUp(volumeTotal, roundCbm) : null
+
+  let baseCost = null
+  let chargeableKg = null
+  let chargeableCbm = null
+  let volumetricWeight = null
+
+  if (model === "fixed") {
+    baseCost = toNum(route.cost)
+  } else if (model === "per_kg") {
+    chargeableKg = roundedWeight
+    baseCost = chargeableKg != null && ratePerKg != null ? chargeableKg * ratePerKg : null
+  } else if (model === "per_cbm") {
+    chargeableCbm = roundedVolume
+    baseCost = chargeableCbm != null && ratePerCbm != null ? chargeableCbm * ratePerCbm : null
+  } else if (model === "per_kg_or_cbm_max") {
+    volumetricWeight = roundedVolume != null ? roundedVolume * volCoef : null
+    if (roundedWeight != null && volumetricWeight != null) {
+      chargeableKg = Math.max(roundedWeight, volumetricWeight)
+    } else {
+      chargeableKg = roundedWeight != null ? roundedWeight : volumetricWeight
+    }
+    if (chargeableKg != null && ratePerKg != null) {
+      baseCost = chargeableKg * ratePerKg
+    } else if (roundedVolume != null && ratePerCbm != null) {
+      baseCost = roundedVolume * ratePerCbm
+    }
+  }
+
+  if (baseCost != null && minCost != null && baseCost < minCost) {
+    baseCost = minCost
+  }
+
+  return {
+    amount: baseCost,
+    currency: route.currency || null,
+    meta: {
+      pricing_model: model,
+      rate_per_kg: ratePerKg,
+      rate_per_cbm: ratePerCbm,
+      min_cost: minCost,
+      volumetric_kg_per_cbm: volCoef,
+      round_step_kg: roundKg,
+      round_step_cbm: roundCbm,
+      qty: metrics.qty,
+      unit_weight_kg: metrics.unit_weight_kg,
+      weight_kg: metrics.weight_kg,
+      unit_volume_cbm: metrics.unit_volume_cbm,
+      volume_cbm: metrics.volume_cbm,
+      chargeable_kg: chargeableKg,
+      chargeable_cbm: chargeableCbm,
+      volumetric_weight_kg: volumetricWeight,
+      base_cost: baseCost,
+    },
+  }
+}
+
 const OFFER_STATUS_META = {
   draft: { color: "default", label: "Черновик" },
   proposed: { color: "processing", label: "Предложен" },
@@ -53,11 +158,20 @@ const INITIAL_FORM = {
   material_id: null,
   client_price: null,
   client_currency: "USD",
-  status: "proposed",
+  status: "draft",
   comment_internal: "",
   comment_client: "",
   client_visible: false,
 }
+
+const normalizeOfferStatus = (status) =>
+  status ? String(status).trim().toLowerCase() : "draft"
+
+const statusMakesVisible = (status) =>
+  ["proposed", "approved"].includes(normalizeOfferStatus(status))
+
+const isOfferVisible = (offer) =>
+  !!offer?.client_visible || statusMakesVisible(offer?.status)
 
 export default function OfferModal({
   open,
@@ -66,6 +180,7 @@ export default function OfferModal({
   canEditOffers,
   canSelect,
   onOffersUpdated,
+  inline = false,
 }) {
   const [adding, setAdding] = useState(false)
   const [supplierPartPickerOpen, setSupplierPartPickerOpen] = useState(false)
@@ -118,7 +233,9 @@ export default function OfferModal({
       setReadyRouteByKey({})
       return
     }
-    setActiveTab("ready")
+    const hasInitialOffers =
+      Array.isArray(item?.offers) && item.offers.length > 0
+    setActiveTab(hasInitialOffers ? "list" : "ready")
     setOffersFilter("all")
     setSelectedOfferKeys([])
     setBulkStatus(null)
@@ -243,18 +360,19 @@ export default function OfferModal({
         "USD"
       const supplierCurrency = formValues.supplier_currency || targetCurrency
       const route = routes.find((r) => r.id === formValues.logistics_route_id)
+      const routeCalc = computeRouteLogistics(route, item)
       const rawLogi =
         formValues.logistics_cost != null
           ? Number(formValues.logistics_cost)
-          : route?.cost != null
-            ? Number(route.cost)
+          : routeCalc.amount != null
+            ? Number(routeCalc.amount)
             : null
       const surchargePct = route?.surcharge_pct != null ? Number(route.surcharge_pct) : 0
       const surchargeAbs = route?.surcharge_abs != null ? Number(route.surcharge_abs) : 0
       const logiWithSurcharge =
         rawLogi != null ? rawLogi * (1 + surchargePct / 100) + surchargeAbs : null
       const logisticsCurrency =
-        formValues.logistics_currency || route?.currency || targetCurrency
+        formValues.logistics_currency || routeCalc.currency || route?.currency || targetCurrency
 
       const supplierPrice = formValues.supplier_price != null ? Number(formValues.supplier_price) : null
       const supplierConv = await convertFx(supplierPrice, supplierCurrency, targetCurrency)
@@ -285,6 +403,7 @@ export default function OfferModal({
           with_surcharge: logiWithSurcharge,
           converted: logisticsConv.value,
           fx_rate: logisticsConv.rate,
+          pricing: routeCalc.meta,
         },
         duty_amount: dutyAmount,
         duty_rate: dutyRate,
@@ -318,13 +437,13 @@ export default function OfferModal({
         const route = routes.find((r) => r.id === routeId)
         const supplierPrice = row.latest_price != null ? Number(row.latest_price) : null
         const supplierCurrency = row.latest_price_currency || targetCurrency
-        const rawLogi =
-          route?.cost != null ? Number(route.cost) : null
+        const routeCalc = computeRouteLogistics(route, item)
+        const rawLogi = routeCalc.amount != null ? Number(routeCalc.amount) : null
         const surchargePct = route?.surcharge_pct != null ? Number(route.surcharge_pct) : 0
         const surchargeAbs = route?.surcharge_abs != null ? Number(route.surcharge_abs) : 0
         const logiWithSurcharge =
           rawLogi != null ? rawLogi * (1 + surchargePct / 100) + surchargeAbs : null
-        const logisticsCurrency = route?.currency || targetCurrency
+        const logisticsCurrency = routeCalc.currency || route?.currency || targetCurrency
 
         const supplierConv = await convertFx(supplierPrice, supplierCurrency, targetCurrency)
         const logisticsConv = await convertFx(logiWithSurcharge, logisticsCurrency, targetCurrency)
@@ -387,8 +506,8 @@ export default function OfferModal({
       draft: 0,
     }
     offers.forEach((o) => {
-      if (o.client_visible) stats.visible += 1
-      switch (o.status) {
+      if (isOfferVisible(o)) stats.visible += 1
+      switch (normalizeOfferStatus(o.status)) {
         case "approved":
           stats.approved += 1
           break
@@ -422,7 +541,7 @@ export default function OfferModal({
 
   const filteredOffers = useMemo(() => {
     if (offersFilter === "visible") {
-      return offers.filter((o) => o.client_visible)
+      return offers.filter((o) => isOfferVisible(o))
     }
     if (offersFilter === "approved") {
       return offers.filter((o) => o.status === "approved")
@@ -466,16 +585,22 @@ export default function OfferModal({
 
   const handleBulkVisibility = async (visible) => {
     const messageText = visible ? "Офферы показаны клиенту" : "Офферы скрыты"
+    const nextStatus = visible ? "proposed" : "draft"
     await updateOffers(
       selectedOfferKeys,
-      { client_visible: visible ? 1 : 0 },
+      { status: nextStatus, client_visible: visible ? 1 : 0 },
       messageText,
     )
   }
 
   const handleBulkStatus = async (status) => {
-    setBulkStatus(status)
-    await updateOffers(selectedOfferKeys, { status }, "Статус обновлён")
+    const normalized = normalizeOfferStatus(status)
+    setBulkStatus(normalized)
+    await updateOffers(
+      selectedOfferKeys,
+      { status: normalized, client_visible: statusMakesVisible(normalized) ? 1 : 0 },
+      "Статус обновлён",
+    )
     setBulkStatus(null)
   }
 
@@ -494,6 +619,7 @@ export default function OfferModal({
   const quickAddSelected = async () => {
     const rows = selectedVariants
     if (!item?.id || !rows.length) return
+    const quickStatus = clientVisibleOnAdd ? "proposed" : "draft"
     try {
       await Promise.all(
         rows.map(async (row) => {
@@ -507,7 +633,7 @@ export default function OfferModal({
             markup_abs: readyMarkupAbs,
             logistics_route_id: readyRouteByKey[row.key] ?? readyRouteId,
             client_visible: clientVisibleOnAdd ? 1 : 0,
-            status: "proposed",
+            status: quickStatus,
           })
         }),
       )
@@ -523,6 +649,7 @@ export default function OfferModal({
 
   const addSupplierPartOffer = async (row) => {
     if (!item?.id || !row?.supplier_part_id) return
+    const quickStatus = clientVisibleOnAdd ? "proposed" : "draft"
     await linkToOriginal(row.supplier_part_id)
     await axios.post(`/client-orders/items/${item.id}/offers`, {
       supplier_part_id: row.supplier_part_id,
@@ -533,7 +660,7 @@ export default function OfferModal({
       markup_abs: readyMarkupAbs,
       logistics_route_id: readyRouteByKey[row.key] ?? readyRouteId,
       client_visible: clientVisibleOnAdd ? 1 : 0,
-      status: "proposed",
+      status: quickStatus,
     })
   }
 
@@ -547,6 +674,7 @@ export default function OfferModal({
       return
     }
     setBundleAddingId(bundle.id)
+    const quickStatus = clientVisibleOnAdd ? "proposed" : "draft"
     try {
       await Promise.all(
         defaults.map(async (opt) => {
@@ -562,8 +690,8 @@ export default function OfferModal({
               (bundle.totals && bundle.totals[0]?.currency_iso3) ||
               null,
             original_part_id: item?.original_part_id || null,
-            status: "proposed",
             client_visible: clientVisibleOnAdd ? 1 : 0,
+            status: quickStatus,
             comment_internal: opt.role_label ? `Роль: ${opt.role_label}` : null,
           })
         }),
@@ -595,9 +723,12 @@ export default function OfferModal({
     try {
       setAdding(true)
       await linkToOriginal(formValues.supplier_part_id)
+      const normalizedStatus = normalizeOfferStatus(formValues.status)
+      const nextVisible = statusMakesVisible(normalizedStatus)
       await axios.post(`/client-orders/items/${item.id}/offers`, {
         ...formValues,
-        client_visible: formValues.client_visible ? 1 : 0,
+        status: normalizedStatus,
+        client_visible: nextVisible ? 1 : 0,
       })
       message.success("Оффер добавлен")
       await loadOffers(item.id)
@@ -615,7 +746,11 @@ export default function OfferModal({
   const handleStatusChange = async (offer, status) => {
     if (!canEditOffers) return
     try {
-      await axios.put(`/client-orders/offers/${offer.id}`, { status })
+      const normalized = normalizeOfferStatus(status)
+      await axios.put(`/client-orders/offers/${offer.id}`, {
+        status: normalized,
+        client_visible: statusMakesVisible(normalized) ? 1 : 0,
+      })
       await loadOffers(offer.order_item_id)
       onOffersUpdated?.()
     } catch (e) {
@@ -626,7 +761,16 @@ export default function OfferModal({
 
   const handleToggleVisibility = async (offer, visible) => {
     try {
+      const currentStatus = normalizeOfferStatus(offer?.status)
+      const nextStatus = visible
+        ? currentStatus === "approved"
+          ? "approved"
+          : "proposed"
+        : currentStatus === "approved"
+          ? "approved"
+          : "draft"
       await axios.put(`/client-orders/offers/${offer.id}`, {
+        status: nextStatus,
         client_visible: visible ? 1 : 0,
       })
       message.success(visible ? "Оффер добавлен в предложение" : "Оффер скрыт из предложения")
@@ -677,7 +821,7 @@ export default function OfferModal({
 
   const offerRowClassName = (record) => {
     const classes = []
-    if (record.client_visible) classes.push("offer-row-visible")
+    if (isOfferVisible(record)) classes.push("offer-row-visible")
     if (record.status === "approved") classes.push("offer-row-approved")
     return classes.join(" ")
   }
@@ -759,19 +903,28 @@ export default function OfferModal({
         title: "Для клиента",
         dataIndex: "client_visible",
         width: 130,
-        render: (v, record) =>
-          canSelect ? (
-            <Checkbox
-              checked={!!record.client_visible}
-              onChange={(e) => handleToggleVisibility(record, e.target.checked)}
-            >
-              Показать
-            </Checkbox>
-          ) : record.client_visible ? (
+        render: (v, record) => {
+          const visible = isOfferVisible(record)
+          const isLocked = normalizeOfferStatus(record?.status) === "approved"
+          if (canSelect) {
+            return (
+              <Checkbox
+                checked={visible}
+                disabled={isLocked}
+                onChange={(e) =>
+                  handleToggleVisibility(record, e.target.checked)
+                }
+              >
+                Показать
+              </Checkbox>
+            )
+          }
+          return visible ? (
             <Tag color="green">Показан</Tag>
           ) : (
             <Tag>Скрыт</Tag>
-          ),
+          )
+        },
       },
       {
         title: "Статус",
@@ -963,7 +1116,7 @@ export default function OfferModal({
           onChange={(e) => setClientVisibleOnAdd(e.target.checked)}
           disabled={!canSelect}
         >
-          Сразу показывать клиенту
+          Сразу показывать клиенту (статус «Предложен»)
         </Checkbox>
         <Text type="secondary">Применится ко всем выбранным быстрым офферам.</Text>
       </Space>
@@ -1305,7 +1458,9 @@ export default function OfferModal({
               : undefined
           }
           locale={{ emptyText: offersLoading ? "Загрузка..." : "Офферы пока не добавлены" }}
-          title={() => "Текущие офферы (для клиента отметьте галочкой в колонке «Для клиента»)"}
+          title={() =>
+            "Текущие офферы (галочка «Для клиента» синхронизирует статус «Предложен/Черновик»)"
+          }
         />
       </Space>
     </div>
@@ -1429,7 +1584,7 @@ export default function OfferModal({
               label: r.name || `Маршрут #${r.id}`,
             }))}
             suffixIcon={
-              <Tooltip title="Стоимость и надбавки маршрута попадут в логистику и ETA">
+              <Tooltip title="Тариф/стоимость и надбавки маршрута попадут в логистику и ETA">
                 <InfoCircleOutlined />
               </Tooltip>
             }
@@ -1465,9 +1620,14 @@ export default function OfferModal({
           <Select
             value={formValues.status}
             style={{ width: 180 }}
-            onChange={(v) =>
-              setFormValues((prev) => ({ ...prev, status: v }))
-            }
+            onChange={(v) => {
+              const nextStatus = normalizeOfferStatus(v)
+              setFormValues((prev) => ({
+                ...prev,
+                status: nextStatus,
+                client_visible: statusMakesVisible(nextStatus),
+              }))
+            }}
             options={Object.entries(OFFER_STATUS_META).map(([value, m]) => ({
               value,
               label: m.label,
@@ -1481,14 +1641,26 @@ export default function OfferModal({
           </Checkbox>
           <Checkbox
             checked={!!formValues.client_visible}
-            onChange={(e) =>
-              setFormValues((prev) => ({
-                ...prev,
-                client_visible: e.target.checked,
-              }))
-            }
+            onChange={(e) => {
+              const visible = e.target.checked
+              setFormValues((prev) => {
+                const currentStatus = normalizeOfferStatus(prev.status)
+                const nextStatus = visible
+                  ? currentStatus === "approved"
+                    ? "approved"
+                    : "proposed"
+                  : currentStatus === "approved"
+                    ? "approved"
+                    : "draft"
+                return {
+                  ...prev,
+                  status: nextStatus,
+                  client_visible: visible,
+                }
+              })
+            }}
           >
-            Показать клиенту
+            Показать клиенту (статус «Предложен»)
           </Checkbox>
           <Button
             type="primary"
@@ -1562,47 +1734,66 @@ export default function OfferModal({
     </div>
   )
 
+  const modalContent = (
+    <Space direction="vertical" style={{ width: "100%" }} size="large">
+      <Alert
+        type="info"
+        showIcon
+        message="Как работать с офферами"
+        description={
+          <div>
+            <div>Комплектовщик подбирает варианты (готовые связи или поиск).</div>
+            <div>Статус «Предложен» = показываем клиенту (галочка и статус синхронизированы).</div>
+            <div>
+              Тариф маршрута: логистика считается по весу/объему детали, если выбран тариф
+              за кг/м³. Пример: вес 120 кг, ставка 4 USD/кг, минимум 500 USD → 500 USD.
+            </div>
+            <div>«Черновик» — только для внутренней работы, «Выбран» — утверждён клиентом.</div>
+            <div>После согласования выберите один оффер — статус станет «Выбран».</div>
+            <div>Выберите варианты чекбоксами и нажмите «Добавить выбранные» или добавьте комплект целиком.</div>
+            {!item?.id && (
+              <Text type="danger">Сохраните заказ и позицию, чтобы добавить офферы.</Text>
+            )}
+          </div>
+        }
+      />
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={[
+          { key: "ready", label: "Готовые варианты", children: readyTabContent },
+          { key: "list", label: `Текущие офферы (${offers.length || 0})`, children: offersTabContent },
+          {
+            key: "new",
+            label: "Новый оффер",
+            children: canEditOffers
+              ? newOfferTabContent
+              : <Alert type="warning" message="Добавление офферов недоступно для вашей роли" />,
+          },
+        ]}
+      />
+    </Space>
+  )
+
   return (
     <>
-      <Modal
-        title={`Офферы по строке #${item?.line_number || item?.id || ""}`}
-        open={open}
-        onCancel={onClose}
-        maskClosable={false}
-        footer={null}
-        width={1100}
-        getContainer={() => document.body}
-        zIndex={1300}
-        bodyStyle={{ maxHeight: "75vh", overflow: "auto" }}
-      >
-        <Space direction="vertical" style={{ width: "100%" }} size="large">
-          <Alert
-            type="info"
-            showIcon
-            message="Как работать с офферами"
-            description={
-              <div>
-                <div>Комплектовщик подбирает варианты (готовые связи или поиск), ставит статус «Предложен».</div>
-                <div>Для согласования отметьте «Показать клиенту» — они попадут в предложение.</div>
-                <div>После согласования выберите один оффер — статус станет «Выбран».</div>
-                <div>Выберите варианты чекбоксами и нажмите «Добавить выбранные» или добавьте комплект целиком.</div>
-                {!item?.id && (
-                  <Text type="danger">Сохраните заказ и позицию, чтобы добавить офферы.</Text>
-                )}
-              </div>
-            }
-          />
-          <Tabs
-            activeKey={activeTab}
-            onChange={setActiveTab}
-            items={[
-              { key: "ready", label: "Готовые варианты", children: readyTabContent },
-              { key: "list", label: `Текущие офферы (${offers.length || 0})`, children: offersTabContent },
-              { key: "new", label: "Новый оффер", children: canEditOffers ? newOfferTabContent : <Alert type="warning" message="Добавление офферов недоступно для вашей роли" /> },
-            ]}
-          />
-        </Space>
-      </Modal>
+      {inline ? (
+        open ? <div className="offer-inline-panel">{modalContent}</div> : null
+      ) : (
+        <Modal
+          title={`Офферы по строке #${item?.line_number || item?.id || ""}`}
+          open={open}
+          onCancel={onClose}
+          maskClosable={false}
+          footer={null}
+          width={1100}
+          getContainer={() => document.body}
+          zIndex={1300}
+          bodyStyle={{ maxHeight: "75vh", overflow: "auto" }}
+        >
+          {modalContent}
+        </Modal>
+      )}
 
       <SupplierPartPickerDrawer
         open={supplierPartPickerOpen}
@@ -1617,7 +1808,8 @@ export default function OfferModal({
               supplier_price: r.latest_price ?? prev.supplier_price,
               supplier_currency: r.latest_currency || prev.supplier_currency,
               supplier_part_number: r.supplier_part_number,
-              supplier_part_description: r.description || "",
+              supplier_part_description:
+                r.description_ru || r.description_en || r.description || "",
             }))
           }
         }}

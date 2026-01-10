@@ -31,6 +31,12 @@ import OriginalPartGroupsManager from "@/components/originalParts/OriginalPartGr
 const TEMPLATE_URL =
   "https://storage.googleapis.com/shared-parts-bucket/templates/original_parts_template.xlsx"
 
+const UOM_OPTIONS = [
+  { value: "pcs", label: "шт" },
+  { value: "kg", label: "кг" },
+  { value: "set", label: "компл." },
+]
+
 export default function OriginalPartsMain() {
   const [manufacturer, setManufacturer] = useState(null)
   const [model, setModel] = useState(null)
@@ -188,6 +194,7 @@ export default function OriginalPartsMain() {
         description_en: values.description_en || null,
         tech_description: values.tech_description || null,
         weight_kg: values.weight_kg ?? null,
+        uom: values.uom || "pcs",
         tnved_code_id: values.tnved?.id ?? null,
         is_assembly: values.is_assembly ? 1 : 0,
         group_id: values.group_id ?? null,
@@ -381,6 +388,7 @@ export default function OriginalPartsMain() {
           layout="inline"
           onFinish={submitAddPart}
           disabled={!model}
+          initialValues={{ uom: "pcs" }}
           className="table-section"
           style={{
             marginTop: 8,
@@ -413,6 +421,9 @@ export default function OriginalPartsMain() {
           </Form.Item>
           <Form.Item name="weight_kg" label="Вес, кг">
             <InputNumber style={{ width: 120 }} min={0} step={0.001} />
+          </Form.Item>
+          <Form.Item name="uom" label="Ед. изм.">
+            <Select style={{ width: 120 }} options={UOM_OPTIONS} />
           </Form.Item>
           <Form.Item name="tnved" label="ТН ВЭД">
             <TnvedPicker style={{ width: 240 }} allowClear />

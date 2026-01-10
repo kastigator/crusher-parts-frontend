@@ -20,6 +20,7 @@ import CurrencySelect from "@/components/inputs/CurrencySelect"
 import IncotermsSelect from "@/components/inputs/IncotermsSelect"
 import LogisticsRoutesTable, {
   ROUTE_TYPE_OPTIONS,
+  PRICING_MODEL_OPTIONS,
 } from "./LogisticsRoutesTable"
 import LegsEditor from "./LegsEditor"
 import LegsModal from "./LegsModal"
@@ -40,6 +41,9 @@ export default function LogisticsRoutesMain() {
   const [legsModalRoute, setLegsModalRoute] = useState(null)
 
   const [form] = Form.useForm()
+  const pricingModel = Form.useWatch("pricing_model", form) || "fixed"
+  const usesKg = ["per_kg", "per_kg_or_cbm_max"].includes(pricingModel)
+  const usesCbm = ["per_cbm", "per_kg_or_cbm_max"].includes(pricingModel)
 
   const fetchRoutes = async () => {
     setLoading(true)
@@ -72,6 +76,13 @@ export default function LogisticsRoutesMain() {
         currency: toNull(values.currency),
         surcharge_pct: toNumber(values.surcharge_pct),
         surcharge_abs: toNumber(values.surcharge_abs),
+        pricing_model: toNull(values.pricing_model) || "fixed",
+        rate_per_kg: toNumber(values.rate_per_kg),
+        rate_per_cbm: toNumber(values.rate_per_cbm),
+        min_cost: toNumber(values.min_cost),
+        volumetric_kg_per_cbm: toNumber(values.volumetric_kg_per_cbm),
+        round_step_kg: toNumber(values.round_step_kg),
+        round_step_cbm: toNumber(values.round_step_cbm),
         comment: trim(values.comment) || null,
         legs: legsDraft.map((l, i) => ({ ...l, seq: i + 1 })),
       }
@@ -170,6 +181,25 @@ export default function LogisticsRoutesMain() {
                   (температура, таможня и т.п.).
                 </li>
               </ul>
+              <div style={{ fontWeight: 600, marginBottom: 6, marginTop: 8 }}>
+                Тарифы и пример
+              </div>
+              <ul style={{ paddingLeft: 16, marginBottom: 6 }}>
+                <li>
+                  <b>Фикс</b>: стоимость берется из поля «Стоимость».
+                </li>
+                <li>
+                  <b>За кг</b>/<b>за м³</b>: укажите ставку и минимум (если есть),
+                  поле «Стоимость» не используется.
+                </li>
+                <li>
+                  <b>За кг/объем (max)</b>: считаем chargeable вес по объему и
+                  берем максимум.
+                </li>
+                <li>
+                  Пример: вес 120 кг, ставка 4 USD/кг, минимум 500 USD → 500 USD.
+                </li>
+              </ul>
               <div style={{ color: "#6b7280" }}>
                 Совет: многостадийные схемы с разными инкотермс разбивайте на
                 звенья, чтобы в оффере сразу видеть суммарный срок и логистику.
@@ -205,7 +235,11 @@ export default function LogisticsRoutesMain() {
           form={form}
           layout="inline"
           style={{ marginTop: 12, rowGap: 8, flexWrap: "wrap" }}
-          initialValues={{ type: null }}
+          initialValues={{
+            type: null,
+            pricing_model: "fixed",
+            volumetric_kg_per_cbm: 167,
+          }}
           onFinish={handleCreate}
         >
           <Form.Item
@@ -264,16 +298,89 @@ export default function LogisticsRoutesMain() {
           </Form.Item>
 
           <Form.Item
+            label="Тариф"
+            name="pricing_model"
+            tooltip="Модель расчёта логистики по весу/объёму"
+          >
+            <Select
+              allowClear
+              options={PRICING_MODEL_OPTIONS}
+              placeholder="Тариф"
+              style={{ width: 180 }}
+            />
+          </Form.Item>
+
+          <Form.Item
             label="Стоимость"
             name="cost"
             tooltip="Базовый логистический расход по этому маршруту (фикс)"
           >
-            <InputNumber min={0} style={{ width: 120 }} />
+            <InputNumber min={0} style={{ width: 120 }} disabled={pricingModel !== "fixed"} />
           </Form.Item>
 
           <Form.Item name="currency">
             <CurrencySelect style={{ minWidth: 110 }} />
           </Form.Item>
+
+          {usesKg && (
+            <Form.Item
+              label="Ставка, кг"
+              name="rate_per_kg"
+              tooltip="Стоимость за 1 кг"
+            >
+              <InputNumber min={0} style={{ width: 120 }} />
+            </Form.Item>
+          )}
+
+          {usesCbm && (
+            <Form.Item
+              label="Ставка, м³"
+              name="rate_per_cbm"
+              tooltip="Стоимость за 1 м³"
+            >
+              <InputNumber min={0} style={{ width: 120 }} />
+            </Form.Item>
+          )}
+
+          {pricingModel !== "fixed" && (
+            <Form.Item
+              label="Мин. стоимость"
+              name="min_cost"
+              tooltip="Минимальная стоимость по тарифу"
+            >
+              <InputNumber min={0} style={{ width: 120 }} />
+            </Form.Item>
+          )}
+
+          {pricingModel === "per_kg_or_cbm_max" && (
+            <Form.Item
+              label="Коэф., кг/м³"
+              name="volumetric_kg_per_cbm"
+              tooltip="Перевод объёма в вес для расчёта chargeable"
+            >
+              <InputNumber min={0} style={{ width: 140 }} />
+            </Form.Item>
+          )}
+
+          {usesKg && (
+            <Form.Item
+              label="Шаг, кг"
+              name="round_step_kg"
+              tooltip="Округление веса до шага (в большую сторону)"
+            >
+              <InputNumber min={0} style={{ width: 110 }} />
+            </Form.Item>
+          )}
+
+          {usesCbm && (
+            <Form.Item
+              label="Шаг, м³"
+              name="round_step_cbm"
+              tooltip="Округление объёма до шага (в большую сторону)"
+            >
+              <InputNumber min={0} style={{ width: 110 }} />
+            </Form.Item>
+          )}
 
           <Form.Item
             label="Наценка, %"

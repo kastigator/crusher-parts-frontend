@@ -98,7 +98,8 @@ export default function SupplierPartsMain() {
       await axios.post("/supplier-parts", {
         supplier_id: supplier.id,
         supplier_part_number: v.supplier_part_number,
-        description: v.description || null,
+        description_ru: v.description_ru || null,
+        description_en: v.description_en || null,
         comment: v.comment || null,
         lead_time_days: v.lead_time_days ?? null,
       })
@@ -223,7 +224,7 @@ export default function SupplierPartsMain() {
 
         <div className="table-section">
           <TableToolbar
-            placeholder="Поиск по номеру/описанию/комментариям"
+            placeholder="Поиск по номеру/описанию RU/EN/комментариям"
             search={search}
             onSearch={setSearch}
             disabled={!supplier && !showAll}
@@ -245,9 +246,16 @@ export default function SupplierPartsMain() {
               <Input placeholder="например, P-12345" style={{ width: 240 }} />
             </Form.Item>
 
-            <Form.Item name="description" label="Описание" style={{ flex: 1 }}>
+            <Form.Item name="description_ru" label="RU">
               <Input
-                placeholder="Короткое описание"
+                placeholder="Описание (RU)"
+                style={{ minWidth: 220 }}
+              />
+            </Form.Item>
+
+            <Form.Item name="description_en" label="EN">
+              <Input
+                placeholder="Description (EN)"
                 style={{ minWidth: 220 }}
               />
             </Form.Item>

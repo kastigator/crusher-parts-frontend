@@ -19,7 +19,6 @@ import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
 import OriginalsPickerDrawer from "@/components/supplierParts/OriginalsPickerDrawer"
 import ClientPickerDrawer from "./ClientPickerDrawer"
-import OfferModal from "./OfferModal"
 import HistoryTimeline from "./HistoryTimeline"
 import ShippingAddressPicker from "./ShippingAddressPicker"
 import BillingAddressPicker from "@/components/clients/BillingAddressPicker"
@@ -57,7 +56,6 @@ export default function OrderDrawer({
   const [events, setEvents] = useState([])
   const [clientPickerOpen, setClientPickerOpen] = useState(false)
   const [partsPickerOpen, setPartsPickerOpen] = useState(false)
-  const [offerModalItem, setOfferModalItem] = useState(null)
   const [bankOptions, setBankOptions] = useState([])
   const [bankLoading, setBankLoading] = useState(false)
   const [selectedBankId, setSelectedBankId] = useState(null)
@@ -69,24 +67,15 @@ export default function OrderDrawer({
   const [editingItemId, setEditingItemId] = useState(null)
   const [activeTab, setActiveTab] = useState("info")
 
-  const isNew = !orderId
-  const viewAsRole = (viewRole || "").toLowerCase()
-  const canEditOffers =
-    viewAsRole === "komplektovshchik" ||
-    viewAsRole === "komplektovshik" ||
-    viewAsRole === "комплектовщик" ||
-    viewAsRole === "admin"
-  const canSelectOffer =
-    viewAsRole === "prodavec" ||
-    viewAsRole === "продавец" ||
-    canEditOffers ||
-    viewAsRole === "admin"
+  const effectiveOrderId = orderId || order?.id || null
+  const isNew = !effectiveOrderId
 
-  const loadDetail = useCallback(async () => {
-    if (!orderId) return
+  const loadDetail = useCallback(async (targetId) => {
+    const id = targetId || effectiveOrderId
+    if (!id) return
     setLoading(true)
     try {
-      const { data } = await axios.get(`/client-orders/${orderId}`)
+      const { data } = await axios.get(`/client-orders/${id}`)
       setOrder(data?.order || null)
       setItems(Array.isArray(data?.items) ? data.items : [])
       setEvents(Array.isArray(data?.events) ? data.events : [])
@@ -106,25 +95,24 @@ export default function OrderDrawer({
     } finally {
       setLoading(false)
     }
-  }, [orderId, form])
+  }, [effectiveOrderId, form])
 
   useEffect(() => {
     if (open) {
       setActiveTab("info")
     }
-    if (open && orderId) {
-      fetchResponsibleUsers()
-      loadDetail()
+    if (!open) return
+    fetchResponsibleUsers()
+    if (effectiveOrderId) {
+      loadDetail(effectiveOrderId)
+      return
     }
-    if (open && !orderId) {
-      setOrder(null)
-      setItems([])
-      form.resetFields()
-      setBankOptions([])
-      setSelectedBankId(null)
-      fetchResponsibleUsers()
-    }
-  }, [open, orderId, loadDetail, form])
+    setOrder(null)
+    setItems([])
+    form.resetFields()
+    setBankOptions([])
+    setSelectedBankId(null)
+  }, [open, effectiveOrderId, loadDetail, form])
 
   const fetchBanks = async (clientId) => {
     if (!clientId) {
@@ -241,7 +229,7 @@ export default function OrderDrawer({
         }
       } else {
         setSaving(true)
-        await axios.put(`/client-orders/${orderId}`, payload)
+        await axios.put(`/client-orders/${effectiveOrderId}`, payload)
         message.success("Заказ сохранён")
         onSaved?.()
         loadDetail()
@@ -268,7 +256,7 @@ export default function OrderDrawer({
     }
   }
 
-  const handleAddItems = (picked) => {
+  const handleAddItems = async (picked) => {
     if (!picked?.length) return
     const mapped = picked.map((p) => ({
       temp: true,
@@ -278,11 +266,32 @@ export default function OrderDrawer({
       description_ru: p.description_ru,
       description_en: p.description_en,
       requested_qty: 1,
-      uom: "pcs",
+      uom: (p.uom && String(p.uom).toLowerCase()) || "pcs",
       status: "open",
     }))
-    setItems((prev) => [...prev, ...mapped])
-    if (mapped[0]) setEditingItemId(mapped[0].local_id)
+    if (!effectiveOrderId) {
+      setItems((prev) => [...prev, ...mapped])
+      if (mapped[0]) setEditingItemId(mapped[0].local_id)
+      return
+    }
+    setLoading(true)
+    try {
+      for (const item of mapped) {
+        await axios.post(`/client-orders/${effectiveOrderId}/items`, {
+          original_part_id: item.original_part_id,
+          requested_qty: item.requested_qty,
+          uom: item.uom,
+          status: item.status,
+        })
+      }
+      message.success(`Добавлено позиций: ${mapped.length}`)
+      await loadDetail(effectiveOrderId)
+    } catch (e) {
+      console.error("bulk add items error", e)
+      message.error("Не удалось добавить позиции")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleSaveItem = useCallback(
@@ -291,6 +300,7 @@ export default function OrderDrawer({
         setItems((prev) =>
           prev.map((it) => (it === item ? { ...item, temp: false } : it)),
         )
+        setEditingItemId(null)
         return
       }
       try {
@@ -358,6 +368,51 @@ export default function OrderDrawer({
     return "—"
   }
 
+  const itemRowKey = (r) =>
+    r.id ||
+    r.local_id ||
+    `${r.original_part_id}_${r.line_number || ""}`
+
+  const summarizeOffers = (record) => {
+    const offers = Array.isArray(record.offers) ? record.offers : []
+    const total = offers.length
+    const visible = offers.filter(
+      (o) => o.client_visible || o.status === "proposed" || o.status === "approved",
+    ).length
+    const approved = offers.filter((o) => o.status === "approved").length
+    return { total, visible, approved }
+  }
+
+  const getOfferStage = (record) => {
+    const { total, visible, approved } = summarizeOffers(record)
+    if (record.decision_offer_id || approved > 0) {
+      return {
+        label: "Выбран",
+        color: "success",
+        className: "order-item-stage-approved",
+      }
+    }
+    if (visible > 0) {
+      return {
+        label: "На согласовании",
+        color: "processing",
+        className: "order-item-stage-proposed",
+      }
+    }
+    if (total > 0) {
+      return {
+        label: "В подборе",
+        color: "orange",
+        className: "order-item-stage-sourcing",
+      }
+    }
+    return {
+      label: "Нет офферов",
+      color: "default",
+      className: "order-item-stage-empty",
+    }
+  }
+
   const isEditingRow = (record) =>
     editingItemId &&
     (record.id === editingItemId || record.local_id === editingItemId)
@@ -384,12 +439,6 @@ export default function OrderDrawer({
           r.model_name || r.manufacturer_name
             ? `${r.manufacturer_name || ""} ${r.model_name || ""}`.trim()
             : "—",
-      },
-      {
-        title: "Описание",
-        dataIndex: "description_ru",
-        ellipsis: true,
-        render: (v, r) => v || r.description_en || "—",
       },
       {
         title: "ТН ВЭД",
@@ -511,20 +560,24 @@ export default function OrderDrawer({
       {
         title: "Офферы",
         key: "offers",
-        width: 140,
-        render: (_, record) => (
-          <Button
-            size="small"
-            onClick={() =>
-              setOfferModalItem({
-                ...record,
-                order_currency: order?.currency || record?.order_currency || null,
-              })
-            }
-          >
-            {record.offers?.length ? `Офферы (${record.offers.length})` : "Добавить оффер"}
-          </Button>
-        ),
+        width: 220,
+        render: (_, record) => {
+          const summary = summarizeOffers(record)
+          const stage = getOfferStage(record)
+          if (!record.id || !order?.id) {
+            return <Text type="secondary">Сохраните позицию</Text>
+          }
+          return (
+            <Space size={6} wrap>
+              <Tag color={stage.color}>{stage.label}</Tag>
+              <Tooltip title="Показано клиенту / всего">
+                <Text type="secondary">
+                  {summary.visible}/{summary.total || 0}
+                </Text>
+              </Tooltip>
+            </Space>
+          )
+        },
       },
       {
         title: "",
@@ -545,7 +598,7 @@ export default function OrderDrawer({
         },
       },
     ],
-    [handleSaveItem, handleDeleteItem, editingItemId],
+    [handleSaveItem, handleDeleteItem, editingItemId, order?.id],
   )
 
   const renderHeaderTab = () => (
@@ -665,9 +718,9 @@ export default function OrderDrawer({
           <Form.Item label="Инкотермс" name="incoterms">
             <IncotermsSelect allowClear />
           </Form.Item>
-            <Form.Item label="Условия оплаты" name="payment_terms">
-              <Input placeholder="Например, 50/50" />
-            </Form.Item>
+          <Form.Item label="Условия оплаты" name="payment_terms">
+            <Input placeholder="Например, 50/50" />
+          </Form.Item>
           <Form.Item label="Юридический адрес">
             <Space>
               <Input
@@ -698,29 +751,29 @@ export default function OrderDrawer({
       </Space>
 
       <Space wrap style={{ width: "100%", marginTop: 8 }}>
-          <Form.Item label="Адрес доставки" name="shipping_address_id">
-            <Space>
-              <Input
-                style={{ width: 360 }}
-                readOnly
-                value={
-                  order?.shipping_address_label ||
-                  form.getFieldValue("shipping_address_label") ||
-                  ""
-                }
-                placeholder="Не выбран"
-              />
-              <Button
-                onClick={() => setShippingPickerOpen(true)}
-                disabled={!order?.client_id && !form.getFieldValue("client_id")}
-              >
-                Выбрать адрес
-              </Button>
-            </Space>
-          </Form.Item>
-          <Form.Item name="shipping_address_label" hidden>
-            <Input />
-          </Form.Item>
+        <Form.Item label="Адрес доставки" name="shipping_address_id">
+          <Space>
+            <Input
+              style={{ width: 360 }}
+              readOnly
+              value={
+                order?.shipping_address_label ||
+                form.getFieldValue("shipping_address_label") ||
+                ""
+              }
+              placeholder="Не выбран"
+            />
+            <Button
+              onClick={() => setShippingPickerOpen(true)}
+              disabled={!order?.client_id && !form.getFieldValue("client_id")}
+            >
+              Выбрать адрес
+            </Button>
+          </Space>
+        </Form.Item>
+        <Form.Item name="shipping_address_label" hidden>
+          <Input />
+        </Form.Item>
       </Space>
 
       <Divider />
@@ -753,17 +806,14 @@ export default function OrderDrawer({
         Добавить позиции
       </Button>
       <Table
-        rowKey={(r) =>
-          r.id ||
-          r.local_id ||
-          `${r.original_part_id}_${r.line_number || ""}`
-        }
+        rowKey={itemRowKey}
         size="small"
         className="op-table"
         columns={columnsItems}
         dataSource={items}
         pagination={false}
         loading={loading}
+        rowClassName={(record) => getOfferStage(record).className}
       />
     </Space>
   )
@@ -902,15 +952,6 @@ export default function OrderDrawer({
             currency: bank.currency || form.getFieldValue("currency"),
           })
         }}
-      />
-
-      <OfferModal
-        open={!!offerModalItem}
-        onClose={() => setOfferModalItem(null)}
-        item={offerModalItem}
-        canEditOffers={canEditOffers}
-        canSelect={canSelectOffer}
-        onOffersUpdated={loadDetail}
       />
     </>
   )
