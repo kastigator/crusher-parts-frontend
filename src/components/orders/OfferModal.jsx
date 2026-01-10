@@ -17,6 +17,7 @@ import {
   Card,
   Descriptions,
   Tooltip,
+  Segmented,
 } from "antd"
 import { InfoCircleOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
@@ -71,6 +72,7 @@ export default function OfferModal({
   const [suggestions, setSuggestions] = useState([])
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const [linkWhenAdding, setLinkWhenAdding] = useState(true)
+  const [clientVisibleOnAdd, setClientVisibleOnAdd] = useState(false)
   const [routes, setRoutes] = useState([])
   const [formValues, setFormValues] = useState(INITIAL_FORM)
   const [bundles, setBundles] = useState([])
@@ -79,6 +81,10 @@ export default function OfferModal({
   const [selectedSuggestions, setSelectedSuggestions] = useState([])
   const [offers, setOffers] = useState([])
   const [offersLoading, setOffersLoading] = useState(false)
+  const [offersFilter, setOffersFilter] = useState("all")
+  const [selectedOfferKeys, setSelectedOfferKeys] = useState([])
+  const [bulkStatus, setBulkStatus] = useState(null)
+  const [bulkUpdating, setBulkUpdating] = useState(false)
   const [selectedVariantKeys, setSelectedVariantKeys] = useState([])
   const [selectedVariants, setSelectedVariants] = useState([])
   const [activeTab, setActiveTab] = useState("ready")
@@ -98,9 +104,14 @@ export default function OfferModal({
       setFormValues(INITIAL_FORM)
       setSuggestions([])
       setLinkWhenAdding(true)
+      setClientVisibleOnAdd(false)
       setOffers([])
       setSelectedVariantKeys([])
       setSelectedVariants([])
+      setOffersFilter("all")
+      setSelectedOfferKeys([])
+      setBulkStatus(null)
+      setBulkUpdating(false)
       setMaterials([])
       setCalc(null)
       setReadyCalcs({})
@@ -108,6 +119,10 @@ export default function OfferModal({
       return
     }
     setActiveTab("ready")
+    setOffersFilter("all")
+    setSelectedOfferKeys([])
+    setBulkStatus(null)
+    setClientVisibleOnAdd(false)
     setCalc(null)
     if (item?.order_currency) {
       setFormValues((prev) => ({ ...prev, client_currency: item.order_currency }))
@@ -137,6 +152,10 @@ export default function OfferModal({
       loadOffers(item.id)
     }
   }, [open, item?.original_part_id, item?.id])
+
+  useEffect(() => {
+    setSelectedOfferKeys([])
+  }, [offersFilter])
 
   const loadSuggestions = async (originalId) => {
     setSuggestionsLoading(true)
@@ -358,6 +377,108 @@ export default function OfferModal({
     }
   }
 
+  const offersStats = useMemo(() => {
+    const stats = {
+      total: offers.length,
+      visible: 0,
+      approved: 0,
+      proposed: 0,
+      rejected: 0,
+      draft: 0,
+    }
+    offers.forEach((o) => {
+      if (o.client_visible) stats.visible += 1
+      switch (o.status) {
+        case "approved":
+          stats.approved += 1
+          break
+        case "proposed":
+          stats.proposed += 1
+          break
+        case "rejected":
+          stats.rejected += 1
+          break
+        case "draft":
+          stats.draft += 1
+          break
+        default:
+          break
+      }
+    })
+    return stats
+  }, [offers])
+
+  const offerFilterOptions = useMemo(
+    () => [
+      { label: `Все (${offersStats.total})`, value: "all" },
+      { label: `Для клиента (${offersStats.visible})`, value: "visible" },
+      { label: `Предложены (${offersStats.proposed})`, value: "proposed" },
+      { label: `Выбран (${offersStats.approved})`, value: "approved" },
+      { label: `Отклонены (${offersStats.rejected})`, value: "rejected" },
+      { label: `Черновики (${offersStats.draft})`, value: "draft" },
+    ],
+    [offersStats],
+  )
+
+  const filteredOffers = useMemo(() => {
+    if (offersFilter === "visible") {
+      return offers.filter((o) => o.client_visible)
+    }
+    if (offersFilter === "approved") {
+      return offers.filter((o) => o.status === "approved")
+    }
+    if (offersFilter === "proposed") {
+      return offers.filter((o) => o.status === "proposed")
+    }
+    if (offersFilter === "rejected") {
+      return offers.filter((o) => o.status === "rejected")
+    }
+    if (offersFilter === "draft") {
+      return offers.filter((o) => o.status === "draft")
+    }
+    return offers
+  }, [offers, offersFilter])
+
+  const selectedOffers = useMemo(() => {
+    if (!selectedOfferKeys.length) return []
+    const map = new Map(offers.map((o) => [o.id, o]))
+    return selectedOfferKeys.map((id) => map.get(id)).filter(Boolean)
+  }, [offers, selectedOfferKeys])
+
+  const updateOffers = async (ids, payload, successMessage) => {
+    if (!ids.length || !item?.id) return
+    setBulkUpdating(true)
+    try {
+      await Promise.all(
+        ids.map((id) => axios.put(`/client-orders/offers/${id}`, payload)),
+      )
+      message.success(successMessage)
+      await loadOffers(item.id)
+      onOffersUpdated?.()
+      setSelectedOfferKeys([])
+    } catch (e) {
+      console.error("bulk update offers error", e)
+      message.error("Не удалось обновить офферы")
+    } finally {
+      setBulkUpdating(false)
+    }
+  }
+
+  const handleBulkVisibility = async (visible) => {
+    const messageText = visible ? "Офферы показаны клиенту" : "Офферы скрыты"
+    await updateOffers(
+      selectedOfferKeys,
+      { client_visible: visible ? 1 : 0 },
+      messageText,
+    )
+  }
+
+  const handleBulkStatus = async (status) => {
+    setBulkStatus(status)
+    await updateOffers(selectedOfferKeys, { status }, "Статус обновлён")
+    setBulkStatus(null)
+  }
+
   const linkToOriginal = async (supplierPartId) => {
     if (!linkWhenAdding || !item?.original_part_id || !supplierPartId) return
     try {
@@ -385,6 +506,7 @@ export default function OfferModal({
             markup_pct: readyMarkupPct,
             markup_abs: readyMarkupAbs,
             logistics_route_id: readyRouteByKey[row.key] ?? readyRouteId,
+            client_visible: clientVisibleOnAdd ? 1 : 0,
             status: "proposed",
           })
         }),
@@ -410,6 +532,7 @@ export default function OfferModal({
       markup_pct: readyMarkupPct,
       markup_abs: readyMarkupAbs,
       logistics_route_id: readyRouteByKey[row.key] ?? readyRouteId,
+      client_visible: clientVisibleOnAdd ? 1 : 0,
       status: "proposed",
     })
   }
@@ -440,6 +563,7 @@ export default function OfferModal({
               null,
             original_part_id: item?.original_part_id || null,
             status: "proposed",
+            client_visible: clientVisibleOnAdd ? 1 : 0,
             comment_internal: opt.role_label ? `Роль: ${opt.role_label}` : null,
           })
         }),
@@ -550,6 +674,13 @@ export default function OfferModal({
     ) : (
       <Tag>{row.supplier_public_code || "—"}</Tag>
     )
+
+  const offerRowClassName = (record) => {
+    const classes = []
+    if (record.client_visible) classes.push("offer-row-visible")
+    if (record.status === "approved") classes.push("offer-row-approved")
+    return classes.join(" ")
+  }
 
   const columnsOffers = useMemo(
     () => [
@@ -827,6 +958,13 @@ export default function OfferModal({
         <Button size="small" type="primary" onClick={computeReadyCalcs} loading={readyCalcLoading}>
           Пересчитать варианты
         </Button>
+        <Checkbox
+          checked={clientVisibleOnAdd}
+          onChange={(e) => setClientVisibleOnAdd(e.target.checked)}
+          disabled={!canSelect}
+        >
+          Сразу показывать клиенту
+        </Checkbox>
         <Text type="secondary">Применится ко всем выбранным быстрым офферам.</Text>
       </Space>
       <div
@@ -1083,18 +1221,93 @@ export default function OfferModal({
         background: "#fafafa",
       }}
     >
-      <Table
-        rowKey="id"
-        size="small"
-        className="op-table"
-        columns={columnsOffers}
-        dataSource={offers}
-        pagination={false}
-        scroll={{ x: 940 }}
-        loading={offersLoading}
-        locale={{ emptyText: offersLoading ? "Загрузка..." : "Офферы пока не добавлены" }}
-        title={() => "Текущие офферы (для клиента отметьте галочкой в колонке «Для клиента»)"}
-      />
+      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        <Space
+          wrap
+          align="center"
+          style={{ width: "100%", justifyContent: "space-between" }}
+        >
+          <Segmented
+            size="small"
+            value={offersFilter}
+            onChange={setOffersFilter}
+            options={offerFilterOptions}
+          />
+          <Space wrap>
+            <Tag>Всего: {offersStats.total}</Tag>
+            <Tag color="blue">Для клиента: {offersStats.visible}</Tag>
+            <Tag color="green">Выбраны: {offersStats.approved}</Tag>
+          </Space>
+        </Space>
+
+        {(canEditOffers || canSelect) && (
+          <Space wrap align="center">
+            <Text type="secondary">Выбрано: {selectedOfferKeys.length}</Text>
+            <Button
+              size="small"
+              onClick={() => handleBulkVisibility(true)}
+              disabled={!canSelect || !selectedOfferKeys.length}
+              loading={bulkUpdating}
+            >
+              Показать клиенту
+            </Button>
+            <Button
+              size="small"
+              onClick={() => handleBulkVisibility(false)}
+              disabled={!canSelect || !selectedOfferKeys.length}
+              loading={bulkUpdating}
+            >
+              Скрыть
+            </Button>
+            <Select
+              size="small"
+              placeholder="Статус выбранным"
+              value={bulkStatus || undefined}
+              onChange={handleBulkStatus}
+              disabled={!canEditOffers || !selectedOfferKeys.length}
+              loading={bulkUpdating}
+              style={{ width: 200 }}
+              options={Object.entries(OFFER_STATUS_META).map(([value, m]) => ({
+                value,
+                label: m.label,
+              }))}
+            />
+            <Button
+              size="small"
+              type="primary"
+              onClick={() => handleSelectOffer(selectedOffers[0])}
+              disabled={!canSelect || selectedOffers.length !== 1}
+            >
+              Выбрать
+            </Button>
+            <Text type="secondary">
+              Показано: {filteredOffers.length} из {offers.length}
+            </Text>
+          </Space>
+        )}
+
+        <Table
+          rowKey="id"
+          size="small"
+          className="op-table"
+          columns={columnsOffers}
+          dataSource={filteredOffers}
+          pagination={false}
+          scroll={{ x: 940 }}
+          loading={offersLoading}
+          rowClassName={offerRowClassName}
+          rowSelection={
+            canEditOffers || canSelect
+              ? {
+                  selectedRowKeys: selectedOfferKeys,
+                  onChange: setSelectedOfferKeys,
+                }
+              : undefined
+          }
+          locale={{ emptyText: offersLoading ? "Загрузка..." : "Офферы пока не добавлены" }}
+          title={() => "Текущие офферы (для клиента отметьте галочкой в колонке «Для клиента»)"}
+        />
+      </Space>
     </div>
   )
 
@@ -1369,8 +1582,9 @@ export default function OfferModal({
             message="Как работать с офферами"
             description={
               <div>
-                <div>Закупщик подбирает варианты (готовые связи или поиск), ставит статус «Предложен».</div>
-                <div>Продавец выбирает один оффер для клиента — строка станет утверждённой.</div>
+                <div>Комплектовщик подбирает варианты (готовые связи или поиск), ставит статус «Предложен».</div>
+                <div>Для согласования отметьте «Показать клиенту» — они попадут в предложение.</div>
+                <div>После согласования выберите один оффер — статус станет «Выбран».</div>
                 <div>Выберите варианты чекбоксами и нажмите «Добавить выбранные» или добавьте комплект целиком.</div>
                 {!item?.id && (
                   <Text type="danger">Сохраните заказ и позицию, чтобы добавить офферы.</Text>

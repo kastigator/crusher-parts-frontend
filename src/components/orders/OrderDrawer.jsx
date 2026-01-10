@@ -25,6 +25,7 @@ import ShippingAddressPicker from "./ShippingAddressPicker"
 import BillingAddressPicker from "@/components/clients/BillingAddressPicker"
 import IncotermsSelect from "@/components/inputs/IncotermsSelect"
 import ActionButtons from "@/components/common/ActionButtons"
+import confirmAction from "@/utils/confirmAction"
 import { Alert, Typography } from "antd"
 import BankDetailsModal from "./BankDetailsModal"
 import ProposalPreviewModal from "./ProposalPreviewModal"
@@ -66,14 +67,20 @@ export default function OrderDrawer({
   const [proposalOpen, setProposalOpen] = useState(false)
   const [responsibleOptions, setResponsibleOptions] = useState([])
   const [editingItemId, setEditingItemId] = useState(null)
+  const [activeTab, setActiveTab] = useState("info")
 
   const isNew = !orderId
   const viewAsRole = (viewRole || "").toLowerCase()
   const canEditOffers =
     viewAsRole === "komplektovshchik" ||
+    viewAsRole === "komplektovshik" ||
+    viewAsRole === "комплектовщик" ||
     viewAsRole === "admin"
   const canSelectOffer =
-    viewAsRole === "prodavec" || canEditOffers || viewAsRole === "admin"
+    viewAsRole === "prodavec" ||
+    viewAsRole === "продавец" ||
+    canEditOffers ||
+    viewAsRole === "admin"
 
   const loadDetail = useCallback(async () => {
     if (!orderId) return
@@ -102,6 +109,9 @@ export default function OrderDrawer({
   }, [orderId, form])
 
   useEffect(() => {
+    if (open) {
+      setActiveTab("info")
+    }
     if (open && orderId) {
       fetchResponsibleUsers()
       loadDetail()
@@ -153,6 +163,11 @@ export default function OrderDrawer({
     }
   }
 
+  const focusItemsTab = (openPicker = false) => {
+    setActiveTab("items")
+    if (openPicker) setPartsPickerOpen(true)
+  }
+
   const handleSave = async () => {
     try {
       const values = await form.validateFields()
@@ -177,37 +192,55 @@ export default function OrderDrawer({
         client_po_number: values.client_po_number,
         responsible_user_id: values.responsible_user_id || null,
       }
+      const itemsPayload = items.map((it, idx) => ({
+        original_part_id: it.original_part_id || it.id,
+        requested_qty: it.requested_qty || 1,
+        uom: it.uom || "pcs",
+        required_date: it.required_date || null,
+        client_comment: it.client_comment || null,
+        internal_comment: it.internal_comment || null,
+        line_number: it.line_number || idx + 1,
+        status: it.status || "open",
+      }))
 
-      setSaving(true)
       if (isNew) {
         if (!payload.client_id) {
           message.warning("Выберите клиента")
-          setSaving(false)
           return
         }
         if (!payload.order_number) {
           message.warning("Укажите номер заказа")
-          setSaving(false)
           return
         }
-        const { data } = await axios.post("/client-orders", {
-          ...payload,
-          items: items.map((it, idx) => ({
-            original_part_id: it.original_part_id || it.id,
-            requested_qty: it.requested_qty || 1,
-            uom: it.uom || "pcs",
-            required_date: it.required_date || null,
-            client_comment: it.client_comment || null,
-            internal_comment: it.internal_comment || null,
-            line_number: it.line_number || idx + 1,
-          })),
-        })
+        if (!itemsPayload.length) {
+          const { confirmed } = await confirmAction({
+            title: "Создать заказ без позиций?",
+            text: "Позиции и офферы можно добавить позже на вкладке «Строки и офферы».",
+            confirmLabel: "Создать",
+            cancelLabel: "Добавить позиции",
+          })
+          if (!confirmed) {
+            focusItemsTab(true)
+            return
+          }
+        }
+        const requestBody = itemsPayload.length
+          ? { ...payload, items: itemsPayload }
+          : { ...payload }
+
+        setSaving(true)
+        const { data } = await axios.post("/client-orders", requestBody)
         setOrder(data.order)
         setItems(data.items || [])
         setEvents(data.events || [])
         message.success("Заказ создан")
         onSaved?.()
+        if (!itemsPayload.length) {
+          message.info("Добавьте позиции и офферы на вкладке «Строки и офферы».")
+          focusItemsTab(true)
+        }
       } else {
+        setSaving(true)
         await axios.put(`/client-orders/${orderId}`, payload)
         message.success("Заказ сохранён")
         onSaved?.()
@@ -216,7 +249,20 @@ export default function OrderDrawer({
     } catch (e) {
       if (e?.errorFields) return
       console.error("save order error", e)
-      message.error(e?.response?.data?.message || "Не удалось сохранить заказ")
+      const msg = e?.response?.data?.message || "Не удалось сохранить заказ"
+      message.error(msg)
+      if (isNew && !items.length) {
+        const lower = String(msg).toLowerCase()
+        if (
+          lower.includes("позици") ||
+          lower.includes("строк") ||
+          lower.includes("item") ||
+          lower.includes("offer") ||
+          lower.includes("оффер")
+        ) {
+          focusItemsTab(true)
+        }
+      }
     } finally {
       setSaving(false)
     }
@@ -687,7 +733,7 @@ export default function OrderDrawer({
             <div>
               <div>Заказ: Черновик → Новый → Отправлен → Подтверждён (или Доработка/Отмена).</div>
               <div>Строки: Открыта → В подборе → Предложена → Утверждена/Отклонена.</div>
-              <div>Оффер выбирает продавец/админ после согласования с клиентом.</div>
+              <div>Оффер выбирает комплектовщик/продавец/админ после согласования с клиентом.</div>
             </div>
           }
         />
@@ -726,7 +772,11 @@ export default function OrderDrawer({
 
   const tabs = [
     { key: "info", label: "Шапка", children: renderHeaderTab() },
-    { key: "items", label: "Строки и офферы", children: renderItemsTab() },
+    {
+      key: "items",
+      label: `Строки и офферы (${items.length})`,
+      children: renderItemsTab(),
+    },
     { key: "history", label: "История", children: renderHistoryTab() },
   ]
 
@@ -761,9 +811,13 @@ export default function OrderDrawer({
             type="info"
             showIcon
             message="Как сохранить заказ"
-            description="Заполните номер заказа и клиента в шапке. Нажмите «Создать/Сохранить» вверху — офферы можно добавить позже."
+            description="Заполните номер заказа и клиента в шапке. Нажмите «Создать/Сохранить» вверху — позиции и офферы можно добавить позже на вкладке «Строки и офферы»."
           />
-          <Tabs items={tabs} defaultActiveKey="info" />
+          <Tabs
+            items={tabs}
+            activeKey={activeTab}
+            onChange={setActiveTab}
+          />
         </Space>
       </Drawer>
 

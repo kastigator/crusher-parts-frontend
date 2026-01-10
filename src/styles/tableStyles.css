@@ -72,6 +72,31 @@
   transform: none !important;
 }
 
+/* Подсветка строк офферов */
+.op-table .offer-row-visible > td {
+  background: #fff7e6;
+}
+
+.op-table .offer-row-approved > td {
+  background: #f6ffed;
+}
+
+.op-table .offer-row-approved.offer-row-visible > td {
+  background: #e6fffb;
+}
+
+.op-table .offer-row-visible > td:first-child {
+  box-shadow: inset 3px 0 0 #faad14;
+}
+
+.op-table .offer-row-approved > td:first-child {
+  box-shadow: inset 3px 0 0 #52c41a;
+}
+
+.op-table .offer-row-approved.offer-row-visible > td:first-child {
+  box-shadow: inset 3px 0 0 #52c41a;
+}
+
 /* ---------------------------------------------------------
    Размер (small / middle)
    --------------------------------------------------------- */

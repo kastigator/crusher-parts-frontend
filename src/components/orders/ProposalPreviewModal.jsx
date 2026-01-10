@@ -12,6 +12,8 @@ const canViewSupplierDetails = (role = "") => {
   return (
     r === "admin" ||
     r === "комплектовщик" ||
+    r === "komplektovshchik" ||
+    r === "komplektovshik" ||
     r === "закупщик" ||
     r === "buyer" ||
     r === "procurement" ||
