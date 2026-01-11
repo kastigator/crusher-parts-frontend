@@ -1,5 +1,5 @@
 import React, { useState } from "react"
-import { Table, Input, Checkbox, Tag } from "antd"
+import { Table, Input, Checkbox, Tag, message } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import CurrencySelect from "@/components/inputs/CurrencySelect"
@@ -15,6 +15,10 @@ export default function SupplierBankDetailsTable({
   const [editedRow, setEditedRow] = useState(null)
 
   const startEdit = (record) => {
+    if (editingId && editingId !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
     setEditingId(record.id)
     setEditedRow({ ...record })
   }
@@ -86,7 +90,6 @@ export default function SupplierBankDetailsTable({
           value={value}
           type={type}
           maxLength={40}
-          onDoubleClick={() => startEdit(record)}
         />
       )
     },
@@ -147,7 +150,6 @@ export default function SupplierBankDetailsTable({
             value={value}
             type="text"
             maxLength={16}
-            onDoubleClick={() => startEdit(record)}
           />
         )
       },
@@ -202,11 +204,16 @@ export default function SupplierBankDetailsTable({
     {
       title: "Действия",
       key: "actions",
-      width: 80,
+      width: 160,
       render: (_, record) => (
         <ActionButtons
           size="small"
-          onDelete={() => handleDeleteClick(record)}
+          onEdit={editingId !== record.id ? () => startEdit(record) : undefined}
+          onSave={editingId === record.id ? saveEdit : undefined}
+          onCancel={editingId === record.id ? cancelEdit : undefined}
+          onDelete={editingId !== record.id ? () => handleDeleteClick(record) : undefined}
+          disabledEdit={!!editingId && editingId !== record.id}
+          disabledDelete={!!editingId && editingId !== record.id}
         />
       ),
     },
@@ -222,9 +229,6 @@ export default function SupplierBankDetailsTable({
       dataSource={Array.isArray(data) ? data : []}
       pagination={false}
       tableLayout="fixed"
-      onRow={(record) => ({
-        onDoubleClick: () => startEdit(record),
-      })}
     />
   )
 }

@@ -7,7 +7,7 @@ export default function ClientsPage() {
   return (
     <TabRendererPage
       tabKey="clients"
-      helpText="Двойной клик — редактирование; Enter — сохранить; Esc — отменить."
+      helpText="Кнопка карандаш — редактирование; Enter — сохранить; Esc — отменить."
     >
       <ClientsMain />
     </TabRendererPage>

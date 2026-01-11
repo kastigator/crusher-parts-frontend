@@ -5,6 +5,7 @@ import axios from "@/api/axiosInstance"
 import ClientsTable from "./ClientsTable"
 import TableToolbar from "@/components/common/TableToolbar"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
+import { isSameByFields } from "@/utils/versionConflict"
 
 const EMPTY_CLIENT = {
   company_name: "",
@@ -180,9 +181,22 @@ export default function ClientsMain() {
     } catch (err) {
       // конфликт версии → таблица покажет VersionConflictModal
       if (err?.response?.status === 409 && err?.response?.data?.current) {
+        const current = err.response.data.current
+        const fields = [
+          "company_name",
+          "contact_person",
+          "phone",
+          "email",
+        ]
+        const same = current && isSameByFields(current, payload, fields)
+        if (same) {
+          replaceRow(current)
+          await setBaselineFor(expandedClientId)
+          return current
+        }
         const e = new Error("Version conflict")
         e.isVersionConflict = true
-        e.currentRecord = err.response.data.current
+        e.currentRecord = current
         throw e
       }
       // дубль названия компании

@@ -6,7 +6,7 @@ export default function TnvedCodesPage() {
   return (
     <TabRendererPage
       tabKey="tnved_codes"
-      helpText="Двойной клик — редактирование; Enter — сохранить; Esc — отменить."
+      helpText="Кнопка карандаш — редактирование; Enter — сохранить; Esc — отменить."
     >
       <TnvedCodesMain />
     </TabRendererPage>

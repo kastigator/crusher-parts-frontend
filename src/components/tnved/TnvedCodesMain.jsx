@@ -5,6 +5,7 @@ import TnvedCodesTable from "./TnvedCodesTable"
 import ImportModal from "@/components/common/ImportModal"
 import TableToolbar from "@/components/common/TableToolbar"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
+import { isSameByFields } from "@/utils/versionConflict"
 
 const { TextArea } = Input
 
@@ -147,6 +148,32 @@ export default function TnvedCodesMain() {
       setEtag(freshEtag)
       message.success("Изменения сохранены")
     } catch (err) {
+      const res = err?.response
+      if (res?.status === 409) {
+        const current =
+          res?.data?.current || res?.data?.currentRecord || err.currentRecord
+        const payload = {
+          code: updated.code?.trim(),
+          description: toNull(updated?.description?.trim?.()),
+          duty_rate: toNumberOrNull(updated?.duty_rate),
+          notes: toNull(updated?.notes?.trim?.()),
+        }
+        if (
+          current &&
+          isSameByFields(current, payload, [
+            "code",
+            "description",
+            "duty_rate",
+            "notes",
+          ])
+        ) {
+          replaceRow(current)
+          const freshEtag = await fetchEtag()
+          setEtag(freshEtag)
+          message.success("Изменения сохранены")
+          return
+        }
+      }
       throw err
     }
   }

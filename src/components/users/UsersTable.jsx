@@ -78,6 +78,15 @@ export default function UsersTable({ rolesRevision = 0 }) {
     }
   }
 
+  const startEdit = (id) => {
+    if (editingId && editingId !== id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return false
+    }
+    setEditingId(id)
+    return true
+  }
+
   // ===== Редактирование =====
   const handleEdit = (id, key, value) => {
     setFormState(prev => ({
@@ -151,12 +160,11 @@ export default function UsersTable({ rolesRevision = 0 }) {
 
   // ===== Выбор роли (через модалку) =====
   const openRoleModal = (targetId) => {
-    setRoleTarget(targetId)
-
-    // существующий пользователь — сразу включаем режим редактирования
     if (targetId !== "new") {
-      setEditingId(targetId)
+      const ok = startEdit(targetId)
+      if (!ok) return
     }
+    setRoleTarget(targetId)
 
     setRoleModalOpen(true)
   }
@@ -193,10 +201,7 @@ export default function UsersTable({ rolesRevision = 0 }) {
                 />
               )
             : (
-                <ValueDisplay
-                  value={text}
-                  onDoubleClick={() => setEditingId(record.id)}
-                />
+                <ValueDisplay value={text} />
               )
     },
     {
@@ -218,10 +223,7 @@ export default function UsersTable({ rolesRevision = 0 }) {
                 />
               )
             : (
-                <ValueDisplay
-                  value={text}
-                  onDoubleClick={() => setEditingId(record.id)}
-                />
+                <ValueDisplay value={text} />
               )
     },
     {
@@ -243,11 +245,7 @@ export default function UsersTable({ rolesRevision = 0 }) {
                 />
               )
             : (
-                <ValueDisplay
-                  value={text}
-                  type="email"
-                  onDoubleClick={() => setEditingId(record.id)}
-                />
+                <ValueDisplay value={text} type="email" />
               )
     },
     {
@@ -269,11 +267,7 @@ export default function UsersTable({ rolesRevision = 0 }) {
                 />
               )
             : (
-                <ValueDisplay
-                  value={text}
-                  type="phone"
-                  onDoubleClick={() => setEditingId(record.id)}
-                />
+                <ValueDisplay value={text} type="phone" />
               )
     },
     {
@@ -331,9 +325,12 @@ export default function UsersTable({ rolesRevision = 0 }) {
         const editing = editingId === record.id
         return (
           <ActionButtons
+            onEdit={!editing ? () => startEdit(record.id) : undefined}
             onSave={editing ? () => handleSave(record.id) : undefined}
             onCancel={editing ? () => setEditingId(null) : undefined}
             onDelete={!editing ? () => deleteUser(record) : undefined}
+            disabledEdit={!!editingId && !editing}
+            disabledDelete={!!editingId && !editing}
             size="small"
           />
         )

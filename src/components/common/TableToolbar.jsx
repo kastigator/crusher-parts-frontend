@@ -4,17 +4,22 @@ import {
   PlusOutlined,
   DeleteOutlined,
   UploadOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons"
 
 const { Title } = Typography
 
 export default function TableToolbar({
-  title,        // строка заголовка (опционально)
-  search,       // значение поиска
-  onSearch,     // (value: string) => void
-  onAdd,        // () => void
-  onImport,     // () => void
-  onShowDeleted // () => void
+  title,         // строка заголовка (опционально)
+  search,        // значение поиска
+  onSearch,      // (value: string) => void
+  onAdd,         // () => void
+  onImport,      // () => void
+  onShowDeleted, // () => void
+  onRefresh,     // () => void
+  placeholder = "Поиск...",
+  disabled = false,
+  searchWidth = 320,
 }) {
   return (
     <Row
@@ -34,10 +39,12 @@ export default function TableToolbar({
           {onSearch && (
             <Input.Search
               allowClear
-              placeholder="Поиск..."
+              placeholder={placeholder}
               value={search}
               onChange={(e) => onSearch(e.target.value)}
-              style={{ width: 320 }}
+              onSearch={(value) => onSearch(value)}
+              style={{ width: searchWidth }}
+              disabled={disabled}
             />
           )}
         </Space>
@@ -45,6 +52,13 @@ export default function TableToolbar({
 
       <Col>
         <Space>
+          {onRefresh && (
+            <Tooltip title="Обновить">
+              <Button icon={<ReloadOutlined />} onClick={onRefresh}>
+                Обновить
+              </Button>
+            </Tooltip>
+          )}
           {onAdd && (
             <Tooltip title="Добавить">
               <Button

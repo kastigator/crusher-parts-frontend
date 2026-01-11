@@ -8,8 +8,10 @@ import {
   Popconfirm,
   Input,
 } from "antd"
-import { UploadOutlined, DeleteOutlined } from "@ant-design/icons"
+import { UploadOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
+import ActionButtons from "@/components/common/ActionButtons"
+import confirmAction from "@/utils/confirmAction"
 
 const bytesToSize = (bytes) => {
   if (!bytes && bytes !== 0) return ""
@@ -85,6 +87,8 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
   }
 
   const handleDelete = async (id) => {
+    const { confirmed } = await confirmAction("Удалить документ?")
+    if (!confirmed) return
     try {
       await axios.delete(`/original-parts/documents/${id}`)
       message.success("Документ удалён")
@@ -105,6 +109,10 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
   }
 
   const startEdit = (record) => {
+    if (editingId && editingId !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
     setEditingId(record.id)
     setEditingDescription(record.description || "")
   }
@@ -197,7 +205,6 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
             value={editingDescription}
             onChange={(e) => setEditingDescription(e.target.value)}
             onKeyDown={makeKeyHandler(record.id)}
-            onBlur={() => cancelEdit()}
           />
         )
       },
@@ -210,22 +217,28 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
     },
     {
       title: "Действия",
-      width: 80,
-      render: (_, record) => (
-        <Popconfirm
-          title="Удалить документ?"
-          onConfirm={() => handleDelete(record.id)}
-          okText="Да"
-          cancelText="Нет"
-        >
-          <Button
-            type="text"
-            danger
+      width: 170,
+      render: (_, record) => {
+        const editing = record.id === editingId
+        return (
+          <ActionButtons
             size="small"
-            icon={<DeleteOutlined />}
+            onEdit={!editing ? () => startEdit(record) : undefined}
+            onSave={editing ? () => saveEdit(record.id) : undefined}
+            onCancel={editing ? cancelEdit : undefined}
+            onDelete={!editing ? () => handleDelete(record.id) : undefined}
+            disabledEdit={!!editingId && !editing}
+            disabledDelete={!!editingId && !editing}
+            confirmDelete={false}
+            titles={{
+              delete: "Удалить документ",
+              edit: "Редактировать описание",
+              save: "Сохранить описание",
+              cancel: "Отмена",
+            }}
           />
-        </Popconfirm>
-      ),
+        )
+      },
     },
   ]
 
@@ -256,7 +269,7 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
         </Upload>
 
         <span style={{ color: "#8c8c8c", fontSize: 12 }}>
-          Двойной клик — редактирование описания.
+          Кнопка карандаш — редактирование описания.
         </span>
       </div>
 
@@ -271,7 +284,6 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
           pagination={false}
           tableLayout="fixed"
           onRow={(record) => ({
-            onDoubleClick: () => startEdit(record),
           })}
         />
       </div>

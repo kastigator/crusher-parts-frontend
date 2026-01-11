@@ -4,9 +4,13 @@ import { Spin } from "antd"
 import Sidebar from "@/components/Sidebar"
 import Header from "./Header"
 import { useTabs } from "@/context/TabsContext"
+import usePresencePing from "@/hooks/usePresencePing"
+import useDashboardNotifications from "@/hooks/useDashboardNotifications"
 
 const LayoutBody = () => {
   const { loading } = useTabs()
+  usePresencePing()
+  useDashboardNotifications()
 
   return (
     <div

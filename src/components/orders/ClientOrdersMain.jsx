@@ -18,6 +18,7 @@ import {
   EyeOutlined,
   FilePdfOutlined,
 } from "@ant-design/icons"
+import { useLocation } from "react-router-dom"
 import ActionButtons from "@/components/common/ActionButtons"
 import axios from "@/api/axiosInstance"
 import TableToolbar from "@/components/common/TableToolbar"
@@ -55,6 +56,9 @@ export default function ClientOrdersMain() {
   const [statusFilter, setStatusFilter] = useState(null)
   const [dateFrom, setDateFrom] = useState(null)
   const [dateTo, setDateTo] = useState(null)
+  const [responsibleFilter, setResponsibleFilter] = useState(null)
+  const [responsibleOptions, setResponsibleOptions] = useState([])
+  const [responsibleLoading, setResponsibleLoading] = useState(false)
   const [selected, setSelected] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [viewAs, setViewAs] = useState("actual")
@@ -65,10 +69,10 @@ export default function ClientOrdersMain() {
   const [proposalOpen, setProposalOpen] = useState(false)
   const [proposalOrder, setProposalOrder] = useState(null)
   const [proposalItems, setProposalItems] = useState([])
-  const [proposalLoading, setProposalLoading] = useState(false)
   const [expandedOrderId, setExpandedOrderId] = useState(null)
-  const [inlineResetToken, setInlineResetToken] = useState(0)
   const [historyForId, setHistoryForId] = useState(null)
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const location = useLocation()
 
   const roleSlug = getRoleSlug(user)
   const isAdmin = useMemo(
@@ -90,6 +94,7 @@ export default function ClientOrdersMain() {
     try {
       const params = { page, pageSize }
       if (statusFilter) params.status = statusFilter
+      if (responsibleFilter) params.responsible_user_id = responsibleFilter
       if (search.trim()) params.search = search.trim()
       if (dateFrom) params.created_from = dateFrom.format("YYYY-MM-DD")
       if (dateTo) params.created_to = dateTo.format("YYYY-MM-DD")
@@ -115,11 +120,47 @@ export default function ClientOrdersMain() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, search, dateFrom, dateTo, page, pageSize])
+  }, [statusFilter, responsibleFilter, search, dateFrom, dateTo, page, pageSize])
+
+  const fetchResponsibleOptions = useCallback(async () => {
+    setResponsibleLoading(true)
+    try {
+      const { data } = await axios.get("/client-orders/responsible-users")
+      setResponsibleOptions(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error("Ошибка загрузки ответственных:", err)
+    } finally {
+      setResponsibleLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     fetchOrders()
   }, [fetchOrders])
+
+  useEffect(() => {
+    fetchResponsibleOptions()
+  }, [fetchResponsibleOptions])
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const orderParam = params.get("order")
+    const orderIdParam = params.get("orderId")
+    if (orderParam) {
+      setSearch(orderParam)
+    }
+    if (orderIdParam) {
+      const parsed = Number(orderIdParam)
+      if (Number.isFinite(parsed) && parsed > 0) {
+        setSelected({ id: parsed })
+        setDrawerOpen(true)
+      }
+    }
+  }, [location.search])
+
+  useEffect(() => {
+    setPage(1)
+  }, [statusFilter, responsibleFilter, search, dateFrom, dateTo])
 
   useEffect(() => {
     if (!expandedOrderId) return
@@ -167,9 +208,26 @@ export default function ClientOrdersMain() {
     }
   }
 
+  const handleStatusChange = async (orderId, nextStatus) => {
+    if (!orderId || !nextStatus) return
+    setStatusUpdatingId(orderId)
+    try {
+      await axios.put(`/client-orders/${orderId}`, { status: nextStatus })
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, status: nextStatus } : o)),
+      )
+      message.success("Статус обновлён")
+    } catch (err) {
+      console.error("Ошибка обновления статуса", err)
+      const msg = err?.response?.data?.message || "Не удалось обновить статус"
+      message.error(msg)
+    } finally {
+      setStatusUpdatingId(null)
+    }
+  }
+
   const handleOpenProposal = async (order) => {
     if (!order?.id) return
-    setProposalLoading(true)
     try {
       const { data } = await axios.get(`/client-orders/${order.id}`)
       setProposalOrder(data?.order || null)
@@ -178,8 +236,6 @@ export default function ClientOrdersMain() {
     } catch (e) {
       console.error("load proposal error", e)
       message.error("Не удалось открыть предложение")
-    } finally {
-      setProposalLoading(false)
     }
   }
 
@@ -213,9 +269,23 @@ export default function ClientOrdersMain() {
         dataIndex: "status",
         key: "status",
         width: 140,
-        render: (v) => {
+        render: (v, record) => {
           const meta = ORDER_STATUS_META[v] || { color: "default", label: v || "—" }
-          return <Tag color={meta.color}>{meta.label}</Tag>
+          return (
+            <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+              <Select
+                size="small"
+                value={v}
+                style={{ width: 140 }}
+                options={Object.entries(ORDER_STATUS_META).map(([value, metaItem]) => ({
+                  value,
+                  label: metaItem.label,
+                }))}
+                onChange={(value) => handleStatusChange(record.id, value)}
+                loading={statusUpdatingId === record.id}
+              />
+            </div>
+          )
         },
       },
       {
@@ -239,7 +309,7 @@ export default function ClientOrdersMain() {
             ? r.responsible_name
             : r.responsible_user_id
               ? `#${r.responsible_user_id}`
-              : "—",
+              : <Tag color="warning">Не назначен</Tag>,
       },
       {
         title: "Комментарий",
@@ -293,7 +363,8 @@ export default function ClientOrdersMain() {
         String(o.order_number || "").toLowerCase().includes(q) ||
         String(o.client_company_name || "").toLowerCase().includes(q) ||
         String(o.comment_internal || "").toLowerCase().includes(q) ||
-        String(o.comment_client || "").toLowerCase().includes(q)
+        String(o.comment_client || "").toLowerCase().includes(q) ||
+        String(o.client_po_number || "").toLowerCase().includes(q)
       )
     })
   }, [orders, search])
@@ -361,6 +432,24 @@ export default function ClientOrdersMain() {
               label: meta.label,
             }))}
           />
+          <Select
+            allowClear
+            placeholder="Ответственный"
+            value={responsibleFilter}
+            onChange={setResponsibleFilter}
+            style={{ width: 200 }}
+            loading={responsibleLoading}
+            options={responsibleOptions.map((u) => ({
+              value: u.id,
+              label: u.full_name || u.username || `User #${u.id}`,
+            }))}
+          />
+          <Button
+            onClick={() => setResponsibleFilter(user?.id || null)}
+            disabled={!user?.id}
+          >
+            Мои
+          </Button>
           <DatePicker
             placeholder="Создан с"
             value={dateFrom}
@@ -396,15 +485,12 @@ export default function ClientOrdersMain() {
             expandedRowKeys: expandedOrderId ? [expandedOrderId] : [],
             onExpand: (expanded, record) => {
               setExpandedOrderId(expanded ? record.id : null)
-              setInlineResetToken((prev) => prev + 1)
             },
             expandedRowRender: (record) => (
               <div className="subtable-shell table-section">
                 <OrderInlinePanel
                   orderId={record.id}
-                  viewRole={appliedRole}
                   onOpenOrder={() => handleRowOpen(record)}
-                  resetToken={inlineResetToken}
                 />
               </div>
             ),

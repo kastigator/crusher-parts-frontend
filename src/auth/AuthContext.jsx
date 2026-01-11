@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { setLogoutHandler } from './authService'
+import { clearPresenceSessionId, readPresenceSessionId } from '@/utils/presenceSession'
 
 const AuthContext = createContext()
 
@@ -43,14 +44,42 @@ export function AuthProvider({ children }) {
     setUser(userData)
   }
 
-  const logout = () => {
+  const notifySessionLogout = useCallback(async (sessionId) => {
+    if (!sessionId) return
+    const baseUrl = import.meta.env.VITE_API_URL
+    if (!baseUrl) return
+    const tokenValue = localStorage.getItem('token')
+
+    try {
+      await fetch(`${baseUrl}/api/sessions/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tokenValue ? { Authorization: `Bearer ${tokenValue}` } : {}),
+        },
+        body: JSON.stringify({ session_id: sessionId }),
+        credentials: 'include',
+        keepalive: true,
+      })
+    } catch {
+      // ignore logout network errors
+    }
+  }, [])
+
+  const logout = useCallback(() => {
+    const currentUser = user
+    const sessionId = readPresenceSessionId(currentUser?.id)
+    if (sessionId) {
+      notifySessionLogout(sessionId)
+      clearPresenceSessionId(currentUser?.id)
+    }
     setToken(null)
     setUser(null)
-  }
+  }, [user, notifySessionLogout])
 
   useEffect(() => {
     setLogoutHandler(logout)
-  }, [])
+  }, [logout])
 
   return (
     <AuthContext.Provider value={{ token, user, login, logout }}>

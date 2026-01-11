@@ -14,6 +14,7 @@ import SupplierPartsPage from '@/pages/SupplierPartsPage'
 import ClientOrdersPage from '../pages/ClientOrdersPage'   // 🔹 добавили
 import LogisticsRoutesPage from "@/pages/LogisticsRoutesPage"
 import MaterialsPage from "@/pages/MaterialsPage"
+import SalesKpiPage from "@/pages/SalesKpiPage"
 
 const AppRouter = () => (
   <Suspense fallback={<div>Загрузка...</div>}>
@@ -37,6 +38,7 @@ const AppRouter = () => (
         <Route path="client-orders" element={<ClientOrdersPage />} />  {/* 🔹 новый роут */}
         <Route path="logistics-routes" element={<LogisticsRoutesPage />} />
         <Route path="materials" element={<MaterialsPage />} />
+        <Route path="sales-kpi" element={<SalesKpiPage />} />
         <Route path="*" element={<div style={{ padding: 32 }}>Страница не найдена</div>} />
       </Route>
     </Routes>

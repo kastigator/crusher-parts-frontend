@@ -232,6 +232,10 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
 
   // ----- редактирование -----
   const startEdit = (row) => {
+    if (editingId && editingId !== row.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
     setEditingId(row.id)
     setEditingDraft({
       price: row.price,
@@ -529,12 +533,17 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
     {
       title: "Действия",
       key: "actions",
-      width: 90,
+      width: 170,
       align: "right",
       render: (_, row) => (
         <ActionButtons
           size="small"
-          onDelete={() => handleDelete(row)}
+          onEdit={editingId !== row.id ? () => startEdit(row) : undefined}
+          onSave={editingId === row.id ? saveEdit : undefined}
+          onCancel={editingId === row.id ? cancelEdit : undefined}
+          onDelete={editingId !== row.id ? () => handleDelete(row) : undefined}
+          disabledEdit={!!editingId && editingId !== row.id}
+          disabledDelete={!!editingId && editingId !== row.id}
           titles={{ delete: "Удалить запись" }}
         />
       ),
@@ -636,9 +645,6 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
           loading={loading}
           size="small"
           pagination={{ pageSize: 10 }}
-          onRow={(row) => ({
-            onDoubleClick: () => startEdit(row),
-          })}
         />
 
         <div

@@ -8,6 +8,7 @@ import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import createTablePagination from "@/utils/tablePagination"
 import ValueDisplay from "@/components/common/ValueDisplay"
+import { mergeConflictDraft } from "@/utils/versionConflict"
 
 const { TextArea } = Input
 
@@ -35,6 +36,10 @@ export default function TnvedCodesTable({
   const isEditing = (record) => record.id === editingKey
 
   const startEdit = (record) => {
+    if (editingKey && editingKey !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
     setEditingKey(record.id)
     setEditedRow({ ...record })
   }
@@ -100,7 +105,9 @@ export default function TnvedCodesTable({
               setEditedRow({ ...editedRow, code: e.target.value })
             }
             onPressEnter={saveEdit}
-            onBlur={saveEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") cancelEdit()
+            }}
           />
         ) : (
           <ValueDisplay value={record.code} />
@@ -122,7 +129,9 @@ export default function TnvedCodesTable({
               })
             }
             autoSize={{ minRows: 2, maxRows: 6 }}
-            onBlur={saveEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") cancelEdit()
+            }}
           />
         ) : (
           <ValueDisplay value={record.description} />
@@ -142,7 +151,9 @@ export default function TnvedCodesTable({
               setEditedRow({ ...editedRow, duty_rate: v })
             }
             onPressEnter={saveEdit}
-            onBlur={saveEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") cancelEdit()
+            }}
           />
         ) : (
           <ValueDisplay value={record.duty_rate} />
@@ -161,7 +172,9 @@ export default function TnvedCodesTable({
               setEditedRow({ ...editedRow, notes: e.target.value })
             }
             autoSize={{ minRows: 2, maxRows: 4 }}
-            onBlur={saveEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") cancelEdit()
+            }}
           />
         ) : (
           <ValueDisplay value={record.notes} />
@@ -170,15 +183,18 @@ export default function TnvedCodesTable({
     {
       title: "Действия",
       dataIndex: "actions",
-      width: 200,
+      width: 220,
       render: (_, record) => {
         const editing = isEditing(record)
         return (
           <ActionButtons
+            onEdit={!editing ? () => startEdit(record) : undefined}
             onSave={editing ? saveEdit : undefined}
             onCancel={editing ? cancelEdit : undefined}
             onDelete={!editing ? () => handleDelete(record) : undefined}
             onHistory={!editing ? () => setLogId(record.id) : undefined}
+            disabledEdit={!!editingKey && !editing}
+            disabledDelete={!!editingKey && !editing}
             size="small"
           />
         )
@@ -212,9 +228,6 @@ export default function TnvedCodesTable({
           size="small"
           tableLayout="fixed"
           scroll={{ x: 900 }}
-          onRow={(record) => ({
-            onDoubleClick: () => startEdit(record),
-          })}
           expandable={{
             expandedRowRender: (record) => (
               <div
@@ -265,12 +278,12 @@ export default function TnvedCodesTable({
         onManualMerge={() => {
           const base = conflict.current || {}
           const draft = conflict.draft || {}
-          const merged = {
-            ...base,
+          const merged = mergeConflictDraft(base, {
+            ...draft,
             description: draft.description ?? base.description,
             duty_rate: draft.duty_rate ?? base.duty_rate,
             notes: draft.notes ?? base.notes,
-          }
+          })
           if (merged.id) {
             setEditingKey(merged.id)
             setEditedRow(merged)

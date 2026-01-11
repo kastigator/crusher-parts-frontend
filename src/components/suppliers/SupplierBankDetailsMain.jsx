@@ -5,6 +5,7 @@ import axios from "@/api/axiosInstance"
 import SupplierBankDetailsTable from "./SupplierBankDetailsTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import CurrencySelect from "@/components/inputs/CurrencySelect"
+import { isSameByFields } from "@/utils/versionConflict"
 
 const trimOrNull = (v) => {
   if (v === undefined || v === null) return null
@@ -110,20 +111,43 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
     setData((prev) => prev.filter((r) => r.id !== id))
 
   const handleUpdate = async (id, values) => {
+    const payload = { ...values, version: values?.version }
     try {
       const { data: fresh } = await axios.put(
         `/supplier-bank-details/${id}`,
-        values,
+        payload,
       )
       replaceRow(fresh)
       onChanged?.()
     } catch (e) {
       if (e?.response?.status === 409) {
-        const current = e.response.data?.currentRecord
+        const current =
+          e.response.data?.current ||
+          e.response.data?.currentRecord ||
+          e.currentRecord
+        if (
+          current &&
+          isSameByFields(current, payload, [
+            "bank_name",
+            "account_number",
+            "iban",
+            "bic",
+            "currency",
+            "correspondent_account",
+            "bank_address",
+            "additional_info",
+            "is_primary_for_currency",
+          ])
+        ) {
+          replaceRow(current)
+          onChanged?.()
+          message.success("Банковские реквизиты обновлены")
+          return
+        }
         setConflict({
           id,
           current,
-          draft: { id, ...values },
+          draft: { id, ...payload },
         })
         return
       }
@@ -142,7 +166,10 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
       onChanged?.()
     } catch (e) {
       if (e?.response?.status === 409) {
-        const current = e.response.data?.currentRecord
+        const current =
+          e.response.data?.current ||
+          e.response.data?.currentRecord ||
+          e.currentRecord
         setConflict({
           id: record.id,
           current,
@@ -310,6 +337,15 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
 
       <VersionConflictModal
         conflict={conflict}
+        entityLabel="банковские реквизиты"
+        fields={[
+          { key: "bank_name", title: "Банк" },
+          { key: "account_number", title: "Расч. счёт" },
+          { key: "currency", title: "Валюта" },
+          { key: "bic", title: "BIC" },
+          { key: "correspondent_account", title: "Корр. счёт" },
+          { key: "additional_info", title: "Доп. сведения" },
+        ]}
         onCancel={() => setConflict(null)}
         onReload={async () => {
           setConflict(null)

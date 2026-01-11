@@ -84,6 +84,10 @@ export default function TabsTable() {
   const isEditing = (record) => record.id === editingKey;
 
   const edit = (record) => {
+    if (editingKey && editingKey !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения");
+      return;
+    }
     form.setFieldsValue({ ...record });
     setEditingKey(record.id);
   };
@@ -241,9 +245,12 @@ export default function TabsTable() {
               </>
             )}
             <ActionButtons
+              onEdit={!editing ? () => edit(record) : undefined}
               onSave={editing ? () => save(record.id) : undefined}
               onCancel={editing ? cancel : undefined}
               onDelete={!editing ? () => handleDelete(record) : undefined}
+              disabledEdit={!!editingKey && !editing}
+              disabledDelete={!!editingKey && !editing}
               size="small"
             />
           </Space>
@@ -262,7 +269,6 @@ export default function TabsTable() {
             dataIndex: col.dataIndex,
             title: col.title,
             editing: isEditing(record),
-            onDoubleClick: () => edit(record),
           }),
         }
   );

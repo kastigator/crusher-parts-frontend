@@ -6,6 +6,7 @@ import SuppliersTable from "./SuppliersTable"
 import TableToolbar from "@/components/common/TableToolbar"
 import ImportModal from "@/components/common/ImportModal"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
+import { isSameByFields } from "@/utils/versionConflict"
 
 const SUPPLIERS_TEMPLATE_URL =
   "https://storage.googleapis.com/shared-parts-bucket/templates/suppliers_template.xlsx"
@@ -95,9 +96,26 @@ export default function SuppliersMain() {
     } catch (err) {
       // конфликт версий (optimistic locking)
       if (err?.response?.status === 409 && err?.response?.data?.current) {
+        const current = err.response.data.current
+        const fields = [
+          "name",
+          "vat_number",
+          "website",
+          "payment_terms",
+          "preferred_currency",
+          "incoterms",
+          "default_lead_time_days",
+          "notes",
+          "public_code",
+        ]
+        const same = current && isSameByFields(current, payload, fields)
+        if (same) {
+          replaceRow(current)
+          return current
+        }
         const e = new Error("Version conflict")
         e.isVersionConflict = true
-        e.currentRecord = err.response.data.current
+        e.currentRecord = current
         throw e
       }
 

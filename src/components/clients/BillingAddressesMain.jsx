@@ -5,6 +5,7 @@ import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import BillingAddressesTable from "./BillingAddressesTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
+import { isSameByFields, mergeConflictDraft } from "@/utils/versionConflict"
 
 export default function BillingAddressesMain({ clientId, onChanged }) {
   const [data, setData] = useState([])
@@ -128,10 +129,32 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
       message.success("Изменения сохранены")
     } catch (err) {
       const res = err?.response
-      if (res?.status === 409 && res?.data?.current) {
+      if (res?.status === 409) {
+        const current =
+          res?.data?.current || res?.data?.currentRecord || err.currentRecord
+        if (
+          current &&
+          isSameByFields(current, row, [
+            "formatted_address",
+            "country",
+            "region",
+            "city",
+            "street",
+            "house",
+            "building",
+            "entrance",
+            "postal_code",
+            "comment",
+          ])
+        ) {
+          replaceRow(current)
+          onChanged?.()
+          message.success("Изменения сохранены")
+          return
+        }
         setConflict({
           id,
-          current: res.data.current,
+          current,
           draft: row,
         })
         return
@@ -333,11 +356,10 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
             setConflict(null)
           }}
           onManualMerge={async () => {
-            const base = conflict.current
-            const draft = conflict.draft
-
-            const merged = {
-              ...base,
+            const base = conflict?.current || {}
+            const draft = conflict?.draft || {}
+            const merged = mergeConflictDraft(base, {
+              ...draft,
               formatted_address:
                 draft.formatted_address ?? base.formatted_address,
               country: draft.country ?? base.country,
@@ -349,10 +371,9 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
               entrance: draft.entrance ?? base.entrance,
               postal_code: draft.postal_code ?? base.postal_code,
               comment: draft.comment ?? base.comment,
-              version: base.version,
-            }
+            })
 
-            await onUpdate(conflict.id, merged)
+            if (conflict?.id) await onUpdate(conflict.id, merged)
             setConflict(null)
           }}
           onCancel={() => setConflict(null)}

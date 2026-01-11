@@ -44,6 +44,10 @@ export default function SupplierAddressesTable({
   const isEditing = (record) => editingId === record.id
 
   const startEdit = (record) => {
+    if (editingId && editingId !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
     setEditingId(record.id)
     setEditedRow({ ...record })
   }
@@ -156,7 +160,7 @@ export default function SupplierAddressesTable({
           record.formatted_address?.trim() || formatFull(record) || "-"
 
         return (
-          <div onDoubleClick={() => startEdit(record)}>
+          <div>
             <Space size={6}>
               <Tooltip title={oneLine}>
                 <span className="cell-ellipsis">{oneLine}</span>
@@ -218,12 +222,17 @@ export default function SupplierAddressesTable({
     {
       title: "Действия",
       key: "actions",
-      width: 90,
+      width: 160,
       align: "center",
       render: (_, record) => (
         <ActionButtons
           size="small"
-          onDelete={() => handleDelete(record)}
+          onEdit={!isEditing(record) ? () => startEdit(record) : undefined}
+          onSave={isEditing(record) ? handleSave : undefined}
+          onCancel={isEditing(record) ? cancelEdit : undefined}
+          onDelete={!isEditing(record) ? () => handleDelete(record) : undefined}
+          disabledEdit={!!editingId && !isEditing(record)}
+          disabledDelete={!!editingId && !isEditing(record)}
           confirmDelete={false}
         />
       ),

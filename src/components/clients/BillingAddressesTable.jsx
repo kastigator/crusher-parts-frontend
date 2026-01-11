@@ -1,6 +1,6 @@
 // src/components/clients/BillingAddressesTable.jsx
 import React, { useState } from "react"
-import { Table, Input, Row, Col, Divider, Space, Tooltip, Button } from "antd"
+import { Table, Input, Row, Col, Divider, Space, Tooltip, Button, message } from "antd"
 import { CopyOutlined } from "@ant-design/icons"
 
 import ActionButtons from "@/components/common/ActionButtons"
@@ -31,6 +31,15 @@ export default function BillingAddressesTable({
   const [editedRow, setEditedRow] = useState(null)
 
   const isEditing = (record) => editingId === record.id
+
+  const startEdit = (record) => {
+    if (editingId && editingId !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
+    setEditingId(record.id)
+    setEditedRow({ ...record })
+  }
 
   const cancelEdit = () => {
     setEditingId(null)
@@ -204,12 +213,7 @@ export default function BillingAddressesTable({
             : record.formatted_address?.trim() || "—"
 
         return (
-          <div
-            onDoubleClick={() => {
-              setEditingId(record.id)
-              setEditedRow({ ...record })
-            }}
-          >
+          <div>
             <div className="cell-ellipsis">{oneLine}</div>
 
             {record.comment && (
@@ -243,9 +247,12 @@ export default function BillingAddressesTable({
         const editing = isEditing(record)
         return (
           <ActionButtons
+            onEdit={!editing ? () => startEdit(record) : undefined}
             onSave={editing ? handleSave : undefined}
             onCancel={editing ? cancelEdit : undefined}
             onDelete={!editing ? () => handleDelete(record) : undefined}
+            disabledEdit={!!editingId && !editing}
+            disabledDelete={!!editingId && !editing}
             confirmDelete={false} // подтверждение уже через confirmAction
             size="small"
           />

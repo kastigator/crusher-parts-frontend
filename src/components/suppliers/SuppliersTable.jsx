@@ -63,6 +63,10 @@ export default function SuppliersTable({
   )
 
   const startEdit = (record) => {
+    if (editingId && editingId !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
     setEditingId(record.id)
     setEditedRow({ ...record })
   }
@@ -146,7 +150,7 @@ export default function SuppliersTable({
           <ValueDisplay value={value} />
         )
 
-      return <div onDoubleClick={() => startEdit(record)}>{content}</div>
+      return <div>{content}</div>
     },
   })
 
@@ -217,12 +221,17 @@ export default function SuppliersTable({
     {
       title: "Действия",
       key: "actions",
-      width: 110,
+      width: 150,
       render: (_, record) => (
         <ActionButtons
           size="small"
-          onDelete={() => handleDelete(record)}
+          onEdit={editingId !== record.id ? () => startEdit(record) : undefined}
+          onSave={editingId === record.id ? saveEdit : undefined}
+          onCancel={editingId === record.id ? cancelEdit : undefined}
+          onDelete={editingId !== record.id ? () => handleDelete(record) : undefined}
           onHistory={() => setLogsSupplierId(record.id)}
+          disabledEdit={!!editingId && editingId !== record.id}
+          disabledDelete={!!editingId && editingId !== record.id}
           confirmDelete={false}
         />
       ),
@@ -290,8 +299,7 @@ export default function SuppliersTable({
             </div>
           ),
         }}
-        onRow={(record) => ({
-          onDoubleClick: () => startEdit(record),
+        onRow={() => ({
           onKeyDown: onKey,
         })}
       />
@@ -306,6 +314,17 @@ export default function SuppliersTable({
 
       <VersionConflictModal
         conflict={conflict.open ? conflict : null}
+        entityLabel="поставщик"
+        fields={[
+          { key: "name", title: "Компания" },
+          { key: "public_code", title: "Код" },
+          { key: "vat_number", title: "VAT" },
+          { key: "country", title: "Страна" },
+          { key: "contact_person", title: "Контакт" },
+          { key: "phone", title: "Телефон" },
+          { key: "email", title: "Email" },
+          { key: "notes", title: "Примечание" },
+        ]}
         onCancel={() =>
           setConflict({ open: false, current: null, draft: null, id: null })
         }

@@ -12,6 +12,7 @@ import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import createTablePagination from "@/utils/tablePagination"
+import { mergeConflictDraft } from "@/utils/versionConflict"
 
 export default function ClientsTable({
   data,
@@ -62,6 +63,10 @@ export default function ClientsTable({
   const isEditing = (record) => record.id === editingId
 
   const startEdit = (record) => {
+    if (editingId && editingId !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
     setEditingId(record.id)
     setEditedRow({ ...record }) // важно сохранить version
   }
@@ -174,7 +179,6 @@ export default function ClientsTable({
         ) : (
           <ValueDisplay value={record.company_name} />
         ),
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Контакт",
@@ -185,7 +189,6 @@ export default function ClientsTable({
         ) : (
           <ValueDisplay value={record.contact_person} />
         ),
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Телефон",
@@ -197,7 +200,6 @@ export default function ClientsTable({
         ) : (
           <ValueDisplay value={record.phone} type="phone" />
         ),
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Email",
@@ -209,18 +211,21 @@ export default function ClientsTable({
         ) : (
           <ValueDisplay value={record.email} type="email" />
         ),
-      onCell: (record) => ({ onDoubleClick: () => startEdit(record) }),
     },
     {
       title: "Действия",
       dataIndex: "actions",
-      width: 90,
+      width: 150,
       fixed: "right",
       render: (_, record) => (
         <ActionButtons
-          // редактирование — только двойным кликом; Enter/Esc
-          onDelete={() => handleDelete(record)}
+          onEdit={!isEditing(record) ? () => startEdit(record) : undefined}
+          onSave={isEditing(record) ? saveEdit : undefined}
+          onCancel={isEditing(record) ? cancelEdit : undefined}
+          onDelete={!isEditing(record) ? () => handleDelete(record) : undefined}
           onHistory={() => setHistoryForId(record.id)}
+          disabledEdit={!!editingId && !isEditing(record)}
+          disabledDelete={!!editingId && !isEditing(record)}
         />
       ),
     },
@@ -306,19 +311,27 @@ export default function ClientsTable({
         open={conflict.open}
         current={conflict.current}
         draft={conflict.draft}
-        entityName="клиент"
-        onApplyServer={() => {
-          if (conflict.current) {
-            setEditedRow(conflict.current)
-            setEditingId(conflict.current.id)
+        entityLabel="клиент"
+        fields={[
+          { key: "company_name", title: "Компания" },
+          { key: "contact_person", title: "Контакт" },
+          { key: "phone", title: "Телефон" },
+          { key: "email", title: "Email" },
+        ]}
+        onReload={async () => {
+          if (conflict.current && typeof onReplaceRow === "function") {
+            onReplaceRow(conflict.current)
+          } else if (typeof onReload === "function") {
+            await onReload()
           }
           setConflict({ open: false, current: null, draft: null })
+          cancelEdit()
         }}
-        onApplyDraft={() => {
-          const merged = {
-            ...(conflict.current || {}),
-            ...(conflict.draft || {}),
-          }
+        onManualMerge={() => {
+          const merged = mergeConflictDraft(
+            conflict.current || {},
+            conflict.draft || {},
+          )
           if (merged.id) {
             setEditingId(merged.id)
             setEditedRow(merged)

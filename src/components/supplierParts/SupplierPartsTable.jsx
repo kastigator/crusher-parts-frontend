@@ -272,8 +272,12 @@ export default function SupplierPartsTable({
   }, [load, version, page, pageSize])
 
   const startEditCell = (record, field) => {
+    if (editing && editing.id !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
     setEditing({ id: record.id, field })
-    setDraft({ ...record })
+    setDraft((prev) => (prev && prev.id === record.id ? prev : { ...record }))
   }
 
   const cancelEdit = () => {
@@ -496,14 +500,22 @@ export default function SupplierPartsTable({
     cols.push({
       title: "Действия",
       key: "actions",
-      width: 110,
-      render: (_, row) => (
-        <ActionButtons
-          onHistory={() => setHistoryForId(row.id)}
-          onDelete={() => handleDelete(row.id)}
-          size="small"
-        />
-      ),
+      width: 180,
+      render: (_, row) => {
+        const isRowEditing = editing?.id === row.id
+        return (
+          <ActionButtons
+            onEdit={!isRowEditing ? () => startEditCell(row, "supplier_part_number") : undefined}
+            onSave={isRowEditing ? handleSave : undefined}
+            onCancel={isRowEditing ? cancelEdit : undefined}
+            onHistory={!isRowEditing ? () => setHistoryForId(row.id) : undefined}
+            onDelete={!isRowEditing ? () => handleDelete(row.id) : undefined}
+            disabledEdit={!!editing && !isRowEditing}
+            disabledDelete={!!editing && !isRowEditing}
+            size="small"
+          />
+        )
+      },
     })
 
     return cols

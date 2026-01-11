@@ -4,6 +4,7 @@ import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import SupplierAddressesTable from "./SupplierAddressesTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
+import { isSameByFields } from "@/utils/versionConflict"
 
 export default function SupplierAddressesMain({ supplierId, onChanged }) {
   const [data, setData] = useState([])
@@ -152,11 +153,36 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
       onChanged?.()
     } catch (err) {
       const res = err?.response
-      if (res?.status === 409 && res?.data?.current) {
+      if (res?.status === 409) {
+        const current =
+          res?.data?.current || res?.data?.currentRecord || err.currentRecord
+        if (
+          current &&
+          isSameByFields(current, row, [
+            "formatted_address",
+            "country",
+            "region",
+            "city",
+            "street",
+            "house",
+            "building",
+            "entrance",
+            "postal_code",
+            "comment",
+            "label",
+            "type",
+            "is_primary",
+          ])
+        ) {
+          replaceRow(current)
+          onChanged?.()
+          message.success("Адрес поставщика обновлен")
+          return
+        }
         setConflict({
           id,
           draft: row,
-          current: res.data.current,
+          current,
           entityLabel: "Адрес поставщика",
         })
         return
@@ -376,6 +402,18 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
           draft={conflict.draft}
           current={conflict.current}
           entityLabel={conflict.entityLabel}
+          fields={[
+            { key: "formatted_address", title: "Адрес" },
+            { key: "country", title: "Страна" },
+            { key: "region", title: "Регион" },
+            { key: "city", title: "Город" },
+            { key: "street", title: "Улица" },
+            { key: "house", title: "Дом" },
+            { key: "building", title: "Строение" },
+            { key: "entrance", title: "Подъезд" },
+            { key: "postal_code", title: "Индекс" },
+            { key: "comment", title: "Комментарий" },
+          ]}
           onClose={() => setConflict(null)}
           onReload={async () => {
             if (conflict?.current) replaceRow(conflict.current)

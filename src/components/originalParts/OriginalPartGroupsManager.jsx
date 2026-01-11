@@ -11,6 +11,7 @@ import {
 import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
+import ActionButtons from "@/components/common/ActionButtons"
 
 export default function OriginalPartGroupsManager({ open, onClose, onChanged }) {
   const [rows, setRows] = useState([])
@@ -61,6 +62,10 @@ export default function OriginalPartGroupsManager({ open, onClose, onChanged }) 
   }
 
   const startEdit = (record) => {
+    if (editingId && editingId !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
     setEditingId(record.id)
     setEditingValues({
       name: record.name || "",
@@ -169,18 +174,23 @@ export default function OriginalPartGroupsManager({ open, onClose, onChanged }) 
     },
     {
       title: "Действия",
-      width: 80,
+      width: 170,
       align: "center",
-      render: (_, record) => (
-        <Space size="small">
-          <Button
-            type="text"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => handleDelete(record)}
+      render: (_, record) => {
+        const editing = record.id === editingId
+        return (
+          <ActionButtons
+            size="small"
+            onEdit={!editing ? () => startEdit(record) : undefined}
+            onSave={editing ? () => saveEdit(record.id) : undefined}
+            onCancel={editing ? cancelEdit : undefined}
+            onDelete={!editing ? () => handleDelete(record) : undefined}
+            disabledEdit={!!editingId && !editing}
+            disabledDelete={!!editingId && !editing}
+            titles={{ delete: "Удалить группу" }}
           />
-        </Space>
-      ),
+        )
+      },
     },
   ]
 
@@ -234,7 +244,6 @@ export default function OriginalPartGroupsManager({ open, onClose, onChanged }) 
           loading={loading || savingEdit}
           pagination={{ pageSize: 50 }}
           onRow={(record) => ({
-            onDoubleClick: () => startEdit(record),
           })}
         />
       </Space>

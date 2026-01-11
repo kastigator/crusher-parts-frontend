@@ -152,6 +152,10 @@ export default function OriginalPartsTable({
      Inline-редактирование
   ----------------------------------------------------------- */
   const startEdit = (record) => {
+    if (editingId && editingId !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
     setEditingId(record.id)
 
     // объект ТН ВЭД для пикапера (если есть)
@@ -610,12 +614,17 @@ export default function OriginalPartsTable({
     },
     {
       title: "Действия",
-      width: 110,
+      width: 180,
       render: (_, record) => (
         <ActionButtons
           size="small"
-          onHistory={() => setHistoryId(record.id)}
-          onDelete={() => handleDelete(record)}
+          onEdit={editingId !== record.id ? () => startEdit(record) : undefined}
+          onSave={editingId === record.id ? () => saveEdit(record.id) : undefined}
+          onCancel={editingId === record.id ? cancelEdit : undefined}
+          onHistory={editingId ? undefined : () => setHistoryId(record.id)}
+          onDelete={editingId !== record.id ? () => handleDelete(record) : undefined}
+          disabledEdit={!!editingId && editingId !== record.id}
+          disabledDelete={!!editingId && editingId !== record.id}
           titles={{
             history: "История изменений",
             delete: "Удалить деталь",
@@ -645,11 +654,6 @@ export default function OriginalPartsTable({
           tableLayout="fixed"
           scroll={{ x: true, y: 480 }}
           size="middle"
-          onRow={(record) => ({
-            onDoubleClick: () => {
-              startEdit(record)
-            },
-          })}
           rowClassName={(record) => {
             const classes = []
             if (expandedId && record.id === expandedId)

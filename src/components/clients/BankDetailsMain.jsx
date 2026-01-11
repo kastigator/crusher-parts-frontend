@@ -5,6 +5,7 @@ import axios from "@/api/axiosInstance"
 import CurrencySelect from "@/components/inputs/CurrencySelect"
 import BankDetailsTable from "./BankDetailsTable"
 import fetchBankByBic from "@/utils/fetchBankByBic"
+import { isSameByFields } from "@/utils/versionConflict"
 
 const INITIAL_BANK = {
   bank_name: "",
@@ -136,9 +137,24 @@ export default function BankDetailsMain({ clientId, onChanged }) {
         e.response?.status === 409 &&
         e.response?.data?.type === "version_conflict"
       ) {
+        const current = e.response.data.current || e.currentRecord || null
+        if (
+          current &&
+          isSameByFields(current, patch, [
+            "bank_name",
+            "bic",
+            "correspondent_account",
+            "account_number",
+            "currency",
+          ])
+        ) {
+          setData((prev) => prev.map((row) => (row.id === id ? current : row)))
+          onChanged?.()
+          return current
+        }
         const err = new Error("version_conflict")
         err.isVersionConflict = true
-        err.currentRecord = e.response.data.current || null
+        err.currentRecord = current
         throw err
       }
       console.error("Ошибка при обновлении реквизитов:", e)

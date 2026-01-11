@@ -14,7 +14,17 @@ import {
   message,
   Tooltip,
   Divider,
+  Modal,
+  Upload,
 } from "antd"
+import {
+  InfoCircleOutlined,
+  FileTextOutlined,
+  UploadOutlined,
+  DownloadOutlined,
+  FilePdfOutlined,
+  PlusOutlined,
+} from "@ant-design/icons"
 import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
 import OriginalsPickerDrawer from "@/components/supplierParts/OriginalsPickerDrawer"
@@ -28,6 +38,8 @@ import confirmAction from "@/utils/confirmAction"
 import { Alert, Typography } from "antd"
 import BankDetailsModal from "./BankDetailsModal"
 import ProposalPreviewModal from "./ProposalPreviewModal"
+import OfferModal from "./OfferModal"
+import { useAuth } from "@/auth/AuthContext"
 
 const { Text } = Typography
 
@@ -40,6 +52,29 @@ const ITEM_STATUS_META = {
   rework: { color: "orange", label: "Доработка" },
 }
 
+const CONTRACT_STATUS_OPTIONS = [
+  { value: "draft", label: "Черновик" },
+  { value: "sent", label: "Отправлен" },
+  { value: "signed", label: "Подписан" },
+  { value: "cancelled", label: "Отменён" },
+]
+
+const CONTRACT_STATUS_META = {
+  draft: { color: "default", label: "Черновик" },
+  sent: { color: "processing", label: "Отправлен" },
+  signed: { color: "success", label: "Подписан" },
+  cancelled: { color: "error", label: "Отменён" },
+}
+
+const LabelWithHint = ({ text, hint }) => (
+  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+    {text}
+    <Tooltip title={hint}>
+      <InfoCircleOutlined style={{ color: "#9ca3af" }} />
+    </Tooltip>
+  </span>
+)
+
 export default function OrderDrawer({
   open,
   onClose,
@@ -49,11 +84,21 @@ export default function OrderDrawer({
   viewRole,
 }) {
   const [form] = Form.useForm()
+  const [contractForm] = Form.useForm()
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [order, setOrder] = useState(initialOrder || null)
   const [items, setItems] = useState([])
   const [events, setEvents] = useState([])
+  const [contracts, setContracts] = useState([])
+  const [contractsLoading, setContractsLoading] = useState(false)
+  const [contractModalOpen, setContractModalOpen] = useState(false)
+  const [contractSaving, setContractSaving] = useState(false)
+  const [contractGeneratingId, setContractGeneratingId] = useState(null)
+  const [contractUploadingId, setContractUploadingId] = useState(null)
+  const [contractDeletingId, setContractDeletingId] = useState(null)
+  const [editingContract, setEditingContract] = useState(null)
   const [clientPickerOpen, setClientPickerOpen] = useState(false)
   const [partsPickerOpen, setPartsPickerOpen] = useState(false)
   const [bankOptions, setBankOptions] = useState([])
@@ -66,9 +111,74 @@ export default function OrderDrawer({
   const [responsibleOptions, setResponsibleOptions] = useState([])
   const [editingItemId, setEditingItemId] = useState(null)
   const [activeTab, setActiveTab] = useState("info")
+  const [offerModalOpen, setOfferModalOpen] = useState(false)
+  const [offerItem, setOfferItem] = useState(null)
 
   const effectiveOrderId = orderId || order?.id || null
   const isNew = !effectiveOrderId
+  const normalizedRole = useMemo(
+    () => String(viewRole || "").trim().toLowerCase(),
+    [viewRole],
+  )
+  const actualRole = useMemo(
+    () => String(user?.role_slug || user?.role || "").trim().toLowerCase(),
+    [user],
+  )
+  const effectiveRole = actualRole || normalizedRole
+  const isAdmin = useMemo(() => {
+    return (
+      user?.role_id === 1 ||
+      user?.is_admin === true ||
+      actualRole === "admin"
+    )
+  }, [user, actualRole])
+  const canEditOffers = useMemo(() => {
+    if (isAdmin) return true
+    const buyerRoles = new Set([
+      "комплектовщик",
+      "komplektovshchik",
+      "komplektovshik",
+      "закупщик",
+      "buyer",
+      "procurement",
+      "purchase",
+    ])
+    const sellerRoles = new Set([
+      "продавец",
+      "prodavec",
+      "sales",
+      "manager",
+    ])
+    return buyerRoles.has(effectiveRole) || sellerRoles.has(effectiveRole)
+  }, [effectiveRole, isAdmin])
+  const canSelectOffers = useMemo(() => {
+    if (isAdmin) return true
+    const sellerRoles = new Set([
+      "продавец",
+      "prodavec",
+      "sales",
+      "manager",
+    ])
+    return sellerRoles.has(effectiveRole)
+  }, [effectiveRole, isAdmin])
+
+  const loadContracts = useCallback(async (targetId) => {
+    const id = targetId || effectiveOrderId
+    if (!id) {
+      setContracts([])
+      return
+    }
+    setContractsLoading(true)
+    try {
+      const { data } = await axios.get(`/client-orders/${id}/contracts`)
+      setContracts(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error("load contracts error", e)
+      message.error("Не удалось загрузить контракты")
+    } finally {
+      setContractsLoading(false)
+    }
+  }, [effectiveOrderId])
 
   const loadDetail = useCallback(async (targetId) => {
     const id = targetId || effectiveOrderId
@@ -89,13 +199,14 @@ export default function OrderDrawer({
       if (data?.order?.client_id) {
         fetchBanks(data.order.client_id)
       }
+      loadContracts(id)
     } catch (e) {
       console.error("load order error", e)
       message.error("Не удалось загрузить заказ")
     } finally {
       setLoading(false)
     }
-  }, [effectiveOrderId, form])
+  }, [effectiveOrderId, form, loadContracts])
 
   useEffect(() => {
     if (open) {
@@ -112,6 +223,7 @@ export default function OrderDrawer({
     form.resetFields()
     setBankOptions([])
     setSelectedBankId(null)
+    setContracts([])
   }, [open, effectiveOrderId, loadDetail, form])
 
   const fetchBanks = async (clientId) => {
@@ -148,6 +260,183 @@ export default function OrderDrawer({
       setResponsibleOptions(list)
     } catch (e) {
       console.error("load responsible users error", e)
+    }
+  }
+
+  const openOfferModal = (record) => {
+    setOfferItem(record)
+    setOfferModalOpen(true)
+  }
+
+  const closeOfferModal = () => {
+    setOfferModalOpen(false)
+    setOfferItem(null)
+  }
+
+  const pickApprovedOffer = (item) => {
+    const offers = Array.isArray(item?.offers) ? item.offers : []
+    return (
+      offers.find((o) => o.id === item?.decision_offer_id) ||
+      offers.find((o) => o.status === "approved") ||
+      null
+    )
+  }
+
+  const estimateContractAmount = useCallback(() => {
+    if (!items.length) return null
+    let total = 0
+    let hasAny = false
+    items.forEach((item) => {
+      const offer = pickApprovedOffer(item)
+      if (!offer || offer.client_price == null) return
+      const price = Number(offer.client_price)
+      if (!Number.isFinite(price)) return
+      const qty = Number(item.requested_qty || 1)
+      const lineTotal = Number.isFinite(qty) ? price * qty : price
+      total += lineTotal
+      hasAny = true
+    })
+    return hasAny ? total : null
+  }, [items])
+
+  const buildContractNumber = () => {
+    const base = order?.order_number || (order?.id ? `ORDER-${order.id}` : "CONTRACT")
+    const datePart = dayjs().format("YYYYMMDD")
+    const suffix = contracts.length + 1
+    return `${base}-${datePart}-${suffix}`
+  }
+
+  const openContractModal = (contract = null) => {
+    if (!order?.id) {
+      message.warning("Сначала сохраните заказ")
+      return
+    }
+    setEditingContract(contract)
+    if (contract) {
+      contractForm.setFieldsValue({
+        contract_number: contract.contract_number,
+        contract_date: contract.contract_date ? dayjs(contract.contract_date) : null,
+        amount: contract.amount,
+        currency: contract.currency || order?.currency || null,
+        status: contract.status || "draft",
+        comment: contract.comment,
+      })
+    } else {
+      contractForm.setFieldsValue({
+        contract_number: buildContractNumber(),
+        contract_date: dayjs(),
+        amount: estimateContractAmount(),
+        currency: order?.currency || null,
+        status: "draft",
+        comment: "",
+      })
+    }
+    setContractModalOpen(true)
+  }
+
+  const closeContractModal = () => {
+    setContractModalOpen(false)
+    setEditingContract(null)
+    contractForm.resetFields()
+  }
+
+  const handleSaveContract = async () => {
+    try {
+      const values = await contractForm.validateFields()
+      const payload = {
+        contract_number: values.contract_number,
+        contract_date: values.contract_date
+          ? values.contract_date.format("YYYY-MM-DD")
+          : null,
+        amount: values.amount ?? null,
+        currency: values.currency || null,
+        status: values.status || "draft",
+        comment: values.comment || null,
+      }
+      setContractSaving(true)
+      if (editingContract?.id) {
+        await axios.put(`/client-orders/contracts/${editingContract.id}`, payload)
+        message.success("Контракт обновлён")
+      } else {
+        await axios.post(`/client-orders/${order.id}/contracts`, payload)
+        message.success("Контракт создан")
+      }
+      await loadContracts(order.id)
+      closeContractModal()
+    } catch (e) {
+      if (e?.errorFields) return
+      console.error("save contract error", e)
+      message.error(e?.response?.data?.message || "Не удалось сохранить контракт")
+    } finally {
+      setContractSaving(false)
+    }
+  }
+
+  const handleDeleteContract = async (contract) => {
+    const { confirmed } = await confirmAction({
+      title: "Удалить контракт?",
+      text: `Контракт ${contract.contract_number || ""} будет удалён.`,
+      confirmLabel: "Удалить",
+      cancelLabel: "Отмена",
+    })
+    if (!confirmed) return
+    setContractDeletingId(contract.id)
+    try {
+      await axios.delete(`/client-orders/contracts/${contract.id}`)
+      message.success("Контракт удалён")
+      await loadContracts(order.id)
+    } catch (e) {
+      console.error("delete contract error", e)
+      message.error("Не удалось удалить контракт")
+    } finally {
+      setContractDeletingId(null)
+    }
+  }
+
+  const handleGenerateContract = async (contract) => {
+    setContractGeneratingId(contract.id)
+    try {
+      const { data } = await axios.post(`/client-orders/contracts/${contract.id}/generate`)
+      const url = data?.url
+      if (url) {
+        message.success("PDF сформирован")
+        await loadContracts(order.id)
+        window.open(url, "_blank", "noopener")
+      } else {
+        message.success("PDF сформирован")
+        await loadContracts(order.id)
+      }
+    } catch (e) {
+      console.error("generate contract error", e)
+      message.error(e?.response?.data?.message || "Не удалось сформировать контракт")
+    } finally {
+      setContractGeneratingId(null)
+    }
+  }
+
+  const handleUploadContract = async (contract, file, onSuccess, onError) => {
+    setContractUploadingId(contract.id)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const { data } = await axios.post(
+        `/client-orders/contracts/${contract.id}/file`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } },
+      )
+      if (data?.url) {
+        message.success("Контракт загружен")
+        await loadContracts(order.id)
+      } else {
+        message.success("Контракт загружен")
+      }
+      onSuccess?.(data)
+    } catch (e) {
+      console.error("upload contract error", e)
+      message.error(e?.response?.data?.message || "Не удалось загрузить контракт")
+      onError?.(e)
+    } finally {
+      setContractUploadingId(null)
     }
   }
 
@@ -413,6 +702,11 @@ export default function OrderDrawer({
     }
   }
 
+  const isStatusLocked = (record) => {
+    const offers = Array.isArray(record?.offers) ? record.offers : []
+    return !!record?.decision_offer_id || offers.some((o) => o.status === "approved")
+  }
+
   const isEditingRow = (record) =>
     editingItemId &&
     (record.id === editingItemId || record.local_id === editingItemId)
@@ -533,13 +827,27 @@ export default function OrderDrawer({
         },
       },
       {
-        title: "Статус",
+        title: (
+          <LabelWithHint
+            text="Статус"
+            hint="Статус строки — внутренний ориентир. Для KPI важны статусы офферов: «Предложена» и «Утверждена»."
+          />
+        ),
         dataIndex: "status",
         width: 140,
         render: (v, record) => {
           const meta = ITEM_STATUS_META[v] || { color: "default", label: v || "—" }
           const editing = isEditingRow(record)
-          if (!editing) return <Tag color={meta.color}>{meta.label}</Tag>
+          if (!editing || isStatusLocked(record)) {
+            const tag = <Tag color={meta.color}>{meta.label}</Tag>
+            return isStatusLocked(record) ? (
+              <Tooltip title="Статус строки управляется выбором оффера">
+                {tag}
+              </Tooltip>
+            ) : (
+              tag
+            )
+          }
           return (
             <Select
               value={record.status}
@@ -558,7 +866,12 @@ export default function OrderDrawer({
         },
       },
       {
-        title: "Офферы",
+        title: (
+          <LabelWithHint
+            text="Офферы"
+            hint="«Предложения» в KPI считаются, когда оффер получил статус «Предложена», «согласовано» — после «Утверждена»."
+          />
+        ),
         key: "offers",
         width: 220,
         render: (_, record) => {
@@ -593,12 +906,23 @@ export default function OrderDrawer({
               onCancel={editing ? () => setEditingItemId(null) : undefined}
               onDelete={!editing ? () => handleDeleteItem(record) : undefined}
               confirmDelete={false}
+              extraButtons={[
+                {
+                  key: "offers",
+                  label: "Офферы",
+                  icon: <FileTextOutlined />,
+                  type: "text",
+                  showText: false,
+                  disabled: !record.id || !order?.id,
+                  onClick: () => openOfferModal(record),
+                },
+              ]}
             />
           )
         },
       },
     ],
-    [handleSaveItem, handleDeleteItem, editingItemId, order?.id],
+    [handleSaveItem, handleDeleteItem, editingItemId, order?.id, openOfferModal],
   )
 
   const renderHeaderTab = () => (
@@ -647,7 +971,15 @@ export default function OrderDrawer({
           <Form.Item label="Email" name="contact_email">
             <Input placeholder="email@example.com" />
           </Form.Item>
-          <Form.Item label="Ответственный" name="responsible_user_id">
+          <Form.Item
+            label={
+              <LabelWithHint
+                text="Ответственный"
+                hint="Продавец для KPI берется отсюда. Если не заполнить, система попытается определить продавца автоматически."
+              />
+            }
+            name="responsible_user_id"
+          >
             <Select
               allowClear
               placeholder="Выбрать пользователя"
@@ -669,7 +1001,15 @@ export default function OrderDrawer({
           >
             <Input placeholder="Например, PO-123" />
           </Form.Item>
-          <Form.Item label="Статус" name="status">
+          <Form.Item
+            label={
+              <LabelWithHint
+                text="Статус"
+                hint="На KPI влияет не статус заказа, а статусы офферов/строк: «Предложена» и «Утверждена»."
+              />
+            }
+            name="status"
+          >
             <Select
               options={[
                 { value: "draft", label: "Черновик" },
@@ -787,6 +1127,10 @@ export default function OrderDrawer({
               <div>Заказ: Черновик → Новый → Отправлен → Подтверждён (или Доработка/Отмена).</div>
               <div>Строки: Открыта → В подборе → Предложена → Утверждена/Отклонена.</div>
               <div>Оффер выбирает комплектовщик/продавец/админ после согласования с клиентом.</div>
+              <div style={{ marginTop: 6 }}>
+                KPI: «предложения» считаются после статуса «Предложена», «согласовано» — после выбора оффера/статуса «Утверждена».
+              </div>
+              <div>Выручка и маржа KPI считаются по утверждённым позициям, продавец — «Ответственный» в шапке заказа.</div>
             </div>
           }
         />
@@ -802,6 +1146,12 @@ export default function OrderDrawer({
 
   const renderItemsTab = () => (
     <Space direction="vertical" style={{ width: "100%" }} size="middle">
+      <Alert
+        type="info"
+        showIcon
+        message="Офферы"
+        description="Офферы открываются по кнопке «Офферы» в строке позиции. Там же выбирается согласованный вариант."
+      />
       <Button onClick={() => setPartsPickerOpen(true)}>
         Добавить позиции
       </Button>
@@ -818,6 +1168,138 @@ export default function OrderDrawer({
     </Space>
   )
 
+  const renderContractsTab = () => {
+    const columns = [
+      {
+        title: "Номер",
+        dataIndex: "contract_number",
+        width: 180,
+        render: (v) => v || "—",
+      },
+      {
+        title: "Дата",
+        dataIndex: "contract_date",
+        width: 140,
+        render: (v) => (v ? String(v).slice(0, 10) : "—"),
+      },
+      {
+        title: "Сумма",
+        dataIndex: "amount",
+        width: 140,
+        render: (v) =>
+          v != null && v !== ""
+            ? Number(v).toLocaleString("ru-RU", { minimumFractionDigits: 2 })
+            : "—",
+      },
+      {
+        title: "Валюта",
+        dataIndex: "currency",
+        width: 100,
+        render: (v) => v || order?.currency || "—",
+      },
+      {
+        title: "Статус",
+        dataIndex: "status",
+        width: 140,
+        render: (v) => {
+          const meta = CONTRACT_STATUS_META[v] || { color: "default", label: v || "—" }
+          return <Tag color={meta.color}>{meta.label}</Tag>
+        },
+      },
+      {
+        title: "Файл",
+        key: "file",
+        width: 160,
+        render: (_, record) =>
+          record.file_url ? (
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              onClick={() => window.open(record.file_url, "_blank", "noopener")}
+            >
+              Скачать
+            </Button>
+          ) : (
+            <Text type="secondary">Нет файла</Text>
+          ),
+      },
+      {
+        title: "Действия",
+        key: "actions",
+        width: 260,
+        render: (_, record) => (
+          <Space size={6} wrap>
+            <Button
+              size="small"
+              icon={<FilePdfOutlined />}
+              loading={contractGeneratingId === record.id}
+              onClick={() => handleGenerateContract(record)}
+            >
+              PDF
+            </Button>
+            <Upload
+              accept="application/pdf"
+              showUploadList={false}
+              customRequest={({ file, onSuccess, onError }) =>
+                handleUploadContract(record, file, onSuccess, onError)
+              }
+            >
+              <Button
+                size="small"
+                icon={<UploadOutlined />}
+                loading={contractUploadingId === record.id}
+              >
+                Загрузить
+              </Button>
+            </Upload>
+            <ActionButtons
+              size="small"
+              onEdit={() => openContractModal(record)}
+              onDelete={() => handleDeleteContract(record)}
+              loadingDelete={contractDeletingId === record.id}
+              titles={{ delete: "Удалить контракт", edit: "Редактировать контракт" }}
+            />
+          </Space>
+        ),
+      },
+    ]
+
+    return (
+      <Space direction="vertical" style={{ width: "100%" }} size="middle">
+        <Alert
+          type="info"
+          showIcon
+          message="Контракты"
+          description="Создайте контракт, при необходимости поправьте сумму и статус, затем сформируйте PDF‑болванку или загрузите свой файл."
+        />
+        <Space wrap>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => openContractModal()}
+            disabled={!order?.id}
+          >
+            Новый контракт
+          </Button>
+          <Button onClick={() => loadContracts(order?.id)} loading={contractsLoading}>
+            Обновить
+          </Button>
+          <Text type="secondary">Сумма по умолчанию — из утверждённых офферов, проверьте перед отправкой.</Text>
+        </Space>
+        <Table
+          rowKey="id"
+          size="small"
+          className="op-table"
+          columns={columns}
+          dataSource={contracts}
+          pagination={false}
+          loading={contractsLoading}
+          locale={{ emptyText: "Контракты пока не создавались" }}
+        />
+      </Space>
+    )
+  }
+
   const renderHistoryTab = () => <HistoryTimeline events={events} />
 
   const tabs = [
@@ -827,8 +1309,17 @@ export default function OrderDrawer({
       label: `Строки и офферы (${items.length})`,
       children: renderItemsTab(),
     },
+    {
+      key: "contracts",
+      label: `Контракты (${contracts.length})`,
+      children: renderContractsTab(),
+    },
     { key: "history", label: "История", children: renderHistoryTab() },
   ]
+
+  const offerModalItem = offerItem
+    ? { ...offerItem, order_currency: order?.currency }
+    : null
 
   return (
     <>
@@ -871,6 +1362,53 @@ export default function OrderDrawer({
         </Space>
       </Drawer>
 
+      <Modal
+        open={contractModalOpen}
+        onCancel={closeContractModal}
+        title={editingContract ? "Редактировать контракт" : "Новый контракт"}
+        okText={editingContract ? "Сохранить" : "Создать"}
+        onOk={handleSaveContract}
+        confirmLoading={contractSaving}
+        destroyOnClose
+      >
+        <Form layout="vertical" form={contractForm}>
+          <Form.Item
+            label="Номер договора"
+            name="contract_number"
+            rules={[{ required: true, message: "Укажите номер договора" }]}
+          >
+            <Input placeholder="Например, Д-2026-001" />
+          </Form.Item>
+          <Form.Item
+            label="Дата договора"
+            name="contract_date"
+            rules={[{ required: true, message: "Укажите дату договора" }]}
+          >
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item label="Сумма" name="amount">
+            <InputNumber
+              min={0}
+              style={{ width: "100%" }}
+              placeholder="Сумма договора"
+            />
+          </Form.Item>
+          <Form.Item label="Валюта" name="currency">
+            <Input placeholder={order?.currency || "USD"} />
+          </Form.Item>
+          <Form.Item label="Статус" name="status">
+            <Select options={CONTRACT_STATUS_OPTIONS} />
+          </Form.Item>
+          <Form.Item label="Комментарий" name="comment">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Text type="secondary">
+            Болванка контракта формируется автоматически. Перед отправкой
+            проверьте реквизиты и сумму.
+          </Text>
+        </Form>
+      </Modal>
+
       <ClientPickerDrawer
         open={clientPickerOpen}
         onClose={() => setClientPickerOpen(false)}
@@ -905,6 +1443,15 @@ export default function OrderDrawer({
         order={order}
         items={items}
         viewRole={viewRole}
+      />
+
+      <OfferModal
+        open={offerModalOpen}
+        onClose={closeOfferModal}
+        item={offerModalItem}
+        canEditOffers={canEditOffers}
+        canSelect={canSelectOffers}
+        onOffersUpdated={() => loadDetail()}
       />
 
       <ShippingAddressPicker

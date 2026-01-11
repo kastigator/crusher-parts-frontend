@@ -5,6 +5,7 @@ import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import CurrencySelect from "@/components/inputs/CurrencySelect"
+import { mergeConflictDraft } from "@/utils/versionConflict"
 
 export default function BankDetailsTable({
   data = [],
@@ -26,6 +27,10 @@ export default function BankDetailsTable({
   const isEditing = (r) => r.id === editingId
 
   const startEdit = (record) => {
+    if (editingId && editingId !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
     setEditingId(record.id)
     setEdited({ ...record }) // важно сохранить version
   }
@@ -108,9 +113,6 @@ export default function BankDetailsTable({
         ) : (
           r.bank_name || "—"
         ),
-      onCell: (record) => ({
-        onDoubleClick: () => startEdit(record),
-      }),
     },
     {
       title: "БИК",
@@ -128,9 +130,6 @@ export default function BankDetailsTable({
         ) : (
           r.bic || "—"
         ),
-      onCell: (record) => ({
-        onDoubleClick: () => startEdit(record),
-      }),
     },
     {
       title: "Кор. счёт",
@@ -150,9 +149,6 @@ export default function BankDetailsTable({
         ) : (
           r.correspondent_account || "—"
         ),
-      onCell: (record) => ({
-        onDoubleClick: () => startEdit(record),
-      }),
     },
     {
       title: "Валюта",
@@ -177,9 +173,6 @@ export default function BankDetailsTable({
         ) : (
           r.currency || "RUB"
         ),
-      onCell: (record) => ({
-        onDoubleClick: () => startEdit(record),
-      }),
     },
     {
       title: "Расч. счёт",
@@ -196,18 +189,19 @@ export default function BankDetailsTable({
         ) : (
           r.account_number || "—"
         ),
-      onCell: (record) => ({
-        onDoubleClick: () => startEdit(record),
-      }),
     },
     {
       title: "Действия",
       dataIndex: "actions",
-      width: 90,
+      width: 160,
       render: (_, r) => (
         <ActionButtons
-          // редактирование — только двойным кликом
-          onDelete={() => handleDelete(r)}
+          onEdit={!isEditing(r) ? () => startEdit(r) : undefined}
+          onSave={isEditing(r) ? save : undefined}
+          onCancel={isEditing(r) ? cancel : undefined}
+          onDelete={!isEditing(r) ? () => handleDelete(r) : undefined}
+          disabledEdit={!!editingId && !isEditing(r)}
+          disabledDelete={!!editingId && !isEditing(r)}
         />
       ),
     },
@@ -247,9 +241,10 @@ export default function BankDetailsTable({
           cancel()
         }}
         onManualMerge={() => {
-          const base = conflict.current || {}
-          const draft = conflict.draft || {}
-          const merged = { ...base, ...draft }
+          const merged = mergeConflictDraft(
+            conflict.current || {},
+            conflict.draft || {},
+          )
           if (merged.id) {
             setEditingId(merged.id)
             setEdited(merged)

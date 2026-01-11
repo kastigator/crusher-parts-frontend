@@ -7,7 +7,7 @@ export default function SuppliersPage() {
   return (
     <TabRendererPage
       tabKey="suppliers"
-      helpText="Двойной клик — редактирование; Enter — сохранить; Esc — отменить."
+      helpText="Кнопка карандаш — редактирование; Enter — сохранить; Esc — отменить."
     >
       <SuppliersMain />
     </TabRendererPage>

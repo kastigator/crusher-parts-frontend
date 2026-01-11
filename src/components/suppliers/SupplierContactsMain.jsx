@@ -4,6 +4,7 @@ import axios from "@/api/axiosInstance"
 
 import SupplierContactsTable from "./SupplierContactsTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
+import { isSameByFields } from "@/utils/versionConflict"
 
 const trimOrNull = (v) => {
   if (v === undefined || v === null) return null
@@ -93,20 +94,40 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
     setData((prev) => prev.filter((r) => r.id !== id))
 
   const handleUpdate = async (id, values) => {
+    const payload = { ...values, version: values?.version }
     try {
       const { data: fresh } = await axios.put(
         `/supplier-contacts/${id}`,
-        values
+        payload
       )
       replaceRow(fresh)
       onChanged?.()
     } catch (e) {
       if (e?.response?.status === 409) {
-        const current = e.response.data?.currentRecord
+        const current =
+          e.response.data?.current ||
+          e.response.data?.currentRecord ||
+          e.currentRecord
+        if (
+          current &&
+          isSameByFields(current, payload, [
+            "name",
+            "role",
+            "email",
+            "phone",
+            "is_primary",
+            "notes",
+          ])
+        ) {
+          replaceRow(current)
+          onChanged?.()
+          message.success("Контакт обновлен")
+          return
+        }
         setConflict({
           id,
           current,
-          draft: { id, ...values },
+          draft: { id, ...payload },
         })
         return
       }
@@ -124,7 +145,10 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
       onChanged?.()
     } catch (e) {
       if (e?.response?.status === 409) {
-        const current = e.response.data?.currentRecord
+        const current =
+          e.response.data?.current ||
+          e.response.data?.currentRecord ||
+          e.currentRecord
         setConflict({
           id: record.id,
           current,
@@ -237,6 +261,15 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
 
       <VersionConflictModal
         conflict={conflict}
+        entityLabel="контакт"
+        fields={[
+          { key: "name", title: "Имя" },
+          { key: "role", title: "Должность" },
+          { key: "phone", title: "Телефон" },
+          { key: "email", title: "Email" },
+          { key: "is_primary", title: "Основной" },
+          { key: "notes", title: "Комментарий" },
+        ]}
         onCancel={() => setConflict(null)}
         onReload={async () => {
           setConflict(null)

@@ -1,6 +1,7 @@
 // src/components/common/VersionConflictModal.jsx
 import React from "react"
 import { Modal, Typography, Space, Button, Table, Tag, Tooltip } from "antd"
+import { mergeConflictDraft } from "@/utils/versionConflict"
 
 function diffRows(draft = {}, current = {}, fields = []) {
   const list = Array.isArray(fields) ? fields : []
@@ -16,12 +17,19 @@ function diffRows(draft = {}, current = {}, fields = []) {
 }
 
 export default function VersionConflictModal({
+  conflict,
   open,
   draft,          // ваши несохранённые правки
   current,        // свежая запись с сервера
   onReload,       // «Обновить» — принять серверную версию
   onManualMerge,  // «Слить вручную» — вернуться к редактированию c базой
+  onApplyServer,  // алиас onReload
+  onApplyDraft,   // алиас onManualMerge
+  onMerge,        // алиас с передачей merged-объекта
   onCancel,
+  onClose,
+  entityLabel,
+  entityName,
   fields = [
     { key: "code",        title: "Код" },
     { key: "description", title: "Описание" },
@@ -29,17 +37,51 @@ export default function VersionConflictModal({
     { key: "notes",       title: "Примечания" },
   ],
 }) {
-  const safeDraft = draft ?? {}
-  const safeCurrent = current ?? {}
+  const resolvedOpen =
+    open !== undefined ? open : conflict?.open !== undefined ? conflict.open : !!conflict
+  const resolvedDraft = draft ?? conflict?.draft
+  const resolvedCurrent = current ?? conflict?.current
+  const label = entityLabel || entityName
+
+  const safeDraft = resolvedDraft ?? {}
+  const safeCurrent = resolvedCurrent ?? {}
 
   const rows = diffRows(safeDraft, safeCurrent, fields)
   const changedCount = rows.filter(r => r.changed).length
-  const noData = !draft && !current
+  const noData = !resolvedDraft && !resolvedCurrent
+
+  const handleCancel = typeof onCancel === "function" ? onCancel : onClose
+  const handleReload =
+    typeof onReload === "function" ? onReload : onApplyServer
+  const canReload = typeof handleReload === "function"
+  const handleManualMerge = () => {
+    if (typeof onManualMerge === "function") return onManualMerge()
+    if (typeof onApplyDraft === "function") return onApplyDraft()
+    if (typeof onMerge === "function") {
+      const merged = mergeConflictDraft(
+        resolvedCurrent || {},
+        resolvedDraft || {},
+      )
+      return onMerge(merged)
+    }
+    return null
+  }
+  const canMerge =
+    typeof onManualMerge === "function" ||
+    typeof onApplyDraft === "function" ||
+    typeof onMerge === "function"
 
   return (
-    <Modal open={open} onCancel={onCancel} footer={null} title="Конфликт версий" centered>
+    <Modal
+      open={resolvedOpen}
+      onCancel={handleCancel}
+      footer={null}
+      title="Конфликт версий"
+      centered
+    >
       <Typography.Paragraph>
-        Пока вы редактировали запись, её изменили в другом окне/у другого пользователя.
+        Пока вы редактировали {label ? `«${label}»` : "запись"}, её изменили в
+        другом окне/у другого пользователя.
       </Typography.Paragraph>
 
       <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
@@ -88,9 +130,13 @@ export default function VersionConflictModal({
           {noData ? " " : `Изменённых полей: ${changedCount}`}
         </Typography.Text>
         <Space>
-          <Button onClick={onCancel}>Отмена</Button>
-          <Button onClick={onManualMerge}>Слить вручную</Button>
-          <Button type="primary" onClick={onReload}>Обновить</Button>
+          <Button onClick={handleCancel}>Отмена</Button>
+          {canMerge && <Button onClick={handleManualMerge}>Слить вручную</Button>}
+          {canReload && (
+            <Button type="primary" onClick={handleReload}>
+              Обновить
+            </Button>
+          )}
         </Space>
       </Space>
     </Modal>

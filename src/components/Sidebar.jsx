@@ -1,4 +1,4 @@
-import React from "react"
+import React, { useEffect, useState } from "react"
 import { Tooltip } from "antd"
 import * as AntIcons from "@ant-design/icons"
 import {
@@ -30,16 +30,33 @@ const techIcons = {
   FaRobot,
 }
 
+const SIDEBAR_COLLAPSE_KEY = "crusher.sidebar.collapsed"
+
 const Sidebar = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const { tabs = [], permissions = [], loading } = useTabs()
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1"
+    } catch {
+      return false
+    }
+  })
 
   const visibleTabs = tabs
     .filter((tab) => permissions.includes(tab.id))
     .sort((a, b) => a.sort_order - b.sort_order)
 
   const ICON_SIZE = 24
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSE_KEY, collapsed ? "1" : "0")
+    } catch {
+      // ignore storage failures
+    }
+  }, [collapsed])
 
   const renderIcon = (iconNameRaw) => {
     const name = (iconNameRaw || "").trim()
@@ -58,8 +75,8 @@ const Sidebar = () => {
   return (
     <div
       style={{
-        width: 72,
-        minWidth: 72,
+        width: collapsed ? 72 : 220,
+        minWidth: collapsed ? 72 : 220,
         flexShrink: 0,
         height: "100%",
         backgroundColor: "#f3f4f6",
@@ -103,7 +120,7 @@ const Sidebar = () => {
           return (
             <Tooltip
               key={tab.id}
-              title={tab.name || "Вкладка"}
+              title={collapsed ? tab.name || "Вкладка" : null}
               placement="right"
               mouseEnterDelay={0.2}
             >
@@ -117,7 +134,9 @@ const Sidebar = () => {
                   height: 56,
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
+                  justifyContent: collapsed ? "center" : "flex-start",
+                  gap: collapsed ? 0 : 10,
+                  padding: collapsed ? 0 : "0 12px",
                   position: "relative",
                   cursor: "pointer",
                   color: selected ? "#2563eb" : "#4b5563",
@@ -162,11 +181,58 @@ const Sidebar = () => {
                 >
                   {renderIcon(tab.icon)}
                 </div>
+                {!collapsed && (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: selected ? 600 : 500,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {tab.name || "Вкладка"}
+                  </div>
+                )}
               </div>
             </Tooltip>
           )
         })
       )}
+
+      <div
+        style={{
+          marginTop: "auto",
+          padding: 8,
+          borderTop: "1px solid #e5e7eb",
+        }}
+      >
+        <Tooltip
+          title={collapsed ? "Развернуть меню" : "Свернуть меню"}
+          placement="right"
+        >
+          <div
+            onClick={() => setCollapsed((v) => !v)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: collapsed ? "center" : "flex-start",
+              gap: collapsed ? 0 : 8,
+              padding: "8px 10px",
+              cursor: "pointer",
+              color: "#4b5563",
+              borderRadius: 8,
+            }}
+          >
+            {collapsed ? (
+              <AntIcons.MenuUnfoldOutlined style={{ fontSize: 18 }} />
+            ) : (
+              <AntIcons.MenuFoldOutlined style={{ fontSize: 18 }} />
+            )}
+            {!collapsed && <span style={{ fontSize: 12 }}>Свернуть</span>}
+          </div>
+        </Tooltip>
+      </div>
     </div>
   )
 }

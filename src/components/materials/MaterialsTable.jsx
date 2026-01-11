@@ -1,6 +1,6 @@
 import React from "react"
-import { Table, Tooltip, Button, Popconfirm } from "antd"
-import { DeleteOutlined } from "@ant-design/icons"
+import { Table, Tooltip, Button, Popconfirm, Space } from "antd"
+import { DeleteOutlined, EditOutlined } from "@ant-design/icons"
 import "@/styles/tableStyles.css"
 
 export default function MaterialsTable({
@@ -56,29 +56,42 @@ export default function MaterialsTable({
     {
       title: "Действие",
       key: "actions",
-      width: 72,
+      width: 110,
       align: "center",
       render: (_, record) => (
-        <Popconfirm
-          title="Удалить материал?"
-          okText="Да"
-          cancelText="Нет"
-          onConfirm={(e) => {
-            e?.stopPropagation?.()
-            onDelete?.(record)
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Tooltip title="Удалить">
+        <Space size={4}>
+          <Tooltip title="Редактировать">
             <Button
               size="small"
               type="text"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={(e) => e.stopPropagation()}
+              icon={<EditOutlined />}
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit?.(record)
+              }}
             />
           </Tooltip>
-        </Popconfirm>
+          <Popconfirm
+            title="Удалить материал?"
+            okText="Да"
+            cancelText="Нет"
+            onConfirm={(e) => {
+              e?.stopPropagation?.()
+              onDelete?.(record)
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Tooltip title="Удалить">
+              <Button
+                size="small"
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </Tooltip>
+          </Popconfirm>
+        </Space>
       ),
     },
   ]
@@ -94,7 +107,6 @@ export default function MaterialsTable({
       pagination={pagination}
       onRow={(record) => ({
         onClick: () => onRowClick?.(record),
-        onDoubleClick: () => onEdit?.(record),
       })}
       locale={{
         emptyText: "Нет данных",

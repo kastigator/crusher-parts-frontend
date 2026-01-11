@@ -1,5 +1,5 @@
 import React, { useState } from "react"
-import { Table, Input, Checkbox, Tag } from "antd"
+import { Table, Input, Checkbox, Tag, message } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import confirmAction from "@/utils/confirmAction"
@@ -14,6 +14,10 @@ export default function SupplierContactsTable({
   const [editedRow, setEditedRow] = useState(null)
 
   const startEdit = (record) => {
+    if (editingId && editingId !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
     setEditingId(record.id)
     setEditedRow({ ...record })
   }
@@ -75,13 +79,7 @@ export default function SupplierContactsTable({
         )
       }
 
-      return (
-        <ValueDisplay
-          value={value}
-          type={type}
-          onDoubleClick={() => startEdit(record)}
-        />
-      )
+      return <ValueDisplay value={value} type={type} />
     },
   })
 
@@ -148,11 +146,16 @@ export default function SupplierContactsTable({
     {
       title: "Действия",
       key: "actions",
-      width: 80,
+      width: 160,
       render: (_, record) => (
         <ActionButtons
           size="small"
-          onDelete={() => handleDeleteClick(record)}
+          onEdit={editingId !== record.id ? () => startEdit(record) : undefined}
+          onSave={editingId === record.id ? saveEdit : undefined}
+          onCancel={editingId === record.id ? cancelEdit : undefined}
+          onDelete={editingId !== record.id ? () => handleDeleteClick(record) : undefined}
+          disabledEdit={!!editingId && editingId !== record.id}
+          disabledDelete={!!editingId && editingId !== record.id}
         />
       ),
     },
@@ -168,9 +171,6 @@ export default function SupplierContactsTable({
       dataSource={Array.isArray(data) ? data : []}
       pagination={false}
       tableLayout="fixed"
-      onRow={(record) => ({
-        onDoubleClick: () => startEdit(record),
-      })}
     />
   )
 }

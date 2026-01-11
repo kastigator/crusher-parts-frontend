@@ -1,6 +1,16 @@
 // src/components/clients/shipping/ShippingAddressesTable.jsx
 import React, { useState } from "react"
-import { Table, Input, Divider, Row, Col, Space, Tooltip, Button } from "antd"
+import {
+  Table,
+  Input,
+  Divider,
+  Row,
+  Col,
+  Space,
+  Tooltip,
+  Button,
+  message,
+} from "antd"
 import { CopyOutlined } from "@ant-design/icons"
 
 import ActionButtons from "@/components/common/ActionButtons"
@@ -30,6 +40,15 @@ export default function ShippingAddressesTable({
   const [editedRow, setEditedRow] = useState(null)
 
   const isEditing = (r) => editingId === r?.id
+
+  const startEdit = (record) => {
+    if (editingId && editingId !== record.id) {
+      message.warning("Сначала сохраните или отмените текущие изменения")
+      return
+    }
+    setEditingId(record.id)
+    setEditedRow({ ...record })
+  }
 
   const cancelEdit = () => {
     setEditingId(null)
@@ -209,12 +228,7 @@ export default function ShippingAddressesTable({
             : r.formatted_address?.trim() || "—"
 
         return (
-          <div
-            onDoubleClick={() => {
-              setEditingId(r.id)
-              setEditedRow({ ...r })
-            }}
-          >
+          <div>
             <div className="cell-ellipsis">{oneLine}</div>
 
             {r.comment && (
@@ -248,9 +262,12 @@ export default function ShippingAddressesTable({
         const editing = isEditing(r)
         return (
           <ActionButtons
+            onEdit={!editing ? () => startEdit(r) : undefined}
             onSave={editing ? handleSave : undefined}
             onCancel={editing ? cancelEdit : undefined}
             onDelete={!editing ? () => handleDelete(r) : undefined}
+            disabledEdit={!!editingId && !editing}
+            disabledDelete={!!editingId && !editing}
             confirmDelete={false}
             size="small"
           />

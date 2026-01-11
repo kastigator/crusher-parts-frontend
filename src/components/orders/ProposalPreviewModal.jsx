@@ -1,7 +1,7 @@
 // src/components/orders/ProposalPreviewModal.jsx
 import React, { useEffect, useMemo, useState } from "react"
 import dayjs from "dayjs"
-import { Modal, Table, Space, Typography, Divider, Button, Tag, message, Segmented } from "antd"
+import { Modal, Table, Space, Typography, Divider, Button, Tag, message, Segmented, Alert } from "antd"
 import { UploadOutlined, DownloadOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 
@@ -124,7 +124,7 @@ export default function ProposalPreviewModal({ open, onClose, order, items, view
         total,
       }
     })
-  }, [items, roleCanSeeSupplier, order?.currency])
+  }, [items, roleCanSeeSupplier, viewMode, order?.currency])
 
   const total = useMemo(() => {
     return itemTables.reduce((sum, tbl) => sum + tbl.total, 0)
@@ -261,6 +261,13 @@ export default function ProposalPreviewModal({ open, onClose, order, items, view
             ]}
           />
         </div>
+
+        <Alert
+          type="info"
+          showIcon
+          message="Шаблон предложения"
+          description="Это временная болванка. Реквизиты, логотип и финальный текст будут добавлены позже."
+        />
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 24, flexWrap: "wrap" }}>
           {companyBlock}
