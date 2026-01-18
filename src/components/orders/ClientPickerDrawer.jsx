@@ -86,7 +86,7 @@ export default function ClientPickerDrawer({ open, onClose, onPick }) {
         ellipsis: true,
       },
       {
-        title: "Email",
+        title: "E-mail",
         dataIndex: "email",
         width: 200,
         ellipsis: true,

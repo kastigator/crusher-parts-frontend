@@ -97,7 +97,7 @@ export default function SupplierContactsTable({
       ...renderEditableText("role", "text"),
     },
     {
-      title: "Email",
+      title: "E-mail",
       dataIndex: "email",
       key: "email",
       ...renderEditableText("email", "email"),

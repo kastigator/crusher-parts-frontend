@@ -1,34 +1,9 @@
 import React, { useEffect, useState } from "react"
 import { Tooltip } from "antd"
-import * as AntIcons from "@ant-design/icons"
-import {
-  FaIndustry,
-  FaCogs,
-  FaTools,
-  FaWarehouse,
-  FaWrench,
-  FaTruck,
-  FaTruckMoving,
-  FaHammer,
-  FaHardHat,
-  FaRobot,
-} from "react-icons/fa"
+import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons"
 import { useNavigate, useLocation } from "react-router-dom"
 import { useTabs } from "@/context/TabsContext"
-
-// Набор тех-иконок (react-icons/fa)
-const techIcons = {
-  FaIndustry,
-  FaCogs,
-  FaTools,
-  FaWarehouse,
-  FaWrench,
-  FaTruck,
-  FaTruckMoving,
-  FaHammer,
-  FaHardHat,
-  FaRobot,
-}
+import { DEFAULT_ICON_PATH } from "@/constants/sidebarIcons"
 
 const SIDEBAR_COLLAPSE_KEY = "crusher.sidebar.collapsed"
 
@@ -45,6 +20,7 @@ const Sidebar = () => {
   })
 
   const visibleTabs = tabs
+    .filter((tab) => tab.is_active !== 0)
     .filter((tab) => permissions.includes(tab.id))
     .sort((a, b) => a.sort_order - b.sort_order)
 
@@ -58,18 +34,43 @@ const Sidebar = () => {
     }
   }, [collapsed])
 
-  const renderIcon = (iconNameRaw) => {
-    const name = (iconNameRaw || "").trim()
-    if (name && AntIcons[name]) {
-      const C = AntIcons[name]
-      return <C style={{ fontSize: ICON_SIZE }} />
+  const renderIcon = (iconPathRaw, selected) => {
+    const raw = (iconPathRaw || "").trim()
+    const iconPath = raw || DEFAULT_ICON_PATH
+    const isSvgPath =
+      iconPath.startsWith("/") ||
+      iconPath.startsWith("icons/") ||
+      iconPath.endsWith(".svg")
+    if (!isSvgPath) {
+      return (
+        <img
+          src={DEFAULT_ICON_PATH}
+          alt=""
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+        />
+      )
     }
-    if (name && techIcons[name]) {
-      const C = techIcons[name]
-      return <C size={ICON_SIZE} />
-    }
-    const Q = AntIcons.QuestionOutlined
-    return <Q style={{ fontSize: ICON_SIZE }} />
+
+    const activePath = iconPath.endsWith(".svg")
+      ? iconPath.replace(/\.svg$/i, "-active.svg")
+      : iconPath
+
+    return (
+      <img
+        src={selected ? activePath : iconPath}
+        alt=""
+        width={ICON_SIZE}
+        height={ICON_SIZE}
+        onError={(e) => {
+          if (e.currentTarget.src.endsWith("-active.svg")) {
+            e.currentTarget.src = iconPath
+          } else {
+            e.currentTarget.src = DEFAULT_ICON_PATH
+          }
+        }}
+      />
+    )
   }
 
   return (
@@ -120,7 +121,7 @@ const Sidebar = () => {
           return (
             <Tooltip
               key={tab.id}
-              title={collapsed ? tab.name || "Вкладка" : null}
+              title={tab.tooltip || tab.name || "Вкладка"}
               placement="right"
               mouseEnterDelay={0.2}
             >
@@ -179,7 +180,7 @@ const Sidebar = () => {
                     transition: "background 0.15s ease",
                   }}
                 >
-                  {renderIcon(tab.icon)}
+                  {renderIcon(tab.icon, selected)}
                 </div>
                 {!collapsed && (
                   <div
@@ -225,9 +226,9 @@ const Sidebar = () => {
             }}
           >
             {collapsed ? (
-              <AntIcons.MenuUnfoldOutlined style={{ fontSize: 18 }} />
+              <MenuUnfoldOutlined style={{ fontSize: 18 }} />
             ) : (
-              <AntIcons.MenuFoldOutlined style={{ fontSize: 18 }} />
+              <MenuFoldOutlined style={{ fontSize: 18 }} />
             )}
             {!collapsed && <span style={{ fontSize: 12 }}>Свернуть</span>}
           </div>

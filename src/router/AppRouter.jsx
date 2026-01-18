@@ -6,15 +6,24 @@ import LoginPage from '../pages/LoginPage'
 import MainLayout from '../layout/MainLayout'
 import HomePage from '../pages/HomePage'
 import UsersPage from '../pages/UsersPage'
+import AdminPage from '../pages/AdminPage'
+import CatalogsPage from '../pages/CatalogsPage'
+import ClientRequestsPage from '../pages/ClientRequestsPage'
+import RfqPage from '../pages/RfqPage'
+import SupplierResponsesPage from '../pages/SupplierResponsesPage'
+import CoveragePage from '../pages/CoveragePage'
+import ScorecardPage from '../pages/ScorecardPage'
+import EconomicsPage from '../pages/EconomicsPage'
+import SelectionPage from '../pages/SelectionPage'
+import SalesQuotesPage from '../pages/SalesQuotesPage'
+import ContractsPage from '../pages/ContractsPage'
+import PurchaseOrdersPage from '../pages/PurchaseOrdersPage'
 import TnvedCodesPage from '../pages/TnvedCodesPage'
 import ClientsPage from '../pages/ClientsPage'
 import SuppliersPage from '../pages/SuppliersPage'
 import OriginalPartsPage from '../pages/OriginalPartsPage'
 import SupplierPartsPage from '@/pages/SupplierPartsPage'
-import ClientOrdersPage from '../pages/ClientOrdersPage'   // 🔹 добавили
-import LogisticsRoutesPage from "@/pages/LogisticsRoutesPage"
 import MaterialsPage from "@/pages/MaterialsPage"
-import SalesKpiPage from "@/pages/SalesKpiPage"
 
 const AppRouter = () => (
   <Suspense fallback={<div>Загрузка...</div>}>
@@ -29,16 +38,25 @@ const AppRouter = () => (
         }
       >
         <Route index element={<HomePage />} />
+        <Route path="client-requests" element={<ClientRequestsPage />} />
+        <Route path="rfq" element={<RfqPage />} />
+        <Route path="supplier-responses" element={<SupplierResponsesPage />} />
+        <Route path="coverage" element={<CoveragePage />} />
+        <Route path="scorecard" element={<ScorecardPage />} />
+        <Route path="economics" element={<EconomicsPage />} />
+        <Route path="selection" element={<SelectionPage />} />
+        <Route path="sales-quotes" element={<SalesQuotesPage />} />
+        <Route path="contracts" element={<ContractsPage />} />
+        <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
+        <Route path="catalogs" element={<CatalogsPage />} />
+        <Route path="admin" element={<AdminPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="tnved-codes" element={<TnvedCodesPage />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="original-parts" element={<OriginalPartsPage />} />
-        <Route path="/supplier-parts" element={<SupplierPartsPage />} />
-        <Route path="client-orders" element={<ClientOrdersPage />} />  {/* 🔹 новый роут */}
-        <Route path="logistics-routes" element={<LogisticsRoutesPage />} />
+        <Route path="supplier-parts" element={<SupplierPartsPage />} />
         <Route path="materials" element={<MaterialsPage />} />
-        <Route path="sales-kpi" element={<SalesKpiPage />} />
         <Route path="*" element={<div style={{ padding: 32 }}>Страница не найдена</div>} />
       </Route>
     </Routes>

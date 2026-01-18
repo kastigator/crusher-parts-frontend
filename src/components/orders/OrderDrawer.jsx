@@ -968,7 +968,7 @@ export default function OrderDrawer({
           <Form.Item label="Телефон" name="contact_phone">
             <Input placeholder="+7..." />
           </Form.Item>
-          <Form.Item label="Email" name="contact_email">
+          <Form.Item label="E-mail" name="contact_email">
             <Input placeholder="email@example.com" />
           </Form.Item>
           <Form.Item

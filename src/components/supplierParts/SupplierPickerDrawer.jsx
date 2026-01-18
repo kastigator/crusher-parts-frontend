@@ -128,7 +128,7 @@ export default function SupplierPickerDrawer({
         render: (v) => v || "—",
       },
       {
-        title: "Email",
+        title: "E-mail",
         dataIndex: "email",
         width: 220,
         ellipsis: true,

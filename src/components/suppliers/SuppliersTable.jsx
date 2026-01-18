@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react"
-import { Table, Input, Tabs, message } from "antd"
+import { Table, Input, Tabs, message, Checkbox, Select } from "antd"
 
 import SupplierAddressesMain from "./SupplierAddressesMain"
 import SupplierBankDetailsMain from "./SupplierBankDetailsMain"
@@ -154,6 +154,53 @@ export default function SuppliersTable({
     },
   })
 
+  const renderBoolCell = (key) => ({
+    render: (_, record) => {
+      const isEdit = editingId === record.id
+      const value = !!(isEdit ? editedRow?.[key] : record[key])
+      if (isEdit) {
+        return (
+          <Checkbox
+            checked={value}
+            onChange={(e) =>
+              setEditedRow((prev) => ({ ...prev, [key]: e.target.checked ? 1 : 0 }))
+            }
+            onKeyDown={onKey}
+          />
+        )
+      }
+      return value ? "да" : "нет"
+    },
+  })
+
+  const renderRiskCell = () => ({
+    render: (_, record) => {
+      const isEdit = editingId === record.id
+      const value = isEdit ? editedRow?.risk_level ?? "" : record.risk_level ?? ""
+      if (isEdit) {
+        return (
+          <Select
+            allowClear
+            size="small"
+            value={value || undefined}
+            style={{ width: 120 }}
+            onChange={(val) =>
+              setEditedRow((prev) => ({ ...prev, risk_level: val || null }))
+            }
+          >
+            <Select.Option value="low">низкий</Select.Option>
+            <Select.Option value="medium">средний</Select.Option>
+            <Select.Option value="high">высокий</Select.Option>
+          </Select>
+        )
+      }
+      if (value === "low") return "низкий"
+      if (value === "medium") return "средний"
+      if (value === "high") return "высокий"
+      return "—"
+    },
+  })
+
   const columns = [
     {
       title: "Компания",
@@ -187,6 +234,48 @@ export default function SuppliersTable({
       ...renderTextCell("vat_number", 170),
     },
     {
+      title: "Инкотермс",
+      dataIndex: "default_incoterms",
+      key: "default_incoterms",
+      width: 120,
+      ...renderTextCell("default_incoterms", 120),
+    },
+    {
+      title: "Город/порт",
+      dataIndex: "default_pickup_location",
+      key: "default_pickup_location",
+      width: 160,
+      ...renderTextCell("default_pickup_location", 160),
+    },
+    {
+      title: "OEM",
+      dataIndex: "can_oem",
+      key: "can_oem",
+      width: 80,
+      ...renderBoolCell("can_oem"),
+    },
+    {
+      title: "Аналог",
+      dataIndex: "can_analog",
+      key: "can_analog",
+      width: 90,
+      ...renderBoolCell("can_analog"),
+    },
+    {
+      title: "Рейтинг",
+      dataIndex: "reliability_rating",
+      key: "reliability_rating",
+      width: 90,
+      ...renderTextCell("reliability_rating", 90),
+    },
+    {
+      title: "Риск",
+      dataIndex: "risk_level",
+      key: "risk_level",
+      width: 120,
+      ...renderRiskCell(),
+    },
+    {
       title: "Контакт",
       dataIndex: "contact_person",
       key: "contact_person",
@@ -203,7 +292,7 @@ export default function SuppliersTable({
       ),
     },
     {
-      title: "Email",
+      title: "E-mail",
       dataIndex: "email",
       key: "email",
       width: 220,
@@ -322,7 +411,7 @@ export default function SuppliersTable({
           { key: "country", title: "Страна" },
           { key: "contact_person", title: "Контакт" },
           { key: "phone", title: "Телефон" },
-          { key: "email", title: "Email" },
+          { key: "email", title: "E-mail" },
           { key: "notes", title: "Примечание" },
         ]}
         onCancel={() =>

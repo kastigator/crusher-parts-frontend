@@ -193,7 +193,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
           <Col span={4}>
             <Input
               size="small"
-              placeholder="Email"
+              placeholder="E-mail"
               value={newContact.email}
               onChange={(e) =>
                 setNewContact((prev) => ({ ...prev, email: e.target.value }))
@@ -266,7 +266,7 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
           { key: "name", title: "Имя" },
           { key: "role", title: "Должность" },
           { key: "phone", title: "Телефон" },
-          { key: "email", title: "Email" },
+          { key: "email", title: "E-mail" },
           { key: "is_primary", title: "Основной" },
           { key: "notes", title: "Комментарий" },
         ]}

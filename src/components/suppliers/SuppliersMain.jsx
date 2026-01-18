@@ -1,6 +1,6 @@
 // src/components/suppliers/SuppliersMain.jsx
 import React, { useEffect, useMemo, useState } from "react"
-import { Card, Space, Form, Input, Button, message } from "antd"
+import { Card, Space, Form, Input, Button, message, InputNumber, Checkbox, Select } from "antd"
 import axios from "@/api/axiosInstance"
 import SuppliersTable from "./SuppliersTable"
 import TableToolbar from "@/components/common/TableToolbar"
@@ -59,7 +59,12 @@ export default function SuppliersMain() {
       website: trim(values.website) || null,
       payment_terms: trim(values.payment_terms) || null,
       preferred_currency: trim(values.preferred_currency) || null,
-      incoterms: trim(values.incoterms) || null,
+      default_incoterms: trim(values.default_incoterms) || null,
+      default_pickup_location: trim(values.default_pickup_location) || null,
+      can_oem: values.can_oem ? 1 : 0,
+      can_analog: values.can_analog === false ? 0 : 1,
+      reliability_rating: values.reliability_rating ?? null,
+      risk_level: trim(values.risk_level) || null,
       default_lead_time_days: values.default_lead_time_days ?? null,
       notes: trim(values.notes) || null,
       public_code: trim(values.public_code) || null,
@@ -103,7 +108,12 @@ export default function SuppliersMain() {
           "website",
           "payment_terms",
           "preferred_currency",
-          "incoterms",
+          "default_incoterms",
+          "default_pickup_location",
+          "can_oem",
+          "can_analog",
+          "reliability_rating",
+          "risk_level",
           "default_lead_time_days",
           "notes",
           "public_code",
@@ -214,6 +224,38 @@ export default function SuppliersMain() {
 
           <Form.Item label="VAT" name="vat_number">
             <Input placeholder="FI1234567" style={{ width: 140 }} />
+          </Form.Item>
+
+          <Form.Item label="Инкотермс (по умолч.)" name="default_incoterms">
+            <Input placeholder="EXW/FOB/CIF" style={{ width: 160 }} />
+          </Form.Item>
+
+          <Form.Item label="Город/порт отгрузки" name="default_pickup_location">
+            <Input placeholder="Напр., Shenzhen" style={{ width: 200 }} />
+          </Form.Item>
+
+          <Form.Item label="OEM" name="can_oem" valuePropName="checked">
+            <Checkbox />
+          </Form.Item>
+
+          <Form.Item label="Аналог" name="can_analog" valuePropName="checked">
+            <Checkbox defaultChecked />
+          </Form.Item>
+
+          <Form.Item label="Рейтинг" name="reliability_rating">
+            <InputNumber min={0} max={10} style={{ width: 100 }} />
+          </Form.Item>
+
+          <Form.Item label="Риск" name="risk_level">
+            <Select
+              allowClear
+              style={{ width: 140 }}
+              options={[
+                { value: "low", label: "низкий" },
+                { value: "medium", label: "средний" },
+                { value: "high", label: "высокий" },
+              ]}
+            />
           </Form.Item>
 
           <Form.Item label="Примечание" name="notes">

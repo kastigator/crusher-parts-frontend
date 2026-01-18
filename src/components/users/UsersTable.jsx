@@ -227,7 +227,7 @@ export default function UsersTable({ rolesRevision = 0 }) {
               )
     },
     {
-      title: "Email",
+      title: "E-mail",
       dataIndex: "email",
       render: (text, record) =>
         record.id === "__new__"

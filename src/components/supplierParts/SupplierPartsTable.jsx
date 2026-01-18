@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Table, Empty, message, Tag, Input, Tooltip } from "antd"
+import { Table, Empty, message, Tag, Input, Tooltip, Checkbox } from "antd"
 import axios from "@/api/axiosInstance"
 
 import ValueDisplay from "@/components/common/ValueDisplay"
@@ -85,78 +85,6 @@ function OriginalsCell({ row }) {
   )
 }
 
-function BundlesCell({ partId, count }) {
-  const [details, setDetails] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-
-  if (!count || count <= 0) {
-    return <span style={{ color: "#999" }}>-</span>
-  }
-
-  const loadDetails = async () => {
-    if (details !== null || loading) return
-    try {
-      setLoading(true)
-      setError(null)
-      const { data } = await axios.get("/supplier-bundles/usage/detail", {
-        params: { supplier_part_id: partId },
-      })
-      setDetails(Array.isArray(data) ? data : [])
-    } catch (e) {
-      console.error(e)
-      setError("Не удалось загрузить участие в комплектах")
-      setDetails([])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleOpenChange = (open) => {
-    if (open) loadDetails()
-  }
-
-  let content = null
-  if (loading && details === null) {
-    content = "Загрузка..."
-  } else if (error) {
-    content = error
-  } else if (details && details.length) {
-    content = (
-      <div style={{ maxWidth: 420 }}>
-        {details.map((d, idx) => (
-          <div key={`${d.bundle_id}-${idx}`} style={{ marginBottom: 8 }}>
-            <div>
-              <b>
-                Комплект #{d.bundle_id}
-                {d.title ? `: ${d.title}` : ""}
-              </b>
-            </div>
-            <div style={{ fontSize: 12 }}>
-              Роль: {d.role_label} · Кол-во: {d.qty}
-            </div>
-            <div style={{ fontSize: 12, color: "#888" }}>
-              Оригинал: {d.original_cat_number} · {d.manufacturer_name}{" "}
-              {d.model_name}
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  } else {
-    content = "Деталь не входит в комплекты"
-  }
-
-  return (
-    <Tooltip
-      title={content}
-      placement="right"
-      onOpenChange={handleOpenChange}
-    >
-      <Tag color="purple">Входит: {count}</Tag>
-    </Tooltip>
-  )
-}
 
 export default function SupplierPartsTable({
   supplierId,
@@ -169,7 +97,6 @@ export default function SupplierPartsTable({
 }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
-  const [usageCounts, setUsageCounts] = useState({})
   const [editing, setEditing] = useState(null)
   const [draft, setDraft] = useState(null)
   const [page, setPage] = useState(1)
@@ -197,8 +124,8 @@ export default function SupplierPartsTable({
     setLoading(true)
     try {
       const params = {
-        limit: pageSize,
-        offset: (page - 1) * pageSize,
+        page_size: pageSize,
+        page,
       }
       if (supplierId) params.supplier_id = supplierId
       if (search) params.q = search
@@ -242,7 +169,6 @@ export default function SupplierPartsTable({
 
       setRows(list)
       setTotal(totalCount)
-      setUsageCounts(data?.bundlesCount || data?.bundles_count || {})
     } catch (e) {
       if (
         e?.name === "AbortError" ||
@@ -343,6 +269,46 @@ export default function SupplierPartsTable({
     />
   )
 
+  const renderBoolCell = (record, field) => {
+    if (isEditingCell(record, field)) {
+      return (
+        <Checkbox
+          checked={!!draft?.[field]}
+          onChange={(e) =>
+            setDraft((prev) => ({ ...(prev || {}), [field]: e.target.checked ? 1 : 0 }))
+          }
+          onKeyDown={handleKeyDown}
+        />
+      )
+    }
+    return <Tag color={record?.[field] ? "green" : "default"}>{record?.[field] ? "да" : "нет"}</Tag>
+  }
+
+  const renderOemCell = (record) => {
+    const type = String(record?.part_type || "").toUpperCase()
+    const isOem = type === "OEM"
+    const isAnalog = type === "ANALOG"
+    if (isEditingCell(record, "part_type")) {
+      return (
+        <Checkbox
+          checked={isOem}
+          onChange={(e) =>
+            setDraft((prev) => ({
+              ...(prev || {}),
+              part_type: e.target.checked ? "OEM" : "ANALOG",
+            }))
+          }
+          onKeyDown={handleKeyDown}
+        >
+          OEM
+        </Checkbox>
+      )
+    }
+    if (isOem) return <Tag color="blue">OEM</Tag>
+    if (isAnalog) return <Tag>Аналог</Tag>
+    return <Tag>—</Tag>
+  }
+
   const columns = useMemo(() => {
     const cols = []
 
@@ -393,7 +359,7 @@ export default function SupplierPartsTable({
     })
 
     cols.push({
-      title: "Description (EN)",
+      title: "Описание (EN)",
       dataIndex: "description_en",
       width: 220,
       ellipsis: true,
@@ -426,6 +392,113 @@ export default function SupplierPartsTable({
           return renderTextInput(record, "comment")
         return <ValueDisplay value={value} />
       },
+    })
+
+    cols.push({
+      title: "OEM",
+      dataIndex: "part_type",
+      width: 110,
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "part_type")) return
+          startEditCell(record, "part_type")
+        },
+      }),
+      render: (_, record) => renderOemCell(record),
+    })
+
+    cols.push({
+      title: "Вес, кг",
+      dataIndex: "weight_kg",
+      width: 110,
+      align: "right",
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "weight_kg")) return
+          startEditCell(record, "weight_kg")
+        },
+      }),
+      render: (value, record) =>
+        isEditingCell(record, "weight_kg")
+          ? renderTextInput(record, "weight_kg")
+          : <ValueDisplay value={value} />,
+    })
+
+    cols.push({
+      title: "Дл., см",
+      dataIndex: "length_cm",
+      width: 100,
+      align: "right",
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "length_cm")) return
+          startEditCell(record, "length_cm")
+        },
+      }),
+      render: (value, record) =>
+        isEditingCell(record, "length_cm")
+          ? renderTextInput(record, "length_cm")
+          : <ValueDisplay value={value} />,
+    })
+
+    cols.push({
+      title: "Шир., см",
+      dataIndex: "width_cm",
+      width: 100,
+      align: "right",
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "width_cm")) return
+          startEditCell(record, "width_cm")
+        },
+      }),
+      render: (value, record) =>
+        isEditingCell(record, "width_cm")
+          ? renderTextInput(record, "width_cm")
+          : <ValueDisplay value={value} />,
+    })
+
+    cols.push({
+      title: "Выс., см",
+      dataIndex: "height_cm",
+      width: 100,
+      align: "right",
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "height_cm")) return
+          startEditCell(record, "height_cm")
+        },
+      }),
+      render: (value, record) =>
+        isEditingCell(record, "height_cm")
+          ? renderTextInput(record, "height_cm")
+          : <ValueDisplay value={value} />,
+    })
+
+    cols.push({
+      title: "Негабарит",
+      dataIndex: "is_oversize",
+      width: 110,
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "is_oversize")) return
+          startEditCell(record, "is_oversize")
+        },
+      }),
+      render: (_, record) => renderBoolCell(record, "is_oversize"),
+    })
+
+    cols.push({
+      title: "Тяжелая",
+      dataIndex: "is_overweight",
+      width: 120,
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "is_overweight")) return
+          startEditCell(record, "is_overweight")
+        },
+      }),
+      render: (_, record) => renderBoolCell(record, "is_overweight"),
     })
 
     cols.push({
@@ -464,37 +537,44 @@ export default function SupplierPartsTable({
     })
 
     cols.push({
+      title: "MOQ",
+      dataIndex: "min_order_qty",
+      width: 90,
+      align: "right",
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "min_order_qty")) return
+          startEditCell(record, "min_order_qty")
+        },
+      }),
+      render: (value, record) =>
+        isEditingCell(record, "min_order_qty")
+          ? renderTextInput(record, "min_order_qty")
+          : <ValueDisplay value={value} />,
+    })
+
+    cols.push({
+      title: "Упаковка",
+      dataIndex: "packaging",
+      width: 140,
+      ellipsis: true,
+      onCell: (record) => ({
+        onDoubleClick: () => {
+          if (isEditingCell(record, "packaging")) return
+          startEditCell(record, "packaging")
+        },
+      }),
+      render: (value, record) =>
+        isEditingCell(record, "packaging")
+          ? renderTextInput(record, "packaging")
+          : <ValueDisplay value={value} />,
+    })
+
+    cols.push({
       title: "Привязки",
       dataIndex: "id",
       width: 160,
       render: (_, row) => <OriginalsCell row={row} />,
-    })
-
-    cols.push({
-      title: "Комплекты",
-      dataIndex: "id",
-      width: 140,
-      render: (_, row) => {
-        const n = usageCounts?.[row.id] ?? 0
-        return <BundlesCell partId={row.id} count={n} />
-      },
-    })
-
-    cols.push({
-      title: "Последняя цена",
-      dataIndex: "latest_price",
-      width: 130,
-      align: "right",
-      render: (v) => <ValueDisplay value={v} />,
-    })
-
-    cols.push({
-      title: "Дата цены",
-      dataIndex: "latest_price_date",
-      width: 140,
-      render: (v) => (
-        <ValueDisplay value={v && new Date(v).toLocaleDateString()} />
-      ),
     })
 
     cols.push({
@@ -519,7 +599,7 @@ export default function SupplierPartsTable({
     })
 
     return cols
-  }, [editing, draft, usageCounts, showAll])
+  }, [editing, draft, showAll])
 
   const pagination = useMemo(
     () => ({

@@ -5,6 +5,8 @@ import { Table, Input, message, Tabs } from "antd"
 import BillingAddressesMain from "./BillingAddressesMain"
 import ShippingAddressesMain from "./ShippingAddressesMain"
 import BankDetailsMain from "./BankDetailsMain"
+import ClientContactsMain from "./ClientContactsMain"
+import ClientOrdersTab from "./ClientOrdersTab"
 
 import ValueDisplay from "@/components/common/ValueDisplay"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
@@ -202,7 +204,7 @@ export default function ClientsTable({
         ),
     },
     {
-      title: "Email",
+      title: "E-mail",
       dataIndex: "email",
       width: 220,
       render: (_, record) =>
@@ -274,6 +276,22 @@ export default function ClientsTable({
                 />
               ),
             },
+            {
+              key: "contacts",
+              label: "Контакты",
+              children: (
+                <ClientContactsMain
+                  key={`contacts-${client.id}-${reloadKey}`}
+                  clientId={client.id}
+                  onChanged={handleChildChanged}
+                />
+              ),
+            },
+            {
+              key: "orders",
+              label: "История заказов",
+              children: <ClientOrdersTab clientId={client.id} />,
+            },
           ]}
         />
       </div>
@@ -316,7 +334,7 @@ export default function ClientsTable({
           { key: "company_name", title: "Компания" },
           { key: "contact_person", title: "Контакт" },
           { key: "phone", title: "Телефон" },
-          { key: "email", title: "Email" },
+          { key: "email", title: "E-mail" },
         ]}
         onReload={async () => {
           if (conflict.current && typeof onReplaceRow === "function") {

@@ -217,7 +217,7 @@ export default function ProposalPreviewModal({ open, onClose, order, items, view
       <br />
       <Text>Тел.: +7 (999) 000-00-00</Text>
       <br />
-      <Text>Email: sales@example.com</Text>
+      <Text>E-mail: sales@example.com</Text>
     </div>
   )
 
@@ -283,7 +283,7 @@ export default function ProposalPreviewModal({ open, onClose, order, items, view
               <Text strong>Контакт:</Text> {order?.contact_name || "—"}
             </div>
             <div>
-              <Text strong>Email:</Text> {order?.contact_email || "—"}
+              <Text strong>E-mail:</Text> {order?.contact_email || "—"}
             </div>
             <div>
               <Text strong>Телефон:</Text> {order?.contact_phone || "—"}

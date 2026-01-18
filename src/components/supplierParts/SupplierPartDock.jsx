@@ -1,9 +1,9 @@
 // src/components/supplierParts/SupplierPartDock.jsx
 import React, { useMemo, useState } from "react"
 import { Card, Tabs, Space, Tag, Typography, Empty } from "antd"
-import PriceHistoryTab from "./PriceHistoryTab"
 import OriginalsLinkTab from "./OriginalsLinkTab"
 import SupplierPartMaterialsTab from "./SupplierPartMaterialsTab"
+import PriceHistoryTab from "./PriceHistoryTab"
 
 const { Text } = Typography
 
@@ -24,11 +24,13 @@ export default function SupplierPartDock({ part, onChanged = () => {} }) {
         <Text strong>{part.supplier_part_number || "—"}</Text>
         {part.description_ru ? <Tag color="blue">{part.description_ru}</Tag> : null}
         {part.description_en ? <Tag>{part.description_en}</Tag> : null}
-        {part.latest_price != null ? (
-          <Tag color="geekblue">последняя цена: {String(part.latest_price)}</Tag>
+        {String(part.part_type || "").toUpperCase() === "OEM" ? (
+          <Tag color="blue">OEM</Tag>
         ) : (
-          <Tag color="default">цены нет</Tag>
+          <Tag>—</Tag>
         )}
+        {part.is_overweight ? <Tag color="red">Тяжелая</Tag> : null}
+        {part.is_oversize ? <Tag color="orange">Негабарит</Tag> : null}
       </Space>
     )
   }, [part])
@@ -43,11 +45,16 @@ export default function SupplierPartDock({ part, onChanged = () => {} }) {
           onChange={setActiveKey}
           destroyInactiveTabPane
           items={[
-          {
-            key: "prices",
-            label: "История цен",
-            children: <PriceHistoryTab supplierPartId={part.id} onChanged={onChanged} />,
-          },
+            {
+              key: "prices",
+              label: "Цены",
+              children: (
+                <PriceHistoryTab
+                  supplierPartId={part.id}
+                  onChanged={onChanged}
+                />
+              ),
+            },
           {
             key: "materials",
             label: "Материалы",

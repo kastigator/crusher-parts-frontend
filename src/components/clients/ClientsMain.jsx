@@ -345,7 +345,7 @@ export default function ClientsMain() {
               />
             </Form.Item>
 
-            <Form.Item label="Email">
+            <Form.Item label="E-mail">
               <Input
                 value={newClient.email}
                 onChange={(e) =>

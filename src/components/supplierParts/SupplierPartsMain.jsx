@@ -102,6 +102,15 @@ export default function SupplierPartsMain() {
         description_en: v.description_en || null,
         comment: v.comment || null,
         lead_time_days: v.lead_time_days ?? null,
+        min_order_qty: v.min_order_qty ?? null,
+        packaging: v.packaging || null,
+        weight_kg: v.weight_kg ?? null,
+        length_cm: v.length_cm ?? null,
+        width_cm: v.width_cm ?? null,
+        height_cm: v.height_cm ?? null,
+        is_overweight: v.is_overweight ? 1 : 0,
+        is_oversize: v.is_oversize ? 1 : 0,
+        part_type: v.is_oem ? "OEM" : "ANALOG",
       })
       message.success("Деталь поставщика добавлена")
       form.resetFields()
@@ -274,6 +283,50 @@ export default function SupplierPartsMain() {
                 style={{ width: 140 }}
                 placeholder="например, 30"
               />
+            </Form.Item>
+
+            <Form.Item name="min_order_qty" label="MOQ">
+              <InputNumber
+                min={0}
+                style={{ width: 120 }}
+                placeholder="например, 10"
+              />
+            </Form.Item>
+
+            <Form.Item name="packaging" label="Упаковка">
+              <Input placeholder="например, по 10 шт" style={{ width: 180 }} />
+            </Form.Item>
+
+            <Form.Item name="weight_kg" label="Вес, кг">
+              <InputNumber
+                min={0}
+                style={{ width: 120 }}
+                placeholder="например, 2.5"
+              />
+            </Form.Item>
+
+            <Form.Item name="length_cm" label="Дл., см">
+              <InputNumber min={0} style={{ width: 110 }} />
+            </Form.Item>
+
+            <Form.Item name="width_cm" label="Шир., см">
+              <InputNumber min={0} style={{ width: 110 }} />
+            </Form.Item>
+
+            <Form.Item name="height_cm" label="Выс., см">
+              <InputNumber min={0} style={{ width: 110 }} />
+            </Form.Item>
+
+            <Form.Item name="is_oem" valuePropName="checked">
+              <Checkbox>OEM</Checkbox>
+            </Form.Item>
+
+            <Form.Item name="is_overweight" valuePropName="checked">
+              <Checkbox>Тяжелая</Checkbox>
+            </Form.Item>
+
+            <Form.Item name="is_oversize" valuePropName="checked">
+              <Checkbox>Негабарит</Checkbox>
             </Form.Item>
 
             <Form.Item>

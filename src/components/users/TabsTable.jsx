@@ -13,42 +13,15 @@ import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   PlusOutlined,
-  AppstoreOutlined,
 } from "@ant-design/icons";
-import * as Icons from "@ant-design/icons";
-import {
-  FaIndustry,
-  FaCogs,
-  FaTools,
-  FaWarehouse,
-  FaWrench,
-  FaTruck,
-  FaTruckMoving,
-  FaHammer,
-  FaHardHat,
-  FaRobot,
-} from "react-icons/fa";
 import axios from "@/api/axiosInstance";
 import { useTabs } from "@/context/TabsContext";
 import CyrillicToTranslit from "cyrillic-to-translit-js";
 import ActionButtons from "@/components/common/ActionButtons";
 import confirmAction from "@/utils/confirmAction";
+import { DEFAULT_ICON_PATH, SIDEBAR_ICONS } from "@/constants/sidebarIcons";
 
 const translit = new CyrillicToTranslit();
-const antIconsList = Object.keys(Icons).filter((key) => key.endsWith("Outlined"));
-const techIcons = {
-  FaIndustry,
-  FaCogs,
-  FaTools,
-  FaWarehouse,
-  FaWrench,
-  FaTruck,
-  FaTruckMoving,
-  FaHammer,
-  FaHardHat,
-  FaRobot,
-};
-
 export default function TabsTable() {
   const { reloadTabs } = useTabs();
   const [data, setData] = useState([]);
@@ -59,6 +32,7 @@ export default function TabsTable() {
     tab_name: "",
     path: "",
     icon: "",
+    tooltip: "",
   });
   const [iconModalOpen, setIconModalOpen] = useState(false);
   const [iconTargetKey, setIconTargetKey] = useState(null);
@@ -197,23 +171,39 @@ export default function TabsTable() {
     }
   };
 
-  const allIcons = [
-    ...antIconsList.map((name) => ({ name, component: Icons[name] })),
-    ...Object.entries(techIcons).map(([name, comp]) => ({ name, component: comp })),
-  ].filter((icon) => icon.name.toLowerCase().includes(iconSearch.toLowerCase()));
+  const iconOptions = SIDEBAR_ICONS.filter((icon) => {
+    const q = iconSearch.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      icon.key.toLowerCase().includes(q) ||
+      icon.label.toLowerCase().includes(q)
+    );
+  });
 
   const columns = [
     { title: "Название", dataIndex: "name", editable: true },
     { title: "Тех. имя", dataIndex: "tab_name", editable: true },
     { title: "Путь", dataIndex: "path", editable: true },
+    { title: "Подсказка", dataIndex: "tooltip", editable: true },
     {
       title: "Иконка",
       dataIndex: "icon",
       render: (value, record) => {
-        const C = Icons[value] || techIcons[value] || AppstoreOutlined;
-        const Comp = C === AppstoreOutlined ? AppstoreOutlined : C;
         return (
-          <Button icon={React.createElement(Comp)} onClick={() => openIconModal(record.id)}>
+          <Button
+            icon={
+              <img
+                src={value || DEFAULT_ICON_PATH}
+                alt=""
+                width={16}
+                height={16}
+                onError={(e) => {
+                  e.currentTarget.src = DEFAULT_ICON_PATH;
+                }}
+              />
+            }
+            onClick={() => openIconModal(record.id)}
+          >
             {value || "Выбрать"}
           </Button>
         );
@@ -303,11 +293,22 @@ export default function TabsTable() {
           value={newRow.path}
           onChange={(e) => handleInput("path", e.target.value)}
         />
+        <Input
+          placeholder="Подсказка"
+          value={newRow.tooltip}
+          onChange={(e) => handleInput("tooltip", e.target.value)}
+        />
         <Button
           icon={
-            newRow.icon && (Icons[newRow.icon] || techIcons[newRow.icon])
-              ? React.createElement(Icons[newRow.icon] || techIcons[newRow.icon])
-              : <AppstoreOutlined />
+            <img
+              src={newRow.icon || DEFAULT_ICON_PATH}
+              alt=""
+              width={16}
+              height={16}
+              onError={(e) => {
+                e.currentTarget.src = DEFAULT_ICON_PATH;
+              }}
+            />
           }
           onClick={() => openIconModal("new")}
         >
@@ -352,19 +353,26 @@ export default function TabsTable() {
             overflowY: "auto",
           }}
         >
-          {allIcons.map((icon) => {
-            const Comp = icon.component;
-            return (
-              <Button
-                key={icon.name}
-                icon={React.createElement(Comp)}
-                onClick={() => selectIcon(icon.name)}
-                style={{ width: 140 }}
-              >
-                {icon.name.replace(/Outlined$/, "")}
-              </Button>
-            );
-          })}
+          {iconOptions.map((icon) => (
+            <Button
+              key={icon.key}
+              icon={
+                <img
+                  src={icon.path}
+                  alt=""
+                  width={16}
+                  height={16}
+                  onError={(e) => {
+                    e.currentTarget.src = DEFAULT_ICON_PATH;
+                  }}
+                />
+              }
+              onClick={() => selectIcon(icon.path)}
+              style={{ width: 160 }}
+            >
+              {icon.label}
+            </Button>
+          ))}
         </div>
       </Modal>
     </div>

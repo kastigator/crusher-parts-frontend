@@ -40,6 +40,14 @@ const CURRENCY_OPTIONS = cc.codes().map((code) => {
   return { value: code, label: `${code} — ${info?.currency || code}` }
 })
 
+const SOURCE_OPTIONS = [
+  { value: "RFQ", label: "RFQ" },
+  { value: "PRICE_LIST", label: "Прайс" },
+  { value: "NEGOTIATION", label: "Переговоры" },
+  { value: "MANUAL", label: "Вручную" },
+  { value: "OTHER", label: "Другое" },
+]
+
 // helpers для min/max, чтобы не зависеть от dayjs.min/max
 const minDay = (dates) =>
   dates.reduce((min, d) => (!min || d.isBefore(min) ? d : min), null)
@@ -199,6 +207,7 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
         currency: v.currency || null,
         date: v.date ? v.date.startOf("day").toDate() : new Date(),
         comment: v.comment || null,
+        source_type: v.source_type || null,
       })
       message.success("Цена добавлена")
       form.resetFields()
@@ -243,6 +252,7 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
       date: row.date ? dayjs(row.date) : null,
       comment: row.comment || "",
       material_id: row.material_id || null,
+      source_type: row.source_type || null,
     })
   }
 
@@ -262,6 +272,7 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
           : null,
         comment: editingDraft.comment || null,
         material_id: editingDraft.material_id || null,
+        source_type: editingDraft.source_type || null,
       }
       await axios.put(`/supplier-part-prices/${editingId}`, payload)
       message.success("Запись обновлена")
@@ -492,6 +503,41 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
         ),
     },
     {
+      title: "Источник",
+      dataIndex: "source_type",
+      width: 140,
+      render: (v, row) =>
+        editingId === row.id ? (
+          <Select
+            allowClear
+            options={SOURCE_OPTIONS}
+            placeholder="Источник"
+            value={editingDraft?.source_type || undefined}
+            onChange={(val) =>
+              setEditingDraft((d) => ({ ...d, source_type: val || null }))
+            }
+            style={{ width: 160 }}
+            getPopupContainer={popupContainer}
+            onKeyDown={onEditKeyDown}
+          />
+        ) : (
+          v || "—"
+        ),
+    },
+    {
+      title: "RFQ",
+      dataIndex: "rfq_id",
+      width: 120,
+      render: (v, row) =>
+        row.source_type === "RFQ" && row.rfq_id ? (
+          <a href={`/rfq?open=${row.rfq_id}`} target="_blank" rel="noreferrer">
+            RFQ-{row.rfq_id}
+          </a>
+        ) : (
+          "—"
+        ),
+    },
+    {
       title: "Материал",
       dataIndex: "material_name",
       width: 200,
@@ -603,6 +649,15 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
             format="DD.MM.YYYY"
             style={{ width: 150 }}
             getPopupContainer={popupContainer}
+          />
+        </Form.Item>
+
+        <Form.Item name="source_type" label="Источник">
+          <Select
+            allowClear
+            placeholder="Источник"
+            options={SOURCE_OPTIONS}
+            style={{ width: 180 }}
           />
         </Form.Item>
 

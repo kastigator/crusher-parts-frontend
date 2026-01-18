@@ -50,6 +50,8 @@ export default function OriginalPartsTable({
     uom: "pcs",
     group_id: null,
     has_drawing: false,
+    is_overweight: false,
+    is_oversize: false,
     length_cm: null,
     width_cm: null,
     height_cm: null,
@@ -182,6 +184,8 @@ export default function OriginalPartsTable({
           ? null
           : record.group_id,
       has_drawing: !!record.has_drawing,
+      is_overweight: !!record.is_overweight,
+      is_oversize: !!record.is_oversize,
       length_cm:
         record.length_cm === undefined || record.length_cm === null
           ? null
@@ -211,6 +215,8 @@ export default function OriginalPartsTable({
       uom: "pcs",
       group_id: null,
       has_drawing: false,
+      is_overweight: false,
+      is_oversize: false,
       length_cm: null,
       width_cm: null,
       height_cm: null,
@@ -241,6 +247,8 @@ export default function OriginalPartsTable({
             ? null
             : Number(editingValues.group_id),
         has_drawing: editingValues.has_drawing ? 1 : 0,
+        is_overweight: editingValues.is_overweight ? 1 : 0,
+        is_oversize: editingValues.is_oversize ? 1 : 0,
         length_cm: toNum(editingValues.length_cm),
         width_cm: toNum(editingValues.width_cm),
         height_cm: toNum(editingValues.height_cm),
@@ -576,6 +584,51 @@ export default function OriginalPartsTable({
               onKeyDown={makeKeyHandler(record.id)}
             />
           </div>
+        )
+      },
+    },
+
+    {
+      title: "Тяжелая",
+      dataIndex: "is_overweight",
+      width: 110,
+      render: (v, record) => {
+        if (record.id !== editingId) return v ? "Да" : "Нет"
+        return (
+          <Checkbox
+            checked={!!editingValues.is_overweight}
+            onChange={(e) =>
+              setEditingValues((prev) => ({
+                ...prev,
+                is_overweight: e.target.checked,
+              }))
+            }
+            onKeyDown={makeKeyHandler(record.id)}
+          >
+            Да
+          </Checkbox>
+        )
+      },
+    },
+    {
+      title: "Негабарит",
+      dataIndex: "is_oversize",
+      width: 110,
+      render: (v, record) => {
+        if (record.id !== editingId) return v ? "Да" : "Нет"
+        return (
+          <Checkbox
+            checked={!!editingValues.is_oversize}
+            onChange={(e) =>
+              setEditingValues((prev) => ({
+                ...prev,
+                is_oversize: e.target.checked,
+              }))
+            }
+            onKeyDown={makeKeyHandler(record.id)}
+          >
+            Да
+          </Checkbox>
         )
       },
     },

@@ -201,6 +201,8 @@ export default function OriginalPartsMain() {
         length_cm: values.length_cm ?? null,
         width_cm: values.width_cm ?? null,
         height_cm: values.height_cm ?? null,
+        is_overweight: values.is_overweight ? 1 : 0,
+        is_oversize: values.is_oversize ? 1 : 0,
         has_drawing: values.has_drawing ? 1 : 0,
       }
       const { data } = await axios.post("/original-parts", payload)
@@ -400,8 +402,8 @@ export default function OriginalPartsMain() {
         >
           <Form.Item
             name="cat_number"
-            label="Part number"
-            rules={[{ required: true, message: "Укажите Part number" }]}
+            label="Кат. номер"
+            rules={[{ required: true, message: "Укажите каталожный номер" }]}
           >
             <Input placeholder="например, 711-22-12340" allowClear />
           </Form.Item>
@@ -464,6 +466,12 @@ export default function OriginalPartsMain() {
 
           <Form.Item name="has_drawing" valuePropName="checked">
             <Checkbox>Есть КД</Checkbox>
+          </Form.Item>
+          <Form.Item name="is_overweight" valuePropName="checked">
+            <Checkbox>Тяжелая</Checkbox>
+          </Form.Item>
+          <Form.Item name="is_oversize" valuePropName="checked">
+            <Checkbox>Негабарит</Checkbox>
           </Form.Item>
 
           <Form.Item>

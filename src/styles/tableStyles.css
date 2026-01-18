@@ -333,3 +333,11 @@
 .ant-message {
   font-size: 14px;
 }
+
+.response-approved-row > td {
+  background-color: #ecfdf3;
+}
+
+.response-approved-row:hover > td {
+  background-color: #e4faee;
+}
