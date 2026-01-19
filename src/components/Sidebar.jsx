@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react"
+// src/components/Sidebar.jsx
+import React, { useEffect, useMemo, useState } from "react"
 import { Tooltip } from "antd"
 import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons"
 import { useNavigate, useLocation } from "react-router-dom"
@@ -11,6 +12,7 @@ const Sidebar = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const { tabs = [], permissions = [], loading } = useTabs()
+
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1"
@@ -18,13 +20,6 @@ const Sidebar = () => {
       return false
     }
   })
-
-  const visibleTabs = tabs
-    .filter((tab) => tab.is_active !== 0)
-    .filter((tab) => permissions.includes(tab.id))
-    .sort((a, b) => a.sort_order - b.sort_order)
-
-  const ICON_SIZE = 24
 
   useEffect(() => {
     try {
@@ -34,17 +29,47 @@ const Sidebar = () => {
     }
   }, [collapsed])
 
+  const visibleTabs = useMemo(() => {
+    return (tabs || [])
+      .filter((tab) => tab.is_active !== 0)
+      .filter((tab) => permissions.includes(tab.id))
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+  }, [tabs, permissions])
+
+  const ICON_SIZE = 24
+
   const renderIcon = (iconPathRaw, selected) => {
     const raw = (iconPathRaw || "").trim()
     const iconPath = raw || DEFAULT_ICON_PATH
+
+    // Build a URL that works in:
+    // - Vite dev (BASE_URL is "/")
+    // - GCS object URL hosting (e.g. https://storage.googleapis.com/<bucket>/index.html)
+    // - Any non-root base (BASE_URL could be "./" or "/subpath/")
+    const toPublicUrl = (p) => {
+      const s = (p || "").trim()
+      if (!s) return ""
+
+      // Keep absolute URLs as-is
+      if (/^https?:\/\//i.test(s)) return s
+
+      // IMPORTANT: remove leading slash to avoid resolving to:
+      // https://storage.googleapis.com/icons/... (wrong)
+      const clean = s.startsWith("/") ? s.slice(1) : s
+
+      const base = import.meta.env.BASE_URL || "/"
+      return `${base}${clean}`
+    }
+
     const isSvgPath =
-      iconPath.startsWith("/") ||
-      iconPath.startsWith("icons/") ||
-      iconPath.endsWith(".svg")
+      iconPath.toLowerCase().endsWith(".svg") ||
+      iconPath.includes("icons/") ||
+      iconPath.startsWith("/")
+
     if (!isSvgPath) {
       return (
         <img
-          src={DEFAULT_ICON_PATH}
+          src={toPublicUrl(DEFAULT_ICON_PATH)}
           alt=""
           width={ICON_SIZE}
           height={ICON_SIZE}
@@ -52,21 +77,25 @@ const Sidebar = () => {
       )
     }
 
-    const activePath = iconPath.endsWith(".svg")
-      ? iconPath.replace(/\.svg$/i, "-active.svg")
-      : iconPath
+    const normalUrl = toPublicUrl(iconPath)
+    const activeUrl = iconPath.toLowerCase().endsWith(".svg")
+      ? toPublicUrl(iconPath.replace(/\.svg$/i, "-active.svg"))
+      : normalUrl
 
     return (
       <img
-        src={selected ? activePath : iconPath}
+        src={selected ? activeUrl : normalUrl}
         alt=""
         width={ICON_SIZE}
         height={ICON_SIZE}
         onError={(e) => {
-          if (e.currentTarget.src.endsWith("-active.svg")) {
-            e.currentTarget.src = iconPath
+          const fallbackNormal = toPublicUrl(iconPath)
+          const fallbackDefault = toPublicUrl(DEFAULT_ICON_PATH)
+
+          if (e.currentTarget.src.includes("-active.svg")) {
+            e.currentTarget.src = fallbackNormal
           } else {
-            e.currentTarget.src = DEFAULT_ICON_PATH
+            e.currentTarget.src = fallbackDefault
           }
         }}
       />
@@ -127,9 +156,7 @@ const Sidebar = () => {
             >
               <div
                 onClick={() =>
-                  navigate(
-                    tab.path?.startsWith("/") ? tab.path : `/${tab.path}`,
-                  )
+                  navigate(tab.path?.startsWith("/") ? tab.path : `/${tab.path}`)
                 }
                 style={{
                   height: 56,
@@ -182,6 +209,7 @@ const Sidebar = () => {
                 >
                   {renderIcon(tab.icon, selected)}
                 </div>
+
                 {!collapsed && (
                   <div
                     style={{
