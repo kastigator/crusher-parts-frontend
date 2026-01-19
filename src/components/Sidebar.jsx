@@ -25,7 +25,7 @@ const Sidebar = () => {
     try {
       localStorage.setItem(SIDEBAR_COLLAPSE_KEY, collapsed ? "1" : "0")
     } catch {
-      // ignore storage failures
+      // ignore
     }
   }, [collapsed])
 
@@ -38,35 +38,32 @@ const Sidebar = () => {
 
   const ICON_SIZE = 24
 
+  const toPublicUrl = (p) => {
+    const s = (p || "").trim()
+    if (!s) return ""
+
+    // если уже абсолютный URL — оставляем
+    if (/^https?:\/\//i.test(s)) return s
+
+    // убираем ведущий "/", иначе улетим в https://storage.googleapis.com/icons/...
+    const clean = s.startsWith("/") ? s.slice(1) : s
+
+    // важно: строим ссылку относительно текущего URL (index.html),
+    // чтобы работало и на storage.googleapis.com/<bucket>/index.html
+    // и на <bucket>.storage.googleapis.com/index.html
+    return new URL(clean, window.location.href).toString()
+  }
+
   const renderIcon = (iconPathRaw, selected) => {
     const raw = (iconPathRaw || "").trim()
     const iconPath = raw || DEFAULT_ICON_PATH
 
-    // Build a URL that works in:
-    // - Vite dev (BASE_URL is "/")
-    // - GCS object URL hosting (e.g. https://storage.googleapis.com/<bucket>/index.html)
-    // - Any non-root base (BASE_URL could be "./" or "/subpath/")
-    const toPublicUrl = (p) => {
-      const s = (p || "").trim()
-      if (!s) return ""
-
-      // Keep absolute URLs as-is
-      if (/^https?:\/\//i.test(s)) return s
-
-      // IMPORTANT: remove leading slash to avoid resolving to:
-      // https://storage.googleapis.com/icons/... (wrong)
-      const clean = s.startsWith("/") ? s.slice(1) : s
-
-      const base = import.meta.env.BASE_URL || "/"
-      return `${base}${clean}`
-    }
-
-    const isSvgPath =
+    const looksLikeSvg =
       iconPath.toLowerCase().endsWith(".svg") ||
       iconPath.includes("icons/") ||
       iconPath.startsWith("/")
 
-    if (!isSvgPath) {
+    if (!looksLikeSvg) {
       return (
         <img
           src={toPublicUrl(DEFAULT_ICON_PATH)}
@@ -77,10 +74,12 @@ const Sidebar = () => {
       )
     }
 
+    const activePath = iconPath.toLowerCase().endsWith(".svg")
+      ? iconPath.replace(/\.svg$/i, "-active.svg")
+      : iconPath
+
     const normalUrl = toPublicUrl(iconPath)
-    const activeUrl = iconPath.toLowerCase().endsWith(".svg")
-      ? toPublicUrl(iconPath.replace(/\.svg$/i, "-active.svg"))
-      : normalUrl
+    const activeUrl = toPublicUrl(activePath)
 
     return (
       <img
