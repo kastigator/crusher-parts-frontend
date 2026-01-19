@@ -336,6 +336,11 @@ export default function ClientRequestsPage() {
     return parsed.isValid() ? parsed.format("YYYY-MM-DD HH:mm:ss") : null
   }
 
+  const normalizeTextValue = (value) => {
+    const text = String(value ?? "").trim()
+    return text ? text : null
+  }
+
   const formatDateValue = (value) => {
     if (!value) return null
     const parsed = dayjs(value)
@@ -349,6 +354,7 @@ export default function ClientRequestsPage() {
         status: values.status || "draft",
         source_type: values.source_type || null,
         assigned_to_user_id: values.assigned_to_user_id || null,
+        internal_number: normalizeTextValue(values.internal_number),
         client_reference: values.client_reference || null,
         contact_name: values.contact_name || null,
         contact_email: values.contact_email || null,
@@ -417,6 +423,7 @@ export default function ClientRequestsPage() {
       status: record.status || "draft",
       source_type: record.source_type || null,
       assigned_to_user_id: record.assigned_to_user_id || null,
+      internal_number: record.internal_number || null,
       client_reference: record.client_reference || null,
       contact_name: record.contact_name || null,
       contact_email: record.contact_email || null,
@@ -897,6 +904,7 @@ export default function ClientRequestsPage() {
         status: values.status || null,
         source_type: values.source_type || null,
         assigned_to_user_id: values.assigned_to_user_id || null,
+        internal_number: normalizeTextValue(values.internal_number),
         client_reference: values.client_reference || null,
         contact_name: values.contact_name || null,
         contact_email: values.contact_email || null,
@@ -1060,6 +1068,11 @@ export default function ClientRequestsPage() {
       render: (v) => v || "—",
     },
     {
+      title: "Внутр. номер",
+      dataIndex: "internal_number",
+      render: (v) => v || "—",
+    },
+    {
       title: "Статус",
       dataIndex: "status",
       render: (v) =>
@@ -1071,8 +1084,7 @@ export default function ClientRequestsPage() {
           "—"
         ),
     },
-    { title: "Источник", dataIndex: "source_type", width: 140 },
-    { title: "Референс", dataIndex: "client_reference" },
+    { title: "Референс клиента", dataIndex: "client_reference" },
     { title: "Контакт", dataIndex: "contact_name" },
     {
       title: "Создано",
@@ -1361,6 +1373,9 @@ export default function ClientRequestsPage() {
                   }}
                 />
               </Form.Item>
+              <Form.Item label="Внутренний номер" name="internal_number">
+                <Input style={{ width: 180 }} />
+              </Form.Item>
               <Form.Item label="Статус" name="status">
                 <Select style={{ width: 160 }} options={STATUS_OPTIONS} />
               </Form.Item>
@@ -1518,6 +1533,7 @@ export default function ClientRequestsPage() {
                         status: activeRequest?.status || "draft",
                         source_type: activeRequest?.source_type || null,
                         assigned_to_user_id: activeRequest?.assigned_to_user_id || null,
+                        internal_number: activeRequest?.internal_number || null,
                         client_reference: activeRequest?.client_reference || null,
                         contact_name: activeRequest?.contact_name || null,
                         contact_email: activeRequest?.contact_email || null,
@@ -1559,6 +1575,9 @@ export default function ClientRequestsPage() {
                   optionFilterProp="label"
                   disabled
                 />
+              </Form.Item>
+              <Form.Item label="Внутренний номер" name="internal_number">
+                <Input style={{ width: 180 }} disabled={!requestEditing} />
               </Form.Item>
               <Form.Item label="Статус" name="status">
                 <Select

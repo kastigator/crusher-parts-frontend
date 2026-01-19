@@ -39,7 +39,13 @@ function resolveIconsBaseUrl() {
   }
 
   const pathname = window.location.pathname
-  const directory = pathname.endsWith("/") ? pathname : pathname.replace(/[^/]+$/, "")
+  const lastSegment = pathname.split("/").filter(Boolean).slice(-1)[0] || ""
+  const looksLikeFile = lastSegment.includes(".")
+  const directory = pathname.endsWith("/")
+    ? pathname
+    : looksLikeFile
+      ? pathname.replace(/[^/]+$/, "")
+      : `${pathname}/`
   const fallbackOrigin = `${window.location.origin}${directory}`
 
   let resolvedBase = fallbackOrigin

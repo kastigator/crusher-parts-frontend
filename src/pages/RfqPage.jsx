@@ -59,6 +59,8 @@ export default function RfqPage() {
   const [suggestedLoading, setSuggestedLoading] = useState(false)
   const [suggestedSelection, setSuggestedSelection] = useState([])
   const [pendingOpenId, setPendingOpenId] = useState(null)
+  const [filterClientId, setFilterClientId] = useState(null)
+  const [filterRequestNumber, setFilterRequestNumber] = useState("")
 
   const [createForm] = Form.useForm()
   const [itemForm] = Form.useForm()
@@ -142,10 +144,21 @@ export default function RfqPage() {
     () =>
       requests.map((r) => ({
         value: r.id,
-        label: `${r.client_name || "Клиент"} ${r.created_at || ""}`.trim(),
+        label: `${r.client_name || "Клиент"} · ${r.internal_number || r.client_reference || `#${r.id}`}`,
       })),
     [requests],
   )
+
+  const clientFilterOptions = useMemo(() => {
+    const map = new Map()
+    requests.forEach((r) => {
+      if (!r.client_id) return
+      if (!map.has(r.client_id)) {
+        map.set(r.client_id, r.client_name || `Клиент #${r.client_id}`)
+      }
+    })
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }))
+  }, [requests])
 
   const revisionOptions = useMemo(
     () =>
@@ -189,6 +202,7 @@ export default function RfqPage() {
       await axios.post("/rfqs", {
         client_request_revision_id: values.client_request_revision_id,
         note: values.note || null,
+        rfq_number: values.rfq_number || null,
       })
       message.success("RFQ создан")
       createForm.resetFields()
@@ -442,6 +456,18 @@ export default function RfqPage() {
 
   const rfqColumns = [
     { title: "Клиент", dataIndex: "client_name" },
+    {
+      title: "Номер заявки",
+      dataIndex: "client_request_number",
+      render: (value, record) =>
+        value || record.client_reference || record.client_request_id || "-",
+    },
+    {
+      title: "RFQ",
+      dataIndex: "rfq_number",
+      width: 140,
+      render: (value, record) => value || `RFQ-${record.id}`,
+    },
     { title: "Rev", dataIndex: "rev_number", width: 80 },
     {
       title: "Статус",
@@ -496,6 +522,27 @@ export default function RfqPage() {
     },
   ]
 
+  const filteredRfqs = useMemo(() => {
+    const needle = String(filterRequestNumber || "")
+      .trim()
+      .toLowerCase()
+    return rfqs.filter((rfq) => {
+      if (filterClientId && Number(rfq.client_id) !== Number(filterClientId)) {
+        return false
+      }
+      if (!needle) return true
+      const haystack = [
+        rfq.client_request_number,
+        rfq.client_reference,
+        rfq.client_request_id,
+      ]
+        .filter((v) => v !== null && v !== undefined)
+        .map((v) => String(v).toLowerCase())
+        .join(" ")
+      return haystack.includes(needle)
+    })
+  }, [rfqs, filterClientId, filterRequestNumber])
+
   return (
     <PageWrapper
       title="RFQ"
@@ -524,6 +571,9 @@ export default function RfqPage() {
               >
                 <Select style={{ width: 180 }} options={revisionOptions} />
               </Form.Item>
+              <Form.Item label="Номер RFQ" name="rfq_number">
+                <Input style={{ width: 180 }} placeholder="Например RFQ-21" />
+              </Form.Item>
               <Form.Item label="Комментарий" name="note">
                 <Input style={{ width: 260 }} />
               </Form.Item>
@@ -537,10 +587,29 @@ export default function RfqPage() {
         </Card>
 
         <Card title="Список RFQ" size="small">
+          <Space wrap align="center" style={{ marginBottom: 12 }}>
+            <Select
+              style={{ width: 220 }}
+              options={clientFilterOptions}
+              placeholder="Фильтр по клиенту"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={filterClientId || undefined}
+              onChange={(value) => setFilterClientId(value || null)}
+            />
+            <Input
+              style={{ width: 220 }}
+              placeholder="Номер заявки"
+              allowClear
+              value={filterRequestNumber}
+              onChange={(event) => setFilterRequestNumber(event.target.value)}
+            />
+          </Space>
           <Table
             rowKey="id"
             columns={rfqColumns}
-            dataSource={rfqs}
+            dataSource={filteredRfqs}
             loading={loading}
             pagination={{ pageSize: 20 }}
             onRow={(record) => ({
@@ -556,7 +625,7 @@ export default function RfqPage() {
         onClose={() => setDrawerOpen(false)}
         title={
           <Space>
-            <span>RFQ</span>
+            <span>{activeRfq?.rfq_number || (activeRfq ? `RFQ-${activeRfq.id}` : "RFQ")}</span>
             {activeRfq?.status ? (
               <Tag color={activeRfq.status === "sent" ? "blue" : "default"}>
                 {activeRfq.status}
