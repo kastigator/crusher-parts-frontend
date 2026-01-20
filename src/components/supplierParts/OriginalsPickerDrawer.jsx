@@ -42,6 +42,8 @@ export default function OriginalsPickerDrawer({
   open,
   onClose,
   excludeIds = [],
+  title = "Подбор оригинальных деталей",
+  confirmLabel = "Привязать выбранные",
   onPick,
 }) {
   const [manufacturer, setManufacturer] = useState(null);
@@ -291,7 +293,7 @@ export default function OriginalsPickerDrawer({
   return (
     <>
       <Drawer
-        title="Подбор оригинальных деталей"
+        title={title}
         open={open}
         onClose={handleClose}
         destroyOnClose
@@ -307,7 +309,7 @@ export default function OriginalsPickerDrawer({
               disabled={!selectedRows.length}
               onClick={doPick}
             >
-              Привязать выбранные
+              {confirmLabel}
             </Button>
           </Space>
         }
