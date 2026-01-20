@@ -4,6 +4,7 @@ import { Table, Input, Tabs, message, Checkbox, Select } from "antd"
 import SupplierAddressesMain from "./SupplierAddressesMain"
 import SupplierBankDetailsMain from "./SupplierBankDetailsMain"
 import SupplierContactsMain from "./SupplierContactsMain"
+import SupplierQualityMain from "./SupplierQualityMain"
 
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
@@ -382,6 +383,11 @@ export default function SuppliersTable({
                         onChanged={() => {}}
                       />
                     ),
+                  },
+                  {
+                    key: "quality",
+                    label: "Оценка",
+                    children: <SupplierQualityMain supplierId={record.id} />,
                   },
                 ]}
               />

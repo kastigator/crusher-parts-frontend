@@ -9,6 +9,7 @@
   background: #ffffff;
   border-radius: 8px;
   box-shadow: none;
+  --op-expand-col-width: 48px;
 }
 
 /* Убираем стандартные рамки контейнера AntD */
@@ -159,9 +160,26 @@
 
 .op-table .ant-table-expanded-row > .ant-table-cell {
   padding: 0 !important;
+  padding-left: var(--op-expand-col-width) !important;
+  padding-right: 0 !important;
   background: #ffffff !important;
   border-top: 1px solid #e5e7eb;
 }
+
+.op-table .ant-table-expanded-row .ant-table-wrapper {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+.op-table .ant-table-expanded-row .ant-table-expanded-row-fixed {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  position: static !important;
+  box-sizing: border-box;
+}
+
+/* Компенсация ширины колонки expand, чтобы вложенный контент не уезжал вправо */
 
 /* Контент простого раскрытия (без подтаблиц) */
 .op-table .op-expanded-content {
@@ -186,9 +204,15 @@
 
 /* Оболочка раскрытой области с вкладками */
 .subtable-shell {
-  padding: 16px 20px 20px;
+  padding: 12px 0 16px;
   background: #f9fafb;
   border-top: 1px solid #e5e7eb;
+}
+
+.subtable-shell .parts-table-wrap,
+.subtable-shell .table-section {
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .order-inline-panel {

@@ -10,6 +10,7 @@ import AdminPage from '../pages/AdminPage'
 import CatalogsPage from '../pages/CatalogsPage'
 import ClientRequestsPage from '../pages/ClientRequestsPage'
 import RfqPage from '../pages/RfqPage'
+import RfqWorkspacePage from '../pages/RfqWorkspacePage'
 import SupplierResponsesPage from '../pages/SupplierResponsesPage'
 import CoveragePage from '../pages/CoveragePage'
 import ScorecardPage from '../pages/ScorecardPage'
@@ -40,6 +41,7 @@ const AppRouter = () => (
         <Route index element={<HomePage />} />
         <Route path="client-requests" element={<ClientRequestsPage />} />
         <Route path="rfq" element={<RfqPage />} />
+        <Route path="rfq-workspace" element={<RfqWorkspacePage />} />
         <Route path="supplier-responses" element={<SupplierResponsesPage />} />
         <Route path="coverage" element={<CoveragePage />} />
         <Route path="scorecard" element={<ScorecardPage />} />
