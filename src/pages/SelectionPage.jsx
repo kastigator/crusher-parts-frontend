@@ -24,6 +24,9 @@ export default function SelectionPage() {
   const [activeSelection, setActiveSelection] = useState(null)
   const [lines, setLines] = useState([])
   const [rfqItems, setRfqItems] = useState([])
+  const [rfqStructure, setRfqStructure] = useState([])
+  const [activeRfqItemId, setActiveRfqItemId] = useState(null)
+  const [activeComponents, setActiveComponents] = useState([])
   const [responseLines, setResponseLines] = useState([])
 
   const [createForm] = Form.useForm()
@@ -40,16 +43,60 @@ export default function SelectionPage() {
     return map
   }, [rfqItems])
 
+  const rfqComponentsMap = useMemo(() => {
+    const map = new Map()
+    rfqStructure.forEach((item) => {
+      map.set(item.rfq_item_id, item.components || [])
+    })
+    return map
+  }, [rfqStructure])
+
+  const componentOptions = useMemo(
+    () =>
+      activeComponents
+        .filter((c) => c.rfq_item_component_id)
+        .map((c) => ({
+          value: c.rfq_item_component_id,
+          label: `${c.cat_number || "Без номера"} · ${c.description || ""}`.trim(),
+        })),
+    [activeComponents],
+  )
+
+  const componentHint =
+    activeComponents.length && !componentOptions.length
+      ? "Компоненты не сохранены. Пересоберите в RFQ."
+      : null
+
   const responseLineMap = useMemo(() => {
     const map = new Map()
     responseLines.forEach((line) => {
+      const componentLabel = line.component_cat_number
+        ? ` · ${line.component_cat_number}`
+        : ""
       map.set(
         line.id,
-        `${line.supplier_name || "Поставщик"} · ${line.supplier_part_number || line.original_cat_number || "Без номера"}`.trim(),
+        `${line.supplier_name || "Поставщик"} · ${line.supplier_part_number || line.original_cat_number || "Без номера"}${componentLabel}`.trim(),
       )
     })
     return map
   }, [responseLines])
+
+  const responseLineOptions = useMemo(
+    () =>
+      responseLines.map((line) => ({
+        value: line.id,
+        label: responseLineMap.get(line.id) || "Строка ответа",
+      })),
+    [responseLines, responseLineMap],
+  )
+
+  useEffect(() => {
+    if (!activeRfqItemId) {
+      setActiveComponents([])
+      return
+    }
+    setActiveComponents(rfqComponentsMap.get(activeRfqItemId) || [])
+  }, [activeRfqItemId, rfqComponentsMap])
 
   const loadSelections = async () => {
     setLoading(true)
@@ -91,6 +138,19 @@ export default function SelectionPage() {
     try {
       const { data } = await axios.get(`/rfqs/${rfqId}/items`)
       setRfqItems(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const loadRfqStructure = async (rfqId) => {
+    if (!rfqId) {
+      setRfqStructure([])
+      return
+    }
+    try {
+      const { data } = await axios.get(`/rfqs/${rfqId}/structure`)
+      setRfqStructure(Array.isArray(data?.items) ? data.items : [])
     } catch (e) {
       console.error(e)
     }
@@ -142,6 +202,7 @@ export default function SelectionPage() {
     try {
       await axios.post(`/selection/${activeSelection.id}/lines`, {
         rfq_item_id: values.rfq_item_id,
+        rfq_item_component_id: values.rfq_item_component_id || null,
         rfq_response_line_id: values.rfq_response_line_id || null,
         qty: values.qty ?? null,
         decision_note: values.decision_note || null,
@@ -210,8 +271,11 @@ export default function SelectionPage() {
               onClick: async () => {
                 setActiveSelection(record)
                 setDrawerOpen(true)
+                setActiveRfqItemId(null)
+                setActiveComponents([])
                 await loadLines(record.id)
                 await loadRfqItems(record.rfq_id)
+                await loadRfqStructure(record.rfq_id)
                 await loadResponseLines(record.rfq_id)
               },
             })}
@@ -246,17 +310,45 @@ export default function SelectionPage() {
                       label: `${item.original_cat_number || "Без номера"} · ${item.client_description || ""}`.trim(),
                     }))}
                     placeholder="Выберите строку RFQ"
+                    onChange={(val) => {
+                      setActiveRfqItemId(val)
+                      const components = rfqComponentsMap.get(val) || []
+                      const defaultComponent =
+                        components.length === 1 ? components[0] : null
+                      lineForm.setFieldsValue({
+                        rfq_item_component_id:
+                          defaultComponent?.rfq_item_component_id || null,
+                      })
+                    }}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label="Компонент"
+                  name="rfq_item_component_id"
+                  extra={componentHint}
+                >
+                  <Select
+                    style={{ width: 260 }}
+                    allowClear
+                    options={componentOptions}
+                    placeholder="Компонент сборки"
                   />
                 </Form.Item>
                 <Form.Item label="Строка ответа" name="rfq_response_line_id">
                   <Select
                     allowClear
                     style={{ width: 260 }}
-                    options={responseLines.map((line) => ({
-                      value: line.id,
-                      label: `${line.supplier_name || "Поставщик"} · ${line.supplier_part_number || line.original_cat_number || "Без номера"}`.trim(),
-                    }))}
+                    options={responseLineOptions}
                     placeholder="Выберите строку ответа"
+                    onChange={(val) => {
+                      const line = responseLines.find((item) => item.id === val)
+                      if (!line) return
+                      lineForm.setFieldsValue({
+                        rfq_item_id: line.rfq_item_id,
+                        rfq_item_component_id: line.rfq_item_component_id || null,
+                      })
+                      setActiveRfqItemId(line.rfq_item_id)
+                    }}
                   />
                 </Form.Item>
                 <Form.Item label="Кол-во" name="qty">
@@ -284,6 +376,24 @@ export default function SelectionPage() {
                 dataIndex: "rfq_item_id",
                 width: 180,
                 render: (v) => rfqItemMap.get(v) || "—",
+              },
+              {
+                title: "Компонент",
+                dataIndex: "component_cat_number",
+                width: 180,
+                render: (v, record) => {
+                  const desc =
+                    record.component_description_ru ||
+                    record.component_description_en ||
+                    ""
+                  if (!v && !desc) return "—"
+                  return (
+                    <div>
+                      <div>{v || "—"}</div>
+                      <span>{desc || "—"}</span>
+                    </div>
+                  )
+                },
               },
               {
                 title: "Строка ответа",

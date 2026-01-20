@@ -14,13 +14,15 @@ import {
   Checkbox,
   Tag,
   Modal,
+  Divider,
   Typography,
 } from "antd"
-import { DeleteOutlined } from "@ant-design/icons"
+import { DeleteOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import { useLocation } from "react-router-dom"
+import OriginalsPickerDrawer from "@/components/supplierParts/OriginalsPickerDrawer"
 
 const UOM_OPTIONS = [
   { value: "pcs", label: "шт" },
@@ -39,6 +41,19 @@ const formatDateOnly = (value) => {
   }
 }
 
+const numOrDash = (value) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : "—"
+}
+
+const STRATEGY_LABELS = {
+  SINGLE: "Единая позиция",
+  BOM: "BOM",
+  MIXED: "Смешанная",
+}
+
+const formatStrategyMode = (mode) => STRATEGY_LABELS[mode] || "—"
+
 export default function RfqPage() {
   const location = useLocation()
   const [rfqs, setRfqs] = useState([])
@@ -51,10 +66,19 @@ export default function RfqPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [activeRfq, setActiveRfq] = useState(null)
   const [rfqItems, setRfqItems] = useState([])
+  const [rfqStructure, setRfqStructure] = useState([])
+  const [structureLoading, setStructureLoading] = useState(false)
+  const [componentPickerOpen, setComponentPickerOpen] = useState(false)
+  const [componentPickerItem, setComponentPickerItem] = useState(null)
+  const [componentDrafts, setComponentDrafts] = useState({})
+  const [componentBusyIds, setComponentBusyIds] = useState({})
+  const [rebuildingItemId, setRebuildingItemId] = useState(null)
+  const [addingComponentItemId, setAddingComponentItemId] = useState(null)
   const [rfqSuppliers, setRfqSuppliers] = useState([])
   const [rfqDocuments, setRfqDocuments] = useState([])
   const [bulkAdding, setBulkAdding] = useState(false)
   const [sending, setSending] = useState(false)
+  const [includeStructureOnSend, setIncludeStructureOnSend] = useState(false)
   const [docsLoading, setDocsLoading] = useState(false)
   const [suggestedLoading, setSuggestedLoading] = useState(false)
   const [suggestedSelection, setSuggestedSelection] = useState([])
@@ -184,6 +208,14 @@ export default function RfqPage() {
     return map
   }, [revisionItems])
 
+  const rfqStructureMap = useMemo(() => {
+    const map = new Map()
+    rfqStructure.forEach((item) => {
+      map.set(item.rfq_item_id, item)
+    })
+    return map
+  }, [rfqStructure])
+
   const supplierOptions = useMemo(
     () =>
       suppliers.map((s) => ({
@@ -218,6 +250,7 @@ export default function RfqPage() {
     setDrawerOpen(true)
     await loadRevisionItems(record.client_request_revision_id)
     await loadRfqItems(record.id)
+    await loadRfqStructure(record.id)
     await loadRfqSuppliers(record.id)
     await loadSuggestedSuppliers(record.id)
     await loadRfqDocuments(record.id)
@@ -239,6 +272,117 @@ export default function RfqPage() {
     } catch (e) {
       console.error(e)
       message.error("Не удалось загрузить строки RFQ")
+    }
+  }
+
+  const loadRfqStructure = async (rfqId) => {
+    if (!rfqId) {
+      setRfqStructure([])
+      return
+    }
+    setStructureLoading(true)
+    try {
+      const { data } = await axios.get(`/rfqs/${rfqId}/structure`)
+      setRfqStructure(Array.isArray(data?.items) ? data.items : [])
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось загрузить структуру закупки")
+    } finally {
+      setStructureLoading(false)
+    }
+  }
+
+  const componentPickerExcludeIds = useMemo(() => {
+    const comps = componentPickerItem?.components || []
+    return comps.map((c) => Number(c.original_part_id)).filter(Boolean)
+  }, [componentPickerItem])
+
+  const setComponentBusy = (componentId, isBusy) => {
+    setComponentBusyIds((prev) => ({ ...prev, [componentId]: isBusy }))
+  }
+
+  const handleComponentQtyChange = (componentId, value) => {
+    setComponentDrafts((prev) => ({ ...prev, [componentId]: value }))
+  }
+
+  const handleComponentQtyCommit = async (itemId, component) => {
+    if (!activeRfq?.id || !component?.rfq_item_component_id) return
+    const componentId = component.rfq_item_component_id
+    const draftValue = componentDrafts[componentId]
+    if (draftValue === undefined || draftValue === component.component_qty) return
+    setComponentBusy(componentId, true)
+    try {
+      await axios.put(`/rfqs/${activeRfq.id}/items/${itemId}/components/${componentId}`, {
+        component_qty: draftValue,
+      })
+      await loadRfqStructure(activeRfq.id)
+      message.success("Количество компонента обновлено")
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось обновить компонент")
+    } finally {
+      setComponentBusy(componentId, false)
+    }
+  }
+
+  const handleDeleteComponent = async (itemId, component) => {
+    if (!activeRfq?.id || !component?.rfq_item_component_id) return
+    const { confirmed } = await confirmAction({
+      title: "Удалить компонент?",
+      text: "Компонент будет удален из структуры закупки.",
+      icon: "warning",
+      confirmLabel: "Удалить",
+    })
+    if (!confirmed) return
+    const componentId = component.rfq_item_component_id
+    setComponentBusy(componentId, true)
+    try {
+      await axios.delete(`/rfqs/${activeRfq.id}/items/${itemId}/components/${componentId}`)
+      await loadRfqStructure(activeRfq.id)
+      message.success("Компонент удален")
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось удалить компонент")
+    } finally {
+      setComponentBusy(componentId, false)
+    }
+  }
+
+  const handleRebuildComponents = async (itemId, mode) => {
+    if (!activeRfq?.id) return
+    setRebuildingItemId(itemId)
+    try {
+      await axios.post(`/rfqs/${activeRfq.id}/items/${itemId}/components/rebuild`, {
+        mode,
+      })
+      await loadRfqStructure(activeRfq.id)
+      message.success("Компоненты пересобраны")
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось пересобрать компоненты")
+    } finally {
+      setRebuildingItemId(null)
+    }
+  }
+
+  const handleAddComponents = async (item, rows) => {
+    if (!activeRfq?.id || !item?.rfq_item_id || !rows?.length) return
+    setAddingComponentItemId(item.rfq_item_id)
+    try {
+      for (const row of rows) {
+        await axios.post(`/rfqs/${activeRfq.id}/items/${item.rfq_item_id}/components`, {
+          original_part_id: row.id,
+          component_qty: 1,
+          source_type: "MANUAL",
+        })
+      }
+      await loadRfqStructure(activeRfq.id)
+      message.success("Компоненты добавлены")
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось добавить компоненты")
+    } finally {
+      setAddingComponentItemId(null)
     }
   }
 
@@ -297,6 +441,7 @@ export default function RfqPage() {
       })
       itemForm.resetFields()
       await loadRfqItems(activeRfq.id)
+      await loadRfqStructure(activeRfq.id)
       await loadSuggestedSuppliers(activeRfq.id)
       message.success("Строка добавлена")
     } catch (e) {
@@ -311,6 +456,7 @@ export default function RfqPage() {
     try {
       const { data } = await axios.post(`/rfqs/${activeRfq.id}/items/bulk`)
       await loadRfqItems(activeRfq.id)
+      await loadRfqStructure(activeRfq.id)
       await loadSuggestedSuppliers(activeRfq.id)
       if (data?.inserted) {
         message.success(`Добавлено позиций: ${data.inserted}`)
@@ -375,7 +521,9 @@ export default function RfqPage() {
     if (!confirmed) return
     setSending(true)
     try {
-      const { data } = await axios.post(`/rfqs/${activeRfq.id}/send`)
+      const { data } = await axios.post(`/rfqs/${activeRfq.id}/send`, {
+        include_structure: includeStructureOnSend ? 1 : 0,
+      })
       const sentCount = Array.isArray(data?.documents) ? data.documents.length : 0
       const errorList = Array.isArray(data?.errors) ? data.errors : []
       if (sentCount) {
@@ -451,6 +599,103 @@ export default function RfqPage() {
         {types.includes("link") && <Tag color="blue">связи</Tag>}
         {types.includes("cat_number") && <Tag color="orange">кат. номер</Tag>}
       </Space>
+    )
+  }
+
+  const StrategyEditor = ({ item, strategy }) => {
+    const [form] = Form.useForm()
+    const [saving, setSaving] = useState(false)
+
+    useEffect(() => {
+      if (!item?.rfq_item_id) return
+      form.setFieldsValue({
+        mode: strategy?.mode || "SINGLE",
+        allow_oem: Boolean(strategy?.allow_oem ?? true),
+        allow_analog: Boolean(strategy?.allow_analog ?? true),
+        allow_kit: Boolean(strategy?.allow_kit ?? true),
+        allow_partial: Boolean(strategy?.allow_partial ?? false),
+        note: strategy?.note || undefined,
+        rebuild_components: false,
+      })
+    }, [
+      item?.rfq_item_id,
+      strategy?.mode,
+      strategy?.allow_oem,
+      strategy?.allow_analog,
+      strategy?.allow_kit,
+      strategy?.allow_partial,
+      strategy?.note,
+      form,
+    ])
+
+    const handleSave = async (values) => {
+      if (!activeRfq?.id) return
+      setSaving(true)
+      try {
+        await axios.put(
+          `/rfqs/${activeRfq.id}/items/${item.rfq_item_id}/strategy`,
+          {
+            mode: values.mode,
+            allow_oem: values.allow_oem ? 1 : 0,
+            allow_analog: values.allow_analog ? 1 : 0,
+            allow_kit: values.allow_kit ? 1 : 0,
+            allow_partial: values.allow_partial ? 1 : 0,
+            note: values.note || null,
+            rebuild_components: values.rebuild_components ? 1 : 0,
+          },
+        )
+        await loadRfqStructure(activeRfq.id)
+        message.success("Стратегия обновлена")
+      } catch (e) {
+        console.error(e)
+        message.error("Не удалось обновить стратегию")
+      } finally {
+        setSaving(false)
+      }
+    }
+
+    return (
+      <Form form={form} layout="vertical" onFinish={handleSave}>
+        <Space wrap align="start">
+          <Form.Item
+            label="Стратегия"
+            name="mode"
+            rules={[{ required: true, message: "Выберите стратегию" }]}
+          >
+            <Select
+              style={{ width: 200 }}
+              options={[
+                { value: "SINGLE", label: "Единая позиция" },
+                { value: "BOM", label: "BOM (компоненты)" },
+                { value: "MIXED", label: "Смешанная (BOM + позиция)" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="allow_oem" valuePropName="checked">
+            <Checkbox>OEM</Checkbox>
+          </Form.Item>
+          <Form.Item name="allow_analog" valuePropName="checked">
+            <Checkbox>Аналоги</Checkbox>
+          </Form.Item>
+          <Form.Item name="allow_kit" valuePropName="checked">
+            <Checkbox>Комплекты</Checkbox>
+          </Form.Item>
+          <Form.Item name="allow_partial" valuePropName="checked">
+            <Checkbox>Частичное покрытие</Checkbox>
+          </Form.Item>
+          <Form.Item label="Комментарий" name="note">
+            <Input style={{ width: 240 }} />
+          </Form.Item>
+          <Form.Item name="rebuild_components" valuePropName="checked">
+            <Checkbox>Пересобрать компоненты</Checkbox>
+          </Form.Item>
+          <Form.Item style={{ marginTop: 30 }}>
+            <Button type="primary" htmlType="submit" loading={saving}>
+              Сохранить
+            </Button>
+          </Form.Item>
+        </Space>
+      </Form>
     )
   }
 
@@ -714,7 +959,165 @@ export default function RfqPage() {
                   <Table
                     rowKey="id"
                     dataSource={rfqItems}
+                    loading={structureLoading}
                     pagination={false}
+                    expandable={{
+                      expandedRowRender: (record) => {
+                        const data = rfqStructureMap.get(record.id)
+                        if (!data) return null
+                        const bundlesLabel = data.bundle_count
+                          ? `Комплектов: ${data.bundle_count}`
+                          : null
+                        const components = data.components || []
+                        const hasDraftComponents = components.some(
+                          (c) => !c.rfq_item_component_id,
+                        )
+                        const columns = [
+                          {
+                            title: "Компонент",
+                            dataIndex: "cat_number",
+                            render: (v, r) => (
+                              <div>
+                                <div>{v || "—"}</div>
+                                <Text type="secondary">
+                                  {r.description || "—"}
+                                </Text>
+                                <div>
+                                  <Tag color="geekblue">{r.source_type || "BOM"}</Tag>
+                                </div>
+                              </div>
+                            ),
+                          },
+                          {
+                            title: "Кол-во",
+                            dataIndex: "component_qty",
+                            width: 140,
+                            align: "right",
+                            render: (v, r) =>
+                              r.rfq_item_component_id ? (
+                                <InputNumber
+                                  min={0}
+                                  value={
+                                    componentDrafts[r.rfq_item_component_id] ?? v
+                                  }
+                                  onChange={(val) =>
+                                    handleComponentQtyChange(
+                                      r.rfq_item_component_id,
+                                      val,
+                                    )
+                                  }
+                                  onBlur={() =>
+                                    handleComponentQtyCommit(
+                                      data.rfq_item_id,
+                                      r,
+                                    )
+                                  }
+                                  disabled={
+                                    componentBusyIds[r.rfq_item_component_id]
+                                  }
+                                />
+                              ) : (
+                                numOrDash(v)
+                              ),
+                          },
+                          {
+                            title: "Требуется",
+                            dataIndex: "required_qty",
+                            width: 140,
+                            align: "right",
+                            render: (v) => numOrDash(v),
+                          },
+                          {
+                            title: "Комплекты",
+                            dataIndex: "bundle_count",
+                            width: 120,
+                            render: (v) =>
+                              v ? <Tag color="blue">{v}</Tag> : "—",
+                          },
+                          {
+                            title: "Действия",
+                            dataIndex: "actions",
+                            width: 100,
+                            render: (_, r) =>
+                              r.rfq_item_component_id ? (
+                                <Button
+                                  danger
+                                  type="text"
+                                  icon={<DeleteOutlined />}
+                                  loading={componentBusyIds[r.rfq_item_component_id]}
+                                  onClick={() =>
+                                    handleDeleteComponent(data.rfq_item_id, r)
+                                  }
+                                />
+                              ) : (
+                                "—"
+                              ),
+                          },
+                        ]
+                        return (
+                          <div className="expanded-area" style={{ padding: "8px 16px" }}>
+                            <StrategyEditor item={data} strategy={data.strategy} />
+                            <Divider style={{ margin: "8px 0" }} />
+                            <Space wrap align="center" style={{ marginBottom: 12 }}>
+                              <Button
+                                type="dashed"
+                                icon={<PlusOutlined />}
+                                loading={addingComponentItemId === data.rfq_item_id}
+                                onClick={() => {
+                                  setComponentPickerItem(data)
+                                  setComponentPickerOpen(true)
+                                }}
+                              >
+                                Добавить компонент
+                              </Button>
+                              <Button
+                                icon={<ReloadOutlined />}
+                                loading={rebuildingItemId === data.rfq_item_id}
+                                onClick={() =>
+                                  handleRebuildComponents(
+                                    data.rfq_item_id,
+                                    data.strategy?.mode,
+                                  )
+                                }
+                              >
+                                Пересобрать
+                              </Button>
+                              {bundlesLabel ? (
+                                <Text type="secondary">{bundlesLabel}</Text>
+                              ) : null}
+                              {hasDraftComponents ? (
+                                <Text type="secondary">
+                                  Компоненты не сохранены — нажмите "Пересобрать"
+                                </Text>
+                              ) : null}
+                            </Space>
+                            {components.length ? (
+                              <Table
+                                rowKey={(r) =>
+                                  String(
+                                    r.rfq_item_component_id || r.original_part_id,
+                                  )
+                                }
+                                className="op-table"
+                                size="small"
+                                columns={columns}
+                                dataSource={components}
+                                pagination={false}
+                              />
+                            ) : (
+                              <Text type="secondary">
+                                {bundlesLabel || "Нет BOM/комплектов"}
+                              </Text>
+                            )}
+                          </div>
+                        )
+                      },
+                      rowExpandable: (record) => {
+                        const data = rfqStructureMap.get(record.id)
+                        return !!data
+                      },
+                      columnWidth: 36,
+                    }}
                     columns={[
                       { title: "№", dataIndex: "line_number", width: 70 },
                       {
@@ -725,6 +1128,19 @@ export default function RfqPage() {
                           value || record.client_part_number || "—",
                       },
                       { title: "Описание клиента", dataIndex: "client_description" },
+                      {
+                        title: "Стратегия",
+                        dataIndex: "strategy",
+                        width: 160,
+                        render: (_, record) => {
+                          const strategy = rfqStructureMap.get(record.id)?.strategy
+                          return strategy ? (
+                            <Tag color="blue">{formatStrategyMode(strategy.mode)}</Tag>
+                          ) : (
+                            "—"
+                          )
+                        },
+                      },
                       { title: "Кол-во", dataIndex: "requested_qty", width: 100 },
                       { title: "Ед.", dataIndex: "uom", width: 80 },
                       {
@@ -754,6 +1170,12 @@ export default function RfqPage() {
                       >
                         Отправить RFQ
                       </Button>
+                      <Checkbox
+                        checked={includeStructureOnSend}
+                        onChange={(e) => setIncludeStructureOnSend(e.target.checked)}
+                      >
+                        Включить структуру (BOM/комплекты)
+                      </Checkbox>
                       <Text type="secondary">
                         Создаст документы для поставщиков и отметит статус как отправленный.
                       </Text>
@@ -910,6 +1332,25 @@ export default function RfqPage() {
           ]}
         />
       </Drawer>
+
+      <OriginalsPickerDrawer
+        open={componentPickerOpen}
+        onClose={() => {
+          setComponentPickerOpen(false)
+          setComponentPickerItem(null)
+        }}
+        excludeIds={componentPickerExcludeIds}
+        title="Добавить компоненты"
+        confirmLabel="Добавить"
+        onPick={(rows) => {
+          const target = componentPickerItem
+          setComponentPickerOpen(false)
+          setComponentPickerItem(null)
+          if (target) {
+            handleAddComponents(target, rows)
+          }
+        }}
+      />
     </PageWrapper>
   )
 }

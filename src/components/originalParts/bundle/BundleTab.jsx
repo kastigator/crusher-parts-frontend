@@ -9,6 +9,7 @@ import ActionButtons from "@/components/common/ActionButtons"
 const { Text } = Typography
 
 export default function BundleTab({ originalPartId, originalPart }) {
+  const expandColumnWidth = 36
   const [bundleId, setBundleId] = useState(null)
   const [loading, setLoading] = useState(false)
 
@@ -263,7 +264,7 @@ export default function BundleTab({ originalPartId, originalPart }) {
       }
     ]
     return (
-      <div className="expanded-area" style={{ paddingLeft: 8 }}>
+      <div className="expanded-area" style={{ paddingLeft: expandColumnWidth }}>
         <Table rowKey="link_id" className="op-table" size="small" columns={cols} dataSource={data} pagination={false} />
       </div>
     )
@@ -343,7 +344,7 @@ export default function BundleTab({ originalPartId, originalPart }) {
         expandable={{
           expandedRowRender: renderOptionsTable,
           expandRowByClick: true,
-          columnWidth: 36,
+          columnWidth: expandColumnWidth,
         }}
       />
 

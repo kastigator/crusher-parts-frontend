@@ -58,6 +58,9 @@ export default function SupplierResponsesPage() {
   const [rfqs, setRfqs] = useState([])
   const [rfqSuppliers, setRfqSuppliers] = useState([])
   const [rfqItems, setRfqItems] = useState([])
+  const [rfqStructure, setRfqStructure] = useState([])
+  const [activeRfqItemId, setActiveRfqItemId] = useState(null)
+  const [activeComponents, setActiveComponents] = useState([])
   const [loading, setLoading] = useState(false)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -197,6 +200,19 @@ export default function SupplierResponsesPage() {
     }
   }
 
+  const loadRfqStructure = async (rfqId) => {
+    if (!rfqId) {
+      setRfqStructure([])
+      return
+    }
+    try {
+      const { data } = await axios.get(`/rfqs/${rfqId}/structure`)
+      setRfqStructure(Array.isArray(data?.items) ? data.items : [])
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   const rfqOptions = useMemo(
     () =>
       rfqs.map((r) => ({
@@ -230,6 +246,14 @@ export default function SupplierResponsesPage() {
     return map
   }, [rfqItems])
 
+  const rfqComponentsMap = useMemo(() => {
+    const map = new Map()
+    rfqStructure.forEach((item) => {
+      map.set(item.rfq_item_id, item.components || [])
+    })
+    return map
+  }, [rfqStructure])
+
   const formatRfqItemLabel = (item) =>
     `${item?.original_cat_number || "Без номера"} · ${item?.client_description || ""}`.trim()
 
@@ -241,6 +265,31 @@ export default function SupplierResponsesPage() {
     suggestedParts.forEach((item) => map.set(item.supplier_part_id, item))
     return map
   }, [supplierPartOptions, suggestedParts])
+
+  const componentOptions = useMemo(
+    () =>
+      activeComponents
+        .filter((c) => c.rfq_item_component_id)
+        .map((c) => ({
+          value: c.rfq_item_component_id,
+          label: `${c.cat_number || "Без номера"} · ${c.description || ""}`.trim(),
+          original_part_id: c.original_part_id,
+        })),
+    [activeComponents],
+  )
+
+  const componentHint =
+    activeComponents.length && !componentOptions.length
+      ? "Компоненты не сохранены. Пересоберите в RFQ."
+      : null
+
+  useEffect(() => {
+    if (!activeRfqItemId) {
+      setActiveComponents([])
+      return
+    }
+    setActiveComponents(rfqComponentsMap.get(activeRfqItemId) || [])
+  }, [activeRfqItemId, rfqComponentsMap])
 
   const applySupplierPartMeta = (meta) => {
     if (!meta) return
@@ -305,9 +354,12 @@ export default function SupplierResponsesPage() {
     setDrawerOpen(true)
     setSuggestedParts([])
     setPriceHint(null)
+    setActiveRfqItemId(null)
+    setActiveComponents([])
     await loadRevisions(record.id)
     if (record.rfq_id) {
       await loadRfqItems(record.rfq_id)
+      await loadRfqStructure(record.rfq_id)
     }
   }
 
@@ -361,6 +413,7 @@ export default function SupplierResponsesPage() {
     try {
       await axios.post(`/supplier-responses/revisions/${activeRevisionId}/lines`, {
         rfq_item_id: values.rfq_item_id,
+        rfq_item_component_id: values.rfq_item_component_id || null,
         supplier_part_id: values.supplier_part_id || null,
         original_part_id: values.original_part_id || null,
         bundle_id: values.bundle_id || null,
@@ -571,13 +624,45 @@ export default function SupplierResponsesPage() {
                             options={rfqItemOptions}
                             onChange={(val) => {
                               const item = rfqItemMap.get(val)
+                              setActiveRfqItemId(val)
+                              const components = rfqComponentsMap.get(val) || []
+                              const defaultComponent =
+                                components.length === 1 ? components[0] : null
+                              const originalPartId =
+                                defaultComponent?.original_part_id ||
+                                item?.original_part_id ||
+                                undefined
                               if (item) {
                                 lineForm.setFieldsValue({
                                   offered_qty: item.requested_qty,
-                                  original_part_id: item.original_part_id || undefined,
+                                  original_part_id: originalPartId,
+                                  rfq_item_component_id:
+                                    defaultComponent?.rfq_item_component_id || null,
                                   offer_type: item.oem_only ? "OEM" : undefined,
                                 })
-                                loadSuggestedParts(item.original_part_id)
+                                loadSuggestedParts(originalPartId)
+                              }
+                            }}
+                          />
+                        </Form.Item>
+                        <Form.Item
+                          label="Компонент"
+                          name="rfq_item_component_id"
+                          extra={componentHint}
+                        >
+                          <Select
+                            style={{ width: 240 }}
+                            allowClear
+                            options={componentOptions}
+                            onChange={(val) => {
+                              const component = componentOptions.find(
+                                (opt) => opt.value === val,
+                              )
+                              if (component?.original_part_id) {
+                                lineForm.setFieldsValue({
+                                  original_part_id: component.original_part_id,
+                                })
+                                loadSuggestedParts(component.original_part_id)
                               }
                             }}
                           />
@@ -699,6 +784,24 @@ export default function SupplierResponsesPage() {
                         render: (v) => {
                           const item = rfqItemMap.get(v)
                           return item ? formatRfqItemLabel(item) : "—"
+                        },
+                      },
+                      {
+                        title: "Компонент",
+                        dataIndex: "component_cat_number",
+                        width: 200,
+                        render: (v, record) => {
+                          const desc =
+                            record.component_description_ru ||
+                            record.component_description_en ||
+                            ""
+                          if (!v && !desc) return "—"
+                          return (
+                            <div>
+                              <div>{v || "—"}</div>
+                              <Text type="secondary">{desc || "—"}</Text>
+                            </div>
+                          )
                         },
                       },
                       {

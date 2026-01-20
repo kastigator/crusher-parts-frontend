@@ -111,7 +111,6 @@ export default function SupplierPartsTable({
     if (!supplierId && !showAll) {
       setRows([])
       setTotal(0)
-      setUsageCounts({})
       return
     }
 
