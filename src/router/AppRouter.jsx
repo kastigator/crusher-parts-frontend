@@ -40,6 +40,7 @@ const AppRouter = () => (
       >
         <Route index element={<HomePage />} />
         <Route path="client-requests" element={<ClientRequestsPage />} />
+        <Route path="client-request-workspace" element={<ClientRequestsPage />} />
         <Route path="rfq" element={<RfqPage />} />
         <Route path="rfq-workspace" element={<RfqWorkspacePage />} />
         <Route path="supplier-responses" element={<SupplierResponsesPage />} />

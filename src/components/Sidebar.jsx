@@ -1,8 +1,9 @@
 // src/components/Sidebar.jsx
 import React, { useEffect, useMemo, useState } from "react"
-import { Layout, Menu, Tooltip, Spin } from "antd"
+import { Layout, Menu, Tooltip, Spin, Button } from "antd"
 import { useLocation, useNavigate } from "react-router-dom"
 import { useTabs } from "@/context/TabsContext"
+import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons"
 
 const { Sider } = Layout
 
@@ -17,6 +18,14 @@ const CATALOG_CHILD_PATHS = new Set([
 ])
 
 const ADMIN_PATH = "/admin"
+const CATALOG_ICON_BY_PATH = {
+  "/clients": "clients",
+  "/suppliers": "suppliers",
+  "/supplier-parts": "supplier-parts",
+  "/original-parts": "original-parts",
+  "/materials": "materials",
+  "/tnved-codes": "tnved-codes",
+}
 
 function normalizeIconName(value) {
   if (!value) return "default"
@@ -25,44 +34,14 @@ function normalizeIconName(value) {
   return v.replace(/^\/?icons\//, "").replace(/\.svg$/i, "") || "default"
 }
 
-let iconsBaseUrlCache
-
-function resolveIconsBaseUrl() {
-  if (iconsBaseUrlCache) return iconsBaseUrlCache
-
-  const rawBase = import.meta.env.BASE_URL ?? "/"
-  const safeBase = rawBase === "/" ? "./" : rawBase
-
-  if (typeof window === "undefined") {
-    iconsBaseUrlCache = `${safeBase}icons/`
-    return iconsBaseUrlCache
-  }
-
-  const pathname = window.location.pathname
-  const lastSegment = pathname.split("/").filter(Boolean).slice(-1)[0] || ""
-  const looksLikeFile = lastSegment.includes(".")
-  const directory = pathname.endsWith("/")
-    ? pathname
-    : looksLikeFile
-      ? pathname.replace(/[^/]+$/, "")
-      : `${pathname}/`
-  const fallbackOrigin = `${window.location.origin}${directory}`
-
-  let resolvedBase = fallbackOrigin
-
-  try {
-    resolvedBase = new URL(safeBase, fallbackOrigin).href
-  } catch {
-    resolvedBase = fallbackOrigin
-  }
-
-  iconsBaseUrlCache = new URL("icons/", resolvedBase).href
-  return iconsBaseUrlCache
-}
+const ICONS_BASE_URL = (() => {
+  const base = import.meta.env.BASE_URL ?? "/"
+  return base.endsWith("/") ? base : `${base}/`
+})()
 
 function getIconUrl(iconName) {
   const name = normalizeIconName(iconName)
-  return `${resolveIconsBaseUrl()}${name}.svg`
+  return `${ICONS_BASE_URL}icons/${name}.svg`
 }
 
 function buildMenuItem(tab, { withIcon = true, labelOverride, tooltipOverride } = {}) {
@@ -95,6 +74,7 @@ export default function Sidebar() {
   const location = useLocation()
   const navigate = useNavigate()
   const { tabs, loading } = useTabs()
+  const [collapsed, setCollapsed] = useState(false)
 
   const { menuItems, parentByKey } = useMemo(() => {
     const sorted = (tabs || [])
@@ -103,11 +83,20 @@ export default function Sidebar() {
 
     const otherTabs = []
     const catalogTabs = []
+    let adminTab = null
+    let usersTab = null
     let catalogInsertIndex = null
 
     sorted.forEach((tab) => {
       if (!tab?.path) return
-      if (tab.path === ADMIN_PATH) return
+      if (tab.path === "/users") {
+        usersTab = tab
+      }
+
+      if (tab.path === ADMIN_PATH) {
+        adminTab = tab
+        return
+      }
 
       const isCatalog =
         tab.path === CATALOG_ROOT_PATH || CATALOG_CHILD_PATHS.has(tab.path)
@@ -130,7 +119,11 @@ export default function Sidebar() {
 
       const childItems = []
       catalogChildren.forEach((tab) => {
-        childItems.push(buildMenuItem(tab, { withIcon: false }))
+        const withFallbackIcon = {
+          ...tab,
+          icon: tab.icon || CATALOG_ICON_BY_PATH[tab.path] || "catalogs",
+        }
+        childItems.push(buildMenuItem(withFallbackIcon, { withIcon: true }))
       })
 
       const catalogLabel = catalogRoot?.name ?? "Каталоги"
@@ -149,6 +142,11 @@ export default function Sidebar() {
 
       const insertAt = catalogInsertIndex ?? items.length
       items.splice(insertAt, 0, groupItem)
+    }
+
+    if (adminTab && !usersTab) {
+      items.push({ type: "divider" })
+      items.push(buildMenuItem(adminTab))
     }
 
     return { menuItems: items, parentByKey: parentMap }
@@ -181,22 +179,47 @@ export default function Sidebar() {
   const [openKeys, setOpenKeys] = useState([])
 
   useEffect(() => {
+    if (collapsed) {
+      setOpenKeys([])
+      return
+    }
     const parentKey = parentByKey.get(selectedKey)
     if (parentKey) {
       setOpenKeys((prev) => (prev.includes(parentKey) ? prev : [parentKey]))
       return
     }
     setOpenKeys([])
-  }, [parentByKey, selectedKey])
+  }, [collapsed, parentByKey, selectedKey])
 
   return (
-    <Sider width={240} theme="light" style={{ borderRight: "1px solid #f0f0f0" }}>
-      <div style={{ padding: 12, display: "flex", justifyContent: "center" }}>
-        {loading ? <Spin size="small" /> : null}
+    <Sider
+      width={240}
+      collapsedWidth={64}
+      collapsed={collapsed}
+      theme="light"
+      style={{ borderRight: "1px solid #f0f0f0" }}
+    >
+      <div
+        style={{
+          padding: 12,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: collapsed ? "center" : "space-between",
+          gap: 8,
+        }}
+      >
+        {loading ? <Spin size="small" /> : <span />}
+        <Button
+          size="small"
+          type="text"
+          icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          onClick={() => setCollapsed((prev) => !prev)}
+        />
       </div>
 
       <Menu
         mode="inline"
+        inlineCollapsed={collapsed}
         selectedKeys={selectedKey ? [selectedKey] : []}
         openKeys={openKeys}
         onOpenChange={setOpenKeys}

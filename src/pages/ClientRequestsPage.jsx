@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import {
   Card,
   Space,
@@ -10,8 +10,6 @@ import {
   AutoComplete,
   DatePicker,
   Button,
-  Drawer,
-  Tabs,
   message,
   Checkbox,
   Tag,
@@ -22,6 +20,9 @@ import {
   Switch,
   Tooltip,
   Timeline,
+  Collapse,
+  Tabs,
+  Steps,
 } from "antd"
 import {
   DeleteOutlined,
@@ -40,7 +41,11 @@ import readXlsxFile from "read-excel-file"
 const STATUS_OPTIONS = [
   { value: "draft", label: "Черновик" },
   { value: "in_progress", label: "В работе" },
+  { value: "rfq_created", label: "RFQ создан" },
   { value: "rfq_sent", label: "RFQ отправлен" },
+  { value: "responses_received", label: "Ответы получены" },
+  { value: "selection_done", label: "Выбор сделан" },
+  { value: "quote_prepared", label: "КП подготовлено" },
   { value: "contracted", label: "Контракт" },
   { value: "cancelled", label: "Отменено" },
 ]
@@ -84,9 +89,29 @@ const IMPORT_REQUIRED_FIELDS = ["cat_number", "requested_qty"]
 const STATUS_COLORS = {
   draft: "default",
   in_progress: "blue",
+  rfq_created: "geekblue",
   rfq_sent: "gold",
+  responses_received: "green",
+  selection_done: "cyan",
+  quote_prepared: "purple",
   contracted: "green",
   cancelled: "red",
+}
+
+const STATUS_STEPS = [
+  { key: "draft", title: "Черновик" },
+  { key: "in_progress", title: "В работе" },
+  { key: "rfq_created", title: "RFQ создан" },
+  { key: "rfq_sent", title: "RFQ отправлен" },
+  { key: "responses_received", title: "Ответы" },
+  { key: "selection_done", title: "Выбор" },
+  { key: "quote_prepared", title: "КП" },
+  { key: "contracted", title: "Контракт" },
+]
+
+const getStatusStepIndex = (status) => {
+  const idx = STATUS_STEPS.findIndex((s) => s.key === status)
+  return idx >= 0 ? idx : 0
 }
 
 export default function ClientRequestsPage() {
@@ -94,7 +119,6 @@ export default function ClientRequestsPage() {
   const [clients, setClients] = useState([])
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
-  const [drawerOpen, setDrawerOpen] = useState(false)
   const [activeRequest, setActiveRequest] = useState(null)
   const [requestEditing, setRequestEditing] = useState(false)
   const [revisions, setRevisions] = useState([])
@@ -102,7 +126,10 @@ export default function ClientRequestsPage() {
   const [items, setItems] = useState([])
   const [itemsLoading, setItemsLoading] = useState(false)
   const [activeRevisionId, setActiveRevisionId] = useState(null)
-  const [activeTab, setActiveTab] = useState("items")
+  const [workspaceTabKey, setWorkspaceTabKey] = useState("items")
+  const [revisionNoteOpen, setRevisionNoteOpen] = useState(false)
+  const [revisionNote, setRevisionNote] = useState("")
+  const revisionNoteResolver = useRef(null)
   const [itemEditOpen, setItemEditOpen] = useState(false)
   const [itemEditRecord, setItemEditRecord] = useState(null)
   const [originalResults, setOriginalResults] = useState([])
@@ -112,6 +139,31 @@ export default function ClientRequestsPage() {
   const [catalogResults, setCatalogResults] = useState([])
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [catalogSelection, setCatalogSelection] = useState([])
+  const [catalogRowInputs, setCatalogRowInputs] = useState({})
+  const [catalogAddLoading, setCatalogAddLoading] = useState(false)
+  const [modalSearch, setModalSearch] = useState("")
+  const [modalResults, setModalResults] = useState([])
+  const [modalLoading, setModalLoading] = useState(false)
+  const [modalSelectedPart, setModalSelectedPart] = useState(null)
+  const [modalQty, setModalQty] = useState(1)
+  const [modalOemOnly, setModalOemOnly] = useState(false)
+  const [quickSearch, setQuickSearch] = useState("")
+  const [quickResults, setQuickResults] = useState([])
+  const [quickLoading, setQuickLoading] = useState(false)
+  const [quickSelectedPart, setQuickSelectedPart] = useState(null)
+  const [quickQty, setQuickQty] = useState(1)
+  const [quickOemOnly, setQuickOemOnly] = useState(false)
+  const [bulkMode, setBulkMode] = useState(false)
+  const [bulkSelectedKeys, setBulkSelectedKeys] = useState([])
+  const [bulkSelectedRows, setBulkSelectedRows] = useState([])
+  const [bulkEdits, setBulkEdits] = useState({})
+  const [changeDraftActive, setChangeDraftActive] = useState(false)
+  const [pendingChanges, setPendingChanges] = useState({
+    adds: [],
+    updates: {},
+    deletes: [],
+  })
+  const originalItemsRef = useRef([])
   const [manufacturers, setManufacturers] = useState([])
   const [manufacturerId, setManufacturerId] = useState(null)
   const [models, setModels] = useState([])
@@ -119,6 +171,7 @@ export default function ClientRequestsPage() {
   const [frequentParts, setFrequentParts] = useState([])
   const [frequentLoading, setFrequentLoading] = useState(false)
   const [addModalOpen, setAddModalOpen] = useState(false)
+  const [importModalOpen, setImportModalOpen] = useState(false)
   const [stagedRows, setStagedRows] = useState([])
   const [importLoading, setImportLoading] = useState(false)
   const [importPreview, setImportPreview] = useState([])
@@ -128,10 +181,13 @@ export default function ClientRequestsPage() {
   const [clientContacts, setClientContacts] = useState([])
   const [contactsLoading, setContactsLoading] = useState(false)
   const [contactDropdownOpen, setContactDropdownOpen] = useState(false)
+  const [createClientOpen, setCreateClientOpen] = useState(false)
+  const [createClientLoading, setCreateClientLoading] = useState(false)
 
   const { Text } = Typography
 
   const [createForm] = Form.useForm()
+  const [createClientForm] = Form.useForm()
   const [requestForm] = Form.useForm()
   const [revisionForm] = Form.useForm()
   const [itemForm] = Form.useForm()
@@ -255,6 +311,11 @@ export default function ClientRequestsPage() {
     setCatalogSearch("")
     setCatalogResults([])
     setCatalogSelection([])
+    setQuickSearch("")
+    setQuickResults([])
+    setQuickSelectedPart(null)
+    setQuickQty(1)
+    setQuickOemOnly(false)
   }, [manufacturerId])
 
   useEffect(() => {
@@ -300,7 +361,51 @@ export default function ClientRequestsPage() {
   }, [originalSearch, itemEditOpen])
 
   useEffect(() => {
-    if (!addModalOpen || !modelId) {
+    if (!quickSearch || quickSearch.length < 2) {
+      setQuickResults([])
+      setQuickSelectedPart(null)
+      return
+    }
+    const timer = setTimeout(async () => {
+      setQuickLoading(true)
+      try {
+        const { data } = await axios.get("/original-parts", {
+          params: { q: quickSearch },
+        })
+        setQuickResults(Array.isArray(data) ? data.slice(0, 20) : [])
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setQuickLoading(false)
+      }
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [quickSearch])
+
+  useEffect(() => {
+    if (!quickSearch || !quickResults.length) {
+      if (!quickSearch) setQuickSelectedPart(null)
+      return
+    }
+    const normalized = quickSearch.trim().toLowerCase()
+    const exact = quickResults.find(
+      (part) => String(part.cat_number || "").trim().toLowerCase() === normalized,
+    )
+    if (exact) {
+      setQuickSelectedPart(exact)
+      return
+    }
+    if (quickResults.length === 1) {
+      setQuickSelectedPart(quickResults[0])
+    }
+  }, [quickResults, quickSearch])
+
+  useEffect(() => {
+    if (!addModalOpen) {
+      setCatalogResults([])
+      return
+    }
+    if (!modelId && (!catalogSearch || catalogSearch.length < 2)) {
       setCatalogResults([])
       return
     }
@@ -310,8 +415,9 @@ export default function ClientRequestsPage() {
     const timer = setTimeout(async () => {
       setCatalogLoading(true)
       try {
-        const params = {
-          equipment_model_id: modelId,
+        const params = {}
+        if (modelId) {
+          params.equipment_model_id = modelId
         }
         if (manufacturerId) {
           params.manufacturer_id = manufacturerId
@@ -329,6 +435,54 @@ export default function ClientRequestsPage() {
     }, 300)
     return () => clearTimeout(timer)
   }, [addModalOpen, manufacturerId, modelId, catalogSearch])
+
+  useEffect(() => {
+    if (!catalogResults.length) return
+    setCatalogRowInputs((prev) => {
+      const next = { ...prev }
+      catalogResults.forEach((row) => {
+        if (!row?.id) return
+        if (!next[row.id]) {
+          next[row.id] = { qty: 1, oem_only: false }
+        }
+      })
+      return next
+    })
+  }, [catalogResults])
+
+  useEffect(() => {
+    if (!addModalOpen) {
+      setModalResults([])
+      setModalSelectedPart(null)
+      return
+    }
+    if (!modalSearch || modalSearch.length < 2) {
+      setModalResults([])
+      setModalSelectedPart(null)
+      return
+    }
+    const timer = setTimeout(async () => {
+      setModalLoading(true)
+      try {
+        const { data } = await axios.get("/original-parts", {
+          params: { q: modalSearch },
+        })
+        setModalResults(Array.isArray(data) ? data.slice(0, 20) : [])
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setModalLoading(false)
+      }
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [addModalOpen, modalSearch])
+
+  useEffect(() => {
+    if (!bulkMode) return
+    setBulkSelectedKeys([])
+    setBulkSelectedRows([])
+    setBulkEdits({})
+  }, [items, bulkMode])
 
   const formatDateTimeValue = (value) => {
     if (!value) return null
@@ -351,8 +505,8 @@ export default function ClientRequestsPage() {
     try {
       const payload = {
         client_id: values.client_id,
-        status: values.status || "draft",
         source_type: values.source_type || null,
+        received_at: formatDateTimeValue(values.received_at),
         assigned_to_user_id: values.assigned_to_user_id || null,
         internal_number: normalizeTextValue(values.internal_number),
         client_reference: values.client_reference || null,
@@ -361,7 +515,6 @@ export default function ClientRequestsPage() {
         contact_phone: values.contact_phone || null,
         comment_internal: values.comment_internal || null,
         comment_client: values.comment_client || null,
-        created_at: formatDateTimeValue(values.created_at),
       }
       await axios.post("/client-requests", payload)
       const clientId = values.client_id
@@ -399,7 +552,33 @@ export default function ClientRequestsPage() {
     }
   }
 
-  const openDrawer = async (record) => {
+  const handleCreateClient = async (values) => {
+    try {
+      setCreateClientLoading(true)
+      const { data } = await axios.post("/clients", {
+        company_name: values.company_name,
+        contact_person: values.contact_person || null,
+        phone: values.phone || null,
+        email: values.email || null,
+        notes: values.notes || null,
+      })
+      if (data) {
+        setClients((prev) => [data, ...prev])
+        createForm.setFieldsValue({ client_id: data.id })
+        loadContacts(data.id)
+      }
+      setCreateClientOpen(false)
+      createClientForm.resetFields()
+      message.success("Клиент создан")
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось создать клиента")
+    } finally {
+      setCreateClientLoading(false)
+    }
+  }
+
+  const openWorkspace = async (record) => {
     setActiveRequest(record)
     setRequestEditing(false)
     setAddModalOpen(false)
@@ -417,10 +596,21 @@ export default function ClientRequestsPage() {
     setOriginalResults([])
     setItemEditOpen(false)
     setItemEditRecord(null)
-    setActiveTab("items")
+    setWorkspaceTabKey("items")
+    setQuickSearch("")
+    setQuickResults([])
+    setQuickSelectedPart(null)
+    setQuickQty(1)
+    setQuickOemOnly(false)
+    setBulkMode(false)
+    setBulkSelectedKeys([])
+    setBulkSelectedRows([])
+    setBulkEdits({})
+    setChangeDraftActive(false)
+    setPendingChanges({ adds: [], updates: {}, deletes: [] })
+    originalItemsRef.current = []
     requestForm.setFieldsValue({
       client_id: record.client_id,
-      status: record.status || "draft",
       source_type: record.source_type || null,
       assigned_to_user_id: record.assigned_to_user_id || null,
       internal_number: record.internal_number || null,
@@ -430,10 +620,9 @@ export default function ClientRequestsPage() {
       contact_phone: record.contact_phone || null,
       comment_internal: record.comment_internal || null,
       comment_client: record.comment_client || null,
-      created_at: record.created_at ? dayjs(record.created_at) : null,
+      received_at: record.received_at ? dayjs(record.received_at) : null,
     })
     await loadContacts(record.client_id, false)
-    setDrawerOpen(true)
     await loadRevisions(record.id)
   }
 
@@ -442,8 +631,9 @@ export default function ClientRequestsPage() {
     try {
       const { data } = await axios.get(`/client-requests/${requestId}/revisions`)
       const list = Array.isArray(data) ? data : []
-      setRevisions(list)
-      const latest = list[0]?.id || null
+      const sorted = [...list].sort((a, b) => (b.rev_number || 0) - (a.rev_number || 0))
+      setRevisions(sorted)
+      const latest = sorted[0]?.id || null
       setActiveRevisionId(latest)
       if (latest) {
         await loadItems(latest)
@@ -474,25 +664,60 @@ export default function ClientRequestsPage() {
     }
   }
 
-  const handleAddRevision = async (values) => {
-    if (!activeRequest?.id) return
+  const createRevisionAndEnterEdit = async (noteOverride = null) => {
+    if (!activeRequest?.id) return null
+    if (!isLatestRevision) {
+      message.warning("Перейдите на последнюю ревизию, чтобы создать новую")
+      return null
+    }
+    const note = noteOverride ?? (await requestRevisionNote())
+    if (!note) return null
     try {
-      await axios.post(`/client-requests/${activeRequest.id}/revisions`, {
-        note: values.note || null,
-      })
-      revisionForm.resetFields()
+      const { data } = await axios.post(
+        `/client-requests/${activeRequest.id}/revisions`,
+        { note },
+      )
+      const revisionId = data?.id || null
       await loadRevisions(activeRequest.id)
-      message.success("Ревизия создана")
+      if (revisionId) {
+        const revisionItems = await fetchRevisionItems(revisionId)
+        setActiveRevisionId(revisionId)
+        setItems(revisionItems)
+        setWorkspaceTabKey("items")
+        startChangeDraft({ force: true, itemsSnapshot: revisionItems })
+      }
+      message.success("Ревизия создана. Режим редактирования включен")
+      return revisionId
     } catch (e) {
       console.error(e)
       message.error("Не удалось создать ревизию")
+      return null
     }
+  }
+
+  const handleAddRevision = async (values) => {
+    const note = String(values.note || "").trim()
+    if (!note) {
+      message.warning("Укажите комментарий для ревизии")
+      return
+    }
+    revisionForm.resetFields()
+    await createRevisionAndEnterEdit(note)
   }
 
   const handleSelectRevision = async (revisionId) => {
     if (!revisionId) return
     setActiveRevisionId(revisionId)
     await loadItems(revisionId)
+    if (revisionId !== latestRevisionId) {
+      setChangeDraftActive(false)
+      setPendingChanges({ adds: [], updates: {}, deletes: [] })
+      setBulkMode(false)
+      setBulkSelectedKeys([])
+      setBulkSelectedRows([])
+      setBulkEdits({})
+      originalItemsRef.current = []
+    }
   }
 
   const ensureOriginalOption = (item) => {
@@ -612,7 +837,27 @@ export default function ClientRequestsPage() {
       message.warning("Список позиций пуст")
       return
     }
-    const revisionId = await ensureRevisionId()
+    if (changeDraftActive) {
+      const prepared = buildImportRows(rows)
+      prepared.forEach((row) => {
+        stageAdd({
+          original_part_id: null,
+          original_cat_number: row.cat_number,
+          client_part_number: row.client_part_number || row.cat_number,
+          client_description: row.client_description || null,
+          requested_qty: row.requested_qty ?? null,
+          uom: row.uom || "pcs",
+          oem_only: row.oem_only ? 1 : 0,
+        })
+      })
+      message.success("Позиции добавлены в черновик")
+      setAddModalOpen(false)
+      setImportModalOpen(false)
+      setStagedRows([])
+      resetImportState()
+      return
+    }
+    const revisionId = await ensureActiveRevisionId()
     if (!revisionId) return
     let preview = null
     if (!importPreview.length) {
@@ -655,6 +900,7 @@ export default function ClientRequestsPage() {
         }.`,
       )
       setAddModalOpen(false)
+      setImportModalOpen(false)
       setStagedRows([])
       resetImportState()
       await loadItems(revisionId)
@@ -759,95 +1005,136 @@ export default function ClientRequestsPage() {
     }
   }
 
-  const handleAddFromCatalog = (part) => {
-    const manufacturerName =
-      part?.manufacturer_name ||
-      manufacturers.find((m) => m.id === manufacturerId)?.name ||
-      null
-    const modelName =
-      part?.model_name ||
-      models.find((m) => m.id === modelId)?.model_name ||
-      null
-
-    setStagedRows((prev) => {
-      const idx = prev.findIndex(
-        (row) => row.cat_number === part.cat_number && row.model === modelName,
-      )
-      if (idx >= 0) {
-        const updated = [...prev]
-        updated[idx] = {
-          ...updated[idx],
-          requested_qty: (updated[idx].requested_qty || 0) + 1,
-        }
-        return updated
-      }
-      return [
-        ...prev,
-        createStagedRow({
-          manufacturer: manufacturerName,
-          model: modelName,
-          cat_number: part.cat_number || "",
-          client_description: part.description_ru || part.description_en || "",
-          requested_qty: 1,
-          uom: part.uom || "pcs",
-        }),
-      ]
-    })
-    setImportPreview([])
-    setImportSummary(null)
-    setImportErrors([])
+  const buildItemFromPart = (part, overrides = {}) => {
+    const qty = Number(overrides.qty ?? overrides.requested_qty ?? 1)
+    return {
+      original_part_id: part?.id || null,
+      original_cat_number: part?.cat_number || null,
+      original_description_ru: part?.description_ru || null,
+      original_description_en: part?.description_en || null,
+      client_part_number:
+        overrides.cat_number || part?.cat_number || overrides.client_part_number || null,
+      client_description:
+        overrides.client_description ||
+        part?.description_ru ||
+        part?.description_en ||
+        null,
+      requested_qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+      uom: overrides.uom || part?.uom || "pcs",
+      oem_only: overrides.oem_only ? 1 : 0,
+    }
   }
 
-  const handleAddSelectedFromCatalog = () => {
+  const addItemsToRequest = async (itemsToAdd = []) => {
+    if (!activeRequest?.id) return
+    if (!isLatestRevision) {
+      message.warning("Добавление возможно только в последней ревизии")
+      return
+    }
+    if (!itemsToAdd.length) return
+    if (changeDraftActive) {
+      itemsToAdd.forEach((item) => stageAdd(item))
+      message.success("Позиции добавлены в черновик")
+      return
+    }
+    const revisionId = await ensureActiveRevisionId()
+    if (!revisionId) return
+    try {
+      setCatalogAddLoading(true)
+      await Promise.all(
+        itemsToAdd.map((item) =>
+          axios.post(`/client-requests/revisions/${revisionId}/items`, {
+            original_part_id: item.original_part_id || null,
+            client_part_number:
+              item.client_part_number || item.original_cat_number || null,
+            client_description:
+              item.client_description ||
+              item.original_description_ru ||
+              item.original_description_en ||
+              null,
+            requested_qty: item.requested_qty ?? null,
+            uom: item.uom || "pcs",
+            oem_only: item.oem_only ? 1 : 0,
+          }),
+        ),
+      )
+      await loadItems(revisionId)
+      message.success(`Позиции добавлены: ${itemsToAdd.length}`)
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось добавить позиции")
+    } finally {
+      setCatalogAddLoading(false)
+    }
+  }
+
+  const handleAddFromCatalog = async (part) => {
+    if (!part) return
+    const meta = catalogRowInputs[part.id] || {}
+    await addItemsToRequest([
+      buildItemFromPart(part, {
+        qty: meta.qty ?? 1,
+        oem_only: meta.oem_only ? 1 : 0,
+      }),
+    ])
+  }
+
+  const handleAddSelectedFromCatalog = async () => {
     if (!catalogSelection.length) return
     const selected = catalogResults.filter((part) =>
       catalogSelection.includes(part.id),
     )
-    setStagedRows((prev) => {
-      const updated = [...prev]
-      const indexMap = new Map(
-        updated.map((row, idx) => [`${row.cat_number}|${row.model || ""}`, idx]),
-      )
-      selected.forEach((part) => {
-        const manufacturerName =
-          part?.manufacturer_name ||
-          manufacturers.find((m) => m.id === manufacturerId)?.name ||
-          null
-        const modelName =
-          part?.model_name ||
-          models.find((m) => m.id === modelId)?.model_name ||
-          null
-        const key = `${part.cat_number}|${modelName || ""}`
-        if (indexMap.has(key)) {
-          const idx = indexMap.get(key)
-          updated[idx] = {
-            ...updated[idx],
-            requested_qty: (updated[idx].requested_qty || 0) + 1,
-          }
-        } else {
-          updated.push(
-            createStagedRow({
-              manufacturer: manufacturerName,
-              model: modelName,
-              cat_number: part.cat_number || "",
-              client_part_number: part.cat_number || "",
-              client_description: part.description_ru || part.description_en || "",
-              requested_qty: 1,
-              uom: part.uom || "pcs",
-            }),
-          )
-          indexMap.set(key, updated.length - 1)
-        }
+    const itemsToAdd = selected.map((part) => {
+      const meta = catalogRowInputs[part.id] || {}
+      return buildItemFromPart(part, {
+        qty: meta.qty ?? 1,
+        oem_only: meta.oem_only ? 1 : 0,
       })
-      return updated
     })
+    await addItemsToRequest(itemsToAdd)
     setCatalogSelection([])
-    setImportPreview([])
-    setImportSummary(null)
-    setImportErrors([])
   }
 
-  const ensureRevisionId = async () => {
+  const requestRevisionNote = () =>
+    new Promise((resolve) => {
+      setRevisionNote("")
+      setRevisionNoteOpen(true)
+      revisionNoteResolver.current = resolve
+    })
+
+  const closeRevisionNote = (value) => {
+    if (revisionNoteResolver.current) {
+      revisionNoteResolver.current(value)
+      revisionNoteResolver.current = null
+    }
+    setRevisionNoteOpen(false)
+  }
+
+  const createRevisionForChange = async () => {
+    if (!activeRequest?.id) return null
+    if (!isLatestRevision) {
+      message.warning("Изменения доступны только в последней ревизии")
+      return null
+    }
+    const note = await requestRevisionNote()
+    if (!note) return null
+    try {
+      const { data } = await axios.post(
+        `/client-requests/${activeRequest.id}/revisions`,
+        { note },
+      )
+      const revisionId = data?.id
+      setActiveRevisionId(revisionId)
+      await loadRevisions(activeRequest.id)
+      return revisionId
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось создать ревизию")
+      return null
+    }
+  }
+
+  const ensureActiveRevisionId = async () => {
     if (!activeRequest?.id) return null
     if (activeRevisionId) return activeRevisionId
     try {
@@ -866,43 +1153,378 @@ export default function ClientRequestsPage() {
     }
   }
 
+  const fetchRevisionItems = async (revisionId) => {
+    if (!revisionId) return []
+    const { data } = await axios.get(
+      `/client-requests/revisions/${revisionId}/items`,
+    )
+    return Array.isArray(data) ? data : []
+  }
+
+  const startChangeDraft = (options = {}) => {
+    const { force = false, itemsSnapshot = null } = options
+    if (!force && !isLatestRevision) {
+      message.warning("Изменения доступны только в последней ревизии")
+      return
+    }
+    const baseItems = Array.isArray(itemsSnapshot) ? itemsSnapshot : items
+    originalItemsRef.current = baseItems.map((row) => ({ ...row }))
+    if (itemsSnapshot) {
+      setItems(baseItems)
+    }
+    setPendingChanges({ adds: [], updates: {}, deletes: [] })
+    setBulkMode(true)
+    setChangeDraftActive(true)
+  }
+
+  const cancelChangeDraft = () => {
+    setItems(originalItemsRef.current || [])
+    setPendingChanges({ adds: [], updates: {}, deletes: [] })
+    setBulkMode(false)
+    setBulkSelectedKeys([])
+    setBulkSelectedRows([])
+    setBulkEdits({})
+    setChangeDraftActive(false)
+  }
+
+  const stageUpdate = (lineNumber, patch) => {
+    if (!lineNumber) return
+    setItems((prev) =>
+      prev.map((row) =>
+        row.line_number === lineNumber ? { ...row, ...patch } : row,
+      ),
+    )
+    setPendingChanges((prev) => ({
+      ...prev,
+      updates: {
+        ...prev.updates,
+        [lineNumber]: {
+          ...(prev.updates?.[lineNumber] || {}),
+          ...patch,
+        },
+      },
+    }))
+  }
+
+  const stageDelete = (record) => {
+    if (!record) return
+    if (record.id && record.id < 0) {
+      setPendingChanges((prev) => ({
+        ...prev,
+        adds: prev.adds.filter((row) => row.temp_id !== record.id),
+      }))
+      setItems((prev) => prev.filter((row) => row.id !== record.id))
+      return
+    }
+    if (!record.line_number) return
+    setPendingChanges((prev) => ({
+      ...prev,
+      deletes: Array.from(new Set([...(prev.deletes || []), record.line_number])),
+      updates: Object.fromEntries(
+        Object.entries(prev.updates || {}).filter(
+          ([key]) => Number(key) !== Number(record.line_number),
+        ),
+      ),
+    }))
+    setItems((prev) =>
+      prev.filter((row) => row.line_number !== record.line_number),
+    )
+  }
+
+  const stageAdd = (payload) => {
+    const tempId = -Date.now() - Math.floor(Math.random() * 1000)
+    const newItem = {
+      id: tempId,
+      temp_id: tempId,
+      line_number: null,
+      original_part_id: payload.original_part_id || null,
+      original_cat_number: payload.original_cat_number || null,
+      original_description_ru: payload.original_description_ru || null,
+      original_description_en: payload.original_description_en || null,
+      client_part_number: payload.client_part_number || null,
+      client_description: payload.client_description || null,
+      requested_qty: payload.requested_qty || null,
+      uom: payload.uom || "pcs",
+      oem_only: payload.oem_only ? 1 : 0,
+    }
+    setItems((prev) => [newItem, ...prev])
+    setPendingChanges((prev) => ({
+      ...prev,
+      adds: [...prev.adds, { ...payload, temp_id: tempId }],
+    }))
+  }
+
+  const commitChangeDraft = async () => {
+    const hasChanges =
+      pendingChanges.adds.length ||
+      pendingChanges.deletes.length ||
+      Object.keys(pendingChanges.updates || {}).length
+    if (!hasChanges) {
+      message.warning("Нет изменений для сохранения")
+      return
+    }
+    if (!isLatestRevision) {
+      message.warning("Редактирование доступно только в последней ревизии")
+      return
+    }
+    if (!activeRevisionId) {
+      message.info("Сначала создайте ревизию для редактирования.")
+      return
+    }
+    try {
+      const revisionId = activeRevisionId
+      const revisionItems = await fetchRevisionItems(revisionId)
+      const itemsByLine = new Map(
+        revisionItems.map((row) => [row.line_number, row]),
+      )
+
+      for (const lineNumber of pendingChanges.deletes || []) {
+        const target = itemsByLine.get(lineNumber)
+        if (!target) continue
+        await axios.delete(
+          `/client-requests/revisions/${revisionId}/items/${target.id}`,
+        )
+      }
+
+      const updateEntries = Object.entries(pendingChanges.updates || {})
+      for (const [lineNumber, patch] of updateEntries) {
+        const target = itemsByLine.get(Number(lineNumber))
+        if (!target) continue
+        const payload = {
+          original_part_id: target.original_part_id || null,
+          client_part_number: target.client_part_number || null,
+          client_description: target.client_description || null,
+          client_line_text: target.client_line_text || null,
+          requested_qty:
+            patch.requested_qty !== undefined
+              ? patch.requested_qty
+              : target.requested_qty,
+          uom: target.uom || "pcs",
+          required_date: target.required_date || null,
+          priority: target.priority || null,
+          oem_only:
+            patch.oem_only !== undefined
+              ? patch.oem_only ? 1 : 0
+              : target.oem_only ? 1 : 0,
+          client_comment: target.client_comment || null,
+          internal_comment: target.internal_comment || null,
+        }
+        await axios.put(
+          `/client-requests/revisions/${revisionId}/items/${target.id}`,
+          payload,
+        )
+      }
+
+      for (const row of pendingChanges.adds || []) {
+        const payload = {
+          original_part_id: row.original_part_id || null,
+          client_part_number: row.client_part_number || null,
+          client_description: row.client_description || null,
+          requested_qty: row.requested_qty ?? null,
+          uom: row.uom || "pcs",
+          oem_only: row.oem_only ? 1 : 0,
+        }
+        await axios.post(
+          `/client-requests/revisions/${revisionId}/items`,
+          payload,
+        )
+      }
+
+      const refreshed = await fetchRevisionItems(revisionId)
+      setActiveRevisionId(revisionId)
+      setItems(refreshed)
+      setPendingChanges({ adds: [], updates: {}, deletes: [] })
+      setBulkSelectedKeys([])
+      setBulkSelectedRows([])
+      setBulkEdits({})
+      originalItemsRef.current = refreshed.map((row) => ({ ...row }))
+      setChangeDraftActive(true)
+      setBulkMode(true)
+      message.success("Изменения сохранены")
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось сохранить изменения")
+    }
+  }
+
   const handleUpdateItem = async (values) => {
     if (!itemEditRecord) return
     try {
-      const payload = {
-        original_part_id: values.original_part_id || null,
-        client_part_number: values.client_part_number || null,
-        client_description: values.client_description || null,
-        client_line_text: values.client_line_text || null,
-        requested_qty: values.requested_qty ?? null,
-        uom: values.uom || "pcs",
-        required_date: formatDateValue(values.required_date),
-        priority: values.priority || null,
-        oem_only: values.oem_only ? 1 : 0,
-        client_comment: values.client_comment || null,
-        internal_comment: values.internal_comment || null,
+      if (changeDraftActive) {
+        stageUpdate(itemEditRecord.line_number, {
+          original_part_id: values.original_part_id || null,
+          client_part_number: values.client_part_number || null,
+          client_description: values.client_description || null,
+          client_line_text: values.client_line_text || null,
+          requested_qty: values.requested_qty ?? null,
+          uom: values.uom || "pcs",
+          required_date: formatDateValue(values.required_date),
+          priority: values.priority || null,
+          oem_only: values.oem_only ? 1 : 0,
+          client_comment: values.client_comment || null,
+          internal_comment: values.internal_comment || null,
+        })
+        setItemEditOpen(false)
+        setItemEditRecord(null)
+        itemForm.resetFields()
+        message.success("Изменение добавлено в черновик")
+        return
       }
-      await axios.put(
-        `/client-requests/revisions/${itemEditRecord.client_request_revision_id}/items/${itemEditRecord.id}`,
-        payload,
-      )
-      setItemEditOpen(false)
-      setItemEditRecord(null)
-      itemForm.resetFields()
-      await loadItems(itemEditRecord.client_request_revision_id)
-      message.success("Позиция обновлена")
+
+      message.info("Сначала создайте ревизию для редактирования.")
+      return
+
     } catch (e) {
       console.error(e)
       message.error("Не удалось обновить позицию")
     }
   }
 
+  const handleQuickAdd = async () => {
+    if (!activeRequest?.id) return
+    if (!isLatestRevision) {
+      message.warning("Добавление возможно только в последней ревизии")
+      return
+    }
+    if (!quickSearch.trim()) {
+      message.warning("Введите каталожный номер или выберите деталь")
+      return
+    }
+    if (changeDraftActive) {
+      stageAdd({
+        original_part_id: quickSelectedPart?.id || null,
+        original_cat_number: quickSelectedPart?.cat_number || null,
+        original_description_ru: quickSelectedPart?.description_ru || null,
+        original_description_en: quickSelectedPart?.description_en || null,
+        client_part_number: quickSelectedPart?.cat_number || quickSearch.trim(),
+        client_description:
+          quickSelectedPart?.description_ru ||
+          quickSelectedPart?.description_en ||
+          null,
+        requested_qty: quickQty || 1,
+        uom: quickSelectedPart?.uom || "pcs",
+        oem_only: quickOemOnly ? 1 : 0,
+      })
+      setQuickSearch("")
+      setQuickSelectedPart(null)
+      setQuickQty(1)
+      setQuickOemOnly(false)
+      message.success("Позиция добавлена в черновик")
+      return
+    }
+    const revisionId = await ensureActiveRevisionId()
+    if (!revisionId) return
+    const payload = {
+      original_part_id: quickSelectedPart?.id || null,
+      client_part_number: quickSelectedPart?.cat_number || quickSearch.trim(),
+      client_description:
+        quickSelectedPart?.description_ru ||
+        quickSelectedPart?.description_en ||
+        null,
+      requested_qty: quickQty || 1,
+      uom: quickSelectedPart?.uom || "pcs",
+      oem_only: quickOemOnly ? 1 : 0,
+    }
+    try {
+      await axios.post(
+        `/client-requests/revisions/${revisionId}/items`,
+        payload,
+      )
+      message.success("Позиция добавлена")
+      setQuickSearch("")
+      setQuickSelectedPart(null)
+      setQuickQty(1)
+      setQuickOemOnly(false)
+      await loadItems(revisionId)
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось добавить позицию")
+    }
+  }
+
+  const handleModalGlobalAdd = async () => {
+    if (!modalSearch.trim()) {
+      message.warning("Введите каталожный номер")
+      return
+    }
+    const part = modalSelectedPart
+    const item = part
+      ? buildItemFromPart(part, { qty: modalQty, oem_only: modalOemOnly })
+      : {
+          original_part_id: null,
+          original_cat_number: modalSearch.trim(),
+          client_part_number: modalSearch.trim(),
+          client_description: "",
+          requested_qty: modalQty || 1,
+          uom: "pcs",
+          oem_only: modalOemOnly ? 1 : 0,
+        }
+    await addItemsToRequest([item])
+    setModalSearch("")
+    setModalResults([])
+    setModalSelectedPart(null)
+    setModalQty(1)
+    setModalOemOnly(false)
+  }
+
+  const formatPartLabel = (part) => {
+    const number = part?.cat_number || "—"
+    const desc = part?.description_ru || part?.description_en || "Без описания"
+    const model = part?.model_name || ""
+    const manufacturer = part?.manufacturer_name || ""
+    const suffix = [manufacturer, model].filter(Boolean).join(" • ")
+    return `${number} • ${desc}${suffix ? ` • ${suffix}` : ""}`
+  }
+
+  const applyBulkUpdate = async () => {
+    if (!bulkSelectedRows.length) {
+      message.warning("Выберите позиции для массового изменения")
+      return
+    }
+    if (!bulkSelectedRows.some((row) => bulkEdits[row.line_number])) {
+      message.warning("Укажите изменения для выбранных позиций")
+      return
+    }
+    if (changeDraftActive) {
+      bulkSelectedRows.forEach((row) => {
+        const edit = bulkEdits[row.line_number]
+        if (!edit) return
+        stageUpdate(row.line_number, edit)
+      })
+      message.success("Изменения добавлены в черновик")
+      return
+    }
+    message.info("Сначала создайте ревизию для редактирования.")
+  }
+
+  const applyBulkDelete = async () => {
+    if (!bulkSelectedRows.length) {
+      message.warning("Выберите позиции для удаления")
+      return
+    }
+    if (!changeDraftActive) {
+    message.info("Сначала создайте ревизию для редактирования.")
+      return
+    }
+    const { confirmed } = await confirmAction("Удалить выбранные позиции?")
+    if (!confirmed) return
+    if (changeDraftActive) {
+      bulkSelectedRows.forEach((row) => stageDelete(row))
+      setBulkSelectedKeys([])
+      setBulkSelectedRows([])
+      setBulkEdits({})
+      message.success("Удаления добавлены в черновик")
+      return
+    }
+    message.info("Сначала создайте ревизию для редактирования.")
+  }
+
   const handleUpdateRequest = async (values) => {
     if (!activeRequest?.id) return
     try {
       const payload = {
-        status: values.status || null,
         source_type: values.source_type || null,
+        received_at: formatDateTimeValue(values.received_at),
         assigned_to_user_id: values.assigned_to_user_id || null,
         internal_number: normalizeTextValue(values.internal_number),
         client_reference: values.client_reference || null,
@@ -911,7 +1533,6 @@ export default function ClientRequestsPage() {
         contact_phone: values.contact_phone || null,
         comment_internal: values.comment_internal || null,
         comment_client: values.comment_client || null,
-        created_at: formatDateTimeValue(values.created_at),
       }
       const { data } = await axios.put(
         `/client-requests/${activeRequest.id}`,
@@ -932,14 +1553,19 @@ export default function ClientRequestsPage() {
       message.warning("Удаление доступно только в последней ревизии")
       return
     }
+    if (!changeDraftActive) {
+      message.info("Сначала создайте ревизию для редактирования.")
+      return
+    }
     const { confirmed } = await confirmAction("Удалить позицию?")
     if (!confirmed) return
     try {
-      await axios.delete(
-        `/client-requests/revisions/${record.client_request_revision_id}/items/${record.id}`,
-      )
-      message.success("Позиция удалена")
-      await loadItems(record.client_request_revision_id)
+      if (changeDraftActive) {
+        stageDelete(record)
+        message.success("Позиция удалена в черновике")
+        return
+      }
+
     } catch (e) {
       console.error(e)
       message.error("Не удалось удалить позицию")
@@ -954,7 +1580,6 @@ export default function ClientRequestsPage() {
       message.success("Заявка удалена")
       await loadRequests()
       if (activeRequest?.id === id) {
-        setDrawerOpen(false)
         setActiveRequest(null)
       }
     } catch (e) {
@@ -979,6 +1604,14 @@ export default function ClientRequestsPage() {
         label: u.full_name || u.email || `Пользователь #${u.id}`,
       })),
     [users],
+  )
+
+  const clientSelectOptions = useMemo(
+    () => [
+      ...clientOptions,
+      { value: "__create__", label: "+ Создать клиента" },
+    ],
+    [clientOptions],
   )
 
   const contactOptions = useMemo(
@@ -1031,7 +1664,13 @@ export default function ClientRequestsPage() {
     return parsed.isValid() ? parsed.format("DD/MM/YYYY") : value
   }
 
-  const latestRevisionId = revisions[0]?.id || null
+  const latestRevisionId = useMemo(() => {
+    if (!revisions.length) return null
+    return revisions.reduce((latest, rev) => {
+      if (!latest) return rev
+      return (rev.rev_number || 0) > (latest.rev_number || 0) ? rev : latest
+    }, null)?.id
+  }, [revisions])
   const activeRevision = revisions.find((rev) => rev.id === activeRevisionId) || null
   const isLatestRevision = !latestRevisionId || activeRevisionId === latestRevisionId
   const activeRevisionLabel = activeRevision?.rev_number
@@ -1060,6 +1699,18 @@ export default function ClientRequestsPage() {
       children: `Ревизия ${rev.rev_number}${rev.note ? ` — ${rev.note}` : ""}`,
     }))
   }, [revisions, activeRevisionId])
+
+  useEffect(() => {
+    if (!isLatestRevision && changeDraftActive) {
+      setChangeDraftActive(false)
+      setPendingChanges({ adds: [], updates: {}, deletes: [] })
+      setBulkMode(false)
+      setBulkSelectedKeys([])
+      setBulkSelectedRows([])
+      setBulkEdits({})
+      originalItemsRef.current = []
+    }
+  }, [isLatestRevision])
 
   const requestColumns = [
     {
@@ -1134,13 +1785,62 @@ export default function ClientRequestsPage() {
       },
     },
     { title: "Описание клиента", dataIndex: "client_description" },
-    { title: "Кол-во", dataIndex: "requested_qty", width: 100 },
+    {
+      title: "Кол-во",
+      dataIndex: "requested_qty",
+      width: 120,
+      render: (v, record) => {
+        if (!bulkMode || !bulkSelectedKeys.includes(record.id)) return v
+        const edit = bulkEdits[record.line_number] || {}
+        return (
+          <InputNumber
+            min={1}
+            value={
+              edit.requested_qty !== undefined && edit.requested_qty !== null
+                ? edit.requested_qty
+                : v
+            }
+            onChange={(value) =>
+              setBulkEdits((prev) => ({
+                ...prev,
+                [record.line_number]: {
+                  ...prev[record.line_number],
+                  requested_qty: value,
+                },
+              }))
+            }
+            style={{ width: 90 }}
+          />
+        )
+      },
+    },
     { title: "Ед.", dataIndex: "uom", width: 70 },
     {
       title: "OEM",
       dataIndex: "oem_only",
       width: 80,
-      render: (v) => (v ? "Да" : "—"),
+      render: (v, record) => {
+        if (!bulkMode || !bulkSelectedKeys.includes(record.id)) {
+          return v ? "Да" : "—"
+        }
+        const edit = bulkEdits[record.line_number] || {}
+        const checked =
+          edit.oem_only !== undefined && edit.oem_only !== null ? !!edit.oem_only : !!v
+        return (
+          <Checkbox
+            checked={checked}
+            onChange={(event) =>
+              setBulkEdits((prev) => ({
+                ...prev,
+                [record.line_number]: {
+                  ...prev[record.line_number],
+                  oem_only: event.target.checked,
+                },
+              }))
+            }
+          />
+        )
+      },
     },
     {
       title: "Действия",
@@ -1160,6 +1860,10 @@ export default function ClientRequestsPage() {
               icon={<EditOutlined />}
               disabled={!isLatestRevision}
               onClick={() => {
+                if (!changeDraftActive) {
+                  message.info("Сначала создайте ревизию для редактирования.")
+                  return
+                }
                 setItemEditRecord(record)
                 setItemEditOpen(true)
                 ensureOriginalOption(record)
@@ -1334,7 +2038,7 @@ export default function ClientRequestsPage() {
   return (
     <PageWrapper
       title="Заявки клиентов"
-      helpText="Статусы: Черновик → В работе → RFQ отправлен → Контракт. Первая ревизия создается автоматически при добавлении позиции."
+      helpText="Статусы: Черновик → В работе → RFQ создан → RFQ отправлен → Ответы → Выбор → КП → Контракт."
     >
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
         <Card title="Новая заявка" size="small">
@@ -1342,7 +2046,6 @@ export default function ClientRequestsPage() {
             form={createForm}
             layout="vertical"
             onFinish={handleCreate}
-            initialValues={{ status: "draft" }}
           >
             <Space wrap align="start">
               <Form.Item
@@ -1352,11 +2055,16 @@ export default function ClientRequestsPage() {
               >
                 <Select
                   style={{ width: 260 }}
-                  options={clientOptions}
+                  options={clientSelectOptions}
                   showSearch
                   optionFilterProp="label"
                   placeholder="Выберите клиента"
                   onChange={(val) => {
+                    if (val === "__create__") {
+                      createForm.setFieldsValue({ client_id: null })
+                      setCreateClientOpen(true)
+                      return
+                    }
                     const client = clients.find((c) => c.id === val)
                     if (!client) return
                     const current = createForm.getFieldsValue([
@@ -1373,18 +2081,9 @@ export default function ClientRequestsPage() {
                   }}
                 />
               </Form.Item>
-              <Form.Item label="Внутренний номер" name="internal_number">
-                <Input style={{ width: 180 }} />
-              </Form.Item>
-              <Form.Item label="Статус" name="status">
-                <Select style={{ width: 160 }} options={STATUS_OPTIONS} />
-              </Form.Item>
-              <Form.Item label="Источник" name="source_type">
-                <Select style={{ width: 160 }} options={SOURCE_OPTIONS} />
-              </Form.Item>
               <Form.Item label="Ответственный" name="assigned_to_user_id">
                 <Select
-                  style={{ width: 200 }}
+                  style={{ width: 220 }}
                   options={userOptions}
                   showSearch
                   optionFilterProp="label"
@@ -1392,83 +2091,103 @@ export default function ClientRequestsPage() {
                   allowClear
                 />
               </Form.Item>
-              <Form.Item label="Референс клиента" name="client_reference">
-                <Input style={{ width: 220 }} />
-              </Form.Item>
-              <Form.Item label="Дата заявки" name="created_at">
-                <DatePicker
-                  style={{ width: 200 }}
-                  format="DD/MM/YYYY"
-                  placeholder="ДД/ММ/ГГГГ"
-                />
-              </Form.Item>
               <Form.Item
-                label="Контакт"
-                name="contact_name"
-                tooltip={contactsLoading ? "Загрузка контактов клиента..." : undefined}
-                extra="Новый контакт будет добавлен в карточку клиента."
-              >
-                <AutoComplete
-                  style={{ width: 220 }}
-                  options={contactOptions}
-                  placeholder="Выберите или введите"
-                  filterOption={false}
-                  open={contactDropdownOpen}
-                  onFocus={() => {
-                    setContactDropdownOpen(true)
-                    const clientId = createForm.getFieldValue("client_id")
-                    if (clientId) {
-                      loadContacts(clientId, false)
-                    }
-                  }}
-                  onBlur={() => setContactDropdownOpen(false)}
-                  onSelect={(_, option) => {
-                    setContactDropdownOpen(false)
-                    if (option?.email || option?.phone) {
-                      createForm.setFieldsValue({
-                        contact_name: option.value || "",
-                        contact_email: option.email || "",
-                        contact_phone: option.phone || "",
-                      })
-                    }
-                  }}
-                  onChange={(value) => {
-                    const match = contactOptions.find((opt) => opt.value === value)
-                    if (!match) {
-                      createForm.setFieldsValue({
-                        contact_email: "",
-                        contact_phone: "",
-                      })
-                    }
-                  }}
-                >
-                    <Input />
-                  </AutoComplete>
-                </Form.Item>
-              <Form.Item
-                label="E-mail"
-                name="contact_email"
-                tooltip="E-mail для связи по этой заявке"
+                label="Внутренний номер"
+                name="internal_number"
+                rules={[{ required: true, message: "Введите внутренний номер" }]}
               >
                 <Input style={{ width: 200 }} />
               </Form.Item>
-              <Form.Item label="Телефон" name="contact_phone">
-                <Input style={{ width: 180 }} />
+              <Form.Item label="Референс клиента" name="client_reference">
+                <Input style={{ width: 220 }} />
               </Form.Item>
-            </Space>
-            <Space wrap align="start">
               <Form.Item label="Комментарий (внутр.)" name="comment_internal">
                 <Input.TextArea style={{ width: 320 }} rows={2} />
               </Form.Item>
-              <Form.Item label="Комментарий клиента" name="comment_client">
-                <Input.TextArea style={{ width: 320 }} rows={2} />
-              </Form.Item>
-              <Form.Item style={{ marginTop: 30 }}>
-                <Button type="primary" htmlType="submit">
-                  Создать заявку
-                </Button>
-              </Form.Item>
             </Space>
+            <Collapse
+              items={[
+                {
+                  key: "extra",
+                  label: "Дополнительно",
+                  children: (
+                    <Space wrap align="start">
+                      <Form.Item label="Источник" name="source_type">
+                        <Select style={{ width: 200 }} options={SOURCE_OPTIONS} />
+                      </Form.Item>
+                      <Form.Item label="Дата получения" name="received_at">
+                        <DatePicker
+                          style={{ width: 200 }}
+                          format="DD/MM/YYYY"
+                          placeholder="ДД/ММ/ГГГГ"
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        label="Контакт"
+                        name="contact_name"
+                        tooltip={contactsLoading ? "Загрузка контактов клиента..." : undefined}
+                        extra="Новый контакт будет добавлен в карточку клиента."
+                      >
+                        <AutoComplete
+                          style={{ width: 220 }}
+                          options={contactOptions}
+                          placeholder="Выберите или введите"
+                          filterOption={false}
+                          open={contactDropdownOpen}
+                          onFocus={() => {
+                            setContactDropdownOpen(true)
+                            const clientId = createForm.getFieldValue("client_id")
+                            if (clientId) {
+                              loadContacts(clientId, false)
+                            }
+                          }}
+                          onBlur={() => setContactDropdownOpen(false)}
+                          onSelect={(_, option) => {
+                            setContactDropdownOpen(false)
+                            if (option?.email || option?.phone) {
+                              createForm.setFieldsValue({
+                                contact_name: option.value || "",
+                                contact_email: option.email || "",
+                                contact_phone: option.phone || "",
+                              })
+                            }
+                          }}
+                          onChange={(value) => {
+                            const match = contactOptions.find((opt) => opt.value === value)
+                            if (!match) {
+                              createForm.setFieldsValue({
+                                contact_email: "",
+                                contact_phone: "",
+                              })
+                            }
+                          }}
+                        >
+                          <Input />
+                        </AutoComplete>
+                      </Form.Item>
+                      <Form.Item
+                        label="E-mail"
+                        name="contact_email"
+                        tooltip="E-mail для связи по этой заявке"
+                      >
+                        <Input style={{ width: 200 }} />
+                      </Form.Item>
+                      <Form.Item label="Телефон" name="contact_phone">
+                        <Input style={{ width: 180 }} />
+                      </Form.Item>
+                      <Form.Item label="Комментарий клиента" name="comment_client">
+                        <Input.TextArea style={{ width: 320 }} rows={2} />
+                      </Form.Item>
+                    </Space>
+                  ),
+                },
+              ]}
+            />
+            <div style={{ marginTop: 12 }}>
+              <Button type="primary" htmlType="submit">
+                Создать заявку
+              </Button>
+            </div>
           </Form>
         </Card>
 
@@ -1480,325 +2199,544 @@ export default function ClientRequestsPage() {
             loading={loading}
             pagination={{ pageSize: 20 }}
             onRow={(record) => ({
-              onClick: () => openDrawer(record),
+              onClick: () => openWorkspace(record),
             })}
+            rowClassName={(record) =>
+              Number(record.id) === Number(activeRequest?.id)
+                ? "ant-table-row-selected"
+                : ""
+            }
           />
+        </Card>
+
+        <Card title="Рабочая зона" size="small">
+          {activeRequest ? (
+            <Space direction="vertical" size={16} style={{ width: "100%" }}>
+              <Space wrap align="center" style={{ justifyContent: "space-between" }}>
+                <Space wrap align="center">
+                  <Text strong>
+                    {activeRequest?.internal_number || "Заявка клиента"}
+                  </Text>
+                  {activeRequest?.status ? (
+                    <Tag color={STATUS_COLORS[activeRequest.status] || "default"}>
+                      {STATUS_OPTIONS.find((opt) => opt.value === activeRequest.status)?.label ||
+                        activeRequest.status}
+                    </Tag>
+                  ) : null}
+                  <Text type="secondary">
+                    Клиент: {activeRequest?.client_name || "—"}
+                  </Text>
+                  <Text type="secondary">
+                    {activeRevisionLabel} ({activeRevisionDate})
+                  </Text>
+                </Space>
+              </Space>
+
+              <Steps
+                size="small"
+                current={getStatusStepIndex(activeRequest?.status)}
+                items={STATUS_STEPS.map((step) => ({ title: step.title }))}
+              />
+
+              <Tabs
+                activeKey={workspaceTabKey}
+                onChange={setWorkspaceTabKey}
+                items={[
+                  {
+                    key: "items",
+                    label: "Позиции",
+                    children: (
+                      <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                        <Space
+                          align="center"
+                          style={{ width: "100%", justifyContent: "space-between" }}
+                        >
+                          <Space direction="vertical" size={4}>
+                            <Text type="secondary">
+                              Быстрое добавление — строка ниже. Импорт из Excel доступен справа.
+                            </Text>
+                            <Space size="small">
+                              <Tag color={isLatestRevision ? "green" : "orange"}>
+                                {activeRevisionLabel}
+                              </Tag>
+                              {changeDraftActive && (
+                                <Tag color="blue">Черновик изменений</Tag>
+                              )}
+                              {!isLatestRevision && (
+                                <Text type="warning">
+                                  Просмотр архивной ревизии — редактирование отключено.
+                                </Text>
+                              )}
+                            </Space>
+                          </Space>
+                          <Space>
+                            <Select
+                              style={{ width: 240 }}
+                              placeholder="Ревизия"
+                              options={revisionOptions}
+                              value={activeRevisionId || undefined}
+                              onChange={handleSelectRevision}
+                              disabled={!revisions.length || changeDraftActive}
+                            />
+                            {changeDraftActive ? (
+                              <>
+                                <Button type="primary" onClick={commitChangeDraft}>
+                                  Сохранить изменения
+                                </Button>
+                                <Button onClick={cancelChangeDraft}>Отменить</Button>
+                              </>
+                            ) : (
+                              <Button
+                                type="primary"
+                                onClick={() => createRevisionAndEnterEdit()}
+                                disabled={!isLatestRevision}
+                              >
+                                Создать ревизию
+                              </Button>
+                            )}
+                            <Button
+                              onClick={() => {
+                                setImportModalOpen(true)
+                                setStagedRows([])
+                                resetImportState()
+                              }}
+                              disabled={!isLatestRevision}
+                            >
+                              Импорт из Excel
+                            </Button>
+                          </Space>
+                        </Space>
+
+                        <Space wrap align="center" style={{ width: "100%" }}>
+                          <Switch
+                            checked={bulkMode}
+                            onChange={(checked) => {
+                              setBulkMode(checked)
+                              if (!checked) {
+                                setBulkSelectedKeys([])
+                                setBulkSelectedRows([])
+                                setBulkEdits({})
+                              }
+                            }}
+                            disabled={!changeDraftActive}
+                          />
+                          <Text type="secondary">Массовое редактирование</Text>
+                          <AutoComplete
+                            style={{ minWidth: 420, maxWidth: "100%" }}
+                            options={quickResults.map((part) => ({
+                              value:
+                                part.cat_number ||
+                                part.description_ru ||
+                                part.description_en ||
+                                "",
+                              label: formatPartLabel(part),
+                              part,
+                            }))}
+                            value={quickSearch}
+                            onChange={(value) => {
+                              setQuickSearch(value)
+                              if (quickSelectedPart?.cat_number !== value) {
+                                setQuickSelectedPart(null)
+                              }
+                            }}
+                            onSelect={(value, option) => {
+                              setQuickSearch(value)
+                              setQuickSelectedPart(option.part || null)
+                            }}
+                            placeholder="Быстрое добавление: введите кат. номер"
+                            notFoundContent={quickLoading ? "Поиск..." : "Нет совпадений"}
+                          >
+                            <Input
+                              style={{ width: "100%" }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault()
+                                  handleQuickAdd()
+                                }
+                              }}
+                            />
+                          </AutoComplete>
+                          <InputNumber
+                            min={1}
+                            value={quickQty}
+                            onChange={(value) => setQuickQty(value || 1)}
+                            style={{ width: 100 }}
+                            placeholder="Кол-во"
+                          />
+                          <Checkbox
+                            checked={quickOemOnly}
+                            onChange={(event) => setQuickOemOnly(event.target.checked)}
+                          >
+                            OEM
+                          </Checkbox>
+                          <Button
+                            type="primary"
+                            onClick={handleQuickAdd}
+                            disabled={!quickSearch.trim()}
+                          >
+                            Добавить
+                          </Button>
+                          <Button type="link" onClick={() => setAddModalOpen(true)}>
+                            Расширенный поиск
+                          </Button>
+                        </Space>
+
+                        {bulkMode && (
+                          <Space wrap align="center" style={{ width: "100%" }}>
+                            <Text type="secondary">
+                              Меняйте значения прямо в таблице выбранных строк.
+                            </Text>
+                            <Button onClick={applyBulkUpdate}>Применить</Button>
+                            <Button danger onClick={applyBulkDelete}>
+                              Удалить
+                            </Button>
+                          </Space>
+                        )}
+
+                        <Table
+                          rowKey="id"
+                          columns={itemsColumns}
+                          dataSource={items}
+                          loading={itemsLoading}
+                          pagination={false}
+                          rowSelection={
+                            bulkMode
+                              ? {
+                                  selectedRowKeys: bulkSelectedKeys,
+                                  onChange: (keys, rows) => {
+                                    setBulkSelectedKeys(keys)
+                                    setBulkSelectedRows(rows)
+                                    setBulkEdits((prev) => {
+                                      const next = { ...prev }
+                                      const allowed = new Set(
+                                        rows
+                                          .map((r) => r.line_number)
+                                          .filter((v) => v !== null && v !== undefined),
+                                      )
+                                      rows.forEach((row) => {
+                                        if (
+                                          row.line_number === null ||
+                                          row.line_number === undefined
+                                        ) {
+                                          return
+                                        }
+                                        if (!next[row.line_number]) {
+                                          next[row.line_number] = {
+                                            requested_qty: row.requested_qty,
+                                            oem_only: !!row.oem_only,
+                                          }
+                                        }
+                                      })
+                                      Object.keys(next).forEach((key) => {
+                                        if (!allowed.has(Number(key))) delete next[key]
+                                      })
+                                      return next
+                                    })
+                                  },
+                                }
+                              : undefined
+                          }
+                        />
+
+                        <Collapse
+                          items={[
+                            {
+                              key: "revision-history",
+                              label: `История ревизий (${revisions.length})`,
+                              children: (
+                                <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                                  {revisionTimelineItems.length ? (
+                                    <Timeline items={revisionTimelineItems} />
+                                  ) : (
+                                    <Text type="secondary">Ревизий пока нет.</Text>
+                                  )}
+                                  <Table
+                                    rowKey="id"
+                                    columns={revisionColumns}
+                                    dataSource={revisions}
+                                    loading={revisionsLoading}
+                                    pagination={false}
+                                    onRow={(record) => ({
+                                      onClick: async () => {
+                                        await handleSelectRevision(record.id)
+                                      },
+                                    })}
+                                    rowClassName={(record) =>
+                                      record.id === activeRevisionId
+                                        ? "ant-table-row-selected"
+                                        : ""
+                                    }
+                                  />
+                                </Space>
+                              ),
+                            },
+                          ]}
+                        />
+                      </Space>
+                    ),
+                  },
+                  {
+                    key: "details",
+                    label: "Данные заявки",
+                    children: (
+                      <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                        <Space style={{ width: "100%", justifyContent: "flex-end" }}>
+                          {requestEditing ? (
+                            <>
+                              <Button
+                                type="primary"
+                                icon={<SaveOutlined />}
+                                onClick={() => requestForm.submit()}
+                              >
+                                Сохранить
+                              </Button>
+                              <Button
+                                icon={<CloseOutlined />}
+                                onClick={() => {
+                                  setRequestEditing(false)
+                                  requestForm.setFieldsValue({
+                                    client_id: activeRequest?.client_id,
+                                    source_type: activeRequest?.source_type || null,
+                                    assigned_to_user_id: activeRequest?.assigned_to_user_id || null,
+                                    internal_number: activeRequest?.internal_number || null,
+                                    client_reference: activeRequest?.client_reference || null,
+                                    contact_name: activeRequest?.contact_name || null,
+                                    contact_email: activeRequest?.contact_email || null,
+                                    contact_phone: activeRequest?.contact_phone || null,
+                                    comment_internal: activeRequest?.comment_internal || null,
+                                    comment_client: activeRequest?.comment_client || null,
+                                    received_at: activeRequest?.received_at
+                                      ? dayjs(activeRequest.received_at)
+                                      : null,
+                                  })
+                                }}
+                              >
+                                Отмена
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              icon={<EditOutlined />}
+                              onClick={() => setRequestEditing(true)}
+                            >
+                              Редактировать
+                            </Button>
+                          )}
+                        </Space>
+                        <Form
+                          form={requestForm}
+                          layout="vertical"
+                          onFinish={handleUpdateRequest}
+                        >
+                          <Space wrap align="start">
+                            <Form.Item label="Клиент" name="client_id">
+                              <Select
+                                style={{ width: 260 }}
+                                options={clientOptions}
+                                showSearch
+                                optionFilterProp="label"
+                                disabled
+                              />
+                            </Form.Item>
+                            <Form.Item label="Внутренний номер" name="internal_number">
+                              <Input style={{ width: 180 }} disabled={!requestEditing} />
+                            </Form.Item>
+                            <Form.Item label="Источник" name="source_type">
+                              <Select
+                                style={{ width: 160 }}
+                                options={SOURCE_OPTIONS}
+                                disabled={!requestEditing}
+                              />
+                            </Form.Item>
+                            <Form.Item label="Ответственный" name="assigned_to_user_id">
+                              <Select
+                                style={{ width: 200 }}
+                                options={userOptions}
+                                showSearch
+                                optionFilterProp="label"
+                                allowClear
+                                disabled={!requestEditing}
+                              />
+                            </Form.Item>
+                            <Form.Item label="Референс клиента" name="client_reference">
+                              <Input style={{ width: 220 }} disabled={!requestEditing} />
+                            </Form.Item>
+                            <Form.Item label="Дата получения" name="received_at">
+                              <DatePicker
+                                style={{ width: 200 }}
+                                format="DD/MM/YYYY"
+                                disabled={!requestEditing}
+                              />
+                            </Form.Item>
+                            <Form.Item label="Контакт" name="contact_name">
+                              {requestEditing ? (
+                                <AutoComplete
+                                  style={{ width: 200 }}
+                                  options={contactOptions}
+                                  placeholder="Выберите или введите"
+                                  filterOption={false}
+                                  open={contactDropdownOpen}
+                                  onFocus={() => {
+                                    setContactDropdownOpen(true)
+                                    if (activeRequest?.client_id) {
+                                      loadContacts(activeRequest.client_id, false)
+                                    }
+                                  }}
+                                  onBlur={() => setContactDropdownOpen(false)}
+                                  onSelect={(_, option) => {
+                                    setContactDropdownOpen(false)
+                                    if (option?.email || option?.phone) {
+                                      requestForm.setFieldsValue({
+                                        contact_name: option.value || "",
+                                        contact_email: option.email || "",
+                                        contact_phone: option.phone || "",
+                                      })
+                                    }
+                                  }}
+                                  onChange={(value) => {
+                                    const match = contactOptions.find((opt) => opt.value === value)
+                                    if (!match) {
+                                      requestForm.setFieldsValue({
+                                        contact_email: "",
+                                        contact_phone: "",
+                                      })
+                                    }
+                                  }}
+                                >
+                                  <Input />
+                                </AutoComplete>
+                              ) : (
+                                <Input style={{ width: 200 }} disabled />
+                              )}
+                            </Form.Item>
+                            <Form.Item label="E-mail" name="contact_email">
+                              <Input style={{ width: 200 }} disabled={!requestEditing} />
+                            </Form.Item>
+                            <Form.Item label="Телефон" name="contact_phone">
+                              <Input style={{ width: 180 }} disabled={!requestEditing} />
+                            </Form.Item>
+                          </Space>
+                          <Space wrap align="start">
+                            <Form.Item label="Комментарий (внутр.)" name="comment_internal">
+                              <Input.TextArea
+                                style={{ width: 320 }}
+                                rows={2}
+                                disabled={!requestEditing}
+                              />
+                            </Form.Item>
+                            <Form.Item label="Комментарий клиента" name="comment_client">
+                              <Input.TextArea
+                                style={{ width: 320 }}
+                                rows={2}
+                                disabled={!requestEditing}
+                              />
+                            </Form.Item>
+                          </Space>
+                        </Form>
+                      </Space>
+                    ),
+                  },
+                  {
+                    key: "margin",
+                    label: "Маржа/Экономика",
+                    children: (
+                      <Alert
+                        type="info"
+                        message="Раздел в разработке"
+                        description="Тут будет блок расчета маржи и экономики после работы закупщика."
+                        showIcon
+                      />
+                    ),
+                  },
+                  {
+                    key: "quote",
+                    label: "КП",
+                    children: (
+                      <Alert
+                        type="info"
+                        message="Раздел в разработке"
+                        description="Тут появится подготовка коммерческого предложения."
+                        showIcon
+                      />
+                    ),
+                  },
+                  {
+                    key: "contract",
+                    label: "Контракт",
+                    children: (
+                      <Alert
+                        type="info"
+                        message="Раздел в разработке"
+                        description="Тут будет хранение и согласование контракта."
+                        showIcon
+                      />
+                    ),
+                  },
+                ]}
+              />
+            </Space>
+          ) : (
+            <Text type="secondary">Выберите заявку в списке, чтобы открыть workspace.</Text>
+          )}
         </Card>
       </Space>
 
-      <Drawer
-        title={
-          <Space direction="vertical" size={2}>
-            <Space>
-              <span>Заявка клиента</span>
-              {activeRequest?.status ? (
-                <Tag color={STATUS_COLORS[activeRequest.status] || "default"}>
-                  {STATUS_OPTIONS.find((opt) => opt.value === activeRequest.status)?.label ||
-                    activeRequest.status}
-                </Tag>
-              ) : null}
-            </Space>
-            <Text type="secondary">
-              Создано: {formatDateTime(activeRequest?.created_at)}
-            </Text>
-            <Text type="secondary">
-              Текущая ревизия: {activeRevisionLabel} ({activeRevisionDate})
-            </Text>
-          </Space>
-        }
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        width={860}
-      >
-        <Card
-          size="small"
-          title="Данные заявки"
-          extra={
-            <Space>
-              {requestEditing ? (
-                <>
-                  <Button
-                    type="primary"
-                    icon={<SaveOutlined />}
-                    onClick={() => requestForm.submit()}
-                  >
-                    Сохранить
-                  </Button>
-                  <Button
-                    icon={<CloseOutlined />}
-                    onClick={() => {
-                      setRequestEditing(false)
-                      requestForm.setFieldsValue({
-                        client_id: activeRequest?.client_id,
-                        status: activeRequest?.status || "draft",
-                        source_type: activeRequest?.source_type || null,
-                        assigned_to_user_id: activeRequest?.assigned_to_user_id || null,
-                        internal_number: activeRequest?.internal_number || null,
-                        client_reference: activeRequest?.client_reference || null,
-                        contact_name: activeRequest?.contact_name || null,
-                        contact_email: activeRequest?.contact_email || null,
-                        contact_phone: activeRequest?.contact_phone || null,
-                        comment_internal: activeRequest?.comment_internal || null,
-                        comment_client: activeRequest?.comment_client || null,
-                        created_at: activeRequest?.created_at
-                          ? dayjs(activeRequest.created_at)
-                          : null,
-                      })
-                    }}
-                  >
-                    Отмена
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  icon={<EditOutlined />}
-                  onClick={() => setRequestEditing(true)}
-                >
-                  Редактировать
-                </Button>
-              )}
-            </Space>
+      <Modal
+        title="Комментарий к ревизии"
+        open={revisionNoteOpen}
+        onCancel={() => closeRevisionNote(null)}
+        onOk={() => {
+          const note = String(revisionNote || "").trim()
+          if (!note) {
+            message.warning("Укажите комментарий для новой ревизии")
+            return
           }
-          style={{ marginBottom: 16 }}
-        >
-          <Form
-            form={requestForm}
-            layout="vertical"
-            onFinish={handleUpdateRequest}
-          >
-            <Space wrap align="start">
-              <Form.Item label="Клиент" name="client_id">
-                <Select
-                  style={{ width: 260 }}
-                  options={clientOptions}
-                  showSearch
-                  optionFilterProp="label"
-                  disabled
-                />
-              </Form.Item>
-              <Form.Item label="Внутренний номер" name="internal_number">
-                <Input style={{ width: 180 }} disabled={!requestEditing} />
-              </Form.Item>
-              <Form.Item label="Статус" name="status">
-                <Select
-                  style={{ width: 160 }}
-                  options={STATUS_OPTIONS}
-                  disabled={!requestEditing}
-                />
-              </Form.Item>
-              <Form.Item label="Источник" name="source_type">
-                <Select
-                  style={{ width: 160 }}
-                  options={SOURCE_OPTIONS}
-                  disabled={!requestEditing}
-                />
-              </Form.Item>
-              <Form.Item label="Ответственный" name="assigned_to_user_id">
-                <Select
-                  style={{ width: 200 }}
-                  options={userOptions}
-                  showSearch
-                  optionFilterProp="label"
-                  allowClear
-                  disabled={!requestEditing}
-                />
-              </Form.Item>
-              <Form.Item label="Референс клиента" name="client_reference">
-                <Input style={{ width: 220 }} disabled={!requestEditing} />
-              </Form.Item>
-              <Form.Item label="Дата заявки" name="created_at">
-                <DatePicker
-                  style={{ width: 200 }}
-                  format="DD/MM/YYYY"
-                  disabled={!requestEditing}
-                />
-              </Form.Item>
-              <Form.Item label="Контакт" name="contact_name">
-                {requestEditing ? (
-                  <AutoComplete
-                    style={{ width: 200 }}
-                    options={contactOptions}
-                    placeholder="Выберите или введите"
-                    filterOption={false}
-                    open={contactDropdownOpen}
-                    onFocus={() => {
-                      setContactDropdownOpen(true)
-                      if (activeRequest?.client_id) {
-                        loadContacts(activeRequest.client_id, false)
-                      }
-                    }}
-                    onBlur={() => setContactDropdownOpen(false)}
-                    onSelect={(_, option) => {
-                      setContactDropdownOpen(false)
-                      if (option?.email || option?.phone) {
-                        requestForm.setFieldsValue({
-                          contact_name: option.value || "",
-                          contact_email: option.email || "",
-                          contact_phone: option.phone || "",
-                        })
-                      }
-                    }}
-                    onChange={(value) => {
-                      const match = contactOptions.find((opt) => opt.value === value)
-                      if (!match) {
-                        requestForm.setFieldsValue({
-                          contact_email: "",
-                          contact_phone: "",
-                        })
-                      }
-                    }}
-                  >
-                    <Input />
-                  </AutoComplete>
-                ) : (
-                  <Input style={{ width: 200 }} disabled />
-                )}
-              </Form.Item>
-              <Form.Item label="E-mail" name="contact_email">
-                <Input style={{ width: 200 }} disabled={!requestEditing} />
-              </Form.Item>
-              <Form.Item label="Телефон" name="contact_phone">
-                <Input style={{ width: 180 }} disabled={!requestEditing} />
-              </Form.Item>
-            </Space>
-            <Space wrap align="start">
-              <Form.Item label="Комментарий (внутр.)" name="comment_internal">
-                <Input.TextArea
-                  style={{ width: 320 }}
-                  rows={2}
-                  disabled={!requestEditing}
-                />
-              </Form.Item>
-              <Form.Item label="Комментарий клиента" name="comment_client">
-                <Input.TextArea
-                  style={{ width: 320 }}
-                  rows={2}
-                  disabled={!requestEditing}
-                />
-              </Form.Item>
-            </Space>
-          </Form>
-        </Card>
-
-        <Tabs
-          activeKey={activeTab}
-          onChange={setActiveTab}
-          items={[
-            {
-              key: "items",
-              label: "Позиции заявки",
-              children: (
-                <Space direction="vertical" style={{ width: "100%" }} size="middle">
-                  <Space
-                    align="center"
-                    style={{ width: "100%", justifyContent: "space-between" }}
-                  >
-                    <Space direction="vertical" size={4}>
-                      <Text type="secondary">
-                        Добавляйте позиции через каталог или Excel-импорт.
-                      </Text>
-                      <Space size="small">
-                        <Tag color={isLatestRevision ? "green" : "orange"}>
-                          {activeRevisionLabel}
-                        </Tag>
-                        {!isLatestRevision && (
-                          <Text type="warning">
-                            Просмотр архивной ревизии — редактирование отключено.
-                          </Text>
-                        )}
-                      </Space>
-                    </Space>
-                    <Space>
-                      <Select
-                        style={{ width: 240 }}
-                        placeholder="Ревизия"
-                        options={revisionOptions}
-                        value={activeRevisionId || undefined}
-                        onChange={handleSelectRevision}
-                        disabled={!revisions.length}
-                      />
-                      <Button onClick={() => setActiveTab("revisions")}>
-                        Новая ревизия
-                      </Button>
-                      <Tooltip
-                        title={
-                          isLatestRevision
-                            ? "Добавить позиции"
-                            : "Добавление доступно только в последнюю ревизию"
-                        }
-                      >
-                        <Button
-                          type="primary"
-                          disabled={!isLatestRevision}
-                          onClick={() => {
-                            setAddModalOpen(true)
-                          }}
-                        >
-                          Добавить позиции
-                        </Button>
-                      </Tooltip>
-                    </Space>
-                  </Space>
-                  <Table
-                    rowKey="id"
-                    columns={itemsColumns}
-                    dataSource={items}
-                    loading={itemsLoading}
-                    pagination={false}
-                  />
-                </Space>
-              ),
-            },
-            {
-              key: "revisions",
-              label: "Ревизии",
-              children: (
-                <Space direction="vertical" style={{ width: "100%" }}>
-                  <Card size="small" title="Новая ревизия">
-                    <Form form={revisionForm} onFinish={handleAddRevision}>
-                      <Space wrap align="start">
-                        <Form.Item name="note" label="Комментарий">
-                          <Input style={{ width: 320 }} />
-                        </Form.Item>
-                        <Form.Item style={{ marginTop: 30 }}>
-                          <Button type="primary" htmlType="submit">
-                            Создать ревизию
-                          </Button>
-                        </Form.Item>
-                      </Space>
-                    </Form>
-                  </Card>
-
-                  <Card size="small" title="Таймлайн ревизий">
-                    {revisionTimelineItems.length ? (
-                      <Timeline items={revisionTimelineItems} />
-                    ) : (
-                      <Text type="secondary">Ревизий пока нет.</Text>
-                    )}
-                  </Card>
-
-                  <Table
-                    rowKey="id"
-                    columns={revisionColumns}
-                    dataSource={revisions}
-                    loading={revisionsLoading}
-                    pagination={false}
-                    onRow={(record) => ({
-                      onClick: async () => {
-                        await handleSelectRevision(record.id)
-                        setActiveTab("items")
-                      },
-                    })}
-                    rowClassName={(record) =>
-                      record.id === activeRevisionId ? "ant-table-row-selected" : ""
-                    }
-                  />
-                </Space>
-              ),
-            },
-          ]}
+          closeRevisionNote(note)
+        }}
+        okText="Создать ревизию"
+        cancelText="Отмена"
+        destroyOnClose
+      >
+        <Input.TextArea
+          value={revisionNote}
+          onChange={(event) => setRevisionNote(event.target.value)}
+          rows={4}
+          placeholder="Причина изменений (обязательно)"
         />
-      </Drawer>
+      </Modal>
+
+      <Modal
+        title="Создать клиента"
+        open={createClientOpen}
+        onCancel={() => setCreateClientOpen(false)}
+        onOk={() => createClientForm.submit()}
+        confirmLoading={createClientLoading}
+        okText="Создать"
+        cancelText="Отмена"
+        destroyOnClose
+      >
+        <Form form={createClientForm} layout="vertical" onFinish={handleCreateClient}>
+          <Form.Item
+            label="Название компании"
+            name="company_name"
+            rules={[{ required: true, message: "Введите название компании" }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item label="Контактное лицо" name="contact_person">
+            <Input />
+          </Form.Item>
+          <Form.Item label="Телефон" name="phone">
+            <Input />
+          </Form.Item>
+          <Form.Item label="E-mail" name="email">
+            <Input />
+          </Form.Item>
+          <Form.Item label="Комментарий" name="notes">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         title="Редактировать позицию"
@@ -1877,41 +2815,74 @@ export default function ClientRequestsPage() {
           setCatalogSearch("")
           setCatalogResults([])
           setCatalogSelection([])
+          setCatalogRowInputs({})
+          setModalSearch("")
+          setModalResults([])
+          setModalSelectedPart(null)
+          setModalQty(1)
+          setModalOemOnly(false)
           resetImportState()
         }}
         footer={null}
         width={1060}
       >
         <Space direction="vertical" size="large" style={{ width: "100%" }}>
-          <Space wrap align="center">
-            <Button
-              icon={<FileExcelOutlined />}
-              href={CLIENT_REQUEST_TEMPLATE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-            >
-              Скачать шаблон
-            </Button>
-            <Upload
-              accept=".xlsx"
-              showUploadList={false}
-              beforeUpload={(file) => {
-                handleExcelUpload(file)
-                return false
-              }}
-            >
-              <Button icon={<UploadOutlined />}>Импорт позиций</Button>
-            </Upload>
-            <Text type="secondary">
-              Импорт из Excel добавит позиции в список ниже.
-            </Text>
-          </Space>
-
           <Space direction="vertical" size="middle" style={{ width: "100%" }}>
             <Text type="secondary">
-              Сначала выберите производителя и модель, затем найдите оригинальную деталь.
+              Можно искать по каталожному номеру сразу или уточнять через производителя и модель.
             </Text>
+            <Space wrap align="center">
+              <AutoComplete
+                style={{ width: 360 }}
+                options={modalResults.map((part) => ({
+                  value:
+                    part.cat_number ||
+                    part.description_ru ||
+                    part.description_en ||
+                    "",
+                  label: formatPartLabel(part),
+                  part,
+                }))}
+                value={modalSearch}
+                onChange={(value) => {
+                  setModalSearch(value)
+                  if (modalSelectedPart?.cat_number !== value) {
+                    setModalSelectedPart(null)
+                  }
+                }}
+                onSelect={(value, option) => {
+                  setModalSearch(value)
+                  setModalSelectedPart(option.part || null)
+                }}
+                placeholder="Глобальный поиск по оригинальным деталям"
+                notFoundContent={modalLoading ? "Поиск..." : "Нет совпадений"}
+              >
+                <Input
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault()
+                      handleModalGlobalAdd()
+                    }
+                  }}
+                />
+              </AutoComplete>
+              <InputNumber
+                min={1}
+                value={modalQty}
+                onChange={(value) => setModalQty(value || 1)}
+                style={{ width: 110 }}
+                placeholder="Кол-во"
+              />
+              <Checkbox
+                checked={modalOemOnly}
+                onChange={(event) => setModalOemOnly(event.target.checked)}
+              >
+                OEM
+              </Checkbox>
+              <Button type="primary" onClick={handleModalGlobalAdd}>
+                Добавить
+              </Button>
+            </Space>
             <Space wrap>
               <Select
                 style={{ width: 220 }}
@@ -1938,7 +2909,6 @@ export default function ClientRequestsPage() {
                 style={{ minWidth: 260 }}
                 placeholder="Каталожный номер или описание"
                 allowClear
-                disabled={!modelId}
                 value={catalogSearch}
                 onSearch={(value) => setCatalogSearch(value)}
                 onChange={(e) => setCatalogSearch(e.target.value)}
@@ -1983,7 +2953,8 @@ export default function ClientRequestsPage() {
               <Space>
                 <Button
                   onClick={handleAddSelectedFromCatalog}
-                  disabled={!catalogSelection.length}
+                  disabled={!catalogSelection.length || catalogAddLoading}
+                  loading={catalogAddLoading}
                 >
                   Добавить выбранные ({catalogSelection.length})
                 </Button>
@@ -2022,10 +2993,54 @@ export default function ClientRequestsPage() {
                     row.description_ru || row.description_en || "—",
                 },
                 {
+                  title: "Кол-во",
+                  width: 110,
+                  render: (_, row) => (
+                    <InputNumber
+                      min={1}
+                      value={catalogRowInputs[row.id]?.qty || 1}
+                      onChange={(value) =>
+                        setCatalogRowInputs((prev) => ({
+                          ...prev,
+                          [row.id]: {
+                            ...(prev[row.id] || {}),
+                            qty: value || 1,
+                          },
+                        }))
+                      }
+                      style={{ width: 90 }}
+                    />
+                  ),
+                },
+                {
+                  title: "OEM",
+                  width: 90,
+                  render: (_, row) => (
+                    <Checkbox
+                      checked={!!catalogRowInputs[row.id]?.oem_only}
+                      onChange={(event) =>
+                        setCatalogRowInputs((prev) => ({
+                          ...prev,
+                          [row.id]: {
+                            ...(prev[row.id] || {}),
+                            oem_only: event.target.checked,
+                          },
+                        }))
+                      }
+                    >
+                      OEM
+                    </Checkbox>
+                  ),
+                },
+                {
                   title: "",
                   width: 110,
                   render: (_, row) => (
-                    <Button size="small" onClick={() => handleAddFromCatalog(row)}>
+                    <Button
+                      size="small"
+                      onClick={() => handleAddFromCatalog(row)}
+                      loading={catalogAddLoading}
+                    >
                       Добавить
                     </Button>
                   ),
@@ -2034,14 +3049,51 @@ export default function ClientRequestsPage() {
             />
           </Space>
 
+        </Space>
+      </Modal>
+
+      <Modal
+        title="Импорт из Excel"
+        open={importModalOpen}
+        onCancel={() => {
+          setImportModalOpen(false)
+          setStagedRows([])
+          resetImportState()
+        }}
+        footer={null}
+        width={960}
+      >
+        <Space direction="vertical" size="large" style={{ width: "100%" }}>
+          <Space wrap align="center">
+            <Button
+              icon={<FileExcelOutlined />}
+              href={CLIENT_REQUEST_TEMPLATE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+            >
+              Скачать шаблон
+            </Button>
+            <Upload
+              accept=".xlsx"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                handleExcelUpload(file)
+                return false
+              }}
+            >
+              <Button icon={<UploadOutlined />}>Загрузить Excel</Button>
+            </Upload>
+            <Text type="secondary">
+              Файл будет проверен перед добавлением в заявку.
+            </Text>
+          </Space>
+
           <Card
             size="small"
-            title={`Позиции к добавлению (${stagedRows.length})`}
+            title={`Позиции к импорту (${stagedRows.length})`}
             extra={
               <Space>
-                <Button onClick={() => setStagedRows((prev) => [...prev, createStagedRow()])}>
-                  Добавить строку
-                </Button>
                 <Button
                   danger
                   onClick={() => {
@@ -2060,7 +3112,7 @@ export default function ClientRequestsPage() {
               dataSource={stagedRows}
               pagination={false}
               columns={stagedColumns}
-              locale={{ emptyText: "Добавьте позиции" }}
+              locale={{ emptyText: "Загрузите Excel-файл" }}
             />
             <Space wrap align="center" style={{ marginTop: 12 }}>
               <Button

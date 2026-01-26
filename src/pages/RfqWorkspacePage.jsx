@@ -1,11 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Button, Card, Checkbox, Form, Input, Modal, Radio, Select, Space, Steps, Table, Tabs, Tag, Tooltip, Tree, Typography, message } from "antd"
+import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Steps, Switch, Table, Tabs, Tag, Typography, message } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 
 const { Text } = Typography
+
+const debugLog = (...args) => {
+  if (typeof window !== "undefined" && window.__RFQ_DEBUG__) {
+    console.log("[RFQ]", ...args)
+  }
+}
 
 const formatDate = (value) => {
   if (!value) return "-"
@@ -49,41 +55,23 @@ const statusToColor = (value) => {
   if (!value) return "default"
   if (value === "sent") return "blue"
   if (value === "responded") return "green"
+  if (value === "structured") return "cyan"
   if (value === "draft") return "default"
   return "gold"
 }
 
-const buildBomTree = (rows = []) => {
-  if (!rows.length) return []
-  const nodes = new Map()
-  rows.forEach((row) => {
-    const description = row.description_ru || row.description_en || ""
-    const qty = Number(row.mult_qty)
-    const qtyLabel = Number.isFinite(qty) ? ` x${qty}` : ""
-    nodes.set(String(row.node_id), {
-      key: String(row.node_id),
-      title: `${row.cat_number || row.node_id}${description ? ` — ${description}` : ""}${qtyLabel}`,
-      children: [],
-      level: row.level,
-      path: row.path,
-    })
-  })
+const matchTypeLabel = {
+  WHOLE: "Целиком",
+  BOM: "BOM",
+  KIT: "Комплект",
+}
 
-  rows.forEach((row) => {
-    if (!row.path || row.level === 0) return
-    const parts = String(row.path).split(">")
-    if (parts.length < 2) return
-    const parentId = parts[parts.length - 2]
-    const parent = nodes.get(parentId)
-    const node = nodes.get(String(row.node_id))
-    if (parent && node) {
-      parent.children.push(node)
-    }
-  })
-
-  const rootRow = rows.find((row) => row.level === 0) || rows[0]
-  const rootNode = nodes.get(String(rootRow.node_id))
-  return rootNode ? [rootNode] : []
+const renderMatchTypes = (value) => {
+  if (!value) return "—"
+  return value
+    .split(",")
+    .map((v) => matchTypeLabel[v] || v)
+    .join(", ")
 }
 
 export default function RfqWorkspacePage() {
@@ -98,6 +86,15 @@ export default function RfqWorkspacePage() {
 
   const [items, setItems] = useState([])
   const [suppliers, setSuppliers] = useState([])
+  const [suggestedSuppliers, setSuggestedSuppliers] = useState([])
+  const [suggestedSelection, setSuggestedSelection] = useState([])
+  const [allSuppliers, setAllSuppliers] = useState([])
+  const [rfqDocuments, setRfqDocuments] = useState([])
+  const [docsLoading, setDocsLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [selectedSupplierIds, setSelectedSupplierIds] = useState([])
+  const [supplierCreateOpen, setSupplierCreateOpen] = useState(false)
+  const [autoAddCreatedSupplier, setAutoAddCreatedSupplier] = useState(true)
   const [responses, setResponses] = useState([])
   const [structure, setStructure] = useState(null)
   const [coverage, setCoverage] = useState(null)
@@ -116,11 +113,14 @@ export default function RfqWorkspacePage() {
     loading: false,
     activeBundleId: null,
     bundleSummary: null,
+    saving: false,
   })
-  const [bomTrees, setBomTrees] = useState({})
 
   const [createForm] = Form.useForm()
+  const [supplierForm] = Form.useForm()
+  const [supplierCreateForm] = Form.useForm()
   const autoFillRef = useRef(new Set())
+  const supplierSelectionInitRef = useRef(false)
 
   useEffect(() => {
     setActiveTabKey("rfq")
@@ -148,7 +148,16 @@ export default function RfqWorkspacePage() {
         console.error(e)
       }
     }
+    const loadSuppliers = async () => {
+      try {
+        const { data } = await axios.get("/suppliers")
+        setAllSuppliers(Array.isArray(data) ? data : [])
+      } catch (e) {
+        console.error(e)
+      }
+    }
     loadRequests()
+    loadSuppliers()
   }, [])
 
   const loadRevisions = async (requestId) => {
@@ -162,6 +171,38 @@ export default function RfqWorkspacePage() {
     } catch (e) {
       console.error(e)
       message.error("Не удалось загрузить ревизии")
+    }
+  }
+
+  const loadSuggestedSuppliers = async (rfqId) => {
+    if (!rfqId) {
+      setSuggestedSuppliers([])
+      setSuggestedSelection([])
+      return
+    }
+    try {
+      const { data } = await axios.get(`/rfqs/${rfqId}/suggested-suppliers`)
+      setSuggestedSuppliers(Array.isArray(data) ? data : [])
+      setSuggestedSelection([])
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const loadDocuments = async (rfqId) => {
+    if (!rfqId) {
+      setRfqDocuments([])
+      return
+    }
+    setDocsLoading(true)
+    try {
+      const { data } = await axios.get(`/rfqs/${rfqId}/documents`)
+      setRfqDocuments(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось загрузить документы RFQ")
+    } finally {
+      setDocsLoading(false)
     }
   }
 
@@ -217,6 +258,10 @@ export default function RfqWorkspacePage() {
       setActiveRfq(null)
       setItems([])
       setSuppliers([])
+      setSuggestedSuppliers([])
+      setSuggestedSelection([])
+      setSelectedSupplierIds([])
+      setRfqDocuments([])
       setResponses([])
       setStructure(null)
       setSelections([])
@@ -238,6 +283,8 @@ export default function RfqWorkspacePage() {
         const [
           itemsResp,
           suppliersResp,
+          suggestedResp,
+          docsResp,
           responsesResp,
           structureResp,
           coverageResp,
@@ -250,8 +297,10 @@ export default function RfqWorkspacePage() {
         ] = await Promise.all([
           axios.get(`/rfqs/${activeRfqId}/items`),
           axios.get(`/rfqs/${activeRfqId}/suppliers`),
+          axios.get(`/rfqs/${activeRfqId}/suggested-suppliers`),
+          axios.get(`/rfqs/${activeRfqId}/documents`),
           axios.get("/supplier-responses"),
-          axios.get(`/rfqs/${activeRfqId}/structure`),
+          axios.get(`/rfqs/${activeRfqId}/structure`, { params: { view: "master" } }),
           axios.get("/coverage", { params: { rfq_id: activeRfqId } }),
           axios.get("/selection"),
           axios.get("/economics/shipment-groups"),
@@ -265,6 +314,8 @@ export default function RfqWorkspacePage() {
 
         let itemList = Array.isArray(itemsResp.data) ? itemsResp.data : []
         const supplierList = Array.isArray(suppliersResp.data) ? suppliersResp.data : []
+        const suggestedList = Array.isArray(suggestedResp.data) ? suggestedResp.data : []
+        const docsList = Array.isArray(docsResp.data) ? docsResp.data : []
         const responseList = Array.isArray(responsesResp.data) ? responsesResp.data : []
         const structurePayload = structureResp?.data || null
         const coveragePayload = coverageResp?.data || null
@@ -296,9 +347,14 @@ export default function RfqWorkspacePage() {
             await axios.post(`/rfqs/${activeRfqId}/items/bulk`)
             const refreshed = await axios.get(`/rfqs/${activeRfqId}/items`)
             itemList = Array.isArray(refreshed.data) ? refreshed.data : []
-            const refreshedStructure = await axios.get(`/rfqs/${activeRfqId}/structure`)
+            const refreshedStructure = await axios.get(`/rfqs/${activeRfqId}/structure`, {
+              params: { view: "master" },
+            })
+            const refreshedSuggested = await axios.get(`/rfqs/${activeRfqId}/suggested-suppliers`)
             if (!cancelled) {
               setStructure(refreshedStructure?.data || null)
+              setSuggestedSuppliers(Array.isArray(refreshedSuggested.data) ? refreshedSuggested.data : [])
+              setSuggestedSelection([])
             }
           } catch (e) {
             console.error(e)
@@ -307,6 +363,9 @@ export default function RfqWorkspacePage() {
 
         setItems(itemList)
         setSuppliers(supplierList)
+        setSuggestedSuppliers(suggestedList)
+        setSuggestedSelection([])
+        setRfqDocuments(docsList)
         setResponses(rfqResponses)
         setStructure(structurePayload)
         setCoverage(coveragePayload)
@@ -339,14 +398,148 @@ export default function RfqWorkspacePage() {
     }
   }, [activeRfqId, rfqs])
 
-  const refreshStructure = async () => {
+  useEffect(() => {
+    if (!suppliers.length) {
+      setSelectedSupplierIds([])
+      supplierSelectionInitRef.current = false
+      return
+    }
+    if (!supplierSelectionInitRef.current) {
+      setSelectedSupplierIds(suppliers.map((s) => s.supplier_id))
+      supplierSelectionInitRef.current = true
+    }
+  }, [suppliers])
+
+  const refreshStructure = async (opts = {}) => {
     if (!activeRfqId) return
     try {
-      const { data } = await axios.get(`/rfqs/${activeRfqId}/structure`)
+      const { data } = await axios.get(`/rfqs/${activeRfqId}/structure`, {
+        params: { view: "master" },
+      })
       setStructure(data || null)
+      if (opts.debugItemId && data?.items?.length) {
+        const item = data.items.find(
+          (row) => Number(row.rfq_item_id) === Number(opts.debugItemId)
+        )
+        debugLog("refreshStructure:item", item)
+      }
+      return data || null
     } catch (e) {
       console.error(e)
       message.error("Не удалось обновить структуру")
+      return null
+    }
+  }
+
+  const handleAddSupplier = async (values) => {
+    if (!activeRfqId) return
+    const supplierId = Number(values?.supplier_id)
+    if (!supplierId) {
+      message.warning("Выберите поставщика")
+      return
+    }
+    try {
+      await axios.post(`/rfqs/${activeRfqId}/suppliers`, {
+        supplier_id: supplierId,
+        status: values?.status || "invited",
+        note: values?.note || null,
+      })
+      supplierForm.resetFields()
+      await loadRfqs()
+      await loadSuggestedSuppliers(activeRfqId)
+      const refreshed = await axios.get(`/rfqs/${activeRfqId}/suppliers`)
+      setSuppliers(Array.isArray(refreshed.data) ? refreshed.data : [])
+      message.success("Поставщик добавлен в RFQ")
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось добавить поставщика")
+    }
+  }
+
+  const handleAddSuggestedSuppliers = async () => {
+    if (!activeRfqId) return
+    if (!suggestedSelection.length) {
+      message.warning("Выберите поставщиков из подсказок")
+      return
+    }
+    try {
+      await axios.post(`/rfqs/${activeRfqId}/suppliers/bulk`, {
+        supplier_ids: suggestedSelection,
+      })
+      await loadRfqs()
+      await loadSuggestedSuppliers(activeRfqId)
+      const refreshed = await axios.get(`/rfqs/${activeRfqId}/suppliers`)
+      setSuppliers(Array.isArray(refreshed.data) ? refreshed.data : [])
+      message.success("Поставщики добавлены")
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось добавить поставщиков")
+    }
+  }
+
+  const handleSendRfq = async () => {
+    if (!activeRfqId) return
+    const { confirmed } = await confirmAction({
+      title: "Сформировать Excel для поставщиков?",
+      text: "Файлы будут сохранены и статус RFQ станет «RFQ отправлен».",
+      icon: "warning",
+      confirmLabel: "Сформировать",
+    })
+    if (!confirmed) return
+    setSending(true)
+    try {
+      const supplierIds = selectedSupplierIds.length
+        ? selectedSupplierIds
+        : suppliers.map((s) => s.supplier_id)
+      await axios.post(`/rfqs/${activeRfqId}/send`, {
+        supplier_ids: supplierIds,
+      })
+      await loadRfqs()
+      await loadDocuments(activeRfqId)
+      const refreshed = await axios.get(`/rfqs/${activeRfqId}/suppliers`)
+      setSuppliers(Array.isArray(refreshed.data) ? refreshed.data : [])
+      message.success("RFQ отправлен и файлы сформированы")
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось сформировать RFQ")
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handleCreateSupplier = async (values) => {
+    const name = values?.name?.trim()
+    const publicCode = values?.public_code?.trim()
+    if (!name) {
+      message.warning("Введите название поставщика")
+      return
+    }
+    if (!publicCode) {
+      message.warning("Введите код поставщика")
+      return
+    }
+    try {
+      const { data: created } = await axios.post("/suppliers", {
+        name,
+        public_code: publicCode,
+      })
+      setAllSuppliers((prev) => [created, ...prev])
+      supplierCreateForm.resetFields()
+      setSupplierCreateOpen(false)
+      if (autoAddCreatedSupplier && activeRfqId) {
+        await axios.post(`/rfqs/${activeRfqId}/suppliers`, {
+          supplier_id: created.id,
+          status: "invited",
+        })
+        const refreshed = await axios.get(`/rfqs/${activeRfqId}/suppliers`)
+        setSuppliers(Array.isArray(refreshed.data) ? refreshed.data : [])
+      }
+      await loadSuggestedSuppliers(activeRfqId)
+      message.success("Поставщик создан")
+    } catch (e) {
+      console.error(e)
+      const msg = e?.response?.data?.message || "Не удалось создать поставщика"
+      message.error(msg)
     }
   }
 
@@ -360,18 +553,27 @@ export default function RfqWorkspacePage() {
       item,
       bundles: [],
       loading: true,
-      activeBundleId: null,
+      activeBundleId: item.selected_bundle_id || null,
       bundleSummary: null,
+      saving: false,
     })
     try {
       const { data } = await axios.get("/supplier-bundles", {
         params: { original_part_id: item.original_part_id },
       })
+      const list = Array.isArray(data) ? data : []
+      const currentId = item.selected_bundle_id || null
+      const singleId = list.length === 1 ? list[0].id : null
+      const nextActive = currentId || singleId
       setBundleModal((prev) => ({
         ...prev,
-        bundles: Array.isArray(data) ? data : [],
+        bundles: list,
         loading: false,
+        activeBundleId: nextActive,
       }))
+      if (nextActive) {
+        await loadBundleSummary(nextActive)
+      }
     } catch (e) {
       console.error(e)
       setBundleModal((prev) => ({ ...prev, loading: false }))
@@ -383,38 +585,115 @@ export default function RfqWorkspacePage() {
     if (!bundleId) return
     setBundleModal((prev) => ({ ...prev, activeBundleId: bundleId, bundleSummary: null }))
     try {
-      const { data } = await axios.get(`/supplier-bundles/${bundleId}/summary`)
-      setBundleModal((prev) => ({ ...prev, bundleSummary: data || null }))
+      const { data } = await axios.get(`/supplier-bundles/${bundleId}/items`)
+      setBundleModal((prev) => ({ ...prev, bundleSummary: { items: data || [] } }))
     } catch (e) {
       console.error(e)
       message.error("Не удалось загрузить состав комплекта")
     }
   }
 
+  const confirmBundleSelection = async () => {
+    if (!bundleModal.item?.rfq_item_id) return
+    if (!bundleModal.activeBundleId) {
+      message.warning("Выберите комплект")
+      return
+    }
+    setBundleModal((prev) => ({ ...prev, saving: true }))
+    try {
+      await axios.put(`/rfqs/${activeRfqId}/items/${bundleModal.item.rfq_item_id}/strategy`, {
+        allow_kit: 1,
+        selected_bundle_id: bundleModal.activeBundleId,
+      })
+      await refreshStructure()
+      await loadRfqs()
+      message.success("Комплект выбран")
+      setBundleModal({
+        open: false,
+        item: null,
+        bundles: [],
+        loading: false,
+        activeBundleId: null,
+        bundleSummary: null,
+        saving: false,
+      })
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось сохранить выбор комплекта")
+      setBundleModal((prev) => ({ ...prev, saving: false }))
+    }
+  }
+
   const updateStrategy = async (item, patch, rebuild = false) => {
     if (!activeRfqId || !item?.rfq_item_id) return
+    debugLog("updateStrategy:start", {
+      rfqItemId: item.rfq_item_id,
+      patch,
+      current: item.strategy,
+      selected_bundle_id: item.selected_bundle_id,
+    })
+    setStructure((prev) => {
+      if (!prev?.items?.length) return prev
+      const nextItems = prev.items.map((row) => {
+        if (Number(row.rfq_item_id) !== Number(item.rfq_item_id)) return row
+
+        const nextStrategy = { ...(row.strategy || {}), ...patch }
+        const hasBom = !!row.has_bom
+        const rawMode = nextStrategy.mode || row.strategy?.mode || (hasBom ? "BOM" : "SINGLE")
+        const mode = String(rawMode || "").toUpperCase() || (hasBom ? "BOM" : "SINGLE")
+        const allowKitRaw =
+          nextStrategy.allow_kit !== undefined ? nextStrategy.allow_kit : row.strategy?.allow_kit ?? 1
+        const allowKit = Number(allowKitRaw) === 1 ? 1 : 0
+        const selectedBundleId = Object.prototype.hasOwnProperty.call(patch, "selected_bundle_id")
+          ? patch.selected_bundle_id
+          : row.selected_bundle_id
+        const kitSelectionRequired = row.bundle_count > 1 && !selectedBundleId
+        const wholeEnabled = mode === "SINGLE" || mode === "MIXED" || !hasBom
+        const bomEnabled = hasBom && (mode === "BOM" || mode === "MIXED")
+        const kitEnabled = allowKit === 1 && row.bundle_count > 0 && !kitSelectionRequired
+
+        const nextOptions = (row.options || []).map((opt) => {
+          if (opt.type === "WHOLE") return { ...opt, enabled: wholeEnabled }
+          if (opt.type === "BOM") return { ...opt, enabled: bomEnabled }
+          if (opt.type === "KIT")
+            return {
+              ...opt,
+              enabled: kitEnabled,
+              selection_required: kitSelectionRequired,
+            }
+          return opt
+        })
+
+        debugLog("updateStrategy:local", {
+          rfqItemId: row.rfq_item_id,
+          mode,
+          allowKit,
+          selectedBundleId: selectedBundleId ?? null,
+          kitSelectionRequired,
+          wholeEnabled,
+          bomEnabled,
+          kitEnabled,
+        })
+
+        return {
+          ...row,
+          strategy: nextStrategy,
+          selected_bundle_id: selectedBundleId ?? null,
+          options: nextOptions,
+        }
+      })
+      return { ...prev, items: nextItems }
+    })
     try {
-      await axios.put(`/rfqs/${activeRfqId}/items/${item.rfq_item_id}/strategy`, {
+      const response = await axios.put(`/rfqs/${activeRfqId}/items/${item.rfq_item_id}/strategy`, {
         ...patch,
         rebuild_components: rebuild ? 1 : 0,
       })
-      if (rebuild) {
-        await refreshStructure()
-      } else {
-        setStructure((prev) => {
-          if (!prev?.items?.length) return prev
-          const nextItems = prev.items.map((row) => {
-            if (Number(row.rfq_item_id) !== Number(item.rfq_item_id)) return row
-            return {
-              ...row,
-              strategy: {
-                ...row.strategy,
-                ...patch,
-              },
-            }
-          })
-          return { ...prev, items: nextItems }
-        })
+      debugLog("updateStrategy:server", response?.data)
+      const refreshed = await refreshStructure({ debugItemId: item.rfq_item_id })
+      debugLog("updateStrategy:refreshed", refreshed)
+      if (activeRfq?.status === "structured") {
+        await loadRfqs()
       }
     } catch (e) {
       console.error(e)
@@ -422,95 +701,87 @@ export default function RfqWorkspacePage() {
     }
   }
 
-  const rebuildComponents = async (item) => {
-    if (!activeRfqId || !item?.rfq_item_id) return
+  const confirmStructure = async () => {
+    if (!activeRfqId) return
     try {
-      await axios.post(`/rfqs/${activeRfqId}/items/${item.rfq_item_id}/components/rebuild`, {
-        mode: item?.strategy?.mode || "SINGLE",
-      })
-      await refreshStructure()
-      message.success("Компоненты обновлены")
+      await axios.post(`/rfqs/${activeRfqId}/structure/confirm`)
+      await loadRfqs()
+      message.success("Структура RFQ подтверждена")
     } catch (e) {
       console.error(e)
-      message.error("Не удалось пересобрать компоненты")
+      message.error(e?.response?.data?.message || "Не удалось подтвердить структуру")
     }
   }
 
-  const createBundleFromBom = async (item) => {
-    if (!item?.original_part_id) {
-      message.warning("Сначала привяжите оригинальную деталь")
-      return
-    }
-    if (!item?.has_bom || !item?.components?.length) {
-      message.warning("Для позиции нет BOM")
-      return
-    }
-
-    const { confirmed } = await confirmAction({
-      title: "Создать комплект из BOM?",
-      text: "Создадим новый комплект и добавим роли из BOM. Связи с деталями поставщиков можно заполнить позже.",
-      icon: "question",
-      confirmLabel: "Создать",
+  const handleOptionToggle = async (record, nextEnabled) => {
+    const item = itemMap.get(Number(record.rfq_item_id))
+    if (!item) return
+    debugLog("toggle", {
+      rfqItemId: record.rfq_item_id,
+      optionType: record.option_type,
+      nextEnabled,
+      mode: item.strategy?.mode,
+      allowKit: item.strategy?.allow_kit,
+      bundleCount: item.bundle_count,
+      selectedBundleId: item.selected_bundle_id,
     })
-    if (!confirmed) return
 
-    try {
-      const title = item.original_cat_number || item.client_part_number || `OP-${item.original_part_id}`
-      const note = activeRfq?.rfq_number ? `RFQ ${activeRfq.rfq_number}` : "RFQ Workspace"
-      const { data } = await axios.post("/supplier-bundles", {
-        original_part_id: item.original_part_id,
-        title: `Комплект ${title}`,
-        note,
-      })
-
-      const bundleId = data?.id
-      if (!bundleId) {
-        message.error("Комплект создан, но id не получен")
+    if (record.option_type === "KIT") {
+      if (!nextEnabled) {
+        await updateStrategy(item, { allow_kit: 0, selected_bundle_id: null })
         return
       }
-
-      const bomComponents = item.components.filter((comp) => comp.source_type === "BOM")
-      if (bomComponents.length) {
-        await Promise.all(
-          bomComponents.map((comp, index) =>
-            axios.post(`/supplier-bundles/${bundleId}/items`, {
-              role_label: comp.cat_number || comp.description || `Позиция ${index + 1}`,
-              qty: comp.component_qty || 1,
-              sort_order: index + 1,
-            })
-          )
-        )
+      if (!item.bundle_count) {
+        message.warning("Для позиции нет комплектов")
+        return
       }
-
-      message.success("Комплект создан")
-      await refreshStructure()
-    } catch (e) {
-      console.error(e)
-      message.error("Не удалось создать комплект")
+      if (item.selected_bundle_id) {
+        await updateStrategy(item, { allow_kit: 1 })
+        return
+      }
+      if (item.bundle_count === 1 && item.original_part_id) {
+        try {
+          const { data } = await axios.get("/supplier-bundles", {
+            params: { original_part_id: item.original_part_id },
+          })
+          const bundleId = Array.isArray(data) && data.length ? data[0].id : null
+          if (bundleId) {
+            await updateStrategy(item, { allow_kit: 1, selected_bundle_id: bundleId })
+            return
+          }
+        } catch (e) {
+          console.error(e)
+        }
+      }
+      openBundleModal(item)
+      return
     }
-  }
 
-  const loadBomTree = async (originalPartId, force = false) => {
-    if (!originalPartId) return
-    if (!force && bomTrees[originalPartId]?.data) return
-    setBomTrees((prev) => ({
-      ...prev,
-      [originalPartId]: { loading: true, data: prev[originalPartId]?.data || null },
-    }))
-    try {
-      const { data } = await axios.get(`/original-part-bom/tree/${originalPartId}`)
-      const treeData = buildBomTree(Array.isArray(data) ? data : [])
-      setBomTrees((prev) => ({
-        ...prev,
-        [originalPartId]: { loading: false, data: treeData },
-      }))
-    } catch (e) {
-      console.error(e)
-      setBomTrees((prev) => ({
-        ...prev,
-        [originalPartId]: { loading: false, data: null },
-      }))
-      message.error("Не удалось загрузить BOM дерево")
+    const hasBom = !!item.has_bom
+    const currentMode = String(item.strategy?.mode || (hasBom ? "BOM" : "SINGLE")).toUpperCase()
+    const currentWhole = currentMode === "SINGLE" || currentMode === "MIXED" || !hasBom
+    const currentBom = hasBom && (currentMode === "BOM" || currentMode === "MIXED")
+
+    if (record.option_type === "WHOLE") {
+      if (nextEnabled) {
+        const nextMode = currentBom ? "MIXED" : "SINGLE"
+        return await updateStrategy(item, { mode: nextMode })
+      }
+      if (hasBom) {
+        return await updateStrategy(item, { mode: "BOM" })
+      }
+      message.info("Для позиции без состава поставка целиком всегда включена.")
+      return
+    }
+
+    if (record.option_type === "BOM") {
+      if (!hasBom) return
+      if (nextEnabled) {
+        const nextMode = currentWhole ? "MIXED" : "BOM"
+        return await updateStrategy(item, { mode: nextMode })
+      }
+      const nextMode = currentWhole ? "SINGLE" : "SINGLE"
+      return await updateStrategy(item, { mode: nextMode })
     }
   }
 
@@ -582,6 +853,15 @@ export default function RfqWorkspacePage() {
     [revisions]
   )
 
+  const supplierOptions = useMemo(
+    () =>
+      allSuppliers.map((s) => ({
+        value: s.id,
+        label: `${s.name || `Поставщик #${s.id}`}${s.public_code ? ` · ${s.public_code}` : ""}`,
+      })),
+    [allSuppliers]
+  )
+
   const filteredRfqs = useMemo(() => {
     const needle = String(filterRequestNumber || "").trim().toLowerCase()
     return rfqs.filter((rfq) => {
@@ -629,7 +909,55 @@ export default function RfqWorkspacePage() {
   ])
 
   const structureItems = structure?.items || []
+  const itemMap = useMemo(() => {
+    const map = new Map()
+    structureItems.forEach((item) => {
+      map.set(Number(item.rfq_item_id), item)
+    })
+    return map
+  }, [structureItems])
+
+  const rfqTreeData = useMemo(() => {
+    return structureItems.map((item) => {
+      const children = (item.options || [])
+        .filter((opt) => opt.available)
+        .map((opt) => {
+          const optionType = opt.option_type || opt.type
+          return {
+            ...opt,
+            key: opt.key || `opt-${item.rfq_item_id}-${optionType}`,
+            type: "OPTION",
+            option_type: optionType,
+            rfq_item_id: item.rfq_item_id,
+            bundle_count: item.bundle_count,
+            selected_bundle_id: item.selected_bundle_id,
+            selected_bundle_title: item.selected_bundle_title,
+            children: Array.isArray(opt.children) ? opt.children : [],
+          }
+        })
+      return {
+        key: `demand-${item.rfq_item_id}`,
+        type: "DEMAND",
+        rfq_item_id: item.rfq_item_id,
+        line_number: item.line_number,
+        original_cat_number: item.original_cat_number,
+        client_part_number: item.client_part_number,
+        description: item.description,
+        requested_qty: item.requested_qty,
+        uom: item.uom,
+        has_bom: item.has_bom,
+        bundle_count: item.bundle_count,
+        selected_bundle_id: item.selected_bundle_id,
+        selected_bundle_title: item.selected_bundle_title,
+        children,
+      }
+    })
+  }, [structureItems])
   const activeStep = TAB_TO_STEP[activeTabKey] ?? 0
+  const isStructureConfirmed = useMemo(
+    () => ["structured", "sent", "responded"].includes(activeRfq?.status),
+    [activeRfq?.status]
+  )
 
   const rfqColumns = [
     { title: "Клиент", dataIndex: "client_name", width: 220 },
@@ -674,6 +1002,133 @@ export default function RfqWorkspacePage() {
           }}
         />
       ),
+    },
+  ]
+
+  const rfqStructureColumns = [
+    {
+      title: "Позиция",
+      dataIndex: "item",
+      render: (_, record) => {
+        if (record.type === "DEMAND") {
+          const cat = record.original_cat_number || record.client_part_number || "-"
+          return (
+            <Space>
+              <Tag>{record.line_number}</Tag>
+              <Text strong>{cat}</Text>
+            </Space>
+          )
+        }
+        if (record.type === "OPTION") {
+          return <Text>{record.label}</Text>
+        }
+        if (record.type === "BOM_COMPONENT") {
+          return record.cat_number || "-"
+        }
+        if (record.type === "KIT_ROLE") {
+          return `Роль: ${record.role_label || "-"}`
+        }
+        return "-"
+      },
+    },
+    {
+      title: "Описание",
+      dataIndex: "description",
+      render: (value, record) => {
+        if (record.type === "OPTION" && record.option_type === "KIT") {
+          if (record.enabled) {
+            if (record.selected_bundle_title) {
+              return `Комплект: ${record.selected_bundle_title}`
+            }
+            if (record.selection_required) {
+              return "Нужно выбрать комплект"
+            }
+          }
+        }
+        if (record.type === "KIT_ROLE") {
+          return record.role_label || "-"
+        }
+        return value || "-"
+      },
+    },
+    {
+      title: "Кол-во",
+      dataIndex: "qty",
+      width: 100,
+      render: (_, record) => {
+        if (record.type === "DEMAND") return record.requested_qty ?? "-"
+        if (record.type === "BOM_COMPONENT") return record.required_qty ?? "-"
+        if (record.type === "KIT_ROLE") return record.required_qty ?? "-"
+        return "-"
+      },
+    },
+    {
+      title: "Ед.",
+      dataIndex: "uom",
+      width: 80,
+      render: (_, record) => {
+        if (record.type === "DEMAND") return record.uom || "-"
+        if (record.type === "BOM_COMPONENT" || record.type === "KIT_ROLE") return record.uom || "-"
+        return "-"
+      },
+    },
+    {
+      title: "Тип",
+      dataIndex: "type",
+      width: 120,
+      render: (value, record) => {
+        if (record.type === "DEMAND") return <Tag>Заявка</Tag>
+        if (record.type === "OPTION") {
+          const label =
+            record.option_type === "WHOLE"
+              ? "Целиком"
+              : record.option_type === "BOM"
+                ? "BOM"
+                : "Комплект"
+          return <Tag color="blue">{label}</Tag>
+        }
+        if (record.type === "BOM_COMPONENT") return <Tag>Компонент</Tag>
+        if (record.type === "KIT_ROLE") return <Tag>Роль</Tag>
+        return "-"
+      },
+    },
+    {
+      title: "Вариант",
+      dataIndex: "option",
+      width: 240,
+      render: (_, record) => {
+        if (record.type !== "OPTION") return null
+        const item = itemMap.get(Number(record.rfq_item_id))
+        const hasBom = !!item?.has_bom
+        const mode = String(item?.strategy?.mode || (hasBom ? "BOM" : "SINGLE")).toUpperCase()
+        const allowKit = Number(item?.strategy?.allow_kit ?? 1) === 1
+        const selectedBundleId = item?.selected_bundle_id
+        const kitSelectionRequired = item?.bundle_count > 1 && !selectedBundleId
+        const kitEnabled = allowKit && (item?.bundle_count || 0) > 0 && !kitSelectionRequired
+        const checked =
+          record.option_type === "WHOLE"
+            ? mode === "SINGLE" || mode === "MIXED" || !hasBom
+            : record.option_type === "BOM"
+              ? hasBom && (mode === "BOM" || mode === "MIXED")
+              : record.option_type === "KIT"
+                ? kitEnabled
+                : false
+        const canSelectBundle = record.option_type === "KIT" && record.available && checked
+        return (
+          <Space>
+            <Switch
+              checked={checked}
+              disabled={!record.available}
+              onChange={(checked) => handleOptionToggle(record, checked)}
+            />
+            {canSelectBundle ? (
+              <Button size="small" onClick={() => openBundleModal(item)}>
+                {record.selected_bundle_id ? "Сменить комплект" : "Выбрать комплект"}
+              </Button>
+            ) : null}
+          </Space>
+        )
+      },
     },
   ]
 
@@ -780,7 +1235,12 @@ export default function RfqWorkspacePage() {
                 current={activeStep}
                 onChange={(index) => {
                   const nextKey = STEP_TO_TAB[index]
-                  if (nextKey) setActiveTabKey(nextKey)
+                  if (!nextKey) return
+                  if (index > 0 && !isStructureConfirmed) {
+                    message.warning("Сначала подтвердите структуру RFQ")
+                    return
+                  }
+                  setActiveTabKey(nextKey)
                 }}
                 items={STEP_LABELS.map((label, index) => ({
                   title: label,
@@ -796,207 +1256,207 @@ export default function RfqWorkspacePage() {
                     key: "rfq",
                     label: "RFQ",
                     children: (
-                      <Table
-                        rowKey="rfq_item_id"
-                        loading={!structure && !!activeRfqId}
-                        dataSource={structureItems}
-                        pagination={false}
-                        expandable={{
-                          onExpand: (expanded, record) => {
-                            if (expanded && record?.has_bom) {
-                              loadBomTree(record.original_part_id)
-                            }
-                          },
-                          expandedRowRender: (record) => (
-                            <Space direction="vertical" style={{ width: "100%" }} size={12}>
-                              <Space wrap align="center">
-                                <Text strong>Стратегия</Text>
-                                <Radio.Group
-                                  value={record.strategy?.mode || "SINGLE"}
-                                  onChange={(event) =>
-                                    updateStrategy(record, { mode: event.target.value }, true)
-                                  }
-                                  disabled={!record.original_part_id}
-                                >
-                                  <Radio.Button value="SINGLE">Single</Radio.Button>
-                                  <Radio.Button value="BOM" disabled={!record.has_bom}>
-                                    BOM
-                                  </Radio.Button>
-                                  <Radio.Button value="MIXED" disabled={!record.has_bom}>
-                                    Mixed
-                                  </Radio.Button>
-                                </Radio.Group>
-                                <Tooltip title="Разрешить OEM-предложения">
-                                  <Checkbox
-                                    checked={!!record.strategy?.allow_oem}
-                                    disabled={!record.original_part_id}
-                                    onChange={(event) =>
-                                      updateStrategy(record, { allow_oem: event.target.checked ? 1 : 0 })
-                                    }
-                                  >
-                                    OEM
-                                  </Checkbox>
-                                </Tooltip>
-                                <Tooltip title="Разрешить аналоги">
-                                  <Checkbox
-                                    checked={!!record.strategy?.allow_analog}
-                                    disabled={!record.original_part_id}
-                                    onChange={(event) =>
-                                      updateStrategy(record, { allow_analog: event.target.checked ? 1 : 0 })
-                                    }
-                                  >
-                                    Аналоги
-                                  </Checkbox>
-                                </Tooltip>
-                                <Tooltip title="Разрешить комплекты поставщика">
-                                  <Checkbox
-                                    checked={!!record.strategy?.allow_kit}
-                                    disabled={!record.original_part_id}
-                                    onChange={(event) =>
-                                      updateStrategy(record, { allow_kit: event.target.checked ? 1 : 0 })
-                                    }
-                                  >
-                                    Комплекты
-                                  </Checkbox>
-                                </Tooltip>
-                                <Tooltip title="Разрешить частичное покрытие BOM">
-                                  <Checkbox
-                                    checked={!!record.strategy?.allow_partial}
-                                    disabled={!record.has_bom || !record.original_part_id}
-                                    onChange={(event) =>
-                                      updateStrategy(record, { allow_partial: event.target.checked ? 1 : 0 })
-                                    }
-                                  >
-                                    Частично
-                                  </Checkbox>
-                                </Tooltip>
-                                <Tooltip title="Обновить компоненты по выбранной стратегии">
-                                  <Button onClick={() => rebuildComponents(record)}>
-                                    Пересобрать структуру
-                                  </Button>
-                                </Tooltip>
-                                <Tooltip title="Создать новый комплект из BOM (если комплекта ещё нет)">
-                                  <Button
-                                    disabled={!record.has_bom || record.bundle_count > 0}
-                                    onClick={() => createBundleFromBom(record)}
-                                  >
-                                    Создать комплект
-                                  </Button>
-                                </Tooltip>
-                                <Button
-                                  disabled={!record.bundle_count}
-                                  onClick={() => openBundleModal(record)}
-                                >
-                                  Показать комплекты
-                                </Button>
-                              </Space>
-
-                              <Table
-                                rowKey={(row) =>
-                                  row.rfq_item_component_id ||
-                                  `${record.rfq_item_id}-${row.original_part_id}-${row.source_type}`
-                                }
-                                dataSource={record.components || []}
-                                pagination={false}
-                                size="small"
-                                columns={[
-                                  { title: "Компонент", dataIndex: "cat_number", width: 160 },
-                                  { title: "Описание", dataIndex: "description" },
-                                  {
-                                    title: "Источник",
-                                    dataIndex: "source_type",
-                                    width: 120,
-                                    render: (value) => <Tag>{value || "BOM"}</Tag>,
-                                  },
-                                  { title: "Кол-во", dataIndex: "required_qty", width: 100 },
-                                  {
-                                    title: "Комплекты",
-                                    dataIndex: "bundle_count",
-                                    width: 110,
-                                    render: (value) =>
-                                      value ? <Tag color="blue">{value}</Tag> : "-",
-                                  },
-                                ]}
-                              />
-                              {record.has_bom ? (
-                                <Card
-                                  size="small"
-                                  title="BOM дерево"
-                                  extra={
-                                    <Button
-                                      size="small"
-                                      onClick={() => loadBomTree(record.original_part_id, true)}
-                                    >
-                                      Обновить дерево
-                                    </Button>
-                                  }
-                                >
-                                  <Tree
-                                    treeData={bomTrees[record.original_part_id]?.data || []}
-                                    defaultExpandAll
-                                  />
-                                  {!bomTrees[record.original_part_id]?.data &&
-                                  !bomTrees[record.original_part_id]?.loading ? (
-                                    <Text type="secondary">Дерево не загружено.</Text>
-                                  ) : null}
-                                </Card>
-                              ) : null}
-                            </Space>
-                          ),
-                        }}
-                        columns={[
-                          { title: "№", dataIndex: "line_number", width: 60 },
-                          {
-                            title: "Кат. номер",
-                            dataIndex: "original_cat_number",
-                            width: 160,
-                            render: (value, record) => value || record.client_part_number || "-",
-                          },
-                          { title: "Описание", dataIndex: "client_description" },
-                          { title: "Кол-во", dataIndex: "requested_qty", width: 90 },
-                          { title: "Ед.", dataIndex: "uom", width: 70 },
-                          {
-                            title: "BOM",
-                            dataIndex: "has_bom",
-                            width: 80,
-                            render: (value) => (value ? "Да" : "-"),
-                          },
-                          {
-                            title: "Комплекты",
-                            dataIndex: "bundle_count",
-                            width: 110,
-                            render: (value) => (value ? value : "-"),
-                          },
-                          {
-                            title: "Стратегия",
-                            dataIndex: "strategy",
-                            width: 160,
-                            render: (value) => value?.mode || "SINGLE",
-                          },
-                        ]}
-                      />
+                      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                        <Space wrap align="center">
+                          <Button
+                            type="primary"
+                            onClick={confirmStructure}
+                            disabled={!structureItems.length || isStructureConfirmed}
+                          >
+                            Подтвердить структуру
+                          </Button>
+                          {isStructureConfirmed ? (
+                            <Tag color="green">Структура подтверждена</Tag>
+                          ) : (
+                            <Text type="secondary">
+                              Подтвердите структуру перед переходом к поставщикам.
+                            </Text>
+                          )}
+                        </Space>
+                        <Table
+                          rowKey="key"
+                          loading={!structure && !!activeRfqId}
+                          dataSource={rfqTreeData}
+                          pagination={false}
+                          columns={rfqStructureColumns}
+                        />
+                      </Space>
                     ),
                   },
                   {
                     key: "suppliers",
                     label: "Поставщики",
+                    disabled: !isStructureConfirmed,
                     children: (
-                      <Table
-                        rowKey="id"
-                        dataSource={suppliers}
-                        pagination={false}
-                        columns={[
-                          { title: "Поставщик", dataIndex: "supplier_name" },
-                          { title: "Статус", dataIndex: "status", width: 120 },
-                          { title: "Дата", dataIndex: "invited_at", width: 120, render: formatDate },
-                          { title: "Комментарий", dataIndex: "note" },
-                        ]}
-                      />
+                      <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                        <Card size="small" title="Подсказки по поставщикам">
+                          <Space direction="vertical" style={{ width: "100%" }}>
+                            <Table
+                              rowKey="supplier_id"
+                              dataSource={suggestedSuppliers}
+                              pagination={false}
+                              rowSelection={{
+                                selectedRowKeys: suggestedSelection,
+                                onChange: setSuggestedSelection,
+                              }}
+                              columns={[
+                                { title: "Поставщик", dataIndex: "supplier_name" },
+                                { title: "Совпадений", dataIndex: "parts_count", width: 130 },
+                                {
+                                  title: "Типы",
+                                  dataIndex: "match_types",
+                                  width: 160,
+                                  render: renderMatchTypes,
+                                },
+                              ]}
+                            />
+                            <Button
+                              type="primary"
+                              onClick={handleAddSuggestedSuppliers}
+                              disabled={!suggestedSuppliers.length}
+                            >
+                              Добавить выбранных
+                            </Button>
+                          </Space>
+                        </Card>
+
+                        <Card size="small" title="Добавить поставщика">
+                          <Form
+                            form={supplierForm}
+                            onFinish={handleAddSupplier}
+                            layout="vertical"
+                          >
+                            <Space wrap align="start">
+                              <Form.Item
+                                label="Поставщик"
+                                name="supplier_id"
+                                rules={[{ required: true, message: "Выберите поставщика" }]}
+                              >
+                                <Select
+                                  showSearch
+                                  optionFilterProp="label"
+                                  style={{ width: 260 }}
+                                  options={supplierOptions}
+                                  placeholder="Поиск по названию"
+                                />
+                              </Form.Item>
+                              <Form.Item label="Статус" name="status" initialValue="invited">
+                                <Select
+                                  style={{ width: 160 }}
+                                  options={[
+                                    { value: "invited", label: "Приглашен" },
+                                    { value: "sent", label: "Отправлен" },
+                                    { value: "responded", label: "Ответил" },
+                                  ]}
+                                />
+                              </Form.Item>
+                              <Form.Item label="Комментарий" name="note">
+                                <Input style={{ width: 220 }} />
+                              </Form.Item>
+                              <Form.Item style={{ marginTop: 30 }}>
+                                <Button type="primary" htmlType="submit">
+                                  Добавить
+                                </Button>
+                              </Form.Item>
+                              <Form.Item style={{ marginTop: 30 }}>
+                                <Button onClick={() => setSupplierCreateOpen(true)}>
+                                  Создать поставщика
+                                </Button>
+                              </Form.Item>
+                            </Space>
+                          </Form>
+                        </Card>
+
+                        <Card size="small" title="Поставщики в RFQ">
+                          <Table
+                            rowKey="supplier_id"
+                            dataSource={suppliers}
+                            pagination={false}
+                            rowSelection={{
+                              selectedRowKeys: selectedSupplierIds,
+                              onChange: setSelectedSupplierIds,
+                            }}
+                            columns={[
+                              { title: "Поставщик", dataIndex: "supplier_name" },
+                              {
+                                title: "Контакт",
+                                dataIndex: "contact_person",
+                                render: (_, record) => {
+                                  const parts = [
+                                    record.contact_person,
+                                    record.contact_email,
+                                    record.contact_phone,
+                                  ].filter(Boolean)
+                                  return parts.length ? parts.join(" / ") : "—"
+                                },
+                              },
+                              {
+                                title: "Статус",
+                                dataIndex: "status",
+                                width: 120,
+                                render: (value) => (
+                                  <Tag color={statusToColor(value)}>
+                                    {value || "invited"}
+                                  </Tag>
+                                ),
+                              },
+                              {
+                                title: "Дата",
+                                dataIndex: "invited_at",
+                                width: 120,
+                                render: formatDate,
+                              },
+                              { title: "Комментарий", dataIndex: "note" },
+                            ]}
+                          />
+                        </Card>
+
+                        <Card size="small" title="Файлы RFQ">
+                          <Space direction="vertical" style={{ width: "100%" }}>
+                            <Space wrap align="center">
+                              <Button
+                                type="primary"
+                                onClick={handleSendRfq}
+                                disabled={!suppliers.length}
+                                loading={sending}
+                              >
+                                Сформировать Excel
+                              </Button>
+                              <Text type="secondary">
+                                После формирования статус станет «RFQ отправлен».
+                              </Text>
+                            </Space>
+                            <Table
+                              rowKey="id"
+                              dataSource={rfqDocuments}
+                              loading={docsLoading}
+                              pagination={false}
+                              columns={[
+                                {
+                                  title: "Файл",
+                                  dataIndex: "file_name",
+                                  render: (value, record) =>
+                                    record.file_url ? (
+                                      <a href={record.file_url} target="_blank" rel="noreferrer">
+                                        {value || "Документ"}
+                                      </a>
+                                    ) : (
+                                      value || "Документ"
+                                    ),
+                                },
+                                { title: "Поставщик", dataIndex: "supplier_name", width: 220 },
+                                { title: "Создано", dataIndex: "created_at", width: 140, render: formatDate },
+                              ]}
+                            />
+                          </Space>
+                        </Card>
+                      </Space>
                     ),
                   },
                   {
                     key: "responses",
                     label: "Ответы",
+                    disabled: !isStructureConfirmed,
                     children: (
                       <Table
                         rowKey="id"
@@ -1013,6 +1473,7 @@ export default function RfqWorkspacePage() {
                   {
                     key: "coverage",
                     label: "Coverage",
+                    disabled: !isStructureConfirmed,
                     children: (
                       <Table
                         rowKey="key"
@@ -1042,6 +1503,7 @@ export default function RfqWorkspacePage() {
                   {
                     key: "selection",
                     label: "Selection",
+                    disabled: !isStructureConfirmed,
                     children: (
                       <Space direction="vertical" style={{ width: "100%" }}>
                         <Table
@@ -1081,6 +1543,7 @@ export default function RfqWorkspacePage() {
                   {
                     key: "economics",
                     label: "Экономика",
+                    disabled: !isStructureConfirmed,
                     children: (
                       <Space direction="vertical" style={{ width: "100%" }}>
                         <Table
@@ -1109,6 +1572,7 @@ export default function RfqWorkspacePage() {
                   {
                     key: "sales",
                     label: "КП",
+                    disabled: !isStructureConfirmed,
                     children: (
                       <Table
                         rowKey="id"
@@ -1125,6 +1589,7 @@ export default function RfqWorkspacePage() {
                   {
                     key: "contracts",
                     label: "Контракт",
+                    disabled: !isStructureConfirmed,
                     children: (
                       <Table
                         rowKey="id"
@@ -1141,6 +1606,7 @@ export default function RfqWorkspacePage() {
                   {
                     key: "po",
                     label: "PO",
+                    disabled: !isStructureConfirmed,
                     children: (
                       <Table
                         rowKey="id"
@@ -1166,6 +1632,47 @@ export default function RfqWorkspacePage() {
         )}
       </Space>
       <Modal
+        open={supplierCreateOpen}
+        onCancel={() => setSupplierCreateOpen(false)}
+        footer={null}
+        title="Создать поставщика"
+      >
+        <Form
+          form={supplierCreateForm}
+          layout="vertical"
+          onFinish={handleCreateSupplier}
+        >
+          <Form.Item
+            label="Название"
+            name="name"
+            rules={[{ required: true, message: "Введите название поставщика" }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item
+            label="Код поставщика"
+            name="public_code"
+            rules={[{ required: true, message: "Введите код поставщика" }]}
+          >
+            <Input placeholder="Например SUP-01" />
+          </Form.Item>
+          <Form.Item>
+            <Checkbox
+              checked={autoAddCreatedSupplier}
+              onChange={(e) => setAutoAddCreatedSupplier(e.target.checked)}
+            >
+              Сразу добавить в RFQ
+            </Checkbox>
+          </Form.Item>
+          <Space>
+            <Button onClick={() => setSupplierCreateOpen(false)}>Отмена</Button>
+            <Button type="primary" htmlType="submit">
+              Создать
+            </Button>
+          </Space>
+        </Form>
+      </Modal>
+      <Modal
         open={bundleModal.open}
         onCancel={() =>
           setBundleModal({
@@ -1175,9 +1682,36 @@ export default function RfqWorkspacePage() {
             loading: false,
             activeBundleId: null,
             bundleSummary: null,
+            saving: false,
           })
         }
-        footer={null}
+        footer={
+          <Space>
+            <Button
+              onClick={() =>
+                setBundleModal({
+                  open: false,
+                  item: null,
+                  bundles: [],
+                  loading: false,
+                  activeBundleId: null,
+                  bundleSummary: null,
+                  saving: false,
+                })
+              }
+            >
+              Отмена
+            </Button>
+            <Button
+              type="primary"
+              disabled={!bundleModal.activeBundleId}
+              loading={bundleModal.saving}
+              onClick={confirmBundleSelection}
+            >
+              Выбрать комплект
+            </Button>
+          </Space>
+        }
         width={820}
         title={
           bundleModal.item
@@ -1204,20 +1738,12 @@ export default function RfqWorkspacePage() {
         {bundleModal.bundleSummary ? (
           <Card size="small" style={{ marginTop: 12 }} title="Состав комплекта">
             <Table
-              rowKey="link_id"
-              dataSource={bundleModal.bundleSummary.options || []}
+              rowKey="id"
+              dataSource={bundleModal.bundleSummary.items || []}
               pagination={false}
               columns={[
-                { title: "Роль", dataIndex: "role_label", width: 160 },
-                { title: "Поставщик", dataIndex: "supplier_name", width: 200 },
-                { title: "Номер", dataIndex: "supplier_part_number", width: 140 },
-                { title: "Кол-во", dataIndex: "qty", width: 90 },
-                {
-                  title: "По умолчанию",
-                  dataIndex: "is_default",
-                  width: 120,
-                  render: (value) => (value ? <Tag color="green">Да</Tag> : "-"),
-                },
+                { title: "Роль", dataIndex: "role_label", width: 200 },
+                { title: "Кол-во", dataIndex: "qty", width: 120 },
               ]}
             />
           </Card>
