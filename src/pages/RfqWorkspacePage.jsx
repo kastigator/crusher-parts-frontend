@@ -4,6 +4,7 @@ import { DeleteOutlined } from "@ant-design/icons"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
+import { useAuth } from "@/auth/AuthContext"
 
 const { Text } = Typography
 
@@ -75,6 +76,7 @@ const renderMatchTypes = (value) => {
 }
 
 export default function RfqWorkspacePage() {
+  const { user } = useAuth()
   const [rfqs, setRfqs] = useState([])
   const [requests, setRequests] = useState([])
   const [revisions, setRevisions] = useState([])
@@ -119,6 +121,7 @@ export default function RfqWorkspacePage() {
   const [createForm] = Form.useForm()
   const [supplierForm] = Form.useForm()
   const [supplierCreateForm] = Form.useForm()
+  const [users, setUsers] = useState([])
   const autoFillRef = useRef(new Set())
   const supplierSelectionInitRef = useRef(false)
 
@@ -156,9 +159,24 @@ export default function RfqWorkspacePage() {
         console.error(e)
       }
     }
+    const loadUsers = async () => {
+      try {
+        const { data } = await axios.get("/users")
+        setUsers(Array.isArray(data) ? data : [])
+      } catch (e) {
+        console.error(e)
+      }
+    }
     loadRequests()
     loadSuppliers()
+    loadUsers()
   }, [])
+
+  useEffect(() => {
+    if (user?.id) {
+      createForm.setFieldsValue({ assigned_to_user_id: user.id })
+    }
+  }, [createForm, user])
 
   const loadRevisions = async (requestId) => {
     if (!requestId) {
@@ -216,12 +234,16 @@ export default function RfqWorkspacePage() {
         client_request_revision_id: values.client_request_revision_id,
         note: values.note || null,
         rfq_number: values.rfq_number || null,
+        assigned_to_user_id: values.assigned_to_user_id || null,
       })
       if (data?.id) {
         await axios.post(`/rfqs/${data.id}/items/bulk`)
       }
       message.success("RFQ создан")
       createForm.resetFields()
+      if (user?.id) {
+        createForm.setFieldsValue({ assigned_to_user_id: user.id })
+      }
       await loadRfqs()
       if (data?.id) {
         setActiveRfqId(data.id)
@@ -452,6 +474,25 @@ export default function RfqWorkspacePage() {
     } catch (e) {
       console.error(e)
       message.error("Не удалось добавить поставщика")
+    }
+  }
+
+  const handleSupplierLanguage = async (record, lang) => {
+    if (!activeRfqId || !record?.id) return
+    try {
+      const res = await axios.patch(
+        `/rfqs/${activeRfqId}/suppliers/${record.id}`,
+        { language: lang }
+      )
+      const nextLang = res?.data?.language || lang
+      setSuppliers((prev) =>
+        prev.map((row) =>
+          row.id === record.id ? { ...row, language: nextLang } : row
+        )
+      )
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось обновить язык RFQ")
     }
   }
 
@@ -843,6 +884,15 @@ export default function RfqWorkspacePage() {
     [requests]
   )
 
+  const userOptions = useMemo(
+    () =>
+      users.map((u) => ({
+        value: u.id,
+        label: u.full_name || u.username || `User ${u.id}`,
+      })),
+    [users]
+  )
+
   const revisionOptions = useMemo(
     () =>
       revisions.map((rev) => ({
@@ -966,6 +1016,12 @@ export default function RfqWorkspacePage() {
       width: 160,
       render: (value, record) =>
         value || record.client_reference || `#${record.client_request_id}`,
+    },
+    {
+      title: "Ответственный",
+      dataIndex: "assigned_user_name",
+      width: 180,
+      render: (value) => value || "—",
     },
     {
       title: "RFQ",
@@ -1158,6 +1214,16 @@ export default function RfqWorkspacePage() {
                 rules={[{ required: true, message: "Выберите ревизию" }]}
               >
                 <Select style={{ width: 180 }} options={revisionOptions} />
+              </Form.Item>
+              <Form.Item label="Ответственный (RFQ)" name="assigned_to_user_id">
+                <Select
+                  style={{ width: 220 }}
+                  options={userOptions}
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Назначить"
+                  allowClear
+                />
               </Form.Item>
               <Form.Item label="Номер RFQ" name="rfq_number">
                 <Input style={{ width: 180 }} placeholder="Например RFQ-21" />
@@ -1378,6 +1444,32 @@ export default function RfqWorkspacePage() {
                                   ].filter(Boolean)
                                   return parts.length ? parts.join(" / ") : "—"
                                 },
+                              },
+                              {
+                                title: "RU",
+                                width: 70,
+                                align: "center",
+                                render: (_, record) => (
+                                  <Checkbox
+                                    checked={(record.language || "ru") === "ru"}
+                                    onChange={() =>
+                                      handleSupplierLanguage(record, "ru")
+                                    }
+                                  />
+                                ),
+                              },
+                              {
+                                title: "EN",
+                                width: 70,
+                                align: "center",
+                                render: (_, record) => (
+                                  <Checkbox
+                                    checked={(record.language || "ru") === "en"}
+                                    onChange={() =>
+                                      handleSupplierLanguage(record, "en")
+                                    }
+                                  />
+                                ),
                               },
                               {
                                 title: "Статус",
