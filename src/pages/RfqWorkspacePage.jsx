@@ -441,7 +441,6 @@ export default function RfqWorkspacePage() {
     try {
       await axios.post(`/rfqs/${activeRfqId}/suppliers`, {
         supplier_id: supplierId,
-        status: values?.status || "invited",
         note: values?.note || null,
       })
       supplierForm.resetFields()
@@ -1338,16 +1337,6 @@ export default function RfqWorkspacePage() {
                                   style={{ width: 260 }}
                                   options={supplierOptions}
                                   placeholder="Поиск по названию"
-                                />
-                              </Form.Item>
-                              <Form.Item label="Статус" name="status" initialValue="invited">
-                                <Select
-                                  style={{ width: 160 }}
-                                  options={[
-                                    { value: "invited", label: "Приглашен" },
-                                    { value: "sent", label: "Отправлен" },
-                                    { value: "responded", label: "Ответил" },
-                                  ]}
                                 />
                               </Form.Item>
                               <Form.Item label="Комментарий" name="note">
