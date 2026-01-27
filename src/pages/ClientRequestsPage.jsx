@@ -36,7 +36,6 @@ import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import dayjs from "dayjs"
 import confirmAction from "@/utils/confirmAction"
-import readXlsxFile from "read-excel-file"
 
 const STATUS_OPTIONS = [
   { value: "draft", label: "Черновик" },
@@ -917,6 +916,7 @@ export default function ClientRequestsPage() {
   }
 
   const parseImportFile = async (file) => {
+    const { default: readXlsxFile } = await import("read-excel-file")
     const rows = await readXlsxFile(file)
     if (!rows?.length) {
       throw new Error("Файл пустой или не распознан")

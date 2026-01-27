@@ -1,30 +1,31 @@
 // src/router/AppRouter.jsx
-import React, { Suspense } from 'react'
+import React, { Suspense, lazy } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import PrivateRoute from '../auth/PrivateRoute'
-import LoginPage from '../pages/LoginPage'
 import MainLayout from '../layout/MainLayout'
-import HomePage from '../pages/HomePage'
-import UsersPage from '../pages/UsersPage'
-import AdminPage from '../pages/AdminPage'
-import CatalogsPage from '../pages/CatalogsPage'
-import ClientRequestsPage from '../pages/ClientRequestsPage'
-import RfqPage from '../pages/RfqPage'
-import RfqWorkspacePage from '../pages/RfqWorkspacePage'
-import SupplierResponsesPage from '../pages/SupplierResponsesPage'
-import CoveragePage from '../pages/CoveragePage'
-import ScorecardPage from '../pages/ScorecardPage'
-import EconomicsPage from '../pages/EconomicsPage'
-import SelectionPage from '../pages/SelectionPage'
-import SalesQuotesPage from '../pages/SalesQuotesPage'
-import ContractsPage from '../pages/ContractsPage'
-import PurchaseOrdersPage from '../pages/PurchaseOrdersPage'
-import TnvedCodesPage from '../pages/TnvedCodesPage'
-import ClientsPage from '../pages/ClientsPage'
-import SuppliersPage from '../pages/SuppliersPage'
-import OriginalPartsPage from '../pages/OriginalPartsPage'
-import SupplierPartsPage from '@/pages/SupplierPartsPage'
-import MaterialsPage from "@/pages/MaterialsPage"
+
+const LoginPage = lazy(() => import('../pages/LoginPage'))
+const HomePage = lazy(() => import('../pages/HomePage'))
+const UsersPage = lazy(() => import('../pages/UsersPage'))
+const AdminPage = lazy(() => import('../pages/AdminPage'))
+const CatalogsPage = lazy(() => import('../pages/CatalogsPage'))
+const ClientRequestsPage = lazy(() => import('../pages/ClientRequestsPage'))
+const RfqPage = lazy(() => import('../pages/RfqPage'))
+const RfqWorkspacePage = lazy(() => import('../pages/RfqWorkspacePage'))
+const SupplierResponsesPage = lazy(() => import('../pages/SupplierResponsesPage'))
+const CoveragePage = lazy(() => import('../pages/CoveragePage'))
+const ScorecardPage = lazy(() => import('../pages/ScorecardPage'))
+const EconomicsPage = lazy(() => import('../pages/EconomicsPage'))
+const SelectionPage = lazy(() => import('../pages/SelectionPage'))
+const SalesQuotesPage = lazy(() => import('../pages/SalesQuotesPage'))
+const ContractsPage = lazy(() => import('../pages/ContractsPage'))
+const PurchaseOrdersPage = lazy(() => import('../pages/PurchaseOrdersPage'))
+const TnvedCodesPage = lazy(() => import('../pages/TnvedCodesPage'))
+const ClientsPage = lazy(() => import('../pages/ClientsPage'))
+const SuppliersPage = lazy(() => import('../pages/SuppliersPage'))
+const OriginalPartsPage = lazy(() => import('../pages/OriginalPartsPage'))
+const SupplierPartsPage = lazy(() => import('@/pages/SupplierPartsPage'))
+const MaterialsPage = lazy(() => import('@/pages/MaterialsPage'))
 
 const AppRouter = () => (
   <Suspense fallback={<div>Загрузка...</div>}>

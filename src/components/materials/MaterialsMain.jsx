@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react"
+import React, { useEffect, useMemo, useState, useCallback, Suspense, lazy } from "react"
 import { Card, Space, Input, Button, Tree, Typography, Tooltip, Empty, Divider, Tag, message } from "antd"
 import {
   ReloadOutlined,
@@ -8,10 +8,11 @@ import {
 } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import MaterialsTable from "./MaterialsTable"
-import MaterialDetailsDrawer from "./MaterialDetailsDrawer"
 import MaterialsImportModal from "./MaterialsImportModal"
 import MaterialFormModal from "./MaterialFormModal"
 import createTablePagination from "@/utils/tablePagination"
+
+const MaterialDetailsDrawer = lazy(() => import("./MaterialDetailsDrawer"))
 
 const { Text } = Typography
 
@@ -288,11 +289,13 @@ export default function MaterialsMain() {
         </Card>
       </Space>
 
-      <MaterialDetailsDrawer
-        open={detailsOpen}
-        material={selectedMaterial}
-        onClose={() => setDetailsOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <MaterialDetailsDrawer
+          open={detailsOpen}
+          material={selectedMaterial}
+          onClose={() => setDetailsOpen(false)}
+        />
+      </Suspense>
 
       <MaterialsImportModal
         open={importOpen}

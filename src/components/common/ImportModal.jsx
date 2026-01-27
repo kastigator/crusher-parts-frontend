@@ -2,7 +2,6 @@
 import React, { useState } from "react"
 import { Modal, Button, Alert, Upload, Typography, Spin, Space } from "antd"
 import { UploadOutlined, FileExcelOutlined } from "@ant-design/icons"
-import readXlsxFile from "read-excel-file"
 import axios from "@/api/axiosInstance"
 
 const { Text } = Typography
@@ -40,7 +39,8 @@ export default function ImportModal({
         uniqueField,
       } = schema
 
-      // 2) читаем файл
+      // 2) читаем файл (подгружаем парсер только когда реально нужен)
+      const { default: readXlsxFile } = await import("read-excel-file")
       const rows = await readXlsxFile(file)
       if (!rows?.length) throw new Error("Файл пустой или не распознан")
 

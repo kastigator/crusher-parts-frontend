@@ -1,9 +1,10 @@
 // src/components/supplierParts/SupplierPartDock.jsx
-import React, { useMemo, useState } from "react"
+import React, { useMemo, useState, Suspense, lazy } from "react"
 import { Card, Tabs, Space, Tag, Typography, Empty } from "antd"
 import OriginalsLinkTab from "./OriginalsLinkTab"
 import SupplierPartMaterialsTab from "./SupplierPartMaterialsTab"
-import PriceHistoryTab from "./PriceHistoryTab"
+
+const PriceHistoryTab = lazy(() => import("./PriceHistoryTab"))
 
 const { Text } = Typography
 
@@ -49,10 +50,12 @@ export default function SupplierPartDock({ part, onChanged = () => {} }) {
               key: "prices",
               label: "Цены",
               children: (
-                <PriceHistoryTab
-                  supplierPartId={part.id}
-                  onChanged={onChanged}
-                />
+                <Suspense fallback={<div style={{ padding: 12 }}>Загрузка...</div>}>
+                  <PriceHistoryTab
+                    supplierPartId={part.id}
+                    onChanged={onChanged}
+                  />
+                </Suspense>
               ),
             },
           {
