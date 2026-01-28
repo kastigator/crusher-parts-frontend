@@ -2,7 +2,7 @@
 import React from "react"
 import ReactDOM from "react-dom/client"
 import App from "./App.jsx"
-import { BrowserRouter } from "react-router-dom"
+import { BrowserRouter, HashRouter } from "react-router-dom"
 import { AuthProvider } from "./auth/AuthContext"
 import TabsProvider from "./context/TabsContext"
 import { Toaster } from "react-hot-toast"
@@ -24,24 +24,43 @@ console.log(
 
 const baseUrl = import.meta.env.BASE_URL || "/"
 const routerBase = baseUrl === "./" ? "/" : baseUrl
+const useHashRouter =
+  typeof window !== "undefined" &&
+  window.location &&
+  window.location.host === "storage.googleapis.com"
 
 loadYandexMaps()
   .then(() => {
     const root = document.getElementById("root")
     if (root) {
       ReactDOM.createRoot(root).render(
-        <BrowserRouter basename={routerBase}>
-          <AuthProvider>
-            <TabsProvider>
-              <ConfigProvider theme={antdTheme}>
-                <AntdApp>
-                  <App />
-                  <Toaster position="bottom-center" />
-                </AntdApp>
-              </ConfigProvider>
-            </TabsProvider>
-          </AuthProvider>
-        </BrowserRouter>
+        useHashRouter ? (
+          <HashRouter>
+            <AuthProvider>
+              <TabsProvider>
+                <ConfigProvider theme={antdTheme}>
+                  <AntdApp>
+                    <App />
+                    <Toaster position="bottom-center" />
+                  </AntdApp>
+                </ConfigProvider>
+              </TabsProvider>
+            </AuthProvider>
+          </HashRouter>
+        ) : (
+          <BrowserRouter basename={routerBase}>
+            <AuthProvider>
+              <TabsProvider>
+                <ConfigProvider theme={antdTheme}>
+                  <AntdApp>
+                    <App />
+                    <Toaster position="bottom-center" />
+                  </AntdApp>
+                </ConfigProvider>
+              </TabsProvider>
+            </AuthProvider>
+          </BrowserRouter>
+        )
       )
     } else {
       console.error("❌ Не найден элемент root в index.html")
