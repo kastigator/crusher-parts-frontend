@@ -22,12 +22,15 @@ console.log(
   import.meta.env.VITE_YANDEX_MAPS_API_KEY
 )
 
+const baseUrl = import.meta.env.BASE_URL || "/"
+const routerBase = baseUrl === "./" ? "/" : baseUrl
+
 loadYandexMaps()
   .then(() => {
     const root = document.getElementById("root")
     if (root) {
       ReactDOM.createRoot(root).render(
-        <BrowserRouter>
+        <BrowserRouter basename={routerBase}>
           <AuthProvider>
             <TabsProvider>
               <ConfigProvider theme={antdTheme}>
