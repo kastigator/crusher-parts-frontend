@@ -19,7 +19,7 @@ import { useTabs } from "@/context/TabsContext";
 import CyrillicToTranslit from "cyrillic-to-translit-js";
 import ActionButtons from "@/components/common/ActionButtons";
 import confirmAction from "@/utils/confirmAction";
-import { DEFAULT_ICON_PATH, SIDEBAR_ICONS } from "@/constants/sidebarIcons";
+import { DEFAULT_ICON_PATH, SIDEBAR_ICONS, resolveIconUrl } from "@/constants/sidebarIcons";
 
 const translit = new CyrillicToTranslit();
 export default function TabsTable() {
@@ -193,12 +193,12 @@ export default function TabsTable() {
           <Button
             icon={
               <img
-                src={value || DEFAULT_ICON_PATH}
+                src={resolveIconUrl(value || DEFAULT_ICON_PATH)}
                 alt=""
                 width={16}
                 height={16}
                 onError={(e) => {
-                  e.currentTarget.src = DEFAULT_ICON_PATH;
+                  e.currentTarget.src = resolveIconUrl(DEFAULT_ICON_PATH);
                 }}
               />
             }
@@ -301,12 +301,12 @@ export default function TabsTable() {
         <Button
           icon={
             <img
-              src={newRow.icon || DEFAULT_ICON_PATH}
+              src={resolveIconUrl(newRow.icon || DEFAULT_ICON_PATH)}
               alt=""
               width={16}
               height={16}
               onError={(e) => {
-                e.currentTarget.src = DEFAULT_ICON_PATH;
+                e.currentTarget.src = resolveIconUrl(DEFAULT_ICON_PATH);
               }}
             />
           }
@@ -358,12 +358,12 @@ export default function TabsTable() {
               key={icon.key}
               icon={
                 <img
-                  src={icon.path}
+                  src={resolveIconUrl(icon.path)}
                   alt=""
                   width={16}
                   height={16}
                   onError={(e) => {
-                    e.currentTarget.src = DEFAULT_ICON_PATH;
+                    e.currentTarget.src = resolveIconUrl(DEFAULT_ICON_PATH);
                   }}
                 />
               }

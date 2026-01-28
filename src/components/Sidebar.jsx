@@ -4,6 +4,7 @@ import { Layout, Menu, Tooltip, Spin, Button } from "antd"
 import { useLocation, useNavigate } from "react-router-dom"
 import { useTabs } from "@/context/TabsContext"
 import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons"
+import { buildIconPath, resolveIconUrl } from "@/constants/sidebarIcons"
 
 const { Sider } = Layout
 
@@ -34,14 +35,9 @@ function normalizeIconName(value) {
   return v.replace(/^\/?icons\//, "").replace(/\.svg$/i, "") || "default"
 }
 
-const ICONS_BASE_URL = (() => {
-  const base = import.meta.env.BASE_URL ?? "/"
-  return base.endsWith("/") ? base : `${base}/`
-})()
-
 function getIconUrl(iconName) {
   const name = normalizeIconName(iconName)
-  return `${ICONS_BASE_URL}icons/${name}.svg`
+  return resolveIconUrl(buildIconPath(name))
 }
 
 function buildMenuItem(tab, { withIcon = true, labelOverride, tooltipOverride } = {}) {
