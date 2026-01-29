@@ -1,6 +1,6 @@
 // src/components/tnved/TnvedCodesTable.jsx
 
-import React, { useState, useMemo } from "react"
+import React, { useMemo, useRef, useState } from "react"
 import { Table, Input, InputNumber, message } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
@@ -9,6 +9,7 @@ import VersionConflictModal from "@/components/common/VersionConflictModal"
 import createTablePagination from "@/utils/tablePagination"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import { mergeConflictDraft } from "@/utils/versionConflict"
+import useTableScrollHints from "@/utils/useTableScrollHints"
 
 const { TextArea } = Input
 
@@ -20,6 +21,7 @@ export default function TnvedCodesTable({
   onReplaceRow,
   onRefresh,
 }) {
+  const wrapRef = useRef(null)
   const [editingKey, setEditingKey] = useState("")
   const [editedRow, setEditedRow] = useState(null)
   const [logId, setLogId] = useState(null)
@@ -32,6 +34,7 @@ export default function TnvedCodesTable({
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const scrollHints = useTableScrollHints(wrapRef, [data, loading, page, pageSize])
 
   const isEditing = (record) => record.id === editingKey
 
@@ -96,6 +99,7 @@ export default function TnvedCodesTable({
       title: "Код",
       dataIndex: "code",
       width: 140,
+      fixed: "left",
       ellipsis: true,
       render: (_, record) =>
         isEditing(record) ? (
@@ -216,7 +220,12 @@ export default function TnvedCodesTable({
 
   return (
     <>
-      <div style={{ overflowX: "auto" }}>
+      <div
+        ref={wrapRef}
+        className={`op-table-wrap${scrollHints.left ? " scroll-left" : ""}${
+          scrollHints.right ? " scroll-right" : ""
+        }`}
+      >
         <Table
           className="op-table"
           dataSource={data}
@@ -227,7 +236,7 @@ export default function TnvedCodesTable({
           bordered
           size="small"
           tableLayout="fixed"
-          scroll={{ x: 900 }}
+          scroll={{ x: "max-content" }}
           expandable={{
             expandedRowRender: (record) => (
               <div

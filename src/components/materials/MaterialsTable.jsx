@@ -1,7 +1,8 @@
-import React from "react"
+import React, { useRef } from "react"
 import { Table, Tooltip, Button, Popconfirm, Space } from "antd"
 import { DeleteOutlined, EditOutlined } from "@ant-design/icons"
 import "@/styles/tableStyles.css"
+import useTableScrollHints from "@/utils/useTableScrollHints"
 
 export default function MaterialsTable({
   data,
@@ -11,11 +12,14 @@ export default function MaterialsTable({
   onDelete,
   pagination,
 }) {
+  const wrapRef = useRef(null)
+  const scrollHints = useTableScrollHints(wrapRef, [data, loading])
   const columns = [
     {
       title: "Название",
       dataIndex: "name",
       key: "name",
+      fixed: "left",
       render: (text, record) => (
         <div style={{ display: "flex", flexDirection: "column" }}>
           <span style={{ fontWeight: 600 }}>{text}</span>
@@ -97,20 +101,29 @@ export default function MaterialsTable({
   ]
 
   return (
-    <Table
-      className="op-table"
-      size="small"
-      rowKey="id"
-      columns={columns}
-      dataSource={data}
-      loading={loading}
-      pagination={pagination}
-      onRow={(record) => ({
-        onClick: () => onRowClick?.(record),
-      })}
-      locale={{
-        emptyText: "Нет данных",
-      }}
-    />
+    <div
+      ref={wrapRef}
+      className={`op-table-wrap${scrollHints.left ? " scroll-left" : ""}${
+        scrollHints.right ? " scroll-right" : ""
+      }`}
+    >
+      <Table
+        className="op-table"
+        size="small"
+        rowKey="id"
+        columns={columns}
+        dataSource={data}
+        loading={loading}
+        pagination={pagination}
+        tableLayout="fixed"
+        scroll={{ x: "max-content" }}
+        onRow={(record) => ({
+          onClick: () => onRowClick?.(record),
+        })}
+        locale={{
+          emptyText: "Нет данных",
+        }}
+      />
+    </div>
   )
 }

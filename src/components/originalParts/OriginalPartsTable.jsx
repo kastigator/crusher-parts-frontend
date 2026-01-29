@@ -8,6 +8,7 @@ import TnvedPicker from "@/components/fields/TnvedPicker"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import DetailDock from "./DetailDock"
 import createTablePagination from "@/utils/tablePagination"
+import useTableScrollHints from "@/utils/useTableScrollHints"
 
 const UOM_OPTIONS = [
   { value: "pcs", label: "шт" },
@@ -81,6 +82,14 @@ export default function OriginalPartsTable({
     }
     loadGroups()
   }, [])
+
+  const scrollHints = useTableScrollHints(tableWrapRef, [
+    data,
+    loading,
+    page,
+    pageSize,
+    showAll,
+  ])
 
   /* -----------------------------------------------------------
      Фильтры для колонок
@@ -297,6 +306,7 @@ export default function OriginalPartsTable({
             title: "Производитель",
             dataIndex: "manufacturer_name",
             width: 160,
+            fixed: "left",
             ellipsis: true,
             filters: manufacturerFilters,
             onFilter: (value, record) =>
@@ -312,6 +322,7 @@ export default function OriginalPartsTable({
             title: "Модель оборудования",
             dataIndex: "model_name",
             width: 160,
+            fixed: "left",
             ellipsis: true,
             filters: modelFilters,
             onFilter: (value, record) =>
@@ -327,6 +338,7 @@ export default function OriginalPartsTable({
       title: "Part number",
       dataIndex: "cat_number",
       width: 160,
+      fixed: "left",
       sorter: (a, b) =>
         (a.cat_number || "").localeCompare(b.cat_number || ""),
       sortDirections: ["ascend", "descend"],
@@ -689,9 +701,14 @@ export default function OriginalPartsTable({
 
   return (
     <>
-      <div ref={tableWrapRef}>
+      <div
+        ref={tableWrapRef}
+        className={`op-table-wrap${scrollHints.left ? " scroll-left" : ""}${
+          scrollHints.right ? " scroll-right" : ""
+        }`}
+      >
         <Table
-          className="op-table"
+          className="op-table op-table-originals"
           rowKey="id"
           columns={columns}
           dataSource={Array.isArray(data) ? data : []}
@@ -705,7 +722,7 @@ export default function OriginalPartsTable({
             getPopupContainer: () => tableWrapRef.current || document.body,
           })}
           tableLayout="fixed"
-          scroll={{ x: true, y: 480 }}
+          scroll={{ x: "max-content", y: 480 }}
           size="middle"
           rowClassName={(record) => {
             const classes = []

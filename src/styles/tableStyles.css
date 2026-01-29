@@ -12,6 +12,10 @@
   --op-expand-col-width: 48px;
 }
 
+.op-table-originals {
+  --op-expand-col-width: 12px;
+}
+
 /* Убираем стандартные рамки контейнера AntD */
 .op-table .ant-table-container {
   border: none !important;
@@ -252,6 +256,35 @@
 /* Обёртка для форм и таблиц внутри раскрытой строки */
 .parts-table-wrap {
   margin-top: 8px;
+}
+
+/* ---------------------------------------------------------
+   Подсказка горизонтального скролла (градиенты по краям)
+   --------------------------------------------------------- */
+
+.op-table-wrap {
+  position: relative;
+}
+
+.op-table-wrap.scroll-right::after,
+.op-table-wrap.scroll-left::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.op-table-wrap.scroll-right::after {
+  right: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), #ffffff);
+}
+
+.op-table-wrap.scroll-left::before {
+  left: 0;
+  background: linear-gradient(270deg, rgba(255, 255, 255, 0), #ffffff);
 }
 
 /* Небольшие отступы между полями во вложенных формах,

@@ -7,6 +7,7 @@ import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import confirmAction from "@/utils/confirmAction"
 import SupplierPartDock from "./SupplierPartDock"
+import useTableScrollHints from "@/utils/useTableScrollHints"
 
 function OriginalsCell({ row }) {
   const [items, setItems] = useState(null)
@@ -106,6 +107,7 @@ export default function SupplierPartsTable({
 
   const abortRef = useRef(null)
   const wrapRef = useRef(null)
+  const scrollHints = useTableScrollHints(wrapRef, [rows, loading, page, pageSize, showAll])
 
   const load = useCallback(async () => {
     if (!supplierId && !showAll) {
@@ -316,6 +318,7 @@ export default function SupplierPartsTable({
         title: "Поставщик",
         dataIndex: "supplier_name",
         width: 180,
+        fixed: "left",
         ellipsis: true,
         render: (v) => <ValueDisplay value={v} />,
       })
@@ -325,6 +328,7 @@ export default function SupplierPartsTable({
       title: "Номер у поставщика",
       dataIndex: "supplier_part_number",
       width: 160,
+      fixed: "left",
       ellipsis: true,
       onCell: (record) => ({
         onDoubleClick: () => {
@@ -631,7 +635,12 @@ export default function SupplierPartsTable({
 
   return (
     <>
-      <div ref={wrapRef} className="parts-table-wrap">
+      <div
+        ref={wrapRef}
+        className={`parts-table-wrap op-table-wrap${scrollHints.left ? " scroll-left" : ""}${
+          scrollHints.right ? " scroll-right" : ""
+        }`}
+      >
         <Table
           rowKey="id"
           className="op-table parts-table"
@@ -641,6 +650,7 @@ export default function SupplierPartsTable({
           pagination={pagination}
           size="middle"
           tableLayout="fixed"
+          scroll={{ x: "max-content" }}
           expandable={{
             expandedRowKeys: expandedId ? [expandedId] : [],
             onExpand: (expanded, record) =>

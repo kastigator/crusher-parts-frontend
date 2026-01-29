@@ -54,11 +54,35 @@ const TAB_TO_STEP = STEP_TO_TAB.reduce((acc, key, index) => {
 
 const statusToColor = (value) => {
   if (!value) return "default"
+  if (value === "invited") return "default"
   if (value === "sent") return "blue"
+  if (value === "received") return "green"
   if (value === "responded") return "green"
   if (value === "structured") return "cyan"
   if (value === "draft") return "default"
   return "gold"
+}
+
+const rfqStatusLabel = (value) => {
+  if (!value) return "—"
+  const labels = {
+    draft: "Черновик",
+    structured: "Структура готова",
+    sent: "RFQ отправлен",
+    responded: "Ответы получены",
+  }
+  return labels[value] || value
+}
+
+const supplierStatusLabel = (value) => {
+  if (!value) return "—"
+  const labels = {
+    invited: "Приглашен",
+    sent: "Отправлен",
+    received: "Ответ получен",
+    responded: "Ответ получен",
+  }
+  return labels[value] || value
 }
 
 const matchTypeLabel = {
@@ -126,6 +150,13 @@ export default function RfqWorkspacePage() {
     bundleId: null,
     items: [],
     loading: false,
+  })
+  const [altPartsMap, setAltPartsMap] = useState({})
+  const [altModal, setAltModal] = useState({
+    open: false,
+    loading: false,
+    partId: null,
+    items: [],
   })
 
   const [createForm] = Form.useForm()
@@ -536,6 +567,40 @@ export default function RfqWorkspacePage() {
     }
   }
 
+  const collectBomPartIds = (nodes, set) => {
+    if (!Array.isArray(nodes)) return
+    nodes.forEach((node) => {
+      if (node?.original_part_id) set.add(node.original_part_id)
+      if (node?.children?.length) collectBomPartIds(node.children, set)
+    })
+  }
+
+  const loadAltPartsBulk = async (partIds) => {
+    const ids = Array.isArray(partIds) ? partIds.filter(Boolean) : []
+    if (!ids.length) {
+      setAltPartsMap({})
+      return {}
+    }
+    try {
+      const { data } = await axios.get("/original-part-alt/bulk", {
+        params: { part_ids: ids.join(",") },
+      })
+      const list = Array.isArray(data) ? data : Array.isArray(data?.parts) ? data.parts : []
+      const nextMap = {}
+      list.forEach((row) => {
+        if (!row?.original_part_id) return
+        nextMap[row.original_part_id] = Array.isArray(row.alt_parts) ? row.alt_parts : []
+      })
+      setAltPartsMap(nextMap)
+      return nextMap
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось загрузить альтернативы")
+      setAltPartsMap({})
+      return {}
+    }
+  }
+
   const openSelectionModal = async (supplier) => {
     if (!activeRfqId || !supplier?.id) return
     setSelectionModal({ open: true, supplier, loading: true, saving: false, selectedKeys: [] })
@@ -549,9 +614,21 @@ export default function RfqWorkspacePage() {
       ;(Array.isArray(data) ? data : []).forEach((row) => {
         const type = String(row.line_type || "").toUpperCase()
         if (type === "DEMAND") {
-          keys.push(`demand:${row.rfq_item_id}`)
+          if (row.alt_original_part_id) {
+            keys.push(
+              `alt:${row.rfq_item_id}:${row.original_part_id}:${row.alt_original_part_id}`
+            )
+          } else {
+            keys.push(`demand:${row.rfq_item_id}`)
+          }
         } else if (type === "BOM_COMPONENT") {
-          keys.push(`bom:${row.rfq_item_id}:${row.original_part_id}`)
+          if (row.alt_original_part_id) {
+            keys.push(
+              `alt:${row.rfq_item_id}:${row.original_part_id}:${row.alt_original_part_id}`
+            )
+          } else {
+            keys.push(`bom:${row.rfq_item_id}:${row.original_part_id}`)
+          }
         } else if (type === "KIT_ROLE") {
           keys.push(`kit:${row.rfq_item_id}:${row.bundle_id}:${row.bundle_item_id}`)
           if (row.bundle_id) {
@@ -565,6 +642,15 @@ export default function RfqWorkspacePage() {
         }
       })
       await Promise.all([...partIdsToLoad].map((id) => loadBundlesForPart(id)))
+      if (!Object.keys(altPartsMap || {}).length) {
+        const ids = new Set()
+        structureItems.forEach((item) => {
+          if (item.original_part_id) ids.add(item.original_part_id)
+          const bomOpt = (item.options || []).find((opt) => opt.type === "BOM")
+          collectBomPartIds(bomOpt?.children || [], ids)
+        })
+        await loadAltPartsBulk(Array.from(ids))
+      }
       setBundleChoice(nextBundleChoice)
       await Promise.all(
         Object.values(nextBundleChoice)
@@ -609,6 +695,39 @@ export default function RfqWorkspacePage() {
     }
   }
 
+  const loadAltPartsForPart = async (partId) => {
+    if (!partId) return []
+    if (altPartsMap[partId]) return altPartsMap[partId]
+    try {
+      const { data } = await axios.get("/original-part-alt", {
+        params: { original_part_id: partId },
+      })
+      const groups = Array.isArray(data) ? data : []
+      const flat = []
+      const seen = new Set()
+      groups.forEach((g) => {
+        ;(g.items || []).forEach((item) => {
+          if (seen.has(item.alt_part_id)) return
+          seen.add(item.alt_part_id)
+          flat.push(item)
+        })
+      })
+      setAltPartsMap((prev) => ({ ...prev, [partId]: flat }))
+      return flat
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось загрузить альтернативы")
+      return []
+    }
+  }
+
+  const openAltModal = async (partId) => {
+    if (!partId) return
+    setAltModal({ open: true, loading: true, partId, items: [] })
+    const items = await loadAltPartsForPart(partId)
+    setAltModal({ open: true, loading: false, partId, items })
+  }
+
   const saveSelections = async (nodeMap) => {
     if (!activeRfqId || !selectionModal.supplier?.id) return
     const supplierId = selectionModal.supplier.id
@@ -620,6 +739,7 @@ export default function RfqWorkspacePage() {
           rfq_item_id: node.rfq_item_id,
           line_type: node.line_type,
           original_part_id: node.original_part_id || null,
+          alt_original_part_id: node.alt_original_part_id || null,
           bundle_id: node.bundle_id || null,
           bundle_item_id: node.bundle_item_id || null,
           line_label: node.line_label || null,
@@ -864,29 +984,363 @@ export default function RfqWorkspacePage() {
     purchaseOrders.length,
   ])
 
-  const structureItems = structure?.items || []
-  const bomComponentsByItem = useMemo(() => {
-    const map = new Map()
-    const collect = (nodes, list) => {
-      if (!Array.isArray(nodes)) return
-      nodes.forEach((node) => {
-        if (node?.type === "BOM_COMPONENT") {
-          list.push(node)
-        }
-        if (node?.children?.length) collect(node.children, list)
-      })
+  const structureItems = useMemo(
+    () => (Array.isArray(structure?.items) ? structure.items : []),
+    [structure?.items]
+  )
+  const altLoadKeyRef = useRef("")
+
+  const parseAltKey = (key) => {
+    const parts = String(key).split(":")
+    if (parts[0] !== "alt" || parts.length < 4) return null
+    return {
+      rfqItemId: Number(parts[1]),
+      basePartId: Number(parts[2]),
+      altPartId: Number(parts[3]),
     }
-    structureItems.forEach((item) => {
-      const bomOpt = (item.options || []).find((opt) => opt.type === "BOM")
-      const list = []
-      collect(bomOpt?.children || [], list)
-      map.set(item.rfq_item_id, list)
+  }
+
+  const parseBomKey = (key) => {
+    const parts = String(key).split(":")
+    if (parts[0] !== "bom" || parts.length < 3) return null
+    return {
+      rfqItemId: Number(parts[1]),
+      basePartId: Number(parts[2]),
+    }
+  }
+
+  const parseKitKey = (key) => {
+    const parts = String(key).split(":")
+    if (parts[0] !== "kit" || parts.length < 4) return null
+    return {
+      rfqItemId: Number(parts[1]),
+      bundleId: Number(parts[2]),
+      roleId: Number(parts[3]),
+    }
+  }
+
+  const removeAltForBase = (next, rfqItemId, basePartId) => {
+    const prefix = `alt:${rfqItemId}:${basePartId}:`
+    Array.from(next).forEach((key) => {
+      if (String(key).startsWith(prefix)) next.delete(key)
     })
-    return map
+  }
+
+  const removeOriginalForBase = (next, lineType, rfqItemId, basePartId) => {
+    if (lineType === "DEMAND") {
+      next.delete(`demand:${rfqItemId}`)
+    } else if (lineType === "BOM_COMPONENT") {
+      next.delete(`bom:${rfqItemId}:${basePartId}`)
+    }
+  }
+
+  const removeKitRolesForBase = (next, rfqItemId, basePartId) => {
+    Array.from(next).forEach((key) => {
+      const node = selectionNodeMapRef.current.get(key)
+      if (
+        node?.line_type === "KIT_ROLE" &&
+        Number(node.rfq_item_id) === Number(rfqItemId) &&
+        Number(node.original_part_id) === Number(basePartId)
+      ) {
+        next.delete(key)
+      }
+    })
+  }
+
+  const applyAltExclusion = (prevKeys, actionKey, actionChecked) => {
+    const next = new Set(prevKeys)
+    if (!actionChecked) return next
+    const keyStr = String(actionKey)
+    if (keyStr.startsWith("alt:")) {
+      const parsed = parseAltKey(keyStr)
+      if (!parsed) return next
+      const lineType = selectionNodeMapRef.current.get(keyStr)?.line_type
+      if (!lineType) return next
+      removeOriginalForBase(next, lineType, parsed.rfqItemId, parsed.basePartId)
+      removeKitRolesForBase(next, parsed.rfqItemId, parsed.basePartId)
+      return next
+    }
+    if (keyStr.startsWith("kit:")) {
+      const parsed = parseKitKey(keyStr)
+      if (!parsed) return next
+      const node = selectionNodeMapRef.current.get(keyStr)
+      const basePartId = node?.original_part_id
+      if (basePartId) {
+        removeOriginalForBase(next, "DEMAND", parsed.rfqItemId, basePartId)
+        removeOriginalForBase(next, "BOM_COMPONENT", parsed.rfqItemId, basePartId)
+        removeAltForBase(next, parsed.rfqItemId, basePartId)
+      }
+      return next
+    }
+    if (keyStr.startsWith("demand:")) {
+      const node = selectionNodeMapRef.current.get(keyStr)
+      if (node?.original_part_id) {
+        removeAltForBase(next, node.rfq_item_id, node.original_part_id)
+        removeKitRolesForBase(next, node.rfq_item_id, node.original_part_id)
+      }
+      return next
+    }
+    if (keyStr.startsWith("bom:")) {
+      const parsed = parseBomKey(keyStr)
+      if (parsed) {
+        removeAltForBase(next, parsed.rfqItemId, parsed.basePartId)
+        removeKitRolesForBase(next, parsed.rfqItemId, parsed.basePartId)
+      }
+    }
+    return next
+  }
+
+  useEffect(() => {
+    if (!structureItems.length) {
+      if (altLoadKeyRef.current) {
+        altLoadKeyRef.current = ""
+        setAltPartsMap({})
+      }
+      return
+    }
+    const ids = new Set()
+    structureItems.forEach((item) => {
+      if (item.original_part_id) ids.add(item.original_part_id)
+      const bomOpt = (item.options || []).find((opt) => opt.type === "BOM")
+      collectBomPartIds(bomOpt?.children || [], ids)
+    })
+    const list = Array.from(ids).filter(Boolean).sort((a, b) => a - b)
+    const key = list.join(",")
+    if (!key || key === altLoadKeyRef.current) return
+    altLoadKeyRef.current = key
+    loadAltPartsBulk(list)
   }, [structureItems])
 
   const selectionTreeData = useMemo(() => {
     const nodeMap = new Map()
+    const selectedKeys = new Set(selectionModal.selectedKeys || [])
+
+    const renderSideColumn = ({ kitSelect, kitTags, altTags }) => (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+        {kitSelect || kitTags ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <Tag color="green">Комплект</Tag>
+            {kitSelect}
+            {kitTags}
+          </div>
+        ) : null}
+        {altTags ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <Tag color="orange">Подмена</Tag>
+            {altTags}
+          </div>
+        ) : null}
+      </div>
+    )
+
+    const buildAltTags = ({ rfqItemId, basePartId, lineType, qty, uom }) => {
+      const altParts = altPartsMap[basePartId] || []
+      if (!altParts.length) return null
+      return (
+        <Space size={4} wrap>
+          {altParts.map((alt) => {
+            const key = `alt:${rfqItemId}:${basePartId}:${alt.alt_part_id}`
+            nodeMap.set(key, {
+              key,
+              line_type: lineType,
+              rfq_item_id: rfqItemId,
+              original_part_id: basePartId,
+              alt_original_part_id: alt.alt_part_id,
+              line_label: alt.cat_number || "",
+              line_description: alt.description_ru || alt.description_en || "",
+              qty: qty ?? null,
+              uom: uom || null,
+            })
+            const label = alt.cat_number || "—"
+            const desc = alt.description_ru || alt.description_en || ""
+            const isSelected = selectedKeys.has(key)
+            return (
+              <Tag
+                key={key}
+                color={isSelected ? "orange" : "default"}
+                style={{ cursor: "pointer" }}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setSelectionModal((prev) => {
+                    const next = new Set(prev.selectedKeys || [])
+                    const willSelect = !next.has(key)
+                    if (willSelect) {
+                      next.add(key)
+                    } else {
+                      next.delete(key)
+                    }
+                    const normalized = applyAltExclusion(next, key, willSelect)
+                    return { ...prev, selectedKeys: Array.from(normalized) }
+                  })
+                }}
+              >
+                {label}
+                {desc ? ` · ${desc}` : ""}
+              </Tag>
+            )
+          })}
+        </Space>
+      )
+    }
+
+    const buildKitTags = ({ rfqItemId, basePartId, bundleId, roles, qty, uom }) => {
+      if (!bundleId || !Array.isArray(roles) || !roles.length) return null
+      return (
+        <Space size={4} wrap onClick={(event) => event.stopPropagation()}>
+          {roles.map((role) => {
+            const roleKey = `kit:${rfqItemId}:${bundleId}:${role.id}`
+            nodeMap.set(roleKey, {
+              key: roleKey,
+              line_type: "KIT_ROLE",
+              rfq_item_id: rfqItemId,
+              original_part_id: basePartId || null,
+              bundle_id: bundleId,
+              bundle_item_id: role.id,
+              line_label: role.role_label || "",
+              line_description: role.role_label || "",
+              qty: (role.qty ?? 1) * (qty ?? 1),
+              uom: uom || null,
+            })
+            const isSelected = selectedKeys.has(roleKey)
+            return (
+              <Tag
+                key={roleKey}
+                color={isSelected ? "green" : "default"}
+                style={{ cursor: "pointer" }}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setSelectionModal((prev) => {
+                    const next = new Set(prev.selectedKeys || [])
+                    const willSelect = !next.has(roleKey)
+                    if (willSelect) {
+                      next.add(roleKey)
+                    } else {
+                      next.delete(roleKey)
+                    }
+                    const normalized = applyAltExclusion(next, roleKey, willSelect)
+                    return { ...prev, selectedKeys: Array.from(normalized) }
+                  })
+                }}
+              >
+                {role.role_label || "—"}
+              </Tag>
+            )
+          })}
+        </Space>
+      )
+    }
+
+    const buildBomNodes = (nodes, item) => {
+      if (!Array.isArray(nodes) || !nodes.length) return []
+      return nodes.map((comp) => {
+        const key = `bom:${item.rfq_item_id}:${comp.original_part_id}`
+        nodeMap.set(key, {
+          key,
+          line_type: "BOM_COMPONENT",
+          rfq_item_id: item.rfq_item_id,
+          original_part_id: comp.original_part_id,
+          line_label: comp.cat_number || "",
+          line_description: comp.description || "",
+          qty: comp.required_qty ?? null,
+          uom: comp.uom || item.uom || null,
+        })
+
+        const children = []
+
+        const compBundleKey = `part:${comp.original_part_id}`
+        const selectedBundleId = bundleChoice[compBundleKey]
+        const compBundleItems = selectedBundleId
+          ? bundleItemsCache[selectedBundleId] || []
+          : []
+
+        const compKitChildren = selectedBundleId
+          ? compBundleItems.map((role) => {
+              const roleKey = `kit:${item.rfq_item_id}:${selectedBundleId}:${role.id}`
+              nodeMap.set(roleKey, {
+                key: roleKey,
+                line_type: "KIT_ROLE",
+                rfq_item_id: item.rfq_item_id,
+                original_part_id: comp.original_part_id,
+                bundle_id: selectedBundleId,
+                bundle_item_id: role.id,
+                line_label: role.role_label || "",
+                line_description: role.role_label || "",
+                qty: (role.qty ?? 1) * (comp.required_qty ?? 1),
+                uom: comp.uom || item.uom || null,
+              })
+              return {
+                key: roleKey,
+                title: (
+                  <Space>
+                    <Tag color="green">Роль</Tag>
+                    <Text>{role.role_label || "—"}</Text>
+                  </Space>
+                ),
+                isLeaf: true,
+              }
+            })
+          : []
+
+        const nested = buildBomNodes(comp.children || [], item)
+        if (nested.length) {
+          children.push(...nested)
+        }
+
+        const altTags = buildAltTags({
+          rfqItemId: item.rfq_item_id,
+          basePartId: comp.original_part_id,
+          lineType: "BOM_COMPONENT",
+          qty: comp.required_qty ?? null,
+          uom: comp.uom || item.uom || null,
+        })
+
+        const kitTags = buildKitTags({
+          rfqItemId: item.rfq_item_id,
+          basePartId: comp.original_part_id,
+          bundleId: selectedBundleId,
+          roles: compBundleItems,
+          qty: comp.required_qty ?? null,
+          uom: comp.uom || item.uom || null,
+        })
+
+        const kitSelect =
+          (comp.bundle_count || 0) > 0 ? (
+            <Select
+              size="small"
+              style={{ width: 180 }}
+              placeholder="Комплект"
+              value={selectedBundleId || undefined}
+              options={(bundleCache[comp.original_part_id] || []).map((b) => ({
+                value: b.id,
+                label: b.title || `Комплект #${b.id}`,
+              }))}
+              onFocus={() => loadBundlesForPart(comp.original_part_id)}
+              onClick={(event) => event.stopPropagation()}
+              onChange={async (value) => {
+                setBundleChoice((prev) => ({ ...prev, [compBundleKey]: value }))
+                await loadBundleItems(value)
+              }}
+            />
+          ) : null
+
+        return {
+          key,
+          title: (
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, width: "100%" }}>
+              <Space>
+                <Text>{comp.cat_number || "—"}</Text>
+                {comp.description ? <Text type="secondary">· {comp.description}</Text> : null}
+              </Space>
+              {renderSideColumn({ kitSelect, kitTags, altTags })}
+            </div>
+          ),
+          children,
+        }
+      })
+    }
+
     const tree = structureItems.map((item) => {
       const itemNodeKey = `item:${item.rfq_item_id}`
       const itemTitle = (
@@ -912,154 +1366,95 @@ export default function RfqWorkspacePage() {
       const children = [
         {
           key: demandKey,
-          title: "Позиция (целая сборка)",
+          title: "Позиция (оригинал)",
           isLeaf: true,
         },
       ]
 
-      const bomNodes = bomComponentsByItem.get(item.rfq_item_id) || []
-      if (bomNodes.length) {
-        const bomChildren = bomNodes.map((comp) => {
-          const key = `bom:${item.rfq_item_id}:${comp.original_part_id}`
-          nodeMap.set(key, {
-            key,
-            line_type: "BOM_COMPONENT",
-            rfq_item_id: item.rfq_item_id,
-            original_part_id: comp.original_part_id,
-            line_label: comp.cat_number || "",
-            line_description: comp.description || "",
-            qty: comp.required_qty ?? null,
-            uom: comp.uom || item.uom || null,
-          })
-
-          const compBundleKey = `part:${comp.original_part_id}`
-          const selectedBundleId = bundleChoice[compBundleKey]
-          const compBundleItems = selectedBundleId
-            ? bundleItemsCache[selectedBundleId] || []
-            : []
-
-          const compKitChildren = selectedBundleId
-            ? compBundleItems.map((role) => {
-                const roleKey = `kit:${item.rfq_item_id}:${selectedBundleId}:${role.id}`
-                nodeMap.set(roleKey, {
-                  key: roleKey,
-                  line_type: "KIT_ROLE",
-                  rfq_item_id: item.rfq_item_id,
-                  original_part_id: comp.original_part_id,
-                  bundle_id: selectedBundleId,
-                  bundle_item_id: role.id,
-                  line_label: role.role_label || "",
-                  line_description: role.role_label || "",
-                  qty: (role.qty ?? 1) * (comp.required_qty ?? 1),
-                  uom: comp.uom || item.uom || null,
-                })
-                return {
-                  key: roleKey,
-                  title: `Роль: ${role.role_label || "—"}`,
-                  isLeaf: true,
-                }
-              })
-            : []
-
-          const kitSelectorTitle = (comp.bundle_count || 0) > 0 ? (
-            <Space>
-              <Text>Комплект компонента</Text>
-              <Select
-                size="small"
-                style={{ width: 200 }}
-                placeholder="Выберите комплект"
-                value={selectedBundleId || undefined}
-                options={(bundleCache[comp.original_part_id] || []).map((b) => ({
-                  value: b.id,
-                  label: b.title || `Комплект #${b.id}`,
-                }))}
-                onFocus={() => loadBundlesForPart(comp.original_part_id)}
-                onChange={async (value) => {
-                  setBundleChoice((prev) => ({ ...prev, [compBundleKey]: value }))
-                  await loadBundleItems(value)
-                }}
-              />
-            </Space>
-          ) : null
-
-          return {
-            key,
-            title: `${comp.cat_number || "—"} · ${comp.description || ""}`,
-            children: kitSelectorTitle
-              ? [
-                  {
-                    key: `${key}:kit-selector`,
-                    title: kitSelectorTitle,
-                    selectable: false,
-                    checkable: false,
-                    children: compKitChildren,
-                  },
-                ]
-              : [],
-          }
-        })
-
-        children.push({
-          key: `bomgroup:${item.rfq_item_id}`,
-          title: "BOM компоненты",
-          selectable: false,
-          checkable: false,
-          children: bomChildren,
-        })
-      }
-
-      if ((item.bundle_count || 0) > 0) {
+      if (item.original_part_id) {
         const itemBundleKey = `item:${item.rfq_item_id}`
         const selectedBundleId = bundleChoice[itemBundleKey]
         const bundleItems = selectedBundleId ? bundleItemsCache[selectedBundleId] || [] : []
-        const kitChildren = selectedBundleId
-          ? bundleItems.map((role) => {
-              const roleKey = `kit:${item.rfq_item_id}:${selectedBundleId}:${role.id}`
-              nodeMap.set(roleKey, {
-                key: roleKey,
-                line_type: "KIT_ROLE",
-                rfq_item_id: item.rfq_item_id,
-                original_part_id: item.original_part_id || null,
-                bundle_id: selectedBundleId,
-                bundle_item_id: role.id,
-                line_label: role.role_label || "",
-                line_description: role.role_label || "",
-                qty: (role.qty ?? 1) * (item.requested_qty ?? 1),
-                uom: item.uom || null,
-              })
-              return {
-                key: roleKey,
-                title: `Роль: ${role.role_label || "—"}`,
-                isLeaf: true,
-              }
-            })
-          : []
-        const kitTitle = (
-          <Space>
-            <Text>Комплект позиции</Text>
+
+        const altTags = buildAltTags({
+          rfqItemId: item.rfq_item_id,
+          basePartId: item.original_part_id,
+          lineType: "DEMAND",
+          qty: item.requested_qty ?? null,
+          uom: item.uom || null,
+        })
+
+        const kitTags = buildKitTags({
+          rfqItemId: item.rfq_item_id,
+          basePartId: item.original_part_id,
+          bundleId: selectedBundleId,
+          roles: bundleItems,
+          qty: item.requested_qty ?? null,
+          uom: item.uom || null,
+        })
+
+        const kitSelect =
+          (item.bundle_count || 0) > 0 ? (
             <Select
               size="small"
-              style={{ width: 200 }}
-              placeholder="Выберите комплект"
+              style={{ width: 180 }}
+              placeholder="Комплект"
               value={selectedBundleId || undefined}
               options={(bundleCache[item.original_part_id] || []).map((b) => ({
                 value: b.id,
                 label: b.title || `Комплект #${b.id}`,
               }))}
               onFocus={() => item.original_part_id && loadBundlesForPart(item.original_part_id)}
+              onClick={(event) => event.stopPropagation()}
               onChange={async (value) => {
                 setBundleChoice((prev) => ({ ...prev, [itemBundleKey]: value }))
                 await loadBundleItems(value)
               }}
             />
-          </Space>
-        )
+          ) : null
+
+        if (altTags) {
+          children.push({
+            key: `alt-inline:${item.rfq_item_id}:${item.original_part_id}`,
+            title: (
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, width: "100%" }}>
+                <Space>
+                  <Text>Подмена</Text>
+                </Space>
+                {renderSideColumn({ kitSelect, kitTags, altTags })}
+              </div>
+            ),
+            selectable: false,
+            checkable: false,
+            isLeaf: true,
+          })
+        } else if (kitSelect || kitTags) {
+          children.push({
+            key: `kit-inline:${item.rfq_item_id}:${item.original_part_id}`,
+            title: (
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, width: "100%" }}>
+                <Space>
+                  <Text>Комплект</Text>
+                </Space>
+                {renderSideColumn({ kitSelect, kitTags, altTags: null })}
+              </div>
+            ),
+            selectable: false,
+            checkable: false,
+            isLeaf: true,
+          })
+        }
+      }
+
+      const bomOpt = (item.options || []).find((opt) => opt.type === "BOM")
+      const bomChildren = buildBomNodes(bomOpt?.children || [], item)
+      if (bomChildren.length) {
         children.push({
-          key: `kitgroup:${item.rfq_item_id}`,
-          title: kitTitle,
+          key: `bomgroup:${item.rfq_item_id}`,
+          title: "BOM компоненты",
           selectable: false,
           checkable: false,
-          children: kitChildren,
+          children: bomChildren,
         })
       }
 
@@ -1074,11 +1469,27 @@ export default function RfqWorkspacePage() {
 
     selectionNodeMapRef.current = nodeMap
     return tree
-  }, [structureItems, bomComponentsByItem, bundleChoice, bundleCache, bundleItemsCache, loadBundleItems, loadBundlesForPart])
+  }, [structureItems, bundleChoice, bundleCache, bundleItemsCache, loadBundleItems, loadBundlesForPart, altPartsMap, selectionModal.selectedKeys])
   const rfqTreeData = useMemo(() => {
+    const mapBomNodes = (nodes) => {
+      if (!Array.isArray(nodes)) return []
+      return nodes.map((node) => ({
+        key: `bom-${node.original_part_id}-${node.key || Math.random()}`,
+        type: "BOM_COMPONENT",
+        original_part_id: node.original_part_id || null,
+        cat_number: node.cat_number,
+        description: node.description,
+        required_qty: node.required_qty,
+        uom: node.uom,
+        has_bom: Array.isArray(node.children) && node.children.length > 0,
+        bundle_count: node.bundle_count || 0,
+        children: mapBomNodes(node.children || []),
+      }))
+    }
+
     return structureItems.map((item) => {
       const bomOption = (item.options || []).find((opt) => opt.type === "BOM")
-      const children = Array.isArray(bomOption?.children) ? bomOption.children : []
+      const children = mapBomNodes(bomOption?.children || [])
       return {
         key: `demand-${item.rfq_item_id}`,
         type: "DEMAND",
@@ -1125,7 +1536,7 @@ export default function RfqWorkspacePage() {
       title: "Статус",
       dataIndex: "status",
       width: 120,
-      render: (value) => <Tag color={statusToColor(value)}>{value || "draft"}</Tag>,
+      render: (value) => <Tag color={statusToColor(value)}>{rfqStatusLabel(value)}</Tag>,
     },
     {
       title: "Создано",
@@ -1179,31 +1590,41 @@ export default function RfqWorkspacePage() {
       },
     },
     {
-      title: "Комплект",
-      dataIndex: "bundle",
-      width: 130,
-      render: (_, record) => {
-        const hasKit = Number(record.bundle_count || 0) > 0
-        if (!hasKit) return "—"
-        const partId = record.original_part_id
-        return (
-          <Button size="small" onClick={() => openKitPreview(partId)}>
-            Роли
-          </Button>
-        )
-      },
-    },
-    {
       title: "Признаки",
       dataIndex: "flags",
       width: 160,
       render: (_, record) => {
         const tags = []
-        if (record.type === "DEMAND" && record.has_bom) {
+        if (record.has_bom) {
           tags.push(<Tag key="assembly" color="blue">Сборка</Tag>)
         }
         if ((record.bundle_count || 0) > 0) {
-          tags.push(<Tag key="kit" color="green">Комплект</Tag>)
+          tags.push(
+            <Tag
+              key="kit"
+              color="green"
+              style={{ cursor: "pointer" }}
+              onClick={() => openKitPreview(record.original_part_id)}
+            >
+              Комплект
+            </Tag>
+          )
+        }
+        const altCount =
+          record.original_part_id && altPartsMap[record.original_part_id]
+            ? altPartsMap[record.original_part_id].length
+            : 0
+        if (altCount > 0) {
+          tags.push(
+            <Tag
+              key="alt"
+              color="orange"
+              style={{ cursor: "pointer" }}
+              onClick={() => openAltModal(record.original_part_id)}
+            >
+              Альтернативы {altCount}
+            </Tag>
+          )
         }
         return tags.length ? <Space size={4} wrap>{tags}</Space> : "—"
       },
@@ -1337,7 +1758,7 @@ export default function RfqWorkspacePage() {
                     {activeRfq.rfq_number || `RFQ-${activeRfq.id}`}
                   </Text>
                   <Tag color={statusToColor(activeRfq.status)}>
-                    {activeRfq.status || "draft"}
+                    {rfqStatusLabel(activeRfq.status)}
                   </Tag>
                   <Text type="secondary">
                     {activeRfq.client_name || "Клиент"}
@@ -1538,7 +1959,7 @@ export default function RfqWorkspacePage() {
                                 width: 120,
                                 render: (value) => (
                                   <Tag color={statusToColor(value)}>
-                                    {value || "invited"}
+                                    {supplierStatusLabel(value || "invited")}
                                   </Tag>
                                 ),
                               },
@@ -1830,10 +2251,17 @@ export default function RfqWorkspacePage() {
             checkable
             checkStrictly
             defaultExpandAll
+            showLine
             checkedKeys={selectionModal.selectedKeys}
-            onCheck={(checked) => {
-              const next = Array.isArray(checked) ? checked : checked.checked
-              setSelectionModal((prev) => ({ ...prev, selectedKeys: next }))
+            onCheck={(checked, info) => {
+              const next = new Set(Array.isArray(checked) ? checked : checked.checked)
+              const actionKey = info?.node?.key
+              const actionChecked = info?.checked
+              const normalized =
+                actionKey !== undefined
+                  ? applyAltExclusion(next, actionKey, actionChecked)
+                  : next
+              setSelectionModal((prev) => ({ ...prev, selectedKeys: Array.from(normalized) }))
             }}
             treeData={selectionTreeData}
           />
@@ -1887,6 +2315,44 @@ export default function RfqWorkspacePage() {
               ]}
             />
           </Space>
+        )}
+      </Modal>
+
+      <Modal
+        open={altModal.open}
+        onCancel={() =>
+          setAltModal({ open: false, loading: false, partId: null, items: [] })
+        }
+        title="Альтернативные оригиналы"
+        width={820}
+        footer={
+          <Button
+            onClick={() =>
+              setAltModal({ open: false, loading: false, partId: null, items: [] })
+            }
+          >
+            Закрыть
+          </Button>
+        }
+      >
+        {altModal.loading ? (
+          <Text type="secondary">Загрузка…</Text>
+        ) : (
+          <Table
+            rowKey={(row) => row.alt_part_id}
+            dataSource={altModal.items}
+            pagination={false}
+            size="small"
+            columns={[
+              { title: "Part #", dataIndex: "cat_number", width: 160 },
+              {
+                title: "Описание",
+                render: (_, r) => r.description_ru || r.description_en || "—",
+              },
+              { title: "Производитель", dataIndex: "manufacturer_name", width: 200 },
+              { title: "Модель", dataIndex: "model_name", width: 200 },
+            ]}
+          />
         )}
       </Modal>
 

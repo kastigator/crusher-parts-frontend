@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react"
+import React, { useMemo, useRef, useState } from "react"
 import { Table, Input, Tabs, message, Checkbox, Select } from "antd"
 
 import SupplierAddressesMain from "./SupplierAddressesMain"
@@ -12,6 +12,7 @@ import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import createTablePagination from "@/utils/tablePagination"
+import useTableScrollHints from "@/utils/useTableScrollHints"
 
 // 👇 библиотека стран: ISO2 → название по-русски
 import countriesLib from "i18n-iso-countries"
@@ -38,6 +39,7 @@ export default function SuppliersTable({
   const [editedRow, setEditedRow] = useState(null)
   const [expandedSupplierId, setExpandedSupplierId] = useState(null)
   const [logsSupplierId, setLogsSupplierId] = useState(null)
+  const wrapRef = useRef(null)
   const [conflict, setConflict] = useState({
     open: false,
     current: null,
@@ -48,6 +50,7 @@ export default function SuppliersTable({
   // пагинация как у клиентов и ТН ВЭД
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
+  const scrollHints = useTableScrollHints(wrapRef, [dataSource, loading, page, pageSize])
 
   const dataSource = Array.isArray(data) ? data : []
 
@@ -208,6 +211,7 @@ export default function SuppliersTable({
       dataIndex: "name",
       key: "name",
       width: 260,
+      fixed: "left",
       ...renderTextCell("name", 260),
     },
     {
@@ -215,6 +219,7 @@ export default function SuppliersTable({
       dataIndex: "public_code",
       key: "public_code",
       width: 100,
+      fixed: "left",
       ...renderTextCell("public_code", 100),
     },
     {
@@ -330,74 +335,81 @@ export default function SuppliersTable({
 
   return (
     <>
-      <Table
-        className="op-table"
-        size="small"
-        bordered
-        rowKey="id"
-        loading={loading}
-        columns={columns}
-        dataSource={dataSource}
-        tableLayout="fixed"
-        pagination={pagination}
-        scroll={{ x: 1600 }}
-        expandable={{
-          expandedRowKeys: expandedSupplierId ? [expandedSupplierId] : [],
-          onExpand: (expanded, record) => {
-            setExpandedSupplierId(expanded ? record.id : null)
-          },
-          expandedRowRender: (record) => (
-            <div className="subtable-shell parts-table-wrap table-section">
-              <Tabs
-                className="inner-tabs"
-                size="small"
-                destroyInactiveTabPane
-                defaultActiveKey="addresses"
-                items={[
-                  {
-                    key: "addresses",
-                    label: "Адреса",
-                    children: (
-                      <SupplierAddressesMain
-                        supplierId={record.id}
-                        onChanged={() => {}}
-                      />
-                    ),
-                  },
-                  {
-                    key: "contacts",
-                    label: "Контакты",
-                    children: (
-                      <SupplierContactsMain
-                        supplierId={record.id}
-                        onChanged={() => {}}
-                      />
-                    ),
-                  },
-                  {
-                    key: "bank",
-                    label: "Банковские реквизиты",
-                    children: (
-                      <SupplierBankDetailsMain
-                        supplierId={record.id}
-                        onChanged={() => {}}
-                      />
-                    ),
-                  },
-                  {
-                    key: "quality",
-                    label: "Оценка",
-                    children: <SupplierQualityMain supplierId={record.id} />,
-                  },
-                ]}
-              />
-            </div>
-          ),
-        }}
-        onRow={() => ({
-          onKeyDown: onKey,
-        })}
-      />
+      <div
+        ref={wrapRef}
+        className={`op-table-wrap${scrollHints.left ? " scroll-left" : ""}${
+          scrollHints.right ? " scroll-right" : ""
+        }`}
+      >
+        <Table
+          className="op-table"
+          size="small"
+          bordered
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={dataSource}
+          tableLayout="fixed"
+          pagination={pagination}
+          scroll={{ x: "max-content" }}
+          expandable={{
+            expandedRowKeys: expandedSupplierId ? [expandedSupplierId] : [],
+            onExpand: (expanded, record) => {
+              setExpandedSupplierId(expanded ? record.id : null)
+            },
+            expandedRowRender: (record) => (
+              <div className="subtable-shell parts-table-wrap table-section">
+                <Tabs
+                  className="inner-tabs"
+                  size="small"
+                  destroyInactiveTabPane
+                  defaultActiveKey="addresses"
+                  items={[
+                    {
+                      key: "addresses",
+                      label: "Адреса",
+                      children: (
+                        <SupplierAddressesMain
+                          supplierId={record.id}
+                          onChanged={() => {}}
+                        />
+                      ),
+                    },
+                    {
+                      key: "contacts",
+                      label: "Контакты",
+                      children: (
+                        <SupplierContactsMain
+                          supplierId={record.id}
+                          onChanged={() => {}}
+                        />
+                      ),
+                    },
+                    {
+                      key: "bank",
+                      label: "Банковские реквизиты",
+                      children: (
+                        <SupplierBankDetailsMain
+                          supplierId={record.id}
+                          onChanged={() => {}}
+                        />
+                      ),
+                    },
+                    {
+                      key: "quality",
+                      label: "Оценка",
+                      children: <SupplierQualityMain supplierId={record.id} />,
+                    },
+                  ]}
+                />
+              </div>
+            ),
+          }}
+          onRow={() => ({
+            onKeyDown: onKey,
+          })}
+        />
+      </div>
 
       {logsSupplierId && (
         <FullHistoryDialog
