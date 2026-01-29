@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Steps, Switch, Table, Tabs, Tag, Typography, message } from "antd"
+import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Steps, Table, Tabs, Tag, Tree, Typography, message } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
@@ -77,6 +77,7 @@ const renderMatchTypes = (value) => {
 
 export default function RfqWorkspacePage() {
   const { user } = useAuth()
+  const selectionNodeMapRef = useRef(new Map())
   const [rfqs, setRfqs] = useState([])
   const [requests, setRequests] = useState([])
   const [revisions, setRevisions] = useState([])
@@ -108,14 +109,23 @@ export default function RfqWorkspacePage() {
   const [contracts, setContracts] = useState([])
   const [purchaseOrders, setPurchaseOrders] = useState([])
   const [activeTabKey, setActiveTabKey] = useState("rfq")
-  const [bundleModal, setBundleModal] = useState({
+  const [selectionModal, setSelectionModal] = useState({
     open: false,
-    item: null,
-    bundles: [],
+    supplier: null,
     loading: false,
-    activeBundleId: null,
-    bundleSummary: null,
     saving: false,
+    selectedKeys: [],
+  })
+  const [bundleCache, setBundleCache] = useState({})
+  const [bundleItemsCache, setBundleItemsCache] = useState({})
+  const [bundleChoice, setBundleChoice] = useState({})
+  const [kitPreview, setKitPreview] = useState({
+    open: false,
+    partId: null,
+    bundles: [],
+    bundleId: null,
+    items: [],
+    loading: false,
   })
 
   const [createForm] = Form.useForm()
@@ -496,6 +506,144 @@ export default function RfqWorkspacePage() {
     }
   }
 
+  const loadBundlesForPart = async (partId) => {
+    if (!partId || bundleCache[partId]) return bundleCache[partId] || []
+    try {
+      const { data } = await axios.get("/supplier-bundles", {
+        params: { original_part_id: partId },
+      })
+      const list = Array.isArray(data) ? data : []
+      setBundleCache((prev) => ({ ...prev, [partId]: list }))
+      return list
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось загрузить комплекты")
+      return []
+    }
+  }
+
+  const loadBundleItems = async (bundleId) => {
+    if (!bundleId || bundleItemsCache[bundleId]) return bundleItemsCache[bundleId] || []
+    try {
+      const { data } = await axios.get(`/supplier-bundles/${bundleId}/items`)
+      const list = Array.isArray(data) ? data : []
+      setBundleItemsCache((prev) => ({ ...prev, [bundleId]: list }))
+      return list
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось загрузить состав комплекта")
+      return []
+    }
+  }
+
+  const openSelectionModal = async (supplier) => {
+    if (!activeRfqId || !supplier?.id) return
+    setSelectionModal({ open: true, supplier, loading: true, saving: false, selectedKeys: [] })
+    try {
+      const { data } = await axios.get(
+        `/rfqs/${activeRfqId}/suppliers/${supplier.id}/line-selections`
+      )
+      const keys = []
+      const nextBundleChoice = {}
+      const partIdsToLoad = new Set()
+      ;(Array.isArray(data) ? data : []).forEach((row) => {
+        const type = String(row.line_type || "").toUpperCase()
+        if (type === "DEMAND") {
+          keys.push(`demand:${row.rfq_item_id}`)
+        } else if (type === "BOM_COMPONENT") {
+          keys.push(`bom:${row.rfq_item_id}:${row.original_part_id}`)
+        } else if (type === "KIT_ROLE") {
+          keys.push(`kit:${row.rfq_item_id}:${row.bundle_id}:${row.bundle_item_id}`)
+          if (row.bundle_id) {
+            if (row.original_part_id) {
+              nextBundleChoice[`part:${row.original_part_id}`] = row.bundle_id
+              partIdsToLoad.add(row.original_part_id)
+            } else {
+              nextBundleChoice[`item:${row.rfq_item_id}`] = row.bundle_id
+            }
+          }
+        }
+      })
+      await Promise.all([...partIdsToLoad].map((id) => loadBundlesForPart(id)))
+      setBundleChoice(nextBundleChoice)
+      await Promise.all(
+        Object.values(nextBundleChoice)
+          .filter(Boolean)
+          .map((bundleId) => loadBundleItems(bundleId))
+      )
+      setSelectionModal((prev) => ({ ...prev, loading: false, selectedKeys: keys }))
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось загрузить выбор")
+      setSelectionModal((prev) => ({ ...prev, loading: false }))
+    }
+  }
+
+  const openKitPreview = async (partId) => {
+    if (!partId) return
+    setKitPreview({
+      open: true,
+      partId,
+      bundles: [],
+      bundleId: null,
+      items: [],
+      loading: true,
+    })
+    try {
+      const bundles = await loadBundlesForPart(partId)
+      const list = Array.isArray(bundles) ? bundles : []
+      const nextBundleId = list.length === 1 ? list[0].id : null
+      const items = nextBundleId ? await loadBundleItems(nextBundleId) : []
+      setKitPreview({
+        open: true,
+        partId,
+        bundles: list,
+        bundleId: nextBundleId,
+        items: Array.isArray(items) ? items : [],
+        loading: false,
+      })
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось загрузить комплект")
+      setKitPreview((prev) => ({ ...prev, loading: false }))
+    }
+  }
+
+  const saveSelections = async (nodeMap) => {
+    if (!activeRfqId || !selectionModal.supplier?.id) return
+    const supplierId = selectionModal.supplier.id
+    const payload = selectionModal.selectedKeys
+      .map((key) => {
+        const node = nodeMap.get(key)
+        if (!node) return null
+        return {
+          rfq_item_id: node.rfq_item_id,
+          line_type: node.line_type,
+          original_part_id: node.original_part_id || null,
+          bundle_id: node.bundle_id || null,
+          bundle_item_id: node.bundle_item_id || null,
+          line_label: node.line_label || null,
+          line_description: node.line_description || null,
+          qty: node.qty ?? null,
+          uom: node.uom || null,
+        }
+      })
+      .filter(Boolean)
+    setSelectionModal((prev) => ({ ...prev, saving: true }))
+    try {
+      await axios.put(
+        `/rfqs/${activeRfqId}/suppliers/${supplierId}/line-selections`,
+        { selections: payload }
+      )
+      message.success("Выбор сохранен")
+      setSelectionModal((prev) => ({ ...prev, saving: false, open: false }))
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось сохранить выбор")
+      setSelectionModal((prev) => ({ ...prev, saving: false }))
+    }
+  }
+
   const handleAddSuggestedSuppliers = async () => {
     if (!activeRfqId) return
     if (!suggestedSelection.length) {
@@ -583,247 +731,6 @@ export default function RfqWorkspacePage() {
     }
   }
 
-  const openBundleModal = async (item) => {
-    if (!item?.original_part_id) {
-      message.warning("Нет привязки к оригинальной детали")
-      return
-    }
-    setBundleModal({
-      open: true,
-      item,
-      bundles: [],
-      loading: true,
-      activeBundleId: item.selected_bundle_id || null,
-      bundleSummary: null,
-      saving: false,
-    })
-    try {
-      const { data } = await axios.get("/supplier-bundles", {
-        params: { original_part_id: item.original_part_id },
-      })
-      const list = Array.isArray(data) ? data : []
-      const currentId = item.selected_bundle_id || null
-      const singleId = list.length === 1 ? list[0].id : null
-      const nextActive = currentId || singleId
-      setBundleModal((prev) => ({
-        ...prev,
-        bundles: list,
-        loading: false,
-        activeBundleId: nextActive,
-      }))
-      if (nextActive) {
-        await loadBundleSummary(nextActive)
-      }
-    } catch (e) {
-      console.error(e)
-      setBundleModal((prev) => ({ ...prev, loading: false }))
-      message.error("Не удалось загрузить комплекты")
-    }
-  }
-
-  const loadBundleSummary = async (bundleId) => {
-    if (!bundleId) return
-    setBundleModal((prev) => ({ ...prev, activeBundleId: bundleId, bundleSummary: null }))
-    try {
-      const { data } = await axios.get(`/supplier-bundles/${bundleId}/items`)
-      setBundleModal((prev) => ({ ...prev, bundleSummary: { items: data || [] } }))
-    } catch (e) {
-      console.error(e)
-      message.error("Не удалось загрузить состав комплекта")
-    }
-  }
-
-  const confirmBundleSelection = async () => {
-    if (!bundleModal.item?.rfq_item_id) return
-    if (!bundleModal.activeBundleId) {
-      message.warning("Выберите комплект")
-      return
-    }
-    setBundleModal((prev) => ({ ...prev, saving: true }))
-    try {
-      await axios.put(`/rfqs/${activeRfqId}/items/${bundleModal.item.rfq_item_id}/strategy`, {
-        allow_kit: 1,
-        selected_bundle_id: bundleModal.activeBundleId,
-      })
-      await refreshStructure()
-      await loadRfqs()
-      message.success("Комплект выбран")
-      setBundleModal({
-        open: false,
-        item: null,
-        bundles: [],
-        loading: false,
-        activeBundleId: null,
-        bundleSummary: null,
-        saving: false,
-      })
-    } catch (e) {
-      console.error(e)
-      message.error("Не удалось сохранить выбор комплекта")
-      setBundleModal((prev) => ({ ...prev, saving: false }))
-    }
-  }
-
-  const updateStrategy = async (item, patch, rebuild = false) => {
-    if (!activeRfqId || !item?.rfq_item_id) return
-    debugLog("updateStrategy:start", {
-      rfqItemId: item.rfq_item_id,
-      patch,
-      current: item.strategy,
-      selected_bundle_id: item.selected_bundle_id,
-    })
-    setStructure((prev) => {
-      if (!prev?.items?.length) return prev
-      const nextItems = prev.items.map((row) => {
-        if (Number(row.rfq_item_id) !== Number(item.rfq_item_id)) return row
-
-        const nextStrategy = { ...(row.strategy || {}), ...patch }
-        const hasBom = !!row.has_bom
-        const rawMode = nextStrategy.mode || row.strategy?.mode || (hasBom ? "BOM" : "SINGLE")
-        const mode = String(rawMode || "").toUpperCase() || (hasBom ? "BOM" : "SINGLE")
-        const allowKitRaw =
-          nextStrategy.allow_kit !== undefined ? nextStrategy.allow_kit : row.strategy?.allow_kit ?? 1
-        const allowKit = Number(allowKitRaw) === 1 ? 1 : 0
-        const selectedBundleId = Object.prototype.hasOwnProperty.call(patch, "selected_bundle_id")
-          ? patch.selected_bundle_id
-          : row.selected_bundle_id
-        const kitSelectionRequired = row.bundle_count > 1 && !selectedBundleId
-        const wholeEnabled = mode === "SINGLE" || mode === "MIXED" || !hasBom
-        const bomEnabled = hasBom && (mode === "BOM" || mode === "MIXED")
-        const kitEnabled = allowKit === 1 && row.bundle_count > 0 && !kitSelectionRequired
-
-        const nextOptions = (row.options || []).map((opt) => {
-          if (opt.type === "WHOLE") return { ...opt, enabled: wholeEnabled }
-          if (opt.type === "BOM") return { ...opt, enabled: bomEnabled }
-          if (opt.type === "KIT")
-            return {
-              ...opt,
-              enabled: kitEnabled,
-              selection_required: kitSelectionRequired,
-            }
-          return opt
-        })
-
-        debugLog("updateStrategy:local", {
-          rfqItemId: row.rfq_item_id,
-          mode,
-          allowKit,
-          selectedBundleId: selectedBundleId ?? null,
-          kitSelectionRequired,
-          wholeEnabled,
-          bomEnabled,
-          kitEnabled,
-        })
-
-        return {
-          ...row,
-          strategy: nextStrategy,
-          selected_bundle_id: selectedBundleId ?? null,
-          options: nextOptions,
-        }
-      })
-      return { ...prev, items: nextItems }
-    })
-    try {
-      const response = await axios.put(`/rfqs/${activeRfqId}/items/${item.rfq_item_id}/strategy`, {
-        ...patch,
-        rebuild_components: rebuild ? 1 : 0,
-      })
-      debugLog("updateStrategy:server", response?.data)
-      const refreshed = await refreshStructure({ debugItemId: item.rfq_item_id })
-      debugLog("updateStrategy:refreshed", refreshed)
-      if (activeRfq?.status === "structured") {
-        await loadRfqs()
-      }
-    } catch (e) {
-      console.error(e)
-      message.error("Не удалось обновить стратегию")
-    }
-  }
-
-  const confirmStructure = async () => {
-    if (!activeRfqId) return
-    try {
-      await axios.post(`/rfqs/${activeRfqId}/structure/confirm`)
-      await loadRfqs()
-      message.success("Структура RFQ подтверждена")
-    } catch (e) {
-      console.error(e)
-      message.error(e?.response?.data?.message || "Не удалось подтвердить структуру")
-    }
-  }
-
-  const handleOptionToggle = async (record, nextEnabled) => {
-    const item = itemMap.get(Number(record.rfq_item_id))
-    if (!item) return
-    debugLog("toggle", {
-      rfqItemId: record.rfq_item_id,
-      optionType: record.option_type,
-      nextEnabled,
-      mode: item.strategy?.mode,
-      allowKit: item.strategy?.allow_kit,
-      bundleCount: item.bundle_count,
-      selectedBundleId: item.selected_bundle_id,
-    })
-
-    if (record.option_type === "KIT") {
-      if (!nextEnabled) {
-        await updateStrategy(item, { allow_kit: 0, selected_bundle_id: null })
-        return
-      }
-      if (!item.bundle_count) {
-        message.warning("Для позиции нет комплектов")
-        return
-      }
-      if (item.selected_bundle_id) {
-        await updateStrategy(item, { allow_kit: 1 })
-        return
-      }
-      if (item.bundle_count === 1 && item.original_part_id) {
-        try {
-          const { data } = await axios.get("/supplier-bundles", {
-            params: { original_part_id: item.original_part_id },
-          })
-          const bundleId = Array.isArray(data) && data.length ? data[0].id : null
-          if (bundleId) {
-            await updateStrategy(item, { allow_kit: 1, selected_bundle_id: bundleId })
-            return
-          }
-        } catch (e) {
-          console.error(e)
-        }
-      }
-      openBundleModal(item)
-      return
-    }
-
-    const hasBom = !!item.has_bom
-    const currentMode = String(item.strategy?.mode || (hasBom ? "BOM" : "SINGLE")).toUpperCase()
-    const currentWhole = currentMode === "SINGLE" || currentMode === "MIXED" || !hasBom
-    const currentBom = hasBom && (currentMode === "BOM" || currentMode === "MIXED")
-
-    if (record.option_type === "WHOLE") {
-      if (nextEnabled) {
-        const nextMode = currentBom ? "MIXED" : "SINGLE"
-        return await updateStrategy(item, { mode: nextMode })
-      }
-      if (hasBom) {
-        return await updateStrategy(item, { mode: "BOM" })
-      }
-      message.info("Для позиции без состава поставка целиком всегда включена.")
-      return
-    }
-
-    if (record.option_type === "BOM") {
-      if (!hasBom) return
-      if (nextEnabled) {
-        const nextMode = currentWhole ? "MIXED" : "BOM"
-        return await updateStrategy(item, { mode: nextMode })
-      }
-      const nextMode = currentWhole ? "SINGLE" : "SINGLE"
-      return await updateStrategy(item, { mode: nextMode })
-    }
-  }
 
   const coverageRows = useMemo(() => {
     if (!coverage?.items?.length) return []
@@ -958,37 +865,226 @@ export default function RfqWorkspacePage() {
   ])
 
   const structureItems = structure?.items || []
-  const itemMap = useMemo(() => {
+  const bomComponentsByItem = useMemo(() => {
     const map = new Map()
+    const collect = (nodes, list) => {
+      if (!Array.isArray(nodes)) return
+      nodes.forEach((node) => {
+        if (node?.type === "BOM_COMPONENT") {
+          list.push(node)
+        }
+        if (node?.children?.length) collect(node.children, list)
+      })
+    }
     structureItems.forEach((item) => {
-      map.set(Number(item.rfq_item_id), item)
+      const bomOpt = (item.options || []).find((opt) => opt.type === "BOM")
+      const list = []
+      collect(bomOpt?.children || [], list)
+      map.set(item.rfq_item_id, list)
     })
     return map
   }, [structureItems])
 
-  const rfqTreeData = useMemo(() => {
-    return structureItems.map((item) => {
-      const children = (item.options || [])
-        .filter((opt) => opt.available)
-        .map((opt) => {
-          const optionType = opt.option_type || opt.type
-          return {
-            ...opt,
-            key: opt.key || `opt-${item.rfq_item_id}-${optionType}`,
-            type: "OPTION",
-            option_type: optionType,
+  const selectionTreeData = useMemo(() => {
+    const nodeMap = new Map()
+    const tree = structureItems.map((item) => {
+      const itemNodeKey = `item:${item.rfq_item_id}`
+      const itemTitle = (
+        <Space>
+          <Tag>{item.line_number}</Tag>
+          <Text strong>{item.original_cat_number || item.client_part_number || "—"}</Text>
+          <Text type="secondary">{item.description || ""}</Text>
+        </Space>
+      )
+
+      const demandKey = `demand:${item.rfq_item_id}`
+      nodeMap.set(demandKey, {
+        key: demandKey,
+        line_type: "DEMAND",
+        rfq_item_id: item.rfq_item_id,
+        original_part_id: item.original_part_id || null,
+        line_label: item.original_cat_number || item.client_part_number || "",
+        line_description: item.description || "",
+        qty: item.requested_qty ?? null,
+        uom: item.uom || null,
+      })
+
+      const children = [
+        {
+          key: demandKey,
+          title: "Позиция (целая сборка)",
+          isLeaf: true,
+        },
+      ]
+
+      const bomNodes = bomComponentsByItem.get(item.rfq_item_id) || []
+      if (bomNodes.length) {
+        const bomChildren = bomNodes.map((comp) => {
+          const key = `bom:${item.rfq_item_id}:${comp.original_part_id}`
+          nodeMap.set(key, {
+            key,
+            line_type: "BOM_COMPONENT",
             rfq_item_id: item.rfq_item_id,
-            bundle_count: item.bundle_count,
-            selected_bundle_id: item.selected_bundle_id,
-            selected_bundle_title: item.selected_bundle_title,
-            children: Array.isArray(opt.children) ? opt.children : [],
+            original_part_id: comp.original_part_id,
+            line_label: comp.cat_number || "",
+            line_description: comp.description || "",
+            qty: comp.required_qty ?? null,
+            uom: comp.uom || item.uom || null,
+          })
+
+          const compBundleKey = `part:${comp.original_part_id}`
+          const selectedBundleId = bundleChoice[compBundleKey]
+          const compBundleItems = selectedBundleId
+            ? bundleItemsCache[selectedBundleId] || []
+            : []
+
+          const compKitChildren = selectedBundleId
+            ? compBundleItems.map((role) => {
+                const roleKey = `kit:${item.rfq_item_id}:${selectedBundleId}:${role.id}`
+                nodeMap.set(roleKey, {
+                  key: roleKey,
+                  line_type: "KIT_ROLE",
+                  rfq_item_id: item.rfq_item_id,
+                  original_part_id: comp.original_part_id,
+                  bundle_id: selectedBundleId,
+                  bundle_item_id: role.id,
+                  line_label: role.role_label || "",
+                  line_description: role.role_label || "",
+                  qty: (role.qty ?? 1) * (comp.required_qty ?? 1),
+                  uom: comp.uom || item.uom || null,
+                })
+                return {
+                  key: roleKey,
+                  title: `Роль: ${role.role_label || "—"}`,
+                  isLeaf: true,
+                }
+              })
+            : []
+
+          const kitSelectorTitle = (comp.bundle_count || 0) > 0 ? (
+            <Space>
+              <Text>Комплект компонента</Text>
+              <Select
+                size="small"
+                style={{ width: 200 }}
+                placeholder="Выберите комплект"
+                value={selectedBundleId || undefined}
+                options={(bundleCache[comp.original_part_id] || []).map((b) => ({
+                  value: b.id,
+                  label: b.title || `Комплект #${b.id}`,
+                }))}
+                onFocus={() => loadBundlesForPart(comp.original_part_id)}
+                onChange={async (value) => {
+                  setBundleChoice((prev) => ({ ...prev, [compBundleKey]: value }))
+                  await loadBundleItems(value)
+                }}
+              />
+            </Space>
+          ) : null
+
+          return {
+            key,
+            title: `${comp.cat_number || "—"} · ${comp.description || ""}`,
+            children: kitSelectorTitle
+              ? [
+                  {
+                    key: `${key}:kit-selector`,
+                    title: kitSelectorTitle,
+                    selectable: false,
+                    checkable: false,
+                    children: compKitChildren,
+                  },
+                ]
+              : [],
           }
         })
+
+        children.push({
+          key: `bomgroup:${item.rfq_item_id}`,
+          title: "BOM компоненты",
+          selectable: false,
+          checkable: false,
+          children: bomChildren,
+        })
+      }
+
+      if ((item.bundle_count || 0) > 0) {
+        const itemBundleKey = `item:${item.rfq_item_id}`
+        const selectedBundleId = bundleChoice[itemBundleKey]
+        const bundleItems = selectedBundleId ? bundleItemsCache[selectedBundleId] || [] : []
+        const kitChildren = selectedBundleId
+          ? bundleItems.map((role) => {
+              const roleKey = `kit:${item.rfq_item_id}:${selectedBundleId}:${role.id}`
+              nodeMap.set(roleKey, {
+                key: roleKey,
+                line_type: "KIT_ROLE",
+                rfq_item_id: item.rfq_item_id,
+                original_part_id: item.original_part_id || null,
+                bundle_id: selectedBundleId,
+                bundle_item_id: role.id,
+                line_label: role.role_label || "",
+                line_description: role.role_label || "",
+                qty: (role.qty ?? 1) * (item.requested_qty ?? 1),
+                uom: item.uom || null,
+              })
+              return {
+                key: roleKey,
+                title: `Роль: ${role.role_label || "—"}`,
+                isLeaf: true,
+              }
+            })
+          : []
+        const kitTitle = (
+          <Space>
+            <Text>Комплект позиции</Text>
+            <Select
+              size="small"
+              style={{ width: 200 }}
+              placeholder="Выберите комплект"
+              value={selectedBundleId || undefined}
+              options={(bundleCache[item.original_part_id] || []).map((b) => ({
+                value: b.id,
+                label: b.title || `Комплект #${b.id}`,
+              }))}
+              onFocus={() => item.original_part_id && loadBundlesForPart(item.original_part_id)}
+              onChange={async (value) => {
+                setBundleChoice((prev) => ({ ...prev, [itemBundleKey]: value }))
+                await loadBundleItems(value)
+              }}
+            />
+          </Space>
+        )
+        children.push({
+          key: `kitgroup:${item.rfq_item_id}`,
+          title: kitTitle,
+          selectable: false,
+          checkable: false,
+          children: kitChildren,
+        })
+      }
+
+      return {
+        key: itemNodeKey,
+        title: itemTitle,
+        selectable: false,
+        checkable: false,
+        children,
+      }
+    })
+
+    selectionNodeMapRef.current = nodeMap
+    return tree
+  }, [structureItems, bomComponentsByItem, bundleChoice, bundleCache, bundleItemsCache, loadBundleItems, loadBundlesForPart])
+  const rfqTreeData = useMemo(() => {
+    return structureItems.map((item) => {
+      const bomOption = (item.options || []).find((opt) => opt.type === "BOM")
+      const children = Array.isArray(bomOption?.children) ? bomOption.children : []
       return {
         key: `demand-${item.rfq_item_id}`,
         type: "DEMAND",
         rfq_item_id: item.rfq_item_id,
         line_number: item.line_number,
+        original_part_id: item.original_part_id || null,
         original_cat_number: item.original_cat_number,
         client_part_number: item.client_part_number,
         description: item.description,
@@ -996,17 +1092,12 @@ export default function RfqWorkspacePage() {
         uom: item.uom,
         has_bom: item.has_bom,
         bundle_count: item.bundle_count,
-        selected_bundle_id: item.selected_bundle_id,
-        selected_bundle_title: item.selected_bundle_title,
         children,
       }
     })
   }, [structureItems])
   const activeStep = TAB_TO_STEP[activeTabKey] ?? 0
-  const isStructureConfirmed = useMemo(
-    () => ["structured", "sent", "responded"].includes(activeRfq?.status),
-    [activeRfq?.status]
-  )
+  const isStructureConfirmed = true
 
   const rfqColumns = [
     { title: "Клиент", dataIndex: "client_name", width: 220 },
@@ -1074,14 +1165,8 @@ export default function RfqWorkspacePage() {
             </Space>
           )
         }
-        if (record.type === "OPTION") {
-          return <Text>{record.label}</Text>
-        }
         if (record.type === "BOM_COMPONENT") {
           return record.cat_number || "-"
-        }
-        if (record.type === "KIT_ROLE") {
-          return `Роль: ${record.role_label || "-"}`
         }
         return "-"
       },
@@ -1090,20 +1175,37 @@ export default function RfqWorkspacePage() {
       title: "Описание",
       dataIndex: "description",
       render: (value, record) => {
-        if (record.type === "OPTION" && record.option_type === "KIT") {
-          if (record.enabled) {
-            if (record.selected_bundle_title) {
-              return `Комплект: ${record.selected_bundle_title}`
-            }
-            if (record.selection_required) {
-              return "Нужно выбрать комплект"
-            }
-          }
-        }
-        if (record.type === "KIT_ROLE") {
-          return record.role_label || "-"
-        }
         return value || "-"
+      },
+    },
+    {
+      title: "Комплект",
+      dataIndex: "bundle",
+      width: 130,
+      render: (_, record) => {
+        const hasKit = Number(record.bundle_count || 0) > 0
+        if (!hasKit) return "—"
+        const partId = record.original_part_id
+        return (
+          <Button size="small" onClick={() => openKitPreview(partId)}>
+            Роли
+          </Button>
+        )
+      },
+    },
+    {
+      title: "Признаки",
+      dataIndex: "flags",
+      width: 160,
+      render: (_, record) => {
+        const tags = []
+        if (record.type === "DEMAND" && record.has_bom) {
+          tags.push(<Tag key="assembly" color="blue">Сборка</Tag>)
+        }
+        if ((record.bundle_count || 0) > 0) {
+          tags.push(<Tag key="kit" color="green">Комплект</Tag>)
+        }
+        return tags.length ? <Space size={4} wrap>{tags}</Space> : "—"
       },
     },
     {
@@ -1113,7 +1215,6 @@ export default function RfqWorkspacePage() {
       render: (_, record) => {
         if (record.type === "DEMAND") return record.requested_qty ?? "-"
         if (record.type === "BOM_COMPONENT") return record.required_qty ?? "-"
-        if (record.type === "KIT_ROLE") return record.required_qty ?? "-"
         return "-"
       },
     },
@@ -1123,7 +1224,7 @@ export default function RfqWorkspacePage() {
       width: 80,
       render: (_, record) => {
         if (record.type === "DEMAND") return record.uom || "-"
-        if (record.type === "BOM_COMPONENT" || record.type === "KIT_ROLE") return record.uom || "-"
+        if (record.type === "BOM_COMPONENT") return record.uom || "-"
         return "-"
       },
     },
@@ -1133,56 +1234,8 @@ export default function RfqWorkspacePage() {
       width: 120,
       render: (value, record) => {
         if (record.type === "DEMAND") return <Tag>Заявка</Tag>
-        if (record.type === "OPTION") {
-          const label =
-            record.option_type === "WHOLE"
-              ? "Целиком"
-              : record.option_type === "BOM"
-                ? "BOM"
-                : "Комплект"
-          return <Tag color="blue">{label}</Tag>
-        }
         if (record.type === "BOM_COMPONENT") return <Tag>Компонент</Tag>
-        if (record.type === "KIT_ROLE") return <Tag>Роль</Tag>
         return "-"
-      },
-    },
-    {
-      title: "Вариант",
-      dataIndex: "option",
-      width: 240,
-      render: (_, record) => {
-        if (record.type !== "OPTION") return null
-        const item = itemMap.get(Number(record.rfq_item_id))
-        const hasBom = !!item?.has_bom
-        const mode = String(item?.strategy?.mode || (hasBom ? "BOM" : "SINGLE")).toUpperCase()
-        const allowKit = Number(item?.strategy?.allow_kit ?? 1) === 1
-        const selectedBundleId = item?.selected_bundle_id
-        const kitSelectionRequired = item?.bundle_count > 1 && !selectedBundleId
-        const kitEnabled = allowKit && (item?.bundle_count || 0) > 0 && !kitSelectionRequired
-        const checked =
-          record.option_type === "WHOLE"
-            ? mode === "SINGLE" || mode === "MIXED" || !hasBom
-            : record.option_type === "BOM"
-              ? hasBom && (mode === "BOM" || mode === "MIXED")
-              : record.option_type === "KIT"
-                ? kitEnabled
-                : false
-        const canSelectBundle = record.option_type === "KIT" && record.available && checked
-        return (
-          <Space>
-            <Switch
-              checked={checked}
-              disabled={!record.available}
-              onChange={(checked) => handleOptionToggle(record, checked)}
-            />
-            {canSelectBundle ? (
-              <Button size="small" onClick={() => openBundleModal(item)}>
-                {record.selected_bundle_id ? "Сменить комплект" : "Выбрать комплект"}
-              </Button>
-            ) : null}
-          </Space>
-        )
       },
     },
   ]
@@ -1323,20 +1376,10 @@ export default function RfqWorkspacePage() {
                     children: (
                       <Space direction="vertical" size={12} style={{ width: "100%" }}>
                         <Space wrap align="center">
-                          <Button
-                            type="primary"
-                            onClick={confirmStructure}
-                            disabled={!structureItems.length || isStructureConfirmed}
-                          >
-                            Подтвердить структуру
-                          </Button>
-                          {isStructureConfirmed ? (
-                            <Tag color="green">Структура подтверждена</Tag>
-                          ) : (
-                            <Text type="secondary">
-                              Подтвердите структуру перед переходом к поставщикам.
-                            </Text>
-                          )}
+                          <Tag color="blue">Структура (обзор)</Tag>
+                          <Text type="secondary">
+                            Показываем состав заявки и признаки сборок/комплектов.
+                          </Text>
                         </Space>
                         <Table
                           rowKey="key"
@@ -1344,6 +1387,15 @@ export default function RfqWorkspacePage() {
                           dataSource={rfqTreeData}
                           pagination={false}
                           columns={rfqStructureColumns}
+                          onRow={(record) => {
+                            if (Number(record.bundle_count || 0) > 0) {
+                              return { style: { background: "#f1fff2" } }
+                            }
+                            if (record.type === "DEMAND" && record.has_bom) {
+                              return { style: { background: "#f0f7ff" } }
+                            }
+                            return {}
+                          }}
                         />
                       </Space>
                     ),
@@ -1469,6 +1521,15 @@ export default function RfqWorkspacePage() {
                                       handleSupplierLanguage(record, "en")
                                     }
                                   />
+                                ),
+                              },
+                              {
+                                title: "Настройка",
+                                width: 130,
+                                render: (_, record) => (
+                                  <Button size="small" onClick={() => openSelectionModal(record)}>
+                                    Структура
+                                  </Button>
                                 ),
                               },
                               {
@@ -1754,82 +1815,81 @@ export default function RfqWorkspacePage() {
         </Form>
       </Modal>
       <Modal
-        open={bundleModal.open}
+        open={selectionModal.open}
+        onCancel={() => setSelectionModal((prev) => ({ ...prev, open: false }))}
+        title={`Структура для поставщика: ${selectionModal.supplier?.supplier_name || ""}`}
+        width={1000}
+        okText="Сохранить"
+        onOk={() => saveSelections(selectionNodeMapRef.current)}
+        confirmLoading={selectionModal.saving}
+      >
+        {selectionModal.loading ? (
+          <Text type="secondary">Загрузка…</Text>
+        ) : (
+          <Tree
+            checkable
+            checkStrictly
+            defaultExpandAll
+            checkedKeys={selectionModal.selectedKeys}
+            onCheck={(checked) => {
+              const next = Array.isArray(checked) ? checked : checked.checked
+              setSelectionModal((prev) => ({ ...prev, selectedKeys: next }))
+            }}
+            treeData={selectionTreeData}
+          />
+        )}
+      </Modal>
+
+      <Modal
+        open={kitPreview.open}
         onCancel={() =>
-          setBundleModal({
+          setKitPreview({
             open: false,
-            item: null,
+            partId: null,
             bundles: [],
+            bundleId: null,
+            items: [],
             loading: false,
-            activeBundleId: null,
-            bundleSummary: null,
-            saving: false,
           })
         }
-        footer={
-          <Space>
-            <Button
-              onClick={() =>
-                setBundleModal({
-                  open: false,
-                  item: null,
-                  bundles: [],
-                  loading: false,
-                  activeBundleId: null,
-                  bundleSummary: null,
-                  saving: false,
-                })
-              }
-            >
-              Отмена
-            </Button>
-            <Button
-              type="primary"
-              disabled={!bundleModal.activeBundleId}
-              loading={bundleModal.saving}
-              onClick={confirmBundleSelection}
-            >
-              Выбрать комплект
-            </Button>
-          </Space>
-        }
-        width={820}
-        title={
-          bundleModal.item
-            ? `Комплекты для ${bundleModal.item.original_cat_number || bundleModal.item.client_part_number || "позиции"}`
-            : "Комплекты"
-        }
+        title="Роли комплекта"
+        width={700}
+        footer={<Button onClick={() => setKitPreview((prev) => ({ ...prev, open: false }))}>Закрыть</Button>}
       >
-        <Table
-          rowKey="id"
-          dataSource={bundleModal.bundles}
-          loading={bundleModal.loading}
-          pagination={false}
-          rowSelection={{
-            type: "radio",
-            selectedRowKeys: bundleModal.activeBundleId ? [bundleModal.activeBundleId] : [],
-            onChange: (keys) => loadBundleSummary(keys?.[0]),
-          }}
-          columns={[
-            { title: "Название", dataIndex: "title" },
-            { title: "Позиции", dataIndex: "items_count", width: 110 },
-            { title: "Примечание", dataIndex: "note" },
-          ]}
-        />
-        {bundleModal.bundleSummary ? (
-          <Card size="small" style={{ marginTop: 12 }} title="Состав комплекта">
+        {kitPreview.loading ? (
+          <Text type="secondary">Загрузка…</Text>
+        ) : (
+          <Space direction="vertical" style={{ width: "100%" }}>
+            <Select
+              placeholder="Выберите комплект"
+              value={kitPreview.bundleId || undefined}
+              options={kitPreview.bundles.map((b) => ({
+                value: b.id,
+                label: b.title || `Комплект #${b.id}`,
+              }))}
+              onChange={async (value) => {
+                const items = await loadBundleItems(value)
+                setKitPreview((prev) => ({
+                  ...prev,
+                  bundleId: value,
+                  items: Array.isArray(items) ? items : [],
+                }))
+              }}
+              style={{ width: 360 }}
+            />
             <Table
               rowKey="id"
-              dataSource={bundleModal.bundleSummary.items || []}
+              dataSource={kitPreview.items}
               pagination={false}
               columns={[
-                { title: "Роль", dataIndex: "role_label", width: 200 },
+                { title: "Роль", dataIndex: "role_label" },
                 { title: "Кол-во", dataIndex: "qty", width: 120 },
               ]}
             />
-          </Card>
-        ) : null}
+          </Space>
+        )}
       </Modal>
+
     </PageWrapper>
   )
 }
