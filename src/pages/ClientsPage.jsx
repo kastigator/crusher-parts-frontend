@@ -1,13 +1,25 @@
 // src/pages/ClientsPage.jsx
-import React from "react"
+import React, { useEffect } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import TabRendererPage from "@/components/common/TabRendererPage"
 import ClientsMain from "@/components/clients/ClientsMain"
 
 export default function ClientsPage() {
+  const [params] = useSearchParams()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const focusParam = params.get("focus")
+    const id = focusParam ? Number(focusParam) || null : null
+    if (id) {
+      navigate(`/clients/${id}`, { replace: true })
+    }
+  }, [params, navigate])
+
   return (
     <TabRendererPage
       tabKey="clients"
-      helpText="Кнопка карандаш — редактирование; Enter — сохранить; Esc — отменить."
+      helpText="Клик по строке — открыть карточку клиента. Редактирование выполняется в карточке."
     >
       <ClientsMain />
     </TabRendererPage>

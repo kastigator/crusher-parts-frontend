@@ -21,19 +21,22 @@
   border: none !important;
   box-shadow: none !important;
   max-width: 100%;
+  min-width: 0;
 }
 
 /* Держим таблицу внутри карточки, при нехватке места показываем скролл */
 .op-table .ant-table-content,
 .op-table .ant-table-body {
   overflow-x: auto !important;
+  max-width: 100%;
 }
 
 /* Если таблица шире контейнера — горизонтальный скролл внутри самой таблицы */
 .op-table .ant-table {
-  width: 100%;
-  table-layout: auto;
-  min-width: 100%;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed;
 }
 
 /* ---------------------------------------------------------
@@ -202,6 +205,31 @@
   border-bottom-color: #dbeafe;
 }
 
+/* ---------------------------------------------------------
+   Visual polish helpers
+   --------------------------------------------------------- */
+
+/* Flash a row after create/save so the user can find it quickly */
+.op-table .op-row-flash > td {
+  animation: opRowFlash 1400ms ease-out;
+}
+
+.op-table .op-row-flash > td:first-child {
+  box-shadow: inset 3px 0 0 #52c41a;
+}
+
+@keyframes opRowFlash {
+  0% {
+    background: #e6fffb;
+  }
+  35% {
+    background: #e6fffb;
+  }
+  100% {
+    background: inherit;
+  }
+}
+
 /* =========================================================
    Вложенные подтаблицы (клиенты: адреса, банки и т.п.)
    ========================================================= */
@@ -211,12 +239,25 @@
   padding: 12px 0 16px;
   background: #f9fafb;
   border-top: 1px solid #e5e7eb;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .subtable-shell .parts-table-wrap,
 .subtable-shell .table-section {
   margin-left: 0;
   margin-right: 0;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.subtable-shell .ant-card,
+.subtable-shell .ant-card-body,
+.subtable-shell .ant-tabs,
+.subtable-shell .ant-tabs-content,
+.subtable-shell .ant-tabs-content-holder {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .order-inline-panel {
@@ -230,11 +271,14 @@
 .order-inline-panel .ant-table-wrapper {
   width: 100%;
   max-width: 100%;
+  min-width: 0;
 }
 
 .order-inline-search-table,
 .order-inline-table {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .order-inline-qty {
@@ -251,11 +295,73 @@
    (карта, форма, тулбар, таблица и т.п.) */
 .table-section {
   margin-top: 12px;
+  max-width: 100%;
+  min-width: 0;
 }
 
 /* Обёртка для форм и таблиц внутри раскрытой строки */
 .parts-table-wrap {
   margin-top: 8px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* =========================================================
+   Split layout for master-detail views
+   ========================================================= */
+
+.parts-split {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.parts-split-left {
+  flex: 0 0 62%;
+  min-width: 0;
+}
+
+.parts-split-resizer {
+  width: 6px;
+  margin: 0 4px;
+  cursor: col-resize;
+  position: relative;
+}
+
+.parts-split-resizer::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 2px;
+  right: 2px;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.parts-split-resizer:hover::before,
+.parts-split-resizer.is-dragging::before {
+  background: #cbd5f5;
+}
+
+.parts-split-right {
+  flex: 1 1 38%;
+  min-width: 0;
+}
+
+@media (max-width: 1200px) {
+  .parts-split {
+    flex-direction: column;
+  }
+  .parts-split-left,
+  .parts-split-right {
+    flex: 1 1 auto;
+  }
+  .parts-split-resizer {
+    display: none;
+  }
 }
 
 /* ---------------------------------------------------------
@@ -264,6 +370,8 @@
 
 .op-table-wrap {
   position: relative;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .op-table-wrap.scroll-right::after,

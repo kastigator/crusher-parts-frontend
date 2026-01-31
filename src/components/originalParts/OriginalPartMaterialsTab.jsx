@@ -11,7 +11,9 @@ import {
   Form,
   message,
   Checkbox,
+  InputNumber,
 } from "antd"
+import { EditOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import "@/styles/tableStyles.css"
 
@@ -22,6 +24,11 @@ export default function OriginalPartMaterialsTab({ partId }) {
   const [options, setOptions] = useState([])
   const [adding, setAdding] = useState(false)
   const [form] = Form.useForm()
+
+  const [specOpen, setSpecOpen] = useState(false)
+  const [specRecord, setSpecRecord] = useState(null)
+  const [specSaving, setSpecSaving] = useState(false)
+  const [specForm] = Form.useForm()
 
   const load = useCallback(async () => {
     if (!partId) {
@@ -64,6 +71,50 @@ export default function OriginalPartMaterialsTab({ partId }) {
     form.resetFields()
     setPickerOpen(true)
     fetchMaterials("")
+  }
+
+  const openSpec = (record) => {
+    setSpecRecord(record)
+    specForm.setFieldsValue({
+      weight_kg: record?.spec_weight_kg ?? null,
+      length_cm: record?.spec_length_cm ?? null,
+      width_cm: record?.spec_width_cm ?? null,
+      height_cm: record?.spec_height_cm ?? null,
+    })
+    setSpecOpen(true)
+  }
+
+  const saveSpec = async () => {
+    if (!specRecord?.material_id) return
+    try {
+      const v = await specForm.validateFields()
+      setSpecSaving(true)
+      await axios.put("/original-part-material-specs", {
+        original_part_id: partId,
+        material_id: specRecord.material_id,
+        weight_kg: v.weight_kg ?? null,
+        length_cm: v.length_cm ?? null,
+        width_cm: v.width_cm ?? null,
+        height_cm: v.height_cm ?? null,
+      })
+      message.success("Спецификация сохранена")
+      setSpecOpen(false)
+      setSpecRecord(null)
+      await load()
+    } catch (e) {
+      if (e?.errorFields) return
+      console.error("Ошибка сохранения спецификации", e)
+      message.error(e?.response?.data?.message || "Не удалось сохранить спецификацию")
+    } finally {
+      setSpecSaving(false)
+    }
+  }
+
+  const fmt = (v) => {
+    if (v === undefined || v === null || v === "") return "—"
+    const n = Number(v)
+    if (!Number.isFinite(n)) return "—"
+    return String(n)
   }
 
   const addMaterial = async () => {
@@ -130,6 +181,28 @@ export default function OriginalPartMaterialsTab({ partId }) {
       ),
     },
     {
+      title: "Спецификация",
+      key: "spec",
+      width: 220,
+      render: (_, r) => {
+        const hasAny =
+          r.spec_weight_kg != null ||
+          r.spec_length_cm != null ||
+          r.spec_width_cm != null ||
+          r.spec_height_cm != null
+        return (
+          <Space direction="vertical" size={0}>
+            <span style={{ color: hasAny ? "#111827" : "#9ca3af" }}>
+              Вес: {fmt(r.spec_weight_kg)}
+            </span>
+            <span style={{ color: hasAny ? "#111827" : "#9ca3af" }}>
+              Габариты: {fmt(r.spec_length_cm)}×{fmt(r.spec_width_cm)}×{fmt(r.spec_height_cm)}
+            </span>
+          </Space>
+        )
+      },
+    },
+    {
       title: "Описание",
       dataIndex: "material_description",
       key: "material_description",
@@ -155,6 +228,9 @@ export default function OriginalPartMaterialsTab({ partId }) {
       width: 160,
       render: (_, record) => (
         <Space>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openSpec(record)}>
+            Спека
+          </Button>
           {!record.is_default && (
             <Button size="small" onClick={() => makeDefault(record)}>
               По умолчанию
@@ -225,6 +301,56 @@ export default function OriginalPartMaterialsTab({ partId }) {
           <Form.Item label="Комментарий" name="note">
             <Input.TextArea rows={2} />
           </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={specOpen}
+        title={
+          specRecord?.material_name
+            ? `Спецификация: ${specRecord.material_name}`
+            : "Спецификация материала"
+        }
+        onCancel={() => {
+          setSpecOpen(false)
+          setSpecRecord(null)
+        }}
+        onOk={saveSpec}
+        confirmLoading={specSaving}
+        destroyOnClose
+      >
+        <div style={{ color: "#6b7280", marginBottom: 12 }}>
+          Эти значения используются как «основные» вес/габариты, когда этот материал выбран по умолчанию.
+        </div>
+        <Form layout="vertical" form={specForm}>
+          <Form.Item label="Вес, кг" name="weight_kg">
+            <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+          </Form.Item>
+          <Space style={{ width: "100%" }} size={10}>
+            <Form.Item label="Длина, см" name="length_cm" style={{ flex: 1 }}>
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item label="Ширина, см" name="width_cm" style={{ flex: 1 }}>
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item label="Высота, см" name="height_cm" style={{ flex: 1 }}>
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+            </Form.Item>
+          </Space>
+          <Button
+            type="link"
+            onClick={() => {
+              specForm.setFieldsValue({
+                weight_kg: null,
+                length_cm: null,
+                width_cm: null,
+                height_cm: null,
+              })
+            }}
+            style={{ padding: 0 }}
+          >
+            Очистить спецификацию (удалить)
+          </Button>
         </Form>
       </Modal>
     </>

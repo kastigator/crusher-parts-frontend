@@ -22,9 +22,13 @@ const ContractsPage = lazy(() => import('../pages/ContractsPage'))
 const PurchaseOrdersPage = lazy(() => import('../pages/PurchaseOrdersPage'))
 const TnvedCodesPage = lazy(() => import('../pages/TnvedCodesPage'))
 const ClientsPage = lazy(() => import('../pages/ClientsPage'))
+const ClientDetailPage = lazy(() => import('../pages/ClientDetailPage'))
 const SuppliersPage = lazy(() => import('../pages/SuppliersPage'))
+const SupplierDetailPage = lazy(() => import('../pages/SupplierDetailPage'))
 const OriginalPartsPage = lazy(() => import('../pages/OriginalPartsPage'))
+const OriginalPartDetailPage = lazy(() => import('../pages/OriginalPartDetailPage'))
 const SupplierPartsPage = lazy(() => import('@/pages/SupplierPartsPage'))
+const SupplierPartDetailPage = lazy(() => import('@/pages/SupplierPartDetailPage'))
 const MaterialsPage = lazy(() => import('@/pages/MaterialsPage'))
 
 const AppRouter = () => (
@@ -57,9 +61,13 @@ const AppRouter = () => (
         <Route path="users" element={<UsersPage />} />
         <Route path="tnved-codes" element={<TnvedCodesPage />} />
         <Route path="clients" element={<ClientsPage />} />
+        <Route path="clients/:id" element={<ClientDetailPage />} />
         <Route path="suppliers" element={<SuppliersPage />} />
+        <Route path="suppliers/:id" element={<SupplierDetailPage />} />
         <Route path="original-parts" element={<OriginalPartsPage />} />
+        <Route path="original-parts/:id" element={<OriginalPartDetailPage />} />
         <Route path="supplier-parts" element={<SupplierPartsPage />} />
+        <Route path="supplier-parts/:id" element={<SupplierPartDetailPage />} />
         <Route path="materials" element={<MaterialsPage />} />
         <Route path="*" element={<div style={{ padding: 32 }}>Страница не найдена</div>} />
       </Route>

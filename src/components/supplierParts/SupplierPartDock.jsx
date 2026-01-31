@@ -14,7 +14,11 @@ const { Text } = Typography
  * - part: объект выбранной детали (row) | null
  * - onChanged?: () => void   // дернуть, чтобы обновить верхнюю таблицу
  */
-export default function SupplierPartDock({ part, onChanged = () => {} }) {
+export default function SupplierPartDock({
+  part,
+  onChanged = () => {},
+  noTopMargin = false,
+}) {
   const [activeKey, setActiveKey] = useState("prices")
 
   const header = useMemo(() => {
@@ -37,7 +41,11 @@ export default function SupplierPartDock({ part, onChanged = () => {} }) {
   }, [part])
 
   return (
-    <Card style={{ marginTop: 12 }} bodyStyle={{ paddingTop: 8 }} title={header}>
+    <Card
+      style={noTopMargin ? undefined : { marginTop: 12 }}
+      bodyStyle={{ paddingTop: 8 }}
+      title={header}
+    >
       {!part ? (
         <Empty description="Выберите деталь в таблице выше" />
       ) : (

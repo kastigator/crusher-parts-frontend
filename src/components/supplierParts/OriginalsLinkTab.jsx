@@ -111,7 +111,7 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
   }
 
   const openOriginal = (original_part_id) => {
-    const url = `/original-parts?focus=${encodeURIComponent(original_part_id)}`
+    const url = `/original-parts/${encodeURIComponent(original_part_id)}`
     window.open(url, "_blank")
   }
 

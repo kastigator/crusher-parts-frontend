@@ -1,6 +1,6 @@
 // src/components/tnved/TnvedCodesTable.jsx
 
-import React, { useMemo, useRef, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Table, Input, InputNumber, message } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
@@ -16,6 +16,8 @@ const { TextArea } = Input
 export default function TnvedCodesTable({
   data,
   loading,
+  visibleColumnKeys,
+  onColumnsMeta,
   onUpdate,
   onDelete,
   onReplaceRow,
@@ -94,10 +96,36 @@ export default function TnvedCodesTable({
     }
   }
 
+  const columnsMeta = useMemo(
+    () => ({
+      options: [
+        { key: "description", label: "Описание" },
+        { key: "duty_rate", label: "Пошлина (%)" },
+        { key: "notes", label: "Примечание" },
+      ],
+      defaultVisible: ["description", "duty_rate", "notes"],
+      lockedKeys: ["code", "actions"],
+    }),
+    [],
+  )
+
+  useEffect(() => {
+    if (typeof onColumnsMeta === "function") onColumnsMeta(columnsMeta)
+  }, [onColumnsMeta, columnsMeta])
+
+  const visibleKeys = useMemo(() => {
+    const base =
+      Array.isArray(visibleColumnKeys) && visibleColumnKeys.length
+        ? visibleColumnKeys
+        : columnsMeta.defaultVisible
+    return new Set(base || [])
+  }, [visibleColumnKeys, columnsMeta.defaultVisible])
+
   const columns = [
     {
       title: "Код",
       dataIndex: "code",
+      key: "code",
       width: 140,
       fixed: "left",
       ellipsis: true,
@@ -120,6 +148,7 @@ export default function TnvedCodesTable({
     {
       title: "Описание",
       dataIndex: "description",
+      key: "description",
       width: 360,
       ellipsis: true,
       render: (_, record) =>
@@ -144,6 +173,7 @@ export default function TnvedCodesTable({
     {
       title: "Пошлина (%)",
       dataIndex: "duty_rate",
+      key: "duty_rate",
       width: 140,
       render: (_, record) =>
         isEditing(record) ? (
@@ -166,6 +196,7 @@ export default function TnvedCodesTable({
     {
       title: "Примечание",
       dataIndex: "notes",
+      key: "notes",
       width: 260,
       ellipsis: true,
       render: (_, record) =>
@@ -187,6 +218,7 @@ export default function TnvedCodesTable({
     {
       title: "Действия",
       dataIndex: "actions",
+      key: "actions",
       width: 220,
       render: (_, record) => {
         const editing = isEditing(record)
@@ -205,6 +237,11 @@ export default function TnvedCodesTable({
       },
     },
   ]
+
+  const filteredColumns = columns.filter((c) => {
+    if (c.key === "code" || c.key === "actions") return true
+    return visibleKeys.has(String(c.key))
+  })
 
   const pagination = useMemo(
     () =>
@@ -229,14 +266,14 @@ export default function TnvedCodesTable({
         <Table
           className="op-table"
           dataSource={data}
-          columns={columns}
+          columns={filteredColumns}
           rowKey="id"
           loading={loading}
           pagination={pagination}
           bordered
           size="small"
           tableLayout="fixed"
-          scroll={{ x: "max-content" }}
+          scroll={{ x: true }}
           expandable={{
             expandedRowRender: (record) => (
               <div

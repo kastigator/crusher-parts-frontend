@@ -1,7 +1,6 @@
 import React, { useMemo } from "react"
 import { Card, Tabs, Empty, Tag, Space, Typography } from "antd"
 
-import BomTable from "./BomTable"
 import BomTree from "./BomTree"
 import UsedInTable from "./UsedInTable"
 import AltOriginalsTable from "./AltOriginalsTable"
@@ -59,13 +58,14 @@ export default function DetailDock({
         items={[
           {
             key: "bom",
-            label: "Состав (BOM таблица)",
-            children: <BomTable part={part} />,
-          },
-          {
-            key: "tree",
-            label: "Структура BOM (дерево)",
-            children: <BomTree originalPartId={partId} />,
+            label: "BOM",
+            children: (
+              <BomTree
+                part={part}
+                manufacturerName={manufacturerName}
+                modelName={modelName}
+              />
+            ),
           },
           {
             key: "used",

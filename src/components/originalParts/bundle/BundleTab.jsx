@@ -12,6 +12,10 @@ export default function BundleTab({ originalPartId, originalPart }) {
   const expandColumnWidth = 36
   const [bundleId, setBundleId] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [bundleTitle, setBundleTitle] = useState("")
+  const [bundleNote, setBundleNote] = useState("")
+  const [bundleOriginal, setBundleOriginal] = useState({ title: "", note: "" })
+  const [bundleSaving, setBundleSaving] = useState(false)
 
   const [items, setItems] = useState([])
   const [options, setOptions] = useState([])
@@ -29,22 +33,75 @@ export default function BundleTab({ originalPartId, originalPart }) {
       setLoading(true)
       const { data } = await axios.get("/supplier-bundles", { params: { original_part_id: originalPartId } })
       if (Array.isArray(data) && data.length) {
-        setBundleId(data[0].id)
+        const bundle = data[0]
+        setBundleId(bundle.id)
+        const nextTitle = bundle.title || ""
+        const nextNote = bundle.note || ""
+        setBundleTitle(nextTitle)
+        setBundleNote(nextNote)
+        setBundleOriginal({ title: nextTitle, note: nextNote })
       } else {
-        const { data: created } = await axios.post("/supplier-bundles", {
-          original_part_id: originalPartId,
-          title: "",
-          note: ""
-        })
-        setBundleId(created.id)
-        message.success("Создан новый комплект для этой детали")
+        setBundleId(null)
+        setBundleTitle("")
+        setBundleNote("")
+        setBundleOriginal({ title: "", note: "" })
       }
     } catch (e) {
       console.error(e)
-      message.error("Не удалось получить/создать комплект")
+      message.error("Не удалось получить комплект")
     } finally {
       setLoading(false)
     }
+  }
+
+  const createBundle = async () => {
+    if (!originalPartId) return
+    try {
+      setLoading(true)
+      const { data: created } = await axios.post("/supplier-bundles", {
+        original_part_id: originalPartId,
+        title: "",
+        note: ""
+      })
+      const nextTitle = created?.title || ""
+      const nextNote = created?.note || ""
+      setBundleId(created.id)
+      setBundleTitle(nextTitle)
+      setBundleNote(nextNote)
+      setBundleOriginal({ title: nextTitle, note: nextNote })
+      message.success("Создан новый комплект для этой детали")
+      await loadData()
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось создать комплект")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const saveBundleMeta = async () => {
+    if (!bundleId) return
+    const title = bundleTitle.trim()
+    const note = bundleNote.trim()
+    if (title === bundleOriginal.title && note === bundleOriginal.note) return
+    try {
+      setBundleSaving(true)
+      await axios.put(`/supplier-bundles/${bundleId}`, { title, note })
+      setBundleTitle(title)
+      setBundleNote(note)
+      setBundleOriginal({ title, note })
+      message.success("Комплект обновлён")
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось обновить комплект")
+    } finally {
+      setBundleSaving(false)
+    }
+  }
+
+  const resetBundleMeta = () => {
+    setBundleTitle(bundleOriginal.title || "")
+    setBundleNote(bundleOriginal.note || "")
   }
 
   // --------------------- загрузка содержимого ---------------------
@@ -68,7 +125,15 @@ export default function BundleTab({ originalPartId, originalPart }) {
     }
   }
 
-  useEffect(() => { setBundleId(null); setItems([]); setOptions([]); setTotals([]) }, [originalPartId])
+  useEffect(() => {
+    setBundleId(null)
+    setBundleTitle("")
+    setBundleNote("")
+    setBundleOriginal({ title: "", note: "" })
+    setItems([])
+    setOptions([])
+    setTotals([])
+  }, [originalPartId])
   useEffect(() => { if (originalPartId) ensureBundle() }, [originalPartId])
   useEffect(() => { if (bundleId) loadData() }, [bundleId])
 
@@ -307,6 +372,8 @@ export default function BundleTab({ originalPartId, originalPart }) {
     ? [originalPart.part_number, originalPart.name].filter(Boolean).join(" — ")
     : null
 
+  const metaDirty = bundleTitle.trim() !== bundleOriginal.title || bundleNote.trim() !== bundleOriginal.note
+
   return (
     <div className="table-section">
       <Space style={{ marginBottom: 8, width: "100%", justifyContent: "space-between" }}>
@@ -320,33 +387,60 @@ export default function BundleTab({ originalPartId, originalPart }) {
             </Text>
           ) : null}
         </Space>
-        <Space>
-          <Input
-            placeholder="Название роли (например, Насос)"
-            value={qNewRole}
-            onChange={(e) => setQNewRole(e.target.value)}
-            onPressEnter={addRole}
-            style={{ width: 260 }}
-          />
-          <Button type="primary" onClick={addRole} disabled={!qNewRole.trim()}>+ Добавить</Button>
-        </Space>
+        {bundleId ? (
+          <Space>
+            <Input
+              placeholder="Название роли (например, Насос)"
+              value={qNewRole}
+              onChange={(e) => setQNewRole(e.target.value)}
+              onPressEnter={addRole}
+              style={{ width: 260 }}
+            />
+            <Button type="primary" onClick={addRole} disabled={!qNewRole.trim()}>+ Добавить</Button>
+          </Space>
+        ) : (
+          <Button type="primary" onClick={createBundle} loading={loading}>Создать комплект</Button>
+        )}
       </Space>
 
-      <Table
-        rowKey="id"
-        className="op-table"
-        size="small"
-        loading={loading && !bundleId}
-        columns={itemColumns}
-        dataSource={items}
-        pagination={false}
-        locale={{ emptyText: <Empty description="Нет ролей в комплекте" /> }}
-        expandable={{
-          expandedRowRender: renderOptionsTable,
-          expandRowByClick: true,
-          columnWidth: expandColumnWidth,
-        }}
-      />
+      {bundleId ? (
+        <>
+          <Space style={{ marginBottom: 8, width: "100%" }} wrap>
+            <Input
+              placeholder="Название комплекта"
+              value={bundleTitle}
+              onChange={(e) => setBundleTitle(e.target.value)}
+              style={{ width: 260 }}
+            />
+            <Input
+              placeholder="Примечание"
+              value={bundleNote}
+              onChange={(e) => setBundleNote(e.target.value)}
+              style={{ width: 320 }}
+            />
+            <Button onClick={saveBundleMeta} disabled={!metaDirty} loading={bundleSaving}>Сохранить</Button>
+            <Button onClick={resetBundleMeta} disabled={!metaDirty || bundleSaving}>Сбросить</Button>
+          </Space>
+
+          <Table
+            rowKey="id"
+            className="op-table"
+            size="small"
+            loading={loading && !bundleId}
+            columns={itemColumns}
+            dataSource={items}
+            pagination={false}
+            locale={{ emptyText: <Empty description="Нет ролей в комплекте" /> }}
+            expandable={{
+              expandedRowRender: renderOptionsTable,
+              expandRowByClick: true,
+              columnWidth: expandColumnWidth,
+            }}
+          />
+        </>
+      ) : (
+        <Empty description="Комплект ещё не создан" />
+      )}
 
       <SupplierPartPickerDrawer
         open={pickerOpen}

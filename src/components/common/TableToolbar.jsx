@@ -17,19 +17,27 @@ export default function TableToolbar({
   onImport,      // () => void
   onShowDeleted, // () => void
   onRefresh,     // () => void
+  extraActions,  // ReactNode: дополнительные кнопки/действия справа
   placeholder = "Поиск...",
   disabled = false,
   searchWidth = 320,
+  searchEnterButton, // string|ReactNode|boolean (см. antd Input.Search enterButton)
 }) {
+  const searchStyle =
+    typeof searchWidth === "number"
+      ? { width: searchWidth, maxWidth: "100%" }
+      : { width: searchWidth, maxWidth: "100%" }
+
   return (
     <Row
       justify="space-between"
       align="middle"
       style={{ marginBottom: 16 }}
       gutter={16}
+      wrap
     >
-      <Col flex="auto">
-        <Space direction="horizontal">
+      <Col flex="auto" style={{ minWidth: 260 }}>
+        <Space direction="horizontal" size={12} wrap style={{ width: "100%" }}>
           {title && (
             <Title level={5} style={{ margin: 0 }}>
               {title}
@@ -43,7 +51,8 @@ export default function TableToolbar({
               value={search}
               onChange={(e) => onSearch(e.target.value)}
               onSearch={(value) => onSearch(value)}
-              style={{ width: searchWidth }}
+              enterButton={searchEnterButton}
+              style={searchStyle}
               disabled={disabled}
             />
           )}
@@ -51,7 +60,8 @@ export default function TableToolbar({
       </Col>
 
       <Col>
-        <Space>
+        <Space size={12} wrap>
+          {extraActions || null}
           {onRefresh && (
             <Tooltip title="Обновить">
               <Button icon={<ReloadOutlined />} onClick={onRefresh}>

@@ -153,7 +153,7 @@ export default function RolePermissionsMatrix({ onRolesChanged }) {
         dataSource={roles}
         columns={columns}
         loading={loading}
-        scroll={{ x: "max-content" }}
+        scroll={{ x: true }}
         pagination={false}
         size="middle"
       />

@@ -1,365 +1,202 @@
 // src/components/clients/ClientsTable.jsx
-import React, { useState, useMemo } from "react"
-import { Table, Input, message, Tabs } from "antd"
+import React, { useEffect, useMemo, useRef, useState } from "react"
+import { Table, message } from "antd"
 
-import BillingAddressesMain from "./BillingAddressesMain"
-import ShippingAddressesMain from "./ShippingAddressesMain"
-import BankDetailsMain from "./BankDetailsMain"
-import ClientContactsMain from "./ClientContactsMain"
-import ClientOrdersTab from "./ClientOrdersTab"
-
-import ValueDisplay from "@/components/common/ValueDisplay"
-import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import ActionButtons from "@/components/common/ActionButtons"
+import FullHistoryDialog from "@/components/common/FullHistoryDialog"
+import ValueDisplay from "@/components/common/ValueDisplay"
 import confirmAction from "@/utils/confirmAction"
-import VersionConflictModal from "@/components/common/VersionConflictModal"
 import createTablePagination from "@/utils/tablePagination"
-import { mergeConflictDraft } from "@/utils/versionConflict"
+import useTableScrollHints from "@/utils/useTableScrollHints"
 
 export default function ClientsTable({
-  data,
+  data = [],
   loading,
-  onUpdate,
   onDelete,
-  onReload,
-  // управляемое раскрытие + перезагрузка дочерних вкладок
-  expandedClientId: controlledExpandedId,
-  setExpandedClientId: setControlledExpandedId,
-  onChildChanged,
-  onReplaceRow,
-  reloadKey: externalReloadKey,
+  onOpenDetail,
+  highlightRowId = null,
+  visibleColumnKeys = null,
+  onColumnsMeta = null,
 }) {
-  const [editingId, setEditingId] = useState(null)
-  const [editedRow, setEditedRow] = useState(null)
-  const [historyForId, setHistoryForId] = useState(null)
+  const [logsClientId, setLogsClientId] = useState(null)
+  const wrapRef = useRef(null)
 
-  // локальные fallback-состояния, если сверху ничего не передали
-  const [localExpandedId, setLocalExpandedId] = useState(null)
-  const [localReloadKey, setLocalReloadKey] = useState(0)
-
-  const expandedClientId = controlledExpandedId ?? localExpandedId
-  const reloadKey = externalReloadKey ?? localReloadKey
-
-  const [conflict, setConflict] = useState({
-    open: false,
-    current: null,
-    draft: null,
-  })
-
-  // локальная пагинация (как в ТН ВЭД)
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(50)
+
+  const dataSource = Array.isArray(data) ? data : []
+  const scrollHints = useTableScrollHints(wrapRef, [dataSource, loading, page, pageSize])
 
   const pagination = useMemo(
     () =>
       createTablePagination({
         page,
         pageSize,
-        total: Array.isArray(data) ? data.length : 0,
+        total: dataSource.length,
         setPage,
         setPageSize,
       }),
-    [page, pageSize, data],
+    [page, pageSize, dataSource.length],
   )
-
-  const isEditing = (record) => record.id === editingId
-
-  const startEdit = (record) => {
-    if (editingId && editingId !== record.id) {
-      message.warning("Сначала сохраните или отмените текущие изменения")
-      return
-    }
-    setEditingId(record.id)
-    setEditedRow({ ...record }) // важно сохранить version
-  }
-
-  const cancelEdit = () => {
-    setEditingId(null)
-    setEditedRow(null)
-  }
-
-  const saveEdit = async () => {
-    if (!editedRow) return
-    if (editedRow.version === undefined) {
-      return message.error("Нет версии записи для сохранения")
-    }
-
-    try {
-      await onUpdate?.(editedRow.id, { ...editedRow })
-      cancelEdit()
-    } catch (err) {
-      if (err?.isDuplicateKey) {
-        return message.error("Клиент с таким названием уже существует")
-      }
-      if (err?.isVersionConflict) {
-        setConflict({
-          open: true,
-          current: err.currentRecord || null,
-          draft: editedRow,
-        })
-        return
-      }
-      console.error(err)
-      message.error("Ошибка при сохранении клиента")
-    }
-  }
 
   const handleDelete = async (record) => {
     const { confirmed } = await confirmAction("Удалить клиента?")
     if (!confirmed) return
-
     try {
-      // ⬇️ Передаём ВЕСЬ объект клиента, а не только id
       await onDelete?.(record)
-
-      // если удалили раскрытого клиента — свернуть
-      if (expandedClientId === record.id) {
-        if (setControlledExpandedId) setControlledExpandedId(null)
-        else setLocalExpandedId(null)
-      }
-    } catch (err) {
-      // аккуратно обрабатываем конфликт версий
-      if (err?.isVersionConflict) {
-        if (err.currentRecord && typeof onReplaceRow === "function") {
-          onReplaceRow(err.currentRecord)
-        } else if (typeof onReload === "function") {
-          await onReload()
-        }
-        message.warning(
-          "Запись изменилась другим пользователем и не была удалена. Данные обновлены.",
-        )
-        return
-      }
-
-      console.error("Ошибка при удалении клиента:", err)
-      message.error("Ошибка при удалении клиента")
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось удалить клиента")
     }
   }
-
-  const handleChildChanged = () => {
-    if (typeof onChildChanged === "function") {
-      onChildChanged()
-    } else if (typeof onReload === "function") {
-      onReload()
-    } else {
-      // fallback только внутри таблицы
-      setLocalReloadKey((k) => k + 1)
-    }
-  }
-
-  const handleExpandToggle = (expanded, record) => {
-    const id = expanded ? record.id : null
-    if (setControlledExpandedId) setControlledExpandedId(id)
-    else setLocalExpandedId(id)
-  }
-
-  const renderInput = (field) => (
-    <Input
-      value={editedRow?.[field] ?? ""}
-      onChange={(e) =>
-        setEditedRow((prev) => ({
-          ...prev,
-          [field]: e.target.value,
-        }))
-      }
-      onPressEnter={saveEdit}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") cancelEdit()
-      }}
-      autoFocus={field === "company_name"}
-      size="small"
-    />
-  )
 
   const columns = [
     {
       title: "Компания",
       dataIndex: "company_name",
-      render: (_, record) =>
-        isEditing(record) ? (
-          renderInput("company_name")
-        ) : (
-          <ValueDisplay value={record.company_name} />
-        ),
+      key: "company_name",
+      width: 300,
+      fixed: "left",
+      lock: true,
+      render: (v) => <ValueDisplay value={v} />,
     },
     {
       title: "Контакт",
       dataIndex: "contact_person",
-      render: (_, record) =>
-        isEditing(record) ? (
-          renderInput("contact_person")
-        ) : (
-          <ValueDisplay value={record.contact_person} />
-        ),
+      key: "contact_person",
+      width: 220,
+      render: (v) => <ValueDisplay value={v} />,
     },
     {
       title: "Телефон",
       dataIndex: "phone",
-      width: 160,
-      render: (_, record) =>
-        isEditing(record) ? (
-          renderInput("phone")
-        ) : (
-          <ValueDisplay value={record.phone} type="phone" />
-        ),
+      key: "phone",
+      width: 170,
+      render: (v) => <ValueDisplay value={v} type="phone" />,
     },
     {
       title: "E-mail",
       dataIndex: "email",
+      key: "email",
+      width: 240,
+      render: (v) => <ValueDisplay value={v} type="email" />,
+    },
+    {
+      title: "Сайт",
+      dataIndex: "website",
+      key: "website",
       width: 220,
-      render: (_, record) =>
-        isEditing(record) ? (
-          renderInput("email")
-        ) : (
-          <ValueDisplay value={record.email} type="email" />
-        ),
+      render: (v) => <ValueDisplay value={v} />,
+    },
+    {
+      title: "Рег. номер",
+      dataIndex: "registration_number",
+      key: "registration_number",
+      width: 200,
+      render: (v) => <ValueDisplay value={v} />,
+    },
+    {
+      title: "ИНН / Tax ID",
+      dataIndex: "tax_id",
+      key: "tax_id",
+      width: 200,
+      render: (v) => <ValueDisplay value={v} />,
+    },
+    {
+      title: "Примечание",
+      dataIndex: "notes",
+      key: "notes",
+      width: 260,
+      render: (v) => <ValueDisplay value={v} />,
     },
     {
       title: "Действия",
-      dataIndex: "actions",
+      key: "actions",
       width: 150,
-      fixed: "right",
+      lock: true,
       render: (_, record) => (
         <ActionButtons
-          onEdit={!isEditing(record) ? () => startEdit(record) : undefined}
-          onSave={isEditing(record) ? saveEdit : undefined}
-          onCancel={isEditing(record) ? cancelEdit : undefined}
-          onDelete={!isEditing(record) ? () => handleDelete(record) : undefined}
-          onHistory={() => setHistoryForId(record.id)}
-          disabledEdit={!!editingId && !isEditing(record)}
-          disabledDelete={!!editingId && !isEditing(record)}
+          size="small"
+          onHistory={() => setLogsClientId(record.id)}
+          onDelete={() => handleDelete(record)}
+          confirmDelete={false}
         />
       ),
     },
   ]
 
-  const expandedRowRender = (client) => {
-    if (!client?.id) return null
+  const defaultVisible = useMemo(() => columns.map((c) => c.key), [columns])
+  const effectiveVisibleKeys =
+    Array.isArray(visibleColumnKeys) && visibleColumnKeys.length ? visibleColumnKeys : defaultVisible
 
-    return (
-      <div className="subtable-shell parts-table-wrap table-section">
-        <Tabs
-          className="inner-tabs"
-          size="small"
-          destroyInactiveTabPane
-          items={[
-            {
-              key: "billing",
-              label: "Юридические адреса",
-              children: (
-                <BillingAddressesMain
-                  key={`billing-${client.id}-${reloadKey}`}
-                  clientId={client.id}
-                  onChanged={handleChildChanged}
-                />
-              ),
-            },
-            {
-              key: "shipping",
-              label: "Адреса доставки",
-              children: (
-                <ShippingAddressesMain
-                  key={`shipping-${client.id}-${reloadKey}`}
-                  clientId={client.id}
-                  onChanged={handleChildChanged}
-                />
-              ),
-            },
-            {
-              key: "bank",
-              label: "Банковские реквизиты",
-              children: (
-                <BankDetailsMain
-                  key={`bank-${client.id}-${reloadKey}`}
-                  clientId={client.id}
-                  onChanged={handleChildChanged}
-                />
-              ),
-            },
-            {
-              key: "contacts",
-              label: "Контакты",
-              children: (
-                <ClientContactsMain
-                  key={`contacts-${client.id}-${reloadKey}`}
-                  clientId={client.id}
-                  onChanged={handleChildChanged}
-                />
-              ),
-            },
-            {
-              key: "orders",
-              label: "История заказов",
-              children: <ClientOrdersTab clientId={client.id} />,
-            },
-          ]}
-        />
-      </div>
-    )
-  }
+  const visibleColumns = useMemo(() => {
+    const visible = new Set(effectiveVisibleKeys)
+    return columns.filter((c) => c.lock || visible.has(c.key))
+  }, [columns, effectiveVisibleKeys])
+
+  const columnOptions = useMemo(
+    () => columns.filter((c) => c.key && !c.lock).map((c) => ({ key: c.key, label: c.title })),
+    [columns],
+  )
+
+  const lockedKeys = useMemo(() => columns.filter((c) => c.lock).map((c) => c.key), [columns])
+
+  useEffect(() => {
+    onColumnsMeta?.({
+      options: columnOptions,
+      defaultVisible,
+      lockedKeys,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(columnOptions), JSON.stringify(defaultVisible), JSON.stringify(lockedKeys)])
 
   return (
     <>
-      <Table
-        className="op-table"
-        rowKey="id"
-        dataSource={Array.isArray(data) ? data : []}
-        columns={columns}
-        loading={loading}
-        bordered
-        size="small"
-        tableLayout="fixed"
-        expandable={{
-          expandedRowRender,
-          expandedRowKeys: expandedClientId ? [expandedClientId] : [],
-          onExpand: handleExpandToggle,
-        }}
-        pagination={pagination}
-      />
+      <div
+        ref={wrapRef}
+        className={`op-table-wrap${scrollHints.left ? " scroll-left" : ""}${
+          scrollHints.right ? " scroll-right" : ""
+        }`}
+      >
+        <Table
+          className="op-table"
+          size="small"
+          bordered
+          rowKey="id"
+          loading={loading}
+          columns={visibleColumns}
+          dataSource={dataSource}
+          tableLayout="fixed"
+          pagination={pagination}
+          scroll={{ x: true }}
+          rowClassName={(record) =>
+            Number(record?.id) === Number(highlightRowId) ? "op-row-flash" : ""
+          }
+          onRow={(record) => ({
+            onClick: (e) => {
+              if (!onOpenDetail) return
+              const target = e?.target
+              if (
+                target?.closest?.(
+                  "button,a,input,textarea,select,.ant-btn,.ant-select,.ant-input,.ant-input-number,.ant-checkbox"
+                )
+              ) {
+                return
+              }
+              onOpenDetail(record)
+            },
+          })}
+        />
+      </div>
 
-      {historyForId && (
+      {logsClientId && (
         <FullHistoryDialog
           entityType="clients"
-          entityId={historyForId}
-          onClose={() => setHistoryForId(null)}
+          entityId={logsClientId}
+          onClose={() => setLogsClientId(null)}
         />
       )}
-
-      <VersionConflictModal
-        open={conflict.open}
-        current={conflict.current}
-        draft={conflict.draft}
-        entityLabel="клиент"
-        fields={[
-          { key: "company_name", title: "Компания" },
-          { key: "contact_person", title: "Контакт" },
-          { key: "phone", title: "Телефон" },
-          { key: "email", title: "E-mail" },
-        ]}
-        onReload={async () => {
-          if (conflict.current && typeof onReplaceRow === "function") {
-            onReplaceRow(conflict.current)
-          } else if (typeof onReload === "function") {
-            await onReload()
-          }
-          setConflict({ open: false, current: null, draft: null })
-          cancelEdit()
-        }}
-        onManualMerge={() => {
-          const merged = mergeConflictDraft(
-            conflict.current || {},
-            conflict.draft || {},
-          )
-          if (merged.id) {
-            setEditingId(merged.id)
-            setEditedRow(merged)
-          }
-          setConflict({ open: false, current: null, draft: null })
-        }}
-        onCancel={() =>
-          setConflict({ open: false, current: null, draft: null })
-        }
-      />
     </>
   )
 }
+

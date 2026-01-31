@@ -1,398 +1,366 @@
 // src/components/clients/ClientsMain.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Card, Space, Form, Input, Button, message } from "antd"
+import React, { useCallback, useEffect, useRef, useState } from "react"
+import { Badge, Button, Card, Checkbox, Form, Input, Popover, Space, message } from "antd"
+import { DeleteOutlined, FilterOutlined } from "@ant-design/icons"
+import { useLocation, useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
-import ClientsTable from "./ClientsTable"
+
 import TableToolbar from "@/components/common/TableToolbar"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
-import { isSameByFields } from "@/utils/versionConflict"
+import ClientsTable from "./ClientsTable"
+import ClientsFiltersDrawer, { countActiveFilters } from "./ClientsFiltersDrawer"
 
-const EMPTY_CLIENT = {
-  company_name: "",
-  contact_person: "",
-  phone: "",
-  email: "",
-  registration_number: "",
-  tax_id: "",
-  website: "",
-  notes: "",
+const trimOrNull = (v) => {
+  const s = (v ?? "").toString().trim()
+  return s === "" ? null : s
 }
 
 export default function ClientsMain() {
-  const [clients, setClients] = useState([])
+  const navigate = useNavigate()
+  const location = useLocation()
+
   const [loading, setLoading] = useState(false)
+  const [rows, setRows] = useState([])
+
   const [search, setSearch] = useState("")
-  const [expandedClientId, setExpandedClientId] = useState(null)
-  const [showDeletedModal, setShowDeletedModal] = useState(false)
-  const [hasNew, setHasNew] = useState(false)
+  const [filters, setFilters] = useState({})
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [showDeleted, setShowDeleted] = useState(false)
 
-  // 🔑 ключ для форс-перемонта вложенных блоков (billing/shipping/bank)
-  const [reloadKey, setReloadKey] = useState(0)
+  const [addForm] = Form.useForm()
+  const [adding, setAdding] = useState(false)
 
-  // baseline по «ключу состояния» (global / client:<id>)
-  const baselinesRef = useRef(new Map())
-  const lastBaselineSetAtRef = useRef(0)
+  const [highlightRowId, setHighlightRowId] = useState(null)
+  const highlightTimerRef = useRef(null)
 
-  const [newClient, setNewClient] = useState(EMPTY_CLIENT)
+  const [columnsMeta, setColumnsMeta] = useState({
+    options: [],
+    defaultVisible: [],
+    lockedKeys: [],
+  })
+  const [columnsPopoverOpen, setColumnsPopoverOpen] = useState(false)
+  const [columnsByView, setColumnsByView] = useState({})
+  const columnsLoadStartedRef = useRef(false)
+  const columnsHydratedRef = useRef(false)
+  const columnsSaveTimerRef = useRef(null)
 
-  // ===== CRUD клиентов =====
-  const replaceRow = (fresh) =>
-    setClients((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)))
+  const restoreAppliedRef = useRef(false)
+  useEffect(() => {
+    if (restoreAppliedRef.current) return
+    const restore = location.state?.restore
+    if (!restore) return
+    restoreAppliedRef.current = true
 
-  // --- etag helpers (баннер «Появились новые изменения») ---
-  const fetchClientsEtag = async () => {
-    try {
-      const { data } = await axios.get("/clients/etag")
-      return data?.etag || ""
-    } catch {
-      return ""
+    if (restore.search !== undefined) setSearch(restore.search || "")
+    if (restore.filters !== undefined) setFilters(restore.filters || {})
+    if (restore.columnsByView !== undefined) setColumnsByView(restore.columnsByView || {})
+  }, [location.state])
+
+  const flashRow = useCallback((id) => {
+    const n = Number(id)
+    if (!Number.isFinite(n) || n <= 0) return
+    setHighlightRowId(n)
+    clearTimeout(highlightTimerRef.current)
+    highlightTimerRef.current = setTimeout(() => setHighlightRowId(null), 1600)
+  }, [])
+
+  useEffect(() => () => clearTimeout(highlightTimerRef.current), [])
+
+  const columnsViewKey = "main"
+  const currentVisibleKeys = columnsByView?.[columnsViewKey] || null
+
+  const ensureDefaultColumns = useCallback(
+    (meta) => {
+      if (!meta?.options?.length) return
+      if (columnsByView && Object.prototype.hasOwnProperty.call(columnsByView, columnsViewKey)) return
+
+      const allToggleKeys = meta.options.map((o) => o.key)
+      const pick = (keys) => keys.filter((k) => allToggleKeys.includes(k))
+      const recommended = pick(["phone", "email", "website", "notes"])
+
+      setColumnsByView((prev) => ({ ...(prev || {}), [columnsViewKey]: recommended }))
+    },
+    [columnsByView],
+  )
+
+  useEffect(() => {
+    if (!columnsHydratedRef.current) return
+    ensureDefaultColumns(columnsMeta)
+  }, [columnsMeta, ensureDefaultColumns])
+
+  // Load column prefs once
+  useEffect(() => {
+    if (columnsLoadStartedRef.current) return
+    columnsLoadStartedRef.current = true
+    const run = async () => {
+      try {
+        const { data } = await axios.get("/user-ui-settings", {
+          params: { scope: "clients", key: "columns_v1" },
+        })
+        const v = data?.value_json
+        const cfg = v?.configs && typeof v.configs === "object" ? v.configs : v
+        if (cfg && typeof cfg === "object") setColumnsByView(cfg)
+      } catch (e) {
+        console.warn("Failed to load UI settings (columns)", e?.message || e)
+      } finally {
+        columnsHydratedRef.current = true
+      }
     }
-  }
+    run()
+  }, [])
 
-  const fetchChildEtags = async (clientId) => {
-    if (!clientId) return ""
-    try {
-      const [billing, shipping, bank] = await Promise.all([
-        axios.get("/client-billing-addresses/etag", {
-          params: { client_id: clientId },
-        }),
-        axios.get("/client-shipping-addresses/etag", {
-          params: { client_id: clientId },
-        }),
-        axios.get("/client-bank-details/etag", {
-          params: { client_id: clientId },
-        }),
-      ])
+  // Save column prefs (debounced)
+  useEffect(() => {
+    if (!columnsHydratedRef.current) return
+    clearTimeout(columnsSaveTimerRef.current)
+    columnsSaveTimerRef.current = setTimeout(async () => {
+      try {
+        await axios.put("/user-ui-settings", {
+          scope: "clients",
+          key: "columns_v1",
+          value_json: { version: 1, configs: columnsByView },
+        })
+      } catch (e) {
+        console.warn("Failed to save UI settings (columns)", e?.message || e)
+      }
+    }, 500)
+    return () => clearTimeout(columnsSaveTimerRef.current)
+  }, [columnsByView])
 
-      return [
-        billing.data?.etag || "0:0",
-        shipping.data?.etag || "0:0",
-        bank.data?.etag || "0:0",
-      ].join("|")
-    } catch {
-      return ""
-    }
-  }
-
-  const getKey = (id) => (id ? `client:${id}` : "global")
-
-  const buildCompositeTag = async (id) => {
-    const [cTag, child] = await Promise.all([
-      fetchClientsEtag(),
-      id ? fetchChildEtags(id) : Promise.resolve(""),
-    ])
-    return `${cTag}__${id || "-"}__${child}`
-  }
-
-  const setBaselineFor = async (id) => {
-    try {
-      const key = getKey(id)
-      const tag = await buildCompositeTag(id)
-      baselinesRef.current.set(key, tag)
-      lastBaselineSetAtRef.current = Date.now()
-      setHasNew(false)
-    } catch {
-      // noop
-    }
-  }
-
-  const fetchClients = async () => {
+  const fetchClients = useCallback(async () => {
     setLoading(true)
     try {
-      const { data } = await axios.get("/clients", {
-        params: { limit: 200, offset: 0 },
-      })
-      setClients(Array.isArray(data) ? data : [])
-    } catch (err) {
-      console.error("Ошибка загрузки клиентов:", err)
+      const params = { limit: 500, offset: 0 }
+      if (search?.trim()) params.q = search.trim()
+      const f = filters || {}
+      if (f.has_phone) params.has_phone = 1
+      if (f.has_email) params.has_email = 1
+      if (f.has_tax_id) params.has_tax_id = 1
+      if (f.has_website) params.has_website = 1
+      const { data } = await axios.get("/clients", { params })
+      setRows(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error(e)
       message.error("Не удалось загрузить клиентов")
     } finally {
       setLoading(false)
     }
-  }
+  }, [search, filters])
 
-  const refreshAllAndResetBaseline = async () => {
-    await fetchClients()
-    setReloadKey((k) => k + 1) // форсим перемонтирование дочерних вкладок
-    await setBaselineFor(expandedClientId)
-  }
-
+  // Debounced reload on search change
   useEffect(() => {
-    fetchClients()
-  }, [])
+    const t = setTimeout(() => fetchClients(), 200)
+    return () => clearTimeout(t)
+  }, [fetchClients])
 
-  // после первой загрузки/перезагрузки фиксируем baseline
-  useEffect(() => {
-    if (!loading) {
-      setBaselineFor(expandedClientId)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading])
-
-  // поллинг по composite etag (clients + дочерние таблицы)
-  useEffect(() => {
-    let t0
-    let timer
-
-    const check = async () => {
-      if (document.hidden) return
-      const key = getKey(expandedClientId)
-      try {
-        const current = await buildCompositeTag(expandedClientId)
-        const baseline = baselinesRef.current.get(key)
-        if (!baseline) return
-        // не реагируем на свои же изменения прямо сразу
-        if (Date.now() - lastBaselineSetAtRef.current < 2000) return
-        if (baseline !== current) setHasNew(true)
-      } catch {
-        // noop
-      }
-    }
-
-    t0 = setTimeout(check, 10000)
-    timer = setInterval(check, 30000)
-
-    const onVis = () => check()
-    document.addEventListener("visibilitychange", onVis)
-
-    return () => {
-      clearTimeout(t0)
-      clearInterval(timer)
-      document.removeEventListener("visibilitychange", onVis)
-    }
-  }, [expandedClientId])
-
-  const onUpdate = async (id, row) => {
-    const trim = (v) => (typeof v === "string" ? v.trim() : v)
-    const payload = {
-      company_name: trim(row.company_name) || null,
-      contact_person: trim(row.contact_person) || null,
-      phone: trim(row.phone) || null,
-      email: trim(row.email) || null,
-      version: row.version,
-    }
-
+  const handleCreate = async () => {
     try {
-      const { data: fresh } = await axios.put(`/clients/${id}`, payload)
-      replaceRow(fresh)
-      message.success("Изменения сохранены")
-      // обновляем baseline, чтобы не появлялся баннер «Появились новые изменения»
-      await setBaselineFor(expandedClientId)
-    } catch (err) {
-      // конфликт версии → таблица покажет VersionConflictModal
-      if (err?.response?.status === 409 && err?.response?.data?.current) {
-        const current = err.response.data.current
-        const fields = [
-          "company_name",
-          "contact_person",
-          "phone",
-          "email",
-        ]
-        const same = current && isSameByFields(current, payload, fields)
-        if (same) {
-          replaceRow(current)
-          await setBaselineFor(expandedClientId)
-          return current
-        }
-        const e = new Error("Version conflict")
-        e.isVersionConflict = true
-        e.currentRecord = current
-        throw e
+      const v = await addForm.validateFields()
+      const name = v.company_name?.trim()
+      if (!name) return message.error("Название компании обязательно")
+
+      setAdding(true)
+      const payload = {
+        company_name: name,
+        contact_person: trimOrNull(v.contact_person),
+        phone: trimOrNull(v.phone),
+        email: trimOrNull(v.email),
+        registration_number: trimOrNull(v.registration_number),
+        tax_id: trimOrNull(v.tax_id),
+        website: trimOrNull(v.website),
+        notes: trimOrNull(v.notes),
       }
-      // дубль названия компании
-      if (
-        err?.response?.status === 409 &&
-        err?.response?.data?.code === "duplicate"
-      ) {
-        const e = new Error("Duplicate")
-        e.isDuplicateKey = true
-        throw e
-      }
-      throw err
+
+      const { data: created } = await axios.post("/clients", payload)
+      message.success("Клиент создан")
+      flashRow(created?.id)
+      addForm.resetFields()
+      await fetchClients()
+    } catch (e) {
+      if (e?.errorFields) return
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось создать клиента")
+    } finally {
+      setAdding(false)
     }
   }
 
-  const onDelete = async (client) => {
-    const params = {}
-    if (client?.version !== undefined && client?.version !== null) {
-      params.version = client.version
-    }
-
+  const handleDelete = async (client) => {
     try {
+      const params = {}
+      if (client?.version !== undefined && client?.version !== null) params.version = client.version
       await axios.delete(`/clients/${client.id}`, { params })
-
-      // сразу убираем клиента из списка
-      setClients((prev) => prev.filter((r) => r.id !== client.id))
-
       message.success("Клиент удалён")
-      await setBaselineFor(expandedClientId)
-    } catch (err) {
-      if (err?.response?.status === 409 && err?.response?.data?.current) {
-        const e = new Error("Version conflict")
-        e.isVersionConflict = true
-        e.currentRecord = err.response.data.current
-        throw e
+      await fetchClients()
+    } catch (e) {
+      console.error(e)
+      if (e?.response?.status === 409) {
+        message.error("Конфликт версии. Обнови список и попробуй ещё раз.")
+        await fetchClients()
+        return
       }
-      throw err
+      message.error(e?.response?.data?.message || "Не удалось удалить клиента")
     }
-  }
-
-  const handleAdd = async () => {
-    const payload = {
-      company_name: newClient.company_name.trim(),
-      contact_person: newClient.contact_person?.trim() || "",
-      phone: newClient.phone?.trim() || "",
-      email: newClient.email?.trim() || "",
-      registration_number: newClient.registration_number?.trim() || "",
-      tax_id: newClient.tax_id?.trim() || "",
-      website: newClient.website?.trim() || "",
-      notes: newClient.notes?.trim() || "",
-    }
-
-    if (!payload.company_name) {
-      message.warning("Название компании обязательно")
-      return
-    }
-
-    try {
-      await axios.post("/clients", payload)
-      message.success("Клиент добавлен")
-      setNewClient(EMPTY_CLIENT)
-      await refreshAllAndResetBaseline()
-    } catch (err) {
-      console.error("Ошибка при добавлении клиента:", err)
-      message.error("Не удалось добавить клиента")
-    }
-  }
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase()
-    return clients.filter(
-      (r) =>
-        r.company_name?.toLowerCase().includes(q) ||
-        r.contact_person?.toLowerCase().includes(q),
-    )
-  }, [clients, search])
-
-  const handleChildChanged = async () => {
-    await setBaselineFor(expandedClientId)
   }
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
-      <Card bodyStyle={{ paddingTop: 0 }}>
-        {/* 🔔 баннер «появились новые изменения» */}
-        {hasNew && (
-          <div style={{ margin: "8px 0" }}>
-            <Button
-              type="primary"
-              onClick={async () => {
-                await refreshAllAndResetBaseline()
-                message.success("Список и связанные данные обновлены")
-              }}
-            >
-              Появились новые изменения — Обновить
+      <Card bodyStyle={{ paddingTop: 8 }}>
+        {/* Row A: service actions */}
+        <div className="table-section" style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Space size={12} wrap>
+            <Button danger icon={<DeleteOutlined />} onClick={() => setShowDeleted(true)}>
+              Удалённые
             </Button>
-          </div>
-        )}
+          </Space>
+        </div>
 
-        {/* 🔹 тулбар — поиск + кнопка «Удалённые» */}
+        {/* Row B: search + view controls */}
         <TableToolbar
+          placeholder="Поиск по клиентам (компания, контакт, телефон, e-mail)…"
           search={search}
           onSearch={setSearch}
-          onShowDeleted={() => setShowDeletedModal(true)}
+          searchWidth="clamp(280px, 42vw, 620px)"
+          searchEnterButton="Найти"
+          extraActions={
+            <Space size={12} wrap>
+              <Badge count={countActiveFilters(filters)} size="small" offset={[-2, 6]}>
+                <Button icon={<FilterOutlined />} onClick={() => setFiltersOpen(true)}>
+                  Фильтры
+                </Button>
+              </Badge>
+
+              <Popover
+                open={columnsPopoverOpen}
+                onOpenChange={setColumnsPopoverOpen}
+                trigger="click"
+                placement="bottomRight"
+                content={
+                  <div style={{ width: 260 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 8 }}>Колонки</div>
+                    <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                      {(columnsMeta.options || []).map((opt) => {
+                        const base =
+                          Array.isArray(currentVisibleKeys) && currentVisibleKeys.length
+                            ? currentVisibleKeys
+                            : columnsMeta.defaultVisible
+                        const checked = base?.includes?.(opt.key)
+                        return (
+                          <Checkbox
+                            key={opt.key}
+                            checked={!!checked}
+                            onChange={(e) => {
+                              const next = e.target.checked
+                                ? [...(base || []), opt.key]
+                                : (base || []).filter((k) => k !== opt.key)
+                              setColumnsByView((prev) => ({
+                                ...(prev || {}),
+                                [columnsViewKey]: next,
+                              }))
+                            }}
+                          >
+                            {opt.label}
+                          </Checkbox>
+                        )
+                      })}
+                      <Space style={{ marginTop: 8 }}>
+                        <Button
+                          size="small"
+                          onClick={() => {
+                            setColumnsByView((prev) => ({
+                              ...(prev || {}),
+                              [columnsViewKey]: columnsMeta.defaultVisible || [],
+                            }))
+                          }}
+                        >
+                          Сбросить
+                        </Button>
+                        <Button size="small" onClick={() => setColumnsPopoverOpen(false)}>
+                          Готово
+                        </Button>
+                      </Space>
+                    </Space>
+                  </div>
+                }
+              >
+                <Button>Колонки</Button>
+              </Popover>
+            </Space>
+          }
         />
 
-        {/* 🔹 форма добавления клиента */}
+        {/* Row C: create inline */}
         <div className="table-section">
-          <Form layout="inline" onFinish={handleAdd}>
-            <Form.Item label="Компания">
-              <Input
-                value={newClient.company_name}
-                onChange={(e) =>
-                  setNewClient((prev) => ({
-                    ...prev,
-                    company_name: e.target.value,
-                  }))
-                }
-                placeholder="Название"
-              />
+          <Form
+            form={addForm}
+            layout="inline"
+            style={{ flexWrap: "wrap", rowGap: 8, columnGap: 12 }}
+          >
+            <Form.Item
+              name="company_name"
+              label="Компания"
+              rules={[{ required: true, message: "Введите название" }]}
+            >
+              <Input placeholder="Название" style={{ minWidth: 260 }} allowClear />
             </Form.Item>
 
-            <Form.Item label="Контактное лицо">
-              <Input
-                value={newClient.contact_person}
-                onChange={(e) =>
-                  setNewClient((prev) => ({
-                    ...prev,
-                    contact_person: e.target.value,
-                  }))
-                }
-                placeholder="ФИО"
-              />
+            <Form.Item name="contact_person" label="Контакт">
+              <Input placeholder="ФИО" style={{ minWidth: 220 }} allowClear />
             </Form.Item>
 
-            <Form.Item label="Телефон">
-              <Input
-                value={newClient.phone}
-                onChange={(e) =>
-                  setNewClient((prev) => ({
-                    ...prev,
-                    phone: e.target.value,
-                  }))
-                }
-                placeholder="+7..."
-              />
+            <Form.Item name="phone" label="Телефон">
+              <Input placeholder="+7…" style={{ width: 180 }} allowClear />
             </Form.Item>
 
-            <Form.Item label="E-mail">
-              <Input
-                value={newClient.email}
-                onChange={(e) =>
-                  setNewClient((prev) => ({
-                    ...prev,
-                    email: e.target.value,
-                  }))
-                }
-                placeholder="example@mail.com"
-              />
+            <Form.Item name="email" label="E-mail">
+              <Input placeholder="example@mail.com" style={{ minWidth: 240 }} allowClear />
             </Form.Item>
 
             <Form.Item>
-              <Button type="primary" htmlType="submit">
+              <Button type="primary" onClick={handleCreate} loading={adding}>
                 Добавить
               </Button>
             </Form.Item>
           </Form>
         </div>
 
-        {/* Якорь + отступ для вложенных таблиц */}
         <div className="parts-table-wrap table-section">
           <ClientsTable
-            data={filtered}
+            data={rows}
             loading={loading}
-            expandedClientId={expandedClientId}
-            setExpandedClientId={async (val) => {
-              setExpandedClientId(val)
-              await setBaselineFor(val)
+            highlightRowId={highlightRowId}
+            visibleColumnKeys={currentVisibleKeys}
+            onColumnsMeta={(meta) =>
+              setColumnsMeta(meta || { options: [], defaultVisible: [], lockedKeys: [] })
+            }
+            onDelete={handleDelete}
+            onOpenDetail={(record) => {
+              if (!record?.id) return
+              navigate(`/clients/${record.id}`, {
+                state: {
+                  from: `${location.pathname}${location.search || ""}`,
+                  listState: { search, filters, columnsByView },
+                },
+              })
             }}
-            onReload={refreshAllAndResetBaseline}
-            onChildChanged={handleChildChanged}
-            onUpdate={onUpdate}
-            onDelete={onDelete}
-            onReplaceRow={replaceRow}
-            reloadKey={reloadKey}
           />
         </div>
       </Card>
 
-      {showDeletedModal && (
+      {showDeleted && (
         <FullHistoryDialog
           onlyDeleted
           endpoint="/clients/logs/deleted"
-          onClose={() => setShowDeletedModal(false)}
+          onClose={() => setShowDeleted(false)}
         />
       )}
+
+      <ClientsFiltersDrawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        value={filters}
+        onApply={(next) => setFilters(next || {})}
+      />
     </Space>
   )
 }

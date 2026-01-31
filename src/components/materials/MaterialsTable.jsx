@@ -116,7 +116,7 @@ export default function MaterialsTable({
         loading={loading}
         pagination={pagination}
         tableLayout="fixed"
-        scroll={{ x: "max-content" }}
+        scroll={{ x: true }}
         onRow={(record) => ({
           onClick: () => onRowClick?.(record),
         })}

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react"
-import { Card, Space, message, Button, Input, InputNumber, Form } from "antd"
+import React, { useEffect, useRef, useState } from "react"
+import { Button, Card, Checkbox, Form, Input, InputNumber, Popover, Space, message } from "antd"
+import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import TnvedCodesTable from "./TnvedCodesTable"
 import ImportModal from "@/components/common/ImportModal"
@@ -26,6 +27,18 @@ export default function TnvedCodesMain() {
 
   const [hasNew, setHasNew] = useState(false)
   const [etag, setEtag] = useState(null)
+
+  // columns (synced via backend to support multiple devices)
+  const [columnsMeta, setColumnsMeta] = useState({
+    options: [],
+    defaultVisible: [],
+    lockedKeys: [],
+  })
+  const [columnsPopoverOpen, setColumnsPopoverOpen] = useState(false)
+  const [columnsByView, setColumnsByView] = useState({})
+  const columnsLoadStartedRef = useRef(false)
+  const columnsHydratedRef = useRef(false)
+  const columnsSaveTimerRef = useRef(null)
 
   const toNull = (v) => (v === "" || v === undefined ? null : v)
 
@@ -72,6 +85,45 @@ export default function TnvedCodesMain() {
   useEffect(() => {
     fetchData()
   }, [])
+
+  // Load column prefs once
+  useEffect(() => {
+    if (columnsLoadStartedRef.current) return
+    columnsLoadStartedRef.current = true
+    const run = async () => {
+      try {
+        const { data } = await axios.get("/user-ui-settings", {
+          params: { scope: "tnved_codes", key: "columns_v1" },
+        })
+        const v = data?.value_json
+        const cfg = v?.configs && typeof v.configs === "object" ? v.configs : v
+        if (cfg && typeof cfg === "object") setColumnsByView(cfg)
+      } catch (e) {
+        console.warn("Failed to load UI settings (columns)", e?.message || e)
+      } finally {
+        columnsHydratedRef.current = true
+      }
+    }
+    run()
+  }, [])
+
+  // Save column prefs (debounced)
+  useEffect(() => {
+    if (!columnsHydratedRef.current) return
+    clearTimeout(columnsSaveTimerRef.current)
+    columnsSaveTimerRef.current = setTimeout(async () => {
+      try {
+        await axios.put("/user-ui-settings", {
+          scope: "tnved_codes",
+          key: "columns_v1",
+          value_json: { version: 1, configs: columnsByView },
+        })
+      } catch (e) {
+        console.warn("Failed to save UI settings (columns)", e?.message || e)
+      }
+    }, 500)
+    return () => clearTimeout(columnsSaveTimerRef.current)
+  }, [columnsByView])
 
   // ---------- поллинг по ETag ----------
   useEffect(() => {
@@ -209,6 +261,9 @@ export default function TnvedCodesMain() {
       item.notes?.toLowerCase().includes(search.toLowerCase()),
   )
 
+  const columnsViewKey = "main"
+  const currentVisibleKeys = columnsByView?.[columnsViewKey] || null
+
   return (
     <Space
       direction="vertical"
@@ -242,7 +297,7 @@ export default function TnvedCodesMain() {
         }
       >
         {hasNew && (
-          <div style={{ marginBottom: 12 }}>
+          <div className="table-section">
             <Button
               type="primary"
               onClick={async () => {
@@ -255,15 +310,94 @@ export default function TnvedCodesMain() {
           </div>
         )}
 
-        <TableToolbar
-          search={search}
-          onSearch={setSearch}
-          onImport={() => setImportVisible(true)}
-          onShowDeleted={() => setLogId("deleted")}
-        />
+        {/* Row A: service actions */}
+        <div className="table-section" style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Space size={12} wrap>
+            <Button onClick={() => setImportVisible(true)}>Импорт</Button>
+            <Button danger icon={<DeleteOutlined />} onClick={() => setLogId("deleted")}>
+              Удалённые
+            </Button>
+          </Space>
+        </div>
+
+        {/* Row B: search + view controls */}
+        <div className="table-section">
+          <TableToolbar
+            placeholder="Поиск по коду/описанию/примечаниям…"
+            search={search}
+            onSearch={setSearch}
+            searchWidth="clamp(280px, 42vw, 620px)"
+            searchEnterButton="Найти"
+            extraActions={
+              <Space size={12} wrap>
+                <Popover
+                  open={columnsPopoverOpen}
+                  onOpenChange={setColumnsPopoverOpen}
+                  trigger="click"
+                  placement="bottomRight"
+                  content={
+                    <div style={{ width: 260 }}>
+                      <div style={{ fontWeight: 700, marginBottom: 8 }}>Колонки</div>
+                      <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                        {(columnsMeta.options || []).map((opt) => {
+                          const base =
+                            Array.isArray(currentVisibleKeys) && currentVisibleKeys.length
+                              ? currentVisibleKeys
+                              : columnsMeta.defaultVisible
+                          const checked = base?.includes?.(opt.key)
+                          return (
+                            <Checkbox
+                              key={opt.key}
+                              checked={!!checked}
+                              onChange={(e) => {
+                                const next = e.target.checked
+                                  ? [...(base || []), opt.key]
+                                  : (base || []).filter((k) => k !== opt.key)
+                                setColumnsByView((prev) => ({
+                                  ...(prev || {}),
+                                  [columnsViewKey]: next,
+                                }))
+                              }}
+                            >
+                              {opt.label}
+                            </Checkbox>
+                          )
+                        })}
+
+                        <Space style={{ marginTop: 8 }}>
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              setColumnsByView((prev) => ({
+                                ...(prev || {}),
+                                [columnsViewKey]: columnsMeta.defaultVisible || [],
+                              }))
+                            }}
+                          >
+                            Сбросить
+                          </Button>
+                          <Button size="small" onClick={() => setColumnsPopoverOpen(false)}>
+                            Готово
+                          </Button>
+                        </Space>
+                      </Space>
+                    </div>
+                  }
+                >
+                  <Button>Колонки</Button>
+                </Popover>
+              </Space>
+            }
+          />
+        </div>
 
         {/* форма быстрого добавления */}
-        <Form layout="inline" style={{ marginBottom: 16 }} onFinish={handleAdd}>
+        <div className="table-section">
+          <Form
+            layout="inline"
+            style={{ flexWrap: "wrap", rowGap: 8, columnGap: 12 }}
+            onFinish={handleAdd}
+          >
           <Form.Item label="Код">
             <Input
               value={newRecord.code}
@@ -327,11 +461,16 @@ export default function TnvedCodesMain() {
               Добавить
             </Button>
           </Form.Item>
-        </Form>
+          </Form>
+        </div>
 
         <TnvedCodesTable
           data={filteredData}
           loading={loading}
+          visibleColumnKeys={currentVisibleKeys}
+          onColumnsMeta={(meta) =>
+            setColumnsMeta(meta || { options: [], defaultVisible: [], lockedKeys: [] })
+          }
           onUpdate={handleUpdate}
           onDelete={handleDelete}
           onReplaceRow={replaceRow}

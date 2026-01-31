@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from "react"
-import { Table, message, Input, InputNumber, Select, Checkbox } from "antd"
+import { Table, message, Input, InputNumber, Select, Checkbox, Space } from "antd"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
-import TnvedPicker from "@/components/fields/TnvedPicker"
 import ValueDisplay from "@/components/common/ValueDisplay"
-import DetailDock from "./DetailDock"
 import createTablePagination from "@/utils/tablePagination"
 import useTableScrollHints from "@/utils/useTableScrollHints"
 
@@ -31,9 +29,13 @@ export default function OriginalPartsTable({
   modelId = null, // сейчас не используется, но оставляем на будущее
   onReload,
   onRemove,
-  expandedId = null,
-  onExpandChange = () => {},
+  onOpenDetail,
+  onFlashRow, // (id:number) => void - подсветка строки после сохранения
   showAll = false, // 🔹 режим "Показать все детали"
+  visibleColumnKeys = null, // array|null: управляемая видимость колонок (пер-viewMode)
+  onVisibleColumnKeysChange = null, // (nextKeys: string[]) => void
+  onColumnsMeta = null, // ({ options, defaultVisible, lockedKeys }) => void
+  highlightRowId = null, // number|null: подсветить/проскроллить к строке
 }) {
   const [historyId, setHistoryId] = useState(null)
 
@@ -90,6 +92,32 @@ export default function OriginalPartsTable({
     pageSize,
     showAll,
   ])
+
+  // If a highlighted row is outside the current page, jump to that page first.
+  useEffect(() => {
+    const id = Number(highlightRowId)
+    if (!id) return
+    const arr = Array.isArray(data) ? data : []
+    const idx = arr.findIndex((r) => Number(r?.id) === id)
+    if (idx < 0) return
+    const targetPage = Math.floor(idx / pageSize) + 1
+    if (targetPage !== page) setPage(targetPage)
+  }, [highlightRowId, data, page, pageSize])
+
+  // Smooth scroll to the highlighted row inside the table body.
+  useEffect(() => {
+    const id = Number(highlightRowId)
+    if (!id) return
+    const wrap = tableWrapRef.current
+    if (!wrap) return
+    const row = wrap.querySelector(`tr[data-row-key="${id}"]`)
+    if (!row) return
+    try {
+      row.scrollIntoView({ block: "center", behavior: "smooth" })
+    } catch {
+      row.scrollIntoView()
+    }
+  }, [highlightRowId, page, pageSize, data])
 
   /* -----------------------------------------------------------
      Фильтры для колонок
@@ -210,8 +238,6 @@ export default function OriginalPartsTable({
       tech_description: record.tech_description || "",
       tnved: tnvedObj,
     })
-
-    onExpandChange(record.id)
   }
 
   const cancelEdit = () => {
@@ -270,6 +296,7 @@ export default function OriginalPartsTable({
 
       await axios.put(`/original-parts/${id}`, payload)
       message.success("Изменения сохранены")
+      onFlashRow?.(id)
       cancelEdit()
       if (typeof onReload === "function") onReload()
     } catch (e) {
@@ -298,11 +325,12 @@ export default function OriginalPartsTable({
   /* -----------------------------------------------------------
      Колонки
   ----------------------------------------------------------- */
-  const columns = [
+  const columnDefs = [
     // 🔹 в режиме "Показать все" добавляем производителя и модель
     ...(showAll
       ? [
           {
+            key: "manufacturer",
             title: "Производитель",
             dataIndex: "manufacturer_name",
             width: 160,
@@ -319,6 +347,7 @@ export default function OriginalPartsTable({
             defaultSortOrder: "ascend",
           },
           {
+            key: "model",
             title: "Модель оборудования",
             dataIndex: "model_name",
             width: 160,
@@ -335,6 +364,7 @@ export default function OriginalPartsTable({
       : []),
 
     {
+      key: "cat_number",
       title: "Part number",
       dataIndex: "cat_number",
       width: 160,
@@ -359,6 +389,7 @@ export default function OriginalPartsTable({
       },
     },
     {
+      key: "description_ru",
       title: "Описание (RU)",
       dataIndex: "description_ru",
       ellipsis: true,
@@ -387,6 +418,7 @@ export default function OriginalPartsTable({
       },
     },
     {
+      key: "description_en",
       title: "Description (EN)",
       dataIndex: "description_en",
       ellipsis: true,
@@ -417,6 +449,7 @@ export default function OriginalPartsTable({
 
     // 🔹 Группа
     {
+      key: "group_name",
       title: "Группа",
       dataIndex: "group_name",
       width: 160,
@@ -458,6 +491,7 @@ export default function OriginalPartsTable({
 
     // 🔹 ТН ВЭД (короткая колонка, полное описание — в раскрытии)
     {
+      key: "tnved_code",
       title: "ТН ВЭД",
       dataIndex: "tnved_code_text", // приходит из JOIN с tnved_codes
       width: 120,
@@ -479,6 +513,7 @@ export default function OriginalPartsTable({
 
     // 🔹 Вес
     {
+      key: "weight_kg",
       title: "Вес, кг",
       dataIndex: "weight_kg",
       align: "right",
@@ -506,6 +541,7 @@ export default function OriginalPartsTable({
     },
 
     {
+      key: "uom",
       title: "Ед. изм.",
       dataIndex: "uom",
       width: 110,
@@ -529,6 +565,7 @@ export default function OriginalPartsTable({
 
     // 🔹 Габариты
     {
+      key: "dims",
       title: "Габариты, см",
       dataIndex: "length_cm",
       width: 200,
@@ -601,6 +638,7 @@ export default function OriginalPartsTable({
     },
 
     {
+      key: "is_overweight",
       title: "Тяжелая",
       dataIndex: "is_overweight",
       width: 110,
@@ -623,6 +661,7 @@ export default function OriginalPartsTable({
       },
     },
     {
+      key: "is_oversize",
       title: "Негабарит",
       dataIndex: "is_oversize",
       width: 110,
@@ -647,6 +686,7 @@ export default function OriginalPartsTable({
 
     // 🔹 Наличие чертежа/КД
     {
+      key: "has_drawing",
       title: "Докум.",
       dataIndex: "has_drawing",
       width: 90,
@@ -672,14 +712,17 @@ export default function OriginalPartsTable({
     },
 
     {
+      key: "is_assembly",
       title: "Сборка",
       dataIndex: "is_assembly",
       width: 90,
       render: (v) => (v ? "Да" : "Нет"),
     },
     {
+      key: "actions",
       title: "Действия",
       width: 180,
+      lock: true,
       render: (_, record) => (
         <ActionButtons
           size="small"
@@ -699,6 +742,35 @@ export default function OriginalPartsTable({
     },
   ]
 
+  const defaultVisible = useMemo(() => columnDefs.map((c) => c.key), [columnDefs])
+  const effectiveVisibleKeys =
+    Array.isArray(visibleColumnKeys) && visibleColumnKeys.length
+      ? visibleColumnKeys
+      : defaultVisible
+
+  const columns = useMemo(() => {
+    const visible = new Set(effectiveVisibleKeys)
+    return columnDefs.filter((c) => c.lock || visible.has(c.key))
+  }, [columnDefs, effectiveVisibleKeys])
+
+  const columnOptions = columnDefs
+    .filter((c) => c.key && !c.lock)
+    .map((c) => ({ key: c.key, label: c.title }))
+
+  const lockedKeys = useMemo(
+    () => columnDefs.filter((c) => c.lock).map((c) => c.key),
+    [columnDefs]
+  )
+
+  useEffect(() => {
+    onColumnsMeta?.({
+      options: columnOptions,
+      defaultVisible,
+      lockedKeys,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(columnOptions), JSON.stringify(defaultVisible), JSON.stringify(lockedKeys)])
+
   return (
     <>
       <div
@@ -713,6 +785,9 @@ export default function OriginalPartsTable({
           columns={columns}
           dataSource={Array.isArray(data) ? data : []}
           loading={loading || savingEdit}
+          rowClassName={(record) =>
+            Number(record?.id) === Number(highlightRowId) ? "op-row-flash" : ""
+          }
           pagination={createTablePagination({
             page,
             pageSize,
@@ -724,98 +799,15 @@ export default function OriginalPartsTable({
           tableLayout="fixed"
           scroll={{ x: "max-content", y: 480 }}
           size="middle"
-          rowClassName={(record) => {
-            const classes = []
-            if (expandedId && record.id === expandedId)
-              classes.push("ant-table-row-selected", "op-row-expanded")
-            return classes.join(" ")
-          }}
-          expandable={{
-            expandedRowKeys: expandedId ? [expandedId] : [],
-            onExpand: (expanded, record) =>
-              onExpandChange(expanded ? record.id : null),
-            expandedRowRender: (record) => {
-              const isEditing = record.id === editingId
-
-              const hasTech = isEditing || !!record.tech_description
-              const hasTnved =
-                isEditing ||
-                !!record.tnved_code_text ||
-                !!record.tnved_code ||
-                !!record.tnved_description
-
-              return (
-                <div className="subtable-shell table-section">
-                  {(hasTech || hasTnved) && (
-                    <div className="op-expanded-content">
-                      {hasTech && (
-                        <div>
-                          <b>Тех. описание:</b>{" "}
-                          {isEditing ? (
-                            <Input.TextArea
-                              style={{ marginTop: 4 }}
-                              autoSize={{ minRows: 2, maxRows: 6 }}
-                              value={editingValues.tech_description}
-                              onChange={(e) =>
-                                setEditingValues((prev) => ({
-                                  ...prev,
-                                  tech_description: e.target.value,
-                                }))
-                              }
-                              onKeyDown={makeKeyHandler(record.id)}
-                            />
-                          ) : (
-                            record.tech_description || "-"
-                          )}
-                        </div>
-                      )}
-
-                      {hasTnved && (
-                        <div>
-                          <b>ТН ВЭД:</b>{" "}
-                          {isEditing ? (
-                            <div style={{ marginTop: 4, maxWidth: 320 }}>
-                              <TnvedPicker
-                                allowClear
-                                style={{ width: "100%" }}
-                                value={editingValues.tnved || null}
-                                onChange={(val) =>
-                                  setEditingValues((prev) => ({
-                                    ...prev,
-                                    tnved: val || null,
-                                  }))
-                                }
-                              />
-                            </div>
-                          ) : (
-                            (record.tnved_code_text ||
-                              record.tnved_code ||
-                              "-") +
-                            (record.tnved_description
-                              ? ` - ${record.tnved_description}`
-                              : "")
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div
-                    className="parts-table-wrap"
-                    style={{ marginTop: hasTech || hasTnved ? 12 : 0 }}
-                  >
-                    <DetailDock
-                      part={record}
-                      modelId={record.equipment_model_id || modelId || null}
-                      manufacturerName={record.manufacturer_name}
-                      modelName={record.model_name}
-                      onPartsChanged={onReload}
-                    />
-                  </div>
-                </div>
-              )
+          onRow={(record) => ({
+            onClick: (e) => {
+              const target = e?.target
+              if (target?.closest?.("button,a,input,textarea,select,.ant-btn,.ant-select,.ant-input,.ant-input-number")) {
+                return
+              }
+              onOpenDetail?.(record)
             },
-          }}
+          })}
         />
       </div>
 

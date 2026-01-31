@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Table, Empty, message, Tag, Input, Tooltip, Checkbox } from "antd"
+import { Table, Empty, message, Tag, Tooltip } from "antd"
 import axios from "@/api/axiosInstance"
 
 import ValueDisplay from "@/components/common/ValueDisplay"
 import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import confirmAction from "@/utils/confirmAction"
-import SupplierPartDock from "./SupplierPartDock"
 import useTableScrollHints from "@/utils/useTableScrollHints"
 
 function OriginalsCell({ row }) {
@@ -90,16 +89,19 @@ function OriginalsCell({ row }) {
 export default function SupplierPartsTable({
   supplierId,
   search,
+  filters,
   version,
   onReload,
-  expandedId = null,
-  onExpandChange = () => {},
   showAll = false,
+  onOpenDetail,
+  highlightRowId = null,
+  onFlashRow,
+  visibleColumnKeys = null,
+  onVisibleColumnKeysChange = null,
+  onColumnsMeta = null,
 }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
-  const [editing, setEditing] = useState(null)
-  const [draft, setDraft] = useState(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
@@ -131,6 +133,26 @@ export default function SupplierPartsTable({
       if (supplierId) params.supplier_id = supplierId
       if (search) params.q = search
       if (showAll) params.all = 1
+
+      const f = filters || {}
+      if (f.part_type) params.part_type = f.part_type
+      if (f.originals_mode && f.originals_mode !== "any") params.originals_mode = f.originals_mode
+      if (f.is_overweight) params.is_overweight = 1
+      if (f.is_oversize) params.is_oversize = 1
+      if (f.weight_min != null) params.weight_min = f.weight_min
+      if (f.weight_max != null) params.weight_max = f.weight_max
+      if (f.lead_time_min != null) params.lead_time_min = f.lead_time_min
+      if (f.lead_time_max != null) params.lead_time_max = f.lead_time_max
+      if (f.moq_min != null) params.moq_min = f.moq_min
+      if (f.moq_max != null) params.moq_max = f.moq_max
+      if (f.length_min != null) params.length_min = f.length_min
+      if (f.length_max != null) params.length_max = f.length_max
+      if (f.width_min != null) params.width_min = f.width_min
+      if (f.width_max != null) params.width_max = f.width_max
+      if (f.height_min != null) params.height_min = f.height_min
+      if (f.height_max != null) params.height_max = f.height_max
+      if (f.material_id) params.material_id = f.material_id
+      if (f.material_mode) params.material_mode = f.material_mode
 
       const { data } = await axios.get("/supplier-parts", {
         params,
@@ -183,11 +205,11 @@ export default function SupplierPartsTable({
     } finally {
       setLoading(false)
     }
-  }, [supplierId, showAll, search, page, pageSize])
+  }, [supplierId, showAll, search, page, pageSize, filters])
 
   useEffect(() => {
     setPage(1)
-  }, [search, supplierId, showAll])
+  }, [search, supplierId, showAll, filters])
 
   useEffect(() => {
     load()
@@ -197,52 +219,6 @@ export default function SupplierPartsTable({
       } catch {}
     }
   }, [load, version, page, pageSize])
-
-  const startEditCell = (record, field) => {
-    if (editing && editing.id !== record.id) {
-      message.warning("Сначала сохраните или отмените текущие изменения")
-      return
-    }
-    setEditing({ id: record.id, field })
-    setDraft((prev) => (prev && prev.id === record.id ? prev : { ...record }))
-  }
-
-  const cancelEdit = () => {
-    setEditing(null)
-    setDraft(null)
-  }
-
-  const isEditingCell = (record, field) =>
-    editing && editing.id === record.id && editing.field === field
-
-  const handleSave = async () => {
-    if (!draft?.id) return
-    const payload = { ...draft }
-    try {
-      const { data } = await axios.put(`/supplier-parts/${draft.id}`, payload)
-      setRows((prev) => prev.map((r) => (r.id === draft.id ? data : r)))
-      cancelEdit()
-      message.success("Деталь обновлена")
-      onReload?.()
-    } catch (e) {
-      if (e?.response?.status === 409) {
-        message.error("Конфликт версии, обновите список")
-        await load()
-      } else {
-        message.error("Не удалось обновить деталь")
-      }
-    }
-  }
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      handleSave()
-    } else if (e.key === "Escape") {
-      e.preventDefault()
-      cancelEdit()
-    }
-  }
 
   const handleDelete = async (id) => {
     const { confirmed } = await confirmAction("Удалить деталь?")
@@ -258,63 +234,23 @@ export default function SupplierPartsTable({
     }
   }
 
-  const renderTextInput = (record, field) => (
-    <Input
-      value={draft?.[field] ?? ""}
-      onChange={(e) =>
-        setDraft((prev) => ({ ...(prev || {}), [field]: e.target.value }))
-      }
-      onKeyDown={handleKeyDown}
-      autoFocus
-      size="small"
-    />
-  )
-
-  const renderBoolCell = (record, field) => {
-    if (isEditingCell(record, field)) {
-      return (
-        <Checkbox
-          checked={!!draft?.[field]}
-          onChange={(e) =>
-            setDraft((prev) => ({ ...(prev || {}), [field]: e.target.checked ? 1 : 0 }))
-          }
-          onKeyDown={handleKeyDown}
-        />
-      )
-    }
-    return <Tag color={record?.[field] ? "green" : "default"}>{record?.[field] ? "да" : "нет"}</Tag>
-  }
-
   const renderOemCell = (record) => {
     const type = String(record?.part_type || "").toUpperCase()
-    const isOem = type === "OEM"
-    const isAnalog = type === "ANALOG"
-    if (isEditingCell(record, "part_type")) {
-      return (
-        <Checkbox
-          checked={isOem}
-          onChange={(e) =>
-            setDraft((prev) => ({
-              ...(prev || {}),
-              part_type: e.target.checked ? "OEM" : "ANALOG",
-            }))
-          }
-          onKeyDown={handleKeyDown}
-        >
-          OEM
-        </Checkbox>
-      )
-    }
-    if (isOem) return <Tag color="blue">OEM</Tag>
-    if (isAnalog) return <Tag>Аналог</Tag>
+    if (type === "OEM") return <Tag color="blue">OEM</Tag>
+    if (type === "ANALOG") return <Tag>Аналог</Tag>
     return <Tag>—</Tag>
   }
 
-  const columns = useMemo(() => {
+  const renderBoolTag = (v) => (
+    <Tag color={v ? "green" : "default"}>{v ? "да" : "нет"}</Tag>
+  )
+
+  const columnDefs = useMemo(() => {
     const cols = []
 
     if (showAll) {
       cols.push({
+        key: "supplier_name",
         title: "Поставщик",
         dataIndex: "supplier_name",
         width: 180,
@@ -325,186 +261,105 @@ export default function SupplierPartsTable({
     }
 
     cols.push({
+      key: "supplier_part_number",
       title: "Номер у поставщика",
       dataIndex: "supplier_part_number",
       width: 160,
       fixed: "left",
       ellipsis: true,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "supplier_part_number")) return
-          startEditCell(record, "supplier_part_number")
-        },
-      }),
-      render: (value, record) => {
-        if (isEditingCell(record, "supplier_part_number"))
-          return renderTextInput(record, "supplier_part_number")
-        return <ValueDisplay value={value} />
-      },
+      lock: true,
+      render: (value) => <ValueDisplay value={value} />,
     })
 
     cols.push({
+      key: "description_ru",
       title: "Описание (RU)",
       dataIndex: "description_ru",
       width: 220,
       ellipsis: true,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "description_ru")) return
-          startEditCell(record, "description_ru")
-        },
-      }),
-      render: (value, record) => {
-        if (isEditingCell(record, "description_ru"))
-          return renderTextInput(record, "description_ru")
-        return <ValueDisplay value={value} />
-      },
+      render: (value) => <ValueDisplay value={value} />,
     })
 
     cols.push({
+      key: "description_en",
       title: "Описание (EN)",
       dataIndex: "description_en",
       width: 220,
       ellipsis: true,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "description_en")) return
-          startEditCell(record, "description_en")
-        },
-      }),
-      render: (value, record) => {
-        if (isEditingCell(record, "description_en"))
-          return renderTextInput(record, "description_en")
-        return <ValueDisplay value={value} />
-      },
+      render: (value) => <ValueDisplay value={value} />,
     })
 
     cols.push({
+      key: "comment",
       title: "Комментарий",
       dataIndex: "comment",
       width: 200,
       ellipsis: true,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "comment")) return
-          startEditCell(record, "comment")
-        },
-      }),
-      render: (value, record) => {
-        if (isEditingCell(record, "comment"))
-          return renderTextInput(record, "comment")
-        return <ValueDisplay value={value} />
-      },
+      render: (value) => <ValueDisplay value={value} />,
     })
 
     cols.push({
+      key: "part_type",
       title: "OEM",
       dataIndex: "part_type",
       width: 110,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "part_type")) return
-          startEditCell(record, "part_type")
-        },
-      }),
       render: (_, record) => renderOemCell(record),
     })
 
     cols.push({
+      key: "weight_kg",
       title: "Вес, кг",
       dataIndex: "weight_kg",
       width: 110,
       align: "right",
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "weight_kg")) return
-          startEditCell(record, "weight_kg")
-        },
-      }),
-      render: (value, record) =>
-        isEditingCell(record, "weight_kg")
-          ? renderTextInput(record, "weight_kg")
-          : <ValueDisplay value={value} />,
+      render: (value) => <ValueDisplay value={value} />,
     })
 
     cols.push({
+      key: "length_cm",
       title: "Дл., см",
       dataIndex: "length_cm",
       width: 100,
       align: "right",
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "length_cm")) return
-          startEditCell(record, "length_cm")
-        },
-      }),
-      render: (value, record) =>
-        isEditingCell(record, "length_cm")
-          ? renderTextInput(record, "length_cm")
-          : <ValueDisplay value={value} />,
+      render: (value) => <ValueDisplay value={value} />,
     })
 
     cols.push({
+      key: "width_cm",
       title: "Шир., см",
       dataIndex: "width_cm",
       width: 100,
       align: "right",
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "width_cm")) return
-          startEditCell(record, "width_cm")
-        },
-      }),
-      render: (value, record) =>
-        isEditingCell(record, "width_cm")
-          ? renderTextInput(record, "width_cm")
-          : <ValueDisplay value={value} />,
+      render: (value) => <ValueDisplay value={value} />,
     })
 
     cols.push({
+      key: "height_cm",
       title: "Выс., см",
       dataIndex: "height_cm",
       width: 100,
       align: "right",
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "height_cm")) return
-          startEditCell(record, "height_cm")
-        },
-      }),
-      render: (value, record) =>
-        isEditingCell(record, "height_cm")
-          ? renderTextInput(record, "height_cm")
-          : <ValueDisplay value={value} />,
+      render: (value) => <ValueDisplay value={value} />,
     })
 
     cols.push({
+      key: "is_oversize",
       title: "Негабарит",
       dataIndex: "is_oversize",
       width: 110,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "is_oversize")) return
-          startEditCell(record, "is_oversize")
-        },
-      }),
-      render: (_, record) => renderBoolCell(record, "is_oversize"),
+      render: (_, record) => renderBoolTag(!!record?.is_oversize),
     })
 
     cols.push({
+      key: "is_overweight",
       title: "Тяжелая",
       dataIndex: "is_overweight",
       width: 120,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "is_overweight")) return
-          startEditCell(record, "is_overweight")
-        },
-      }),
-      render: (_, record) => renderBoolCell(record, "is_overweight"),
+      render: (_, record) => renderBoolTag(!!record?.is_overweight),
     })
 
     cols.push({
+      key: "default_material_name",
       title: "Материалы",
       dataIndex: "default_material_name",
       width: 180,
@@ -521,59 +376,34 @@ export default function SupplierPartsTable({
     })
 
     cols.push({
+      key: "lead_time_days",
       title: "Срок поставки, дн",
       dataIndex: "lead_time_days",
       width: 130,
       align: "right",
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "lead_time_days")) return
-          startEditCell(record, "lead_time_days")
-        },
-      }),
-      render: (_, record) =>
-        isEditingCell(record, "lead_time_days") ? (
-          renderTextInput(record, "lead_time_days")
-        ) : (
-          <ValueDisplay value={record.lead_time_days} />
-        ),
+      render: (_, record) => <ValueDisplay value={record.lead_time_days} />,
     })
 
     cols.push({
+      key: "min_order_qty",
       title: "MOQ",
       dataIndex: "min_order_qty",
       width: 90,
       align: "right",
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "min_order_qty")) return
-          startEditCell(record, "min_order_qty")
-        },
-      }),
-      render: (value, record) =>
-        isEditingCell(record, "min_order_qty")
-          ? renderTextInput(record, "min_order_qty")
-          : <ValueDisplay value={value} />,
+      render: (value) => <ValueDisplay value={value} />,
     })
 
     cols.push({
+      key: "packaging",
       title: "Упаковка",
       dataIndex: "packaging",
       width: 140,
       ellipsis: true,
-      onCell: (record) => ({
-        onDoubleClick: () => {
-          if (isEditingCell(record, "packaging")) return
-          startEditCell(record, "packaging")
-        },
-      }),
-      render: (value, record) =>
-        isEditingCell(record, "packaging")
-          ? renderTextInput(record, "packaging")
-          : <ValueDisplay value={value} />,
+      render: (value) => <ValueDisplay value={value} />,
     })
 
     cols.push({
+      key: "original_links",
       title: "Привязки",
       dataIndex: "id",
       width: 160,
@@ -581,20 +411,15 @@ export default function SupplierPartsTable({
     })
 
     cols.push({
-      title: "Действия",
       key: "actions",
+      title: "Действия",
       width: 180,
+      lock: true,
       render: (_, row) => {
-        const isRowEditing = editing?.id === row.id
         return (
           <ActionButtons
-            onEdit={!isRowEditing ? () => startEditCell(row, "supplier_part_number") : undefined}
-            onSave={isRowEditing ? handleSave : undefined}
-            onCancel={isRowEditing ? cancelEdit : undefined}
-            onHistory={!isRowEditing ? () => setHistoryForId(row.id) : undefined}
-            onDelete={!isRowEditing ? () => handleDelete(row.id) : undefined}
-            disabledEdit={!!editing && !isRowEditing}
-            disabledDelete={!!editing && !isRowEditing}
+            onHistory={() => setHistoryForId(row.id)}
+            onDelete={() => handleDelete(row.id)}
             size="small"
           />
         )
@@ -602,7 +427,40 @@ export default function SupplierPartsTable({
     })
 
     return cols
-  }, [editing, draft, showAll])
+  }, [showAll])
+
+  const defaultVisible = useMemo(() => columnDefs.map((c) => c.key), [columnDefs])
+  const effectiveVisibleKeys =
+    Array.isArray(visibleColumnKeys) && visibleColumnKeys.length
+      ? visibleColumnKeys
+      : defaultVisible
+
+  const columns = useMemo(() => {
+    const visible = new Set(effectiveVisibleKeys)
+    return columnDefs.filter((c) => c.lock || visible.has(c.key))
+  }, [columnDefs, effectiveVisibleKeys])
+
+  const columnOptions = useMemo(
+    () =>
+      columnDefs
+        .filter((c) => c.key && !c.lock)
+        .map((c) => ({ key: c.key, label: c.title })),
+    [columnDefs]
+  )
+
+  const lockedKeys = useMemo(
+    () => columnDefs.filter((c) => c.lock).map((c) => c.key),
+    [columnDefs]
+  )
+
+  useEffect(() => {
+    onColumnsMeta?.({
+      options: columnOptions,
+      defaultVisible,
+      lockedKeys,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(columnOptions), JSON.stringify(defaultVisible), JSON.stringify(lockedKeys)])
 
   const pagination = useMemo(
     () => ({
@@ -650,20 +508,24 @@ export default function SupplierPartsTable({
           pagination={pagination}
           size="middle"
           tableLayout="fixed"
-          scroll={{ x: "max-content" }}
-          expandable={{
-            expandedRowKeys: expandedId ? [expandedId] : [],
-            onExpand: (expanded, record) =>
-              onExpandChange(expanded ? record.id : null),
-            expandedRowRender: (record) => (
-              <div className="subtable-shell parts-table-wrap table-section">
-                <SupplierPartDock
-                  part={record}
-                  onChanged={() => onReload?.()}
-                />
-              </div>
-            ),
-          }}
+          scroll={{ x: true }}
+          onRow={(record) => ({
+            onClick: (e) => {
+              if (!onOpenDetail) return
+              const target = e?.target
+              if (
+                target?.closest?.(
+                  "button,a,input,textarea,select,.ant-btn,.ant-select,.ant-input,.ant-input-number,.ant-checkbox"
+                )
+              ) {
+                return
+              }
+              onOpenDetail(record)
+            },
+          })}
+          rowClassName={(record) =>
+            Number(record?.id) === Number(highlightRowId) ? "op-row-flash" : ""
+          }
         />
       </div>
 

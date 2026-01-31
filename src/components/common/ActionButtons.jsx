@@ -42,7 +42,7 @@ export default function ActionButtons({
   },
 }) {
   return (
-    <Space size={6}>
+    <Space size={8}>
       {onEdit && (
         <Tooltip title={titles.edit}>
           <Button

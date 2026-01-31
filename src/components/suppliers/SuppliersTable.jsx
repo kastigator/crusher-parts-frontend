@@ -1,58 +1,30 @@
-import React, { useMemo, useRef, useState } from "react"
-import { Table, Input, Tabs, message, Checkbox, Select } from "antd"
-
-import SupplierAddressesMain from "./SupplierAddressesMain"
-import SupplierBankDetailsMain from "./SupplierBankDetailsMain"
-import SupplierContactsMain from "./SupplierContactsMain"
-import SupplierQualityMain from "./SupplierQualityMain"
+import React, { useEffect, useMemo, useRef, useState } from "react"
+import { Table, message } from "antd"
 
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
-import VersionConflictModal from "@/components/common/VersionConflictModal"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import createTablePagination from "@/utils/tablePagination"
 import useTableScrollHints from "@/utils/useTableScrollHints"
 
-// 👇 библиотека стран: ISO2 → название по-русски
-import countriesLib from "i18n-iso-countries"
-import ru from "i18n-iso-countries/langs/ru.json"
-
-countriesLib.registerLocale(ru)
-
-const getCountryLabel = (code) => {
-  if (!code) return ""
-  try {
-    return countriesLib.getName(code, "ru") || code
-  } catch {
-    return code
-  }
-}
-
 export default function SuppliersTable({
   data = [],
   loading,
-  onUpdate,
   onDelete,
+  onOpenDetail,
+  highlightRowId = null,
+  visibleColumnKeys = null,
+  onColumnsMeta = null,
 }) {
-  const [editingId, setEditingId] = useState(null)
-  const [editedRow, setEditedRow] = useState(null)
-  const [expandedSupplierId, setExpandedSupplierId] = useState(null)
   const [logsSupplierId, setLogsSupplierId] = useState(null)
   const wrapRef = useRef(null)
-  const [conflict, setConflict] = useState({
-    open: false,
-    current: null,
-    draft: null,
-    id: null,
-  })
 
-  // пагинация как у клиентов и ТН ВЭД
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
-  const scrollHints = useTableScrollHints(wrapRef, [dataSource, loading, page, pageSize])
 
   const dataSource = Array.isArray(data) ? data : []
+  const scrollHints = useTableScrollHints(wrapRef, [dataSource, loading, page, pageSize])
 
   const pagination = useMemo(
     () =>
@@ -66,272 +38,182 @@ export default function SuppliersTable({
     [page, pageSize, dataSource.length],
   )
 
-  const startEdit = (record) => {
-    if (editingId && editingId !== record.id) {
-      message.warning("Сначала сохраните или отмените текущие изменения")
-      return
-    }
-    setEditingId(record.id)
-    setEditedRow({ ...record })
-  }
-
-  const cancelEdit = () => {
-    setEditingId(null)
-    setEditedRow(null)
-  }
-
-  const onKey = (e) => {
-    if (e.key === "Enter") saveEdit()
-    if (e.key === "Escape") cancelEdit()
-  }
-
-  const saveEdit = async () => {
-    if (!editedRow) return
-    try {
-      const fresh = await onUpdate?.(editedRow.id, editedRow)
-      if (fresh) setEditedRow(fresh)
-      setEditingId(null)
-      setEditedRow(null)
-
-      // оставляем раскрытие на том же поставщике
-      if (expandedSupplierId === editedRow.id) {
-        setExpandedSupplierId(editedRow.id)
-      }
-      message.success("Изменения сохранены")
-    } catch (err) {
-      if (err?.isVersionConflict) {
-        setConflict({
-          open: true,
-          current: err.currentRecord || null,
-          draft: editedRow,
-          id: editedRow.id,
-        })
-        return
-      }
-      if (err?.isDuplicateKey) {
-        if (err.duplicateField === "public_code") {
-          message.error("Поставщик с таким публичным кодом уже существует")
-        } else {
-          message.error("Поставщик с таким VAT уже существует")
-        }
-        cancelEdit()
-        return
-      }
-      console.error("Ошибка сохранения поставщика:", err)
-    }
-  }
-
   const handleDelete = async (record) => {
     const { confirmed } = await confirmAction("Удалить поставщика?")
     if (!confirmed) return
-    await onDelete?.(record)
+    try {
+      await onDelete?.(record)
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось удалить поставщика")
+    }
   }
-
-  const renderTextCell = (key, width, valueType = "text") => ({
-    render: (_, record) => {
-      const isEdit = editingId === record.id
-      const value = isEdit ? editedRow?.[key] ?? "" : record[key] ?? ""
-
-      if (isEdit) {
-        return (
-          <Input
-            size="small"
-            style={width ? { maxWidth: width } : undefined}
-            value={value}
-            onChange={(e) =>
-              setEditedRow((prev) => ({ ...prev, [key]: e.target.value }))
-            }
-            onKeyDown={onKey}
-            autoFocus={key === "name"}
-          />
-        )
-      }
-
-      const content =
-        valueType === "phone" || valueType === "email" ? (
-          <ValueDisplay value={value} type={valueType} />
-        ) : (
-          <ValueDisplay value={value} />
-        )
-
-      return <div>{content}</div>
-    },
-  })
-
-  const renderBoolCell = (key) => ({
-    render: (_, record) => {
-      const isEdit = editingId === record.id
-      const value = !!(isEdit ? editedRow?.[key] : record[key])
-      if (isEdit) {
-        return (
-          <Checkbox
-            checked={value}
-            onChange={(e) =>
-              setEditedRow((prev) => ({ ...prev, [key]: e.target.checked ? 1 : 0 }))
-            }
-            onKeyDown={onKey}
-          />
-        )
-      }
-      return value ? "да" : "нет"
-    },
-  })
-
-  const renderRiskCell = () => ({
-    render: (_, record) => {
-      const isEdit = editingId === record.id
-      const value = isEdit ? editedRow?.risk_level ?? "" : record.risk_level ?? ""
-      if (isEdit) {
-        return (
-          <Select
-            allowClear
-            size="small"
-            value={value || undefined}
-            style={{ width: 120 }}
-            onChange={(val) =>
-              setEditedRow((prev) => ({ ...prev, risk_level: val || null }))
-            }
-          >
-            <Select.Option value="low">низкий</Select.Option>
-            <Select.Option value="medium">средний</Select.Option>
-            <Select.Option value="high">высокий</Select.Option>
-          </Select>
-        )
-      }
-      if (value === "low") return "низкий"
-      if (value === "medium") return "средний"
-      if (value === "high") return "высокий"
-      return "—"
-    },
-  })
 
   const columns = [
     {
       title: "Компания",
       dataIndex: "name",
       key: "name",
-      width: 260,
+      width: 280,
       fixed: "left",
-      ...renderTextCell("name", 260),
+      lock: true,
+      render: (v) => <ValueDisplay value={v} />,
     },
     {
       title: "Код",
       dataIndex: "public_code",
       key: "public_code",
-      width: 100,
+      width: 110,
       fixed: "left",
-      ...renderTextCell("public_code", 100),
+      lock: true,
+      render: (v) => <ValueDisplay value={v} />,
     },
     {
       title: "Страна",
       dataIndex: "country",
       key: "country",
-      width: 220,
-      render: (_, record) => {
-        const label = getCountryLabel(record.country)
-        return <ValueDisplay value={label} />
-      },
+      width: 200,
+      render: (v) => <ValueDisplay value={v} />,
     },
     {
       title: "VAT",
       dataIndex: "vat_number",
       key: "vat_number",
-      width: 170,
-      ...renderTextCell("vat_number", 170),
-    },
-    {
-      title: "Инкотермс",
-      dataIndex: "default_incoterms",
-      key: "default_incoterms",
-      width: 120,
-      ...renderTextCell("default_incoterms", 120),
-    },
-    {
-      title: "Город/порт",
-      dataIndex: "default_pickup_location",
-      key: "default_pickup_location",
       width: 160,
-      ...renderTextCell("default_pickup_location", 160),
-    },
-    {
-      title: "OEM",
-      dataIndex: "can_oem",
-      key: "can_oem",
-      width: 80,
-      ...renderBoolCell("can_oem"),
-    },
-    {
-      title: "Аналог",
-      dataIndex: "can_analog",
-      key: "can_analog",
-      width: 90,
-      ...renderBoolCell("can_analog"),
-    },
-    {
-      title: "Рейтинг",
-      dataIndex: "reliability_rating",
-      key: "reliability_rating",
-      width: 90,
-      ...renderTextCell("reliability_rating", 90),
-    },
-    {
-      title: "Риск",
-      dataIndex: "risk_level",
-      key: "risk_level",
-      width: 120,
-      ...renderRiskCell(),
+      render: (v) => <ValueDisplay value={v} />,
     },
     {
       title: "Контакт",
       dataIndex: "contact_person",
       key: "contact_person",
-      width: 160,
-      render: (_, record) => <ValueDisplay value={record.contact_person} />,
+      width: 180,
+      render: (v) => <ValueDisplay value={v} />,
     },
     {
       title: "Телефон",
       dataIndex: "phone",
       key: "phone",
       width: 170,
-      render: (_, record) => (
-        <ValueDisplay value={record.phone} type="phone" />
-      ),
+      render: (v) => <ValueDisplay value={v} type="phone" />,
     },
     {
       title: "E-mail",
       dataIndex: "email",
       key: "email",
       width: 220,
-      render: (_, record) => (
-        <ValueDisplay value={record.email} type="email" />
-      ),
+      render: (v) => <ValueDisplay value={v} type="email" />,
     },
     {
       title: "Примечание",
       dataIndex: "notes",
       key: "notes",
-      width: 220,
-      ...renderTextCell("notes", 220),
+      width: 260,
+      render: (v) => <ValueDisplay value={v} />,
+    },
+    {
+      title: "OEM",
+      dataIndex: "can_oem",
+      key: "can_oem",
+      width: 90,
+      render: (v) => <ValueDisplay value={v ? "да" : "нет"} />,
+    },
+    {
+      title: "Аналоги",
+      dataIndex: "can_analog",
+      key: "can_analog",
+      width: 100,
+      render: (v) => <ValueDisplay value={v ? "да" : "нет"} />,
+    },
+    {
+      title: "Рейтинг",
+      dataIndex: "reliability_rating",
+      key: "reliability_rating",
+      width: 110,
+      render: (v) => <ValueDisplay value={v} />,
+    },
+    {
+      title: "Риск",
+      dataIndex: "risk_level",
+      key: "risk_level",
+      width: 120,
+      render: (v) => <ValueDisplay value={v || "—"} />,
+    },
+    {
+      title: "Срок (база), дн",
+      dataIndex: "default_lead_time_days",
+      key: "default_lead_time_days",
+      width: 140,
+      render: (v) => <ValueDisplay value={v} />,
+    },
+    {
+      title: "Валюта",
+      dataIndex: "preferred_currency",
+      key: "preferred_currency",
+      width: 100,
+      render: (v) => <ValueDisplay value={v} />,
+    },
+    {
+      title: "Инкотермс",
+      dataIndex: "default_incoterms",
+      key: "default_incoterms",
+      width: 120,
+      render: (v) => <ValueDisplay value={v} />,
+    },
+    {
+      title: "Город/порт",
+      dataIndex: "default_pickup_location",
+      key: "default_pickup_location",
+      width: 180,
+      render: (v) => <ValueDisplay value={v} />,
     },
     {
       title: "Действия",
       key: "actions",
       width: 150,
+      lock: true,
       render: (_, record) => (
         <ActionButtons
           size="small"
-          onEdit={editingId !== record.id ? () => startEdit(record) : undefined}
-          onSave={editingId === record.id ? saveEdit : undefined}
-          onCancel={editingId === record.id ? cancelEdit : undefined}
-          onDelete={editingId !== record.id ? () => handleDelete(record) : undefined}
           onHistory={() => setLogsSupplierId(record.id)}
-          disabledEdit={!!editingId && editingId !== record.id}
-          disabledDelete={!!editingId && editingId !== record.id}
+          onDelete={() => handleDelete(record)}
           confirmDelete={false}
         />
       ),
     },
   ]
+
+  const defaultVisible = useMemo(() => columns.map((c) => c.key), [columns])
+  const effectiveVisibleKeys =
+    Array.isArray(visibleColumnKeys) && visibleColumnKeys.length
+      ? visibleColumnKeys
+      : defaultVisible
+
+  const visibleColumns = useMemo(() => {
+    const visible = new Set(effectiveVisibleKeys)
+    return columns.filter((c) => c.lock || visible.has(c.key))
+  }, [columns, effectiveVisibleKeys])
+
+  const columnOptions = useMemo(
+    () =>
+      columns
+        .filter((c) => c.key && !c.lock)
+        .map((c) => ({ key: c.key, label: c.title })),
+    [columns]
+  )
+
+  const lockedKeys = useMemo(
+    () => columns.filter((c) => c.lock).map((c) => c.key),
+    [columns]
+  )
+
+  useEffect(() => {
+    onColumnsMeta?.({
+      options: columnOptions,
+      defaultVisible,
+      lockedKeys,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(columnOptions), JSON.stringify(defaultVisible), JSON.stringify(lockedKeys)])
 
   return (
     <>
@@ -347,66 +229,27 @@ export default function SuppliersTable({
           bordered
           rowKey="id"
           loading={loading}
-          columns={columns}
+          columns={visibleColumns}
           dataSource={dataSource}
           tableLayout="fixed"
           pagination={pagination}
-          scroll={{ x: "max-content" }}
-          expandable={{
-            expandedRowKeys: expandedSupplierId ? [expandedSupplierId] : [],
-            onExpand: (expanded, record) => {
-              setExpandedSupplierId(expanded ? record.id : null)
+          scroll={{ x: true }}
+          rowClassName={(record) =>
+            Number(record?.id) === Number(highlightRowId) ? "op-row-flash" : ""
+          }
+          onRow={(record) => ({
+            onClick: (e) => {
+              if (!onOpenDetail) return
+              const target = e?.target
+              if (
+                target?.closest?.(
+                  "button,a,input,textarea,select,.ant-btn,.ant-select,.ant-input,.ant-input-number,.ant-checkbox"
+                )
+              ) {
+                return
+              }
+              onOpenDetail(record)
             },
-            expandedRowRender: (record) => (
-              <div className="subtable-shell parts-table-wrap table-section">
-                <Tabs
-                  className="inner-tabs"
-                  size="small"
-                  destroyInactiveTabPane
-                  defaultActiveKey="addresses"
-                  items={[
-                    {
-                      key: "addresses",
-                      label: "Адреса",
-                      children: (
-                        <SupplierAddressesMain
-                          supplierId={record.id}
-                          onChanged={() => {}}
-                        />
-                      ),
-                    },
-                    {
-                      key: "contacts",
-                      label: "Контакты",
-                      children: (
-                        <SupplierContactsMain
-                          supplierId={record.id}
-                          onChanged={() => {}}
-                        />
-                      ),
-                    },
-                    {
-                      key: "bank",
-                      label: "Банковские реквизиты",
-                      children: (
-                        <SupplierBankDetailsMain
-                          supplierId={record.id}
-                          onChanged={() => {}}
-                        />
-                      ),
-                    },
-                    {
-                      key: "quality",
-                      label: "Оценка",
-                      children: <SupplierQualityMain supplierId={record.id} />,
-                    },
-                  ]}
-                />
-              </div>
-            ),
-          }}
-          onRow={() => ({
-            onKeyDown: onKey,
           })}
         />
       </div>
@@ -418,35 +261,6 @@ export default function SuppliersTable({
           onClose={() => setLogsSupplierId(null)}
         />
       )}
-
-      <VersionConflictModal
-        conflict={conflict.open ? conflict : null}
-        entityLabel="поставщик"
-        fields={[
-          { key: "name", title: "Компания" },
-          { key: "public_code", title: "Код" },
-          { key: "vat_number", title: "VAT" },
-          { key: "country", title: "Страна" },
-          { key: "contact_person", title: "Контакт" },
-          { key: "phone", title: "Телефон" },
-          { key: "email", title: "E-mail" },
-          { key: "notes", title: "Примечание" },
-        ]}
-        onCancel={() =>
-          setConflict({ open: false, current: null, draft: null, id: null })
-        }
-        onReload={() => {
-          setEditingId(null)
-          setEditedRow(null)
-          setConflict({ open: false, current: null, draft: null, id: null })
-        }}
-        onMerge={(merged) => {
-          if (!merged) return
-          setEditedRow(merged)
-          setEditingId(merged.id)
-          setConflict({ open: false, current: null, draft: null, id: null })
-        }}
-      />
     </>
   )
 }

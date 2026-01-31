@@ -1,13 +1,25 @@
 // src/pages/SuppliersPage.jsx
-import React from "react"
+import React, { useEffect } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import TabRendererPage from "@/components/common/TabRendererPage"
 import SuppliersMain from "@/components/suppliers/SuppliersMain"
 
 export default function SuppliersPage() {
+  const [params] = useSearchParams()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const focusParam = params.get("focus")
+    const id = focusParam ? Number(focusParam) || null : null
+    if (id) {
+      navigate(`/suppliers/${id}`, { replace: true })
+    }
+  }, [params, navigate])
+
   return (
     <TabRendererPage
       tabKey="suppliers"
-      helpText="Кнопка карандаш — редактирование; Enter — сохранить; Esc — отменить."
+      helpText="Клик по строке — открыть карточку поставщика. Редактирование выполняется в карточке."
     >
       <SuppliersMain />
     </TabRendererPage>
