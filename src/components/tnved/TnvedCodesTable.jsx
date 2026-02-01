@@ -1,7 +1,7 @@
 // src/components/tnved/TnvedCodesTable.jsx
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Table, Input, InputNumber, message } from "antd"
+import { Descriptions, Drawer, Input, InputNumber, Table, Typography, message } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
@@ -12,6 +12,7 @@ import { mergeConflictDraft } from "@/utils/versionConflict"
 import useTableScrollHints from "@/utils/useTableScrollHints"
 
 const { TextArea } = Input
+const { Text } = Typography
 
 export default function TnvedCodesTable({
   data,
@@ -27,6 +28,8 @@ export default function TnvedCodesTable({
   const [editingKey, setEditingKey] = useState("")
   const [editedRow, setEditedRow] = useState(null)
   const [logId, setLogId] = useState(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [detailsRecord, setDetailsRecord] = useState(null)
 
   const [conflict, setConflict] = useState({
     open: false,
@@ -274,22 +277,58 @@ export default function TnvedCodesTable({
           size="small"
           tableLayout="fixed"
           scroll={{ x: true }}
-          expandable={{
-            expandedRowRender: (record) => (
-              <div
-                style={{
-                  whiteSpace: "pre-wrap",
-                  padding: "8px 24px",
-                }}
-              >
-                <b>Описание:</b> {record.description || "-"}
-                <br />
-                <b>Примечание:</b> {record.notes || "-"}
-              </div>
-            ),
-          }}
+          onRow={(record) => ({
+            onClick: (e) => {
+              if (isEditing(record)) return
+              const target = e.target
+              if (
+                target.closest("button") ||
+                target.closest("a") ||
+                target.closest("input") ||
+                target.closest("textarea") ||
+                target.closest(".ant-input-number") ||
+                target.closest(".ant-table-row-expand-icon")
+              ) {
+                return
+              }
+              setDetailsRecord(record)
+              setDetailsOpen(true)
+            },
+            style: { cursor: isEditing(record) ? "default" : "pointer" },
+          })}
         />
       </div>
+
+      <Drawer
+        open={detailsOpen}
+        width={720}
+        onClose={() => {
+          setDetailsOpen(false)
+          setDetailsRecord(null)
+        }}
+        title={detailsRecord ? `Код ТН ВЭД: ${detailsRecord.code || "—"}` : "Код ТН ВЭД"}
+      >
+        {detailsRecord ? (
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label="Код">
+              {detailsRecord.code || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Пошлина (%)">
+              {detailsRecord.duty_rate ?? "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Описание">
+              <Text style={{ whiteSpace: "pre-wrap" }}>
+                {detailsRecord.description || "—"}
+              </Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="Примечание">
+              <Text style={{ whiteSpace: "pre-wrap" }}>
+                {detailsRecord.notes || "—"}
+              </Text>
+            </Descriptions.Item>
+          </Descriptions>
+        ) : null}
+      </Drawer>
 
       {logId && (
         <FullHistoryDialog

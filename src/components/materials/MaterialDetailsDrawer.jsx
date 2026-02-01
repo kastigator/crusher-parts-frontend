@@ -90,18 +90,6 @@ export default function MaterialDetailsDrawer({ open, onClose, material }) {
     },
   ]
 
-  const curvesColumns = [
-    { title: "ID", dataIndex: "curve_id", key: "curve_id", width: 80 },
-    { title: "Название", dataIndex: "name", key: "name", width: 200 },
-    { title: "Тип", dataIndex: "type", key: "type", width: 120 },
-    {
-      title: "Точек",
-      key: "points",
-      width: 80,
-      render: (_, record) => record?.points?.length || 0,
-    },
-  ]
-
   const renderCurveChart = (record) => {
     const pts = Array.isArray(record?.points) ? record.points : []
     const data = pts
@@ -206,36 +194,46 @@ export default function MaterialDetailsDrawer({ open, onClose, material }) {
               }
               key="curves"
             >
-              <Table
-                className="op-table"
-                size="small"
-                rowKey={(r, idx) => `${r.curve_id || idx}-${r.name}`}
-                columns={curvesColumns}
-                dataSource={details.curves || []}
-                pagination={false}
-                expandable={{
-                  expandedRowRender: (record) => (
-                    <div className="op-expanded-content">
-                      {Array.isArray(record.points) && record.points.length ? (
-                        <>
-                          <div style={{ marginBottom: 8, fontSize: 12, color: "#4b5563" }}>
-                            {record.points.map((p, idx) => (
-                              <div key={idx}>
-                                x: {p.x}; y: {p.y}
+              {Array.isArray(details.curves) && details.curves.length ? (
+                <Collapse
+                  size="small"
+                  items={details.curves.map((curve, idx) => {
+                    const key = String(curve.curve_id || idx)
+                    const pts = Array.isArray(curve.points) ? curve.points : []
+                    return {
+                      key,
+                      label: (
+                        <Space wrap>
+                          <Tag>{curve.curve_id || "—"}</Tag>
+                          <span>{curve.name || "Без названия"}</span>
+                          {curve.type ? <Tag color="blue">{curve.type}</Tag> : null}
+                          <Text type="secondary">Точек: {pts.length}</Text>
+                        </Space>
+                      ),
+                      children: (
+                        <div className="op-expanded-content">
+                          {pts.length ? (
+                            <>
+                              <div style={{ marginBottom: 8, fontSize: 12, color: "#4b5563" }}>
+                                {pts.map((p, i) => (
+                                  <div key={i}>
+                                    x: {p.x}; y: {p.y}
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                          {renderCurveChart(record)}
-                        </>
-                      ) : (
-                        <Text type="secondary">Нет точек</Text>
-                      )}
-                    </div>
-                  ),
-                  rowExpandable: (record) =>
-                    Array.isArray(record.points) && record.points.length > 0,
-                }}
-              />
+                              {renderCurveChart(curve)}
+                            </>
+                          ) : (
+                            <Text type="secondary">Нет точек</Text>
+                          )}
+                        </div>
+                      ),
+                    }
+                  })}
+                />
+              ) : (
+                <Text type="secondary">Нет кривых</Text>
+              )}
             </Collapse.Panel>
           </Collapse>
         </Space>

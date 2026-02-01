@@ -1,16 +1,14 @@
 import React, { useEffect, useMemo, useState, useCallback, Suspense, lazy } from "react"
-import { Card, Space, Input, Button, Tree, Typography, Tooltip, Empty, Divider, Tag, message } from "antd"
+import { Card, Space, Button, Tree, Typography, Tooltip, Empty, Divider, Tag, message } from "antd"
 import {
-  ReloadOutlined,
-  SearchOutlined,
   BranchesOutlined,
-  ImportOutlined,
 } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import MaterialsTable from "./MaterialsTable"
 import MaterialsImportModal from "./MaterialsImportModal"
 import MaterialFormModal from "./MaterialFormModal"
 import createTablePagination from "@/utils/tablePagination"
+import TableToolbar from "@/components/common/TableToolbar"
 
 const MaterialDetailsDrawer = lazy(() => import("./MaterialDetailsDrawer"))
 
@@ -192,102 +190,83 @@ export default function MaterialsMain() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          justifyContent: "space-between",
-        }}
-      >
-        <Input
-          allowClear
-          placeholder="Поиск: название, код, стандарт, описание"
-          prefix={<SearchOutlined />}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onPressEnter={() => loadMaterials({ offset: 0 })}
-          style={{ width: 360 }}
-        />
-        <div style={{ display: "flex", gap: 8 }}>
-          <Tooltip title="Обновить">
-            <Button icon={<ReloadOutlined />} onClick={handleRefresh} />
-          </Tooltip>
-          <Button type="default" onClick={handleCreate}>
-            Новый материал
-          </Button>
-          <Button
-            type="primary"
-            icon={<ImportOutlined />}
-            onClick={() => setImportOpen(true)}
-          >
-            Импорт
-          </Button>
-        </div>
-      </div>
-
-      <Space align="start" size={16} style={{ width: "100%" }}>
-        <Card
-          style={{ width: 280, minHeight: 480 }}
-          bodyStyle={{ padding: 12 }}
-          title={
-            <Space>
-              <BranchesOutlined />
-              <span>Категории</span>
-            </Space>
-          }
-          extra={
-            <Tooltip title="Снять фильтр">
-              <Button
-                size="small"
-                onClick={() => {
-                  setSelectedCategory(null)
-                  loadMaterials({ offset: 0 })
-                }}
-                disabled={!hasSelection}
-              >
-                Сбросить
-              </Button>
-            </Tooltip>
-          }
-        >
-          {treeData.length === 0 ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={catLoading ? "Загрузка..." : "Категории не найдены"}
-            />
-          ) : (
-            <Tree
-              selectable
-              selectedKeys={selectedCategory ? [selectedCategory] : []}
-              treeData={treeData}
-              onSelect={onSelectCategory}
-              showIcon={false}
-              defaultExpandAll
-            />
-          )}
-        </Card>
-
-        <Card style={{ flex: 1 }} bodyStyle={{ padding: 0 }}>
-          <MaterialsTable
-            data={paginatedData}
-            loading={loading}
-            onRowClick={handleRowClick}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            pagination={pagination}
+      <Card bodyStyle={{ paddingTop: 8 }}>
+        <div className="table-section" style={{ marginTop: 0 }}>
+          <TableToolbar
+            placeholder="Поиск: название, код, стандарт, описание"
+            search={search}
+            onSearch={(v) => setSearch(v)}
+            onRefresh={handleRefresh}
+            onAdd={handleCreate}
+            onImport={() => setImportOpen(true)}
+            searchWidth="clamp(280px, 42vw, 620px)"
+            searchEnterButton="Найти"
           />
-          {materials.length === 0 && !loading && (
-            <>
-              <Divider style={{ margin: 0 }} />
+        </div>
+
+        <Space align="start" size={16} style={{ width: "100%" }}>
+          <Card
+            style={{ width: 280, minHeight: 480 }}
+            bodyStyle={{ padding: 12 }}
+            title={
+              <Space>
+                <BranchesOutlined />
+                <span>Категории</span>
+              </Space>
+            }
+            extra={
+              <Tooltip title="Снять фильтр">
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setSelectedCategory(null)
+                    loadMaterials({ offset: 0 })
+                  }}
+                  disabled={!hasSelection}
+                >
+                  Сбросить
+                </Button>
+              </Tooltip>
+            }
+          >
+            {treeData.length === 0 ? (
               <Empty
-                style={{ margin: "24px 0" }}
-                description="Нет материалов по выбранному фильтру"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={catLoading ? "Загрузка..." : "Категории не найдены"}
               />
-            </>
-          )}
-        </Card>
-      </Space>
+            ) : (
+              <Tree
+                selectable
+                selectedKeys={selectedCategory ? [selectedCategory] : []}
+                treeData={treeData}
+                onSelect={onSelectCategory}
+                showIcon={false}
+                defaultExpandAll
+              />
+            )}
+          </Card>
+
+          <Card style={{ flex: 1 }} bodyStyle={{ padding: 0 }}>
+            <MaterialsTable
+              data={paginatedData}
+              loading={loading}
+              onRowClick={handleRowClick}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              pagination={pagination}
+            />
+            {materials.length === 0 && !loading && (
+              <>
+                <Divider style={{ margin: 0 }} />
+                <Empty
+                  style={{ margin: "24px 0" }}
+                  description="Нет материалов по выбранному фильтру"
+                />
+              </>
+            )}
+          </Card>
+        </Space>
+      </Card>
 
       <Suspense fallback={null}>
         <MaterialDetailsDrawer

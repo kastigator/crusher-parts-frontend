@@ -68,6 +68,8 @@ export default function RfqPage() {
   const [rfqItems, setRfqItems] = useState([])
   const [rfqStructure, setRfqStructure] = useState([])
   const [structureLoading, setStructureLoading] = useState(false)
+  const [itemDetailsOpen, setItemDetailsOpen] = useState(false)
+  const [itemDetailsRecord, setItemDetailsRecord] = useState(null)
   const [componentPickerOpen, setComponentPickerOpen] = useState(false)
   const [componentPickerItem, setComponentPickerItem] = useState(null)
   const [componentDrafts, setComponentDrafts] = useState({})
@@ -961,163 +963,6 @@ export default function RfqPage() {
                     dataSource={rfqItems}
                     loading={structureLoading}
                     pagination={false}
-                    expandable={{
-                      expandedRowRender: (record) => {
-                        const data = rfqStructureMap.get(record.id)
-                        if (!data) return null
-                        const bundlesLabel = data.bundle_count
-                          ? `Комплектов: ${data.bundle_count}`
-                          : null
-                        const components = data.components || []
-                        const hasDraftComponents = components.some(
-                          (c) => !c.rfq_item_component_id,
-                        )
-                        const columns = [
-                          {
-                            title: "Компонент",
-                            dataIndex: "cat_number",
-                            render: (v, r) => (
-                              <div>
-                                <div>{v || "—"}</div>
-                                <Text type="secondary">
-                                  {r.description || "—"}
-                                </Text>
-                                <div>
-                                  <Tag color="geekblue">{r.source_type || "BOM"}</Tag>
-                                </div>
-                              </div>
-                            ),
-                          },
-                          {
-                            title: "Кол-во",
-                            dataIndex: "component_qty",
-                            width: 140,
-                            align: "right",
-                            render: (v, r) =>
-                              r.rfq_item_component_id ? (
-                                <InputNumber
-                                  min={0}
-                                  value={
-                                    componentDrafts[r.rfq_item_component_id] ?? v
-                                  }
-                                  onChange={(val) =>
-                                    handleComponentQtyChange(
-                                      r.rfq_item_component_id,
-                                      val,
-                                    )
-                                  }
-                                  onBlur={() =>
-                                    handleComponentQtyCommit(
-                                      data.rfq_item_id,
-                                      r,
-                                    )
-                                  }
-                                  disabled={
-                                    componentBusyIds[r.rfq_item_component_id]
-                                  }
-                                />
-                              ) : (
-                                numOrDash(v)
-                              ),
-                          },
-                          {
-                            title: "Требуется",
-                            dataIndex: "required_qty",
-                            width: 140,
-                            align: "right",
-                            render: (v) => numOrDash(v),
-                          },
-                          {
-                            title: "Комплекты",
-                            dataIndex: "bundle_count",
-                            width: 120,
-                            render: (v) =>
-                              v ? <Tag color="blue">{v}</Tag> : "—",
-                          },
-                          {
-                            title: "Действия",
-                            dataIndex: "actions",
-                            width: 100,
-                            render: (_, r) =>
-                              r.rfq_item_component_id ? (
-                                <Button
-                                  danger
-                                  type="text"
-                                  icon={<DeleteOutlined />}
-                                  loading={componentBusyIds[r.rfq_item_component_id]}
-                                  onClick={() =>
-                                    handleDeleteComponent(data.rfq_item_id, r)
-                                  }
-                                />
-                              ) : (
-                                "—"
-                              ),
-                          },
-                        ]
-                        return (
-                          <div className="expanded-area" style={{ padding: "8px 16px" }}>
-                            <StrategyEditor item={data} strategy={data.strategy} />
-                            <Divider style={{ margin: "8px 0" }} />
-                            <Space wrap align="center" style={{ marginBottom: 12 }}>
-                              <Button
-                                type="dashed"
-                                icon={<PlusOutlined />}
-                                loading={addingComponentItemId === data.rfq_item_id}
-                                onClick={() => {
-                                  setComponentPickerItem(data)
-                                  setComponentPickerOpen(true)
-                                }}
-                              >
-                                Добавить компонент
-                              </Button>
-                              <Button
-                                icon={<ReloadOutlined />}
-                                loading={rebuildingItemId === data.rfq_item_id}
-                                onClick={() =>
-                                  handleRebuildComponents(
-                                    data.rfq_item_id,
-                                    data.strategy?.mode,
-                                  )
-                                }
-                              >
-                                Пересобрать
-                              </Button>
-                              {bundlesLabel ? (
-                                <Text type="secondary">{bundlesLabel}</Text>
-                              ) : null}
-                              {hasDraftComponents ? (
-                                <Text type="secondary">
-                                  Компоненты не сохранены — нажмите "Пересобрать"
-                                </Text>
-                              ) : null}
-                            </Space>
-                            {components.length ? (
-                              <Table
-                                rowKey={(r) =>
-                                  String(
-                                    r.rfq_item_component_id || r.original_part_id,
-                                  )
-                                }
-                                className="op-table"
-                                size="small"
-                                columns={columns}
-                                dataSource={components}
-                                pagination={false}
-                              />
-                            ) : (
-                              <Text type="secondary">
-                                {bundlesLabel || "Нет BOM/комплектов"}
-                              </Text>
-                            )}
-                          </div>
-                        )
-                      },
-                      rowExpandable: (record) => {
-                        const data = rfqStructureMap.get(record.id)
-                        return !!data
-                      },
-                      columnWidth: 36,
-                    }}
                     columns={[
                       { title: "№", dataIndex: "line_number", width: 70 },
                       {
@@ -1150,8 +995,167 @@ export default function RfqPage() {
                         render: (v) => (v ? "Да" : "—"),
                       },
                       { title: "Комментарий", dataIndex: "note" },
+                      {
+                        title: "Структура",
+                        key: "structure",
+                        width: 110,
+                        render: (_v, record) => {
+                          const hasData = !!rfqStructureMap.get(record.id)
+                          return (
+                            <Button
+                              size="small"
+                              type="link"
+                              disabled={!hasData}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                setItemDetailsRecord(record)
+                                setItemDetailsOpen(true)
+                              }}
+                            >
+                              Открыть
+                            </Button>
+                          )
+                        },
+                      },
                     ]}
                   />
+
+                  <Drawer
+                    open={itemDetailsOpen}
+                    width={1000}
+                    onClose={() => {
+                      setItemDetailsOpen(false)
+                      setItemDetailsRecord(null)
+                    }}
+                    title={
+                      itemDetailsRecord
+                        ? `Структура: ${
+                            itemDetailsRecord.original_cat_number ||
+                            itemDetailsRecord.client_part_number ||
+                            `#${itemDetailsRecord.id}`
+                          }`
+                        : "Структура"
+                    }
+                  >
+                    {(() => {
+                      const rec = itemDetailsRecord
+                      if (!rec) return null
+                      const data = rfqStructureMap.get(rec.id)
+                      if (!data) return <Text type="secondary">Структура не найдена</Text>
+
+                      const bundlesLabel = data.bundle_count ? `Комплектов: ${data.bundle_count}` : null
+                      const components = data.components || []
+                      const hasDraftComponents = components.some((c) => !c.rfq_item_component_id)
+
+                      const compColumns = [
+                        {
+                          title: "Компонент",
+                          dataIndex: "cat_number",
+                          render: (v, r) => (
+                            <div>
+                              <div>{v || "—"}</div>
+                              <Text type="secondary">{r.description || "—"}</Text>
+                              <div>
+                                <Tag color="geekblue">{r.source_type || "BOM"}</Tag>
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          title: "Кол-во",
+                          dataIndex: "component_qty",
+                          width: 140,
+                          align: "right",
+                          render: (v, r) =>
+                            r.rfq_item_component_id ? (
+                              <InputNumber
+                                min={0}
+                                value={componentDrafts[r.rfq_item_component_id] ?? v}
+                                onChange={(val) => handleComponentQtyChange(r.rfq_item_component_id, val)}
+                                onBlur={() => handleComponentQtyCommit(data.rfq_item_id, r)}
+                                disabled={componentBusyIds[r.rfq_item_component_id]}
+                              />
+                            ) : (
+                              numOrDash(v)
+                            ),
+                        },
+                        {
+                          title: "Требуется",
+                          dataIndex: "required_qty",
+                          width: 140,
+                          align: "right",
+                          render: (v) => numOrDash(v),
+                        },
+                        {
+                          title: "Комплекты",
+                          dataIndex: "bundle_count",
+                          width: 120,
+                          render: (v) => (v ? <Tag color="blue">{v}</Tag> : "—"),
+                        },
+                        {
+                          title: "Действия",
+                          dataIndex: "actions",
+                          width: 100,
+                          render: (_v, r) =>
+                            r.rfq_item_component_id ? (
+                              <Button
+                                danger
+                                type="text"
+                                icon={<DeleteOutlined />}
+                                loading={componentBusyIds[r.rfq_item_component_id]}
+                                onClick={() => handleDeleteComponent(data.rfq_item_id, r)}
+                              />
+                            ) : (
+                              "—"
+                            ),
+                        },
+                      ]
+
+                      return (
+                        <div>
+                          <StrategyEditor item={data} strategy={data.strategy} />
+                          <Divider style={{ margin: "8px 0" }} />
+                          <Space wrap align="center" style={{ marginBottom: 12 }}>
+                            <Button
+                              type="dashed"
+                              icon={<PlusOutlined />}
+                              loading={addingComponentItemId === data.rfq_item_id}
+                              onClick={() => {
+                                setComponentPickerItem(data)
+                                setComponentPickerOpen(true)
+                              }}
+                            >
+                              Добавить компонент
+                            </Button>
+                            <Button
+                              icon={<ReloadOutlined />}
+                              loading={rebuildingItemId === data.rfq_item_id}
+                              onClick={() => handleRebuildComponents(data.rfq_item_id, data.strategy?.mode)}
+                            >
+                              Пересобрать
+                            </Button>
+                            {bundlesLabel ? <Text type="secondary">{bundlesLabel}</Text> : null}
+                            {hasDraftComponents ? (
+                              <Text type="secondary">Компоненты не сохранены — нажмите "Пересобрать"</Text>
+                            ) : null}
+                          </Space>
+                          {components.length ? (
+                            <Table
+                              rowKey={(r) => String(r.rfq_item_component_id || r.original_part_id)}
+                              className="op-table"
+                              size="small"
+                              columns={compColumns}
+                              dataSource={components}
+                              pagination={false}
+                            />
+                          ) : (
+                            <Text type="secondary">{bundlesLabel || "Нет BOM/комплектов"}</Text>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </Drawer>
                 </Space>
               ),
             },

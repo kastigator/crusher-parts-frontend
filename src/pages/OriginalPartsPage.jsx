@@ -19,7 +19,7 @@ export default function OriginalPartsPage() {
   return (
     <TabRendererPage
       tabKey="original_parts"
-      helpText="Кнопка карандаш — редактирование; Enter — сохранить; Esc — отменить."
+      helpText="Клик по строке — открыть карточку детали. Редактирование выполняется в карточке."
     >
       <OriginalPartsMain />
     </TabRendererPage>

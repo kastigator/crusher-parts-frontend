@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react"
 import {
   Card,
+  Drawer,
   Space,
   message,
   Table,
@@ -16,7 +17,7 @@ import {
   ReloadOutlined,
   PlusOutlined,
   EyeOutlined,
-  FilePdfOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons"
 import { useLocation } from "react-router-dom"
 import ActionButtons from "@/components/common/ActionButtons"
@@ -69,7 +70,8 @@ export default function ClientOrdersMain() {
   const [proposalOpen, setProposalOpen] = useState(false)
   const [proposalOrder, setProposalOrder] = useState(null)
   const [proposalItems, setProposalItems] = useState([])
-  const [expandedOrderId, setExpandedOrderId] = useState(null)
+  const [inlineOpen, setInlineOpen] = useState(false)
+  const [inlineOrder, setInlineOrder] = useState(null)
   const [historyForId, setHistoryForId] = useState(null)
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
   const location = useLocation()
@@ -161,12 +163,6 @@ export default function ClientOrdersMain() {
   useEffect(() => {
     setPage(1)
   }, [statusFilter, responsibleFilter, search, dateFrom, dateTo])
-
-  useEffect(() => {
-    if (!expandedOrderId) return
-    const exists = orders.some((o) => o.id === expandedOrderId)
-    if (!exists) setExpandedOrderId(null)
-  }, [orders, expandedOrderId])
 
   const handleOpenCreate = () => {
     setSelected(null)
@@ -338,6 +334,17 @@ export default function ClientOrdersMain() {
               titles={{ delete: "Удалить", history: "История изменений" }}
               extraButtons={[
                 {
+                  key: "inline",
+                  label: "Панель",
+                  icon: <UnorderedListOutlined />,
+                  type: "text",
+                  showText: false,
+                  onClick: () => {
+                    setInlineOrder(record)
+                    setInlineOpen(true)
+                  },
+                },
+                {
                   key: "proposal",
                   label: "Предложение",
                   icon: <EyeOutlined />,
@@ -474,29 +481,32 @@ export default function ClientOrdersMain() {
             onClick: handleRowClick(record),
             style: { cursor: "pointer" },
           })}
-          rowClassName={(record) => {
-            const classes = ["clickable-row"]
-            if (expandedOrderId && record.id === expandedOrderId) {
-              classes.push("ant-table-row-selected", "op-row-expanded")
-            }
-            return classes.join(" ")
-          }}
-          expandable={{
-            expandedRowKeys: expandedOrderId ? [expandedOrderId] : [],
-            onExpand: (expanded, record) => {
-              setExpandedOrderId(expanded ? record.id : null)
-            },
-            expandedRowRender: (record) => (
-              <div className="subtable-shell table-section">
-                <OrderInlinePanel
-                  orderId={record.id}
-                  onOpenOrder={() => handleRowOpen(record)}
-                />
-              </div>
-            ),
-          }}
+          rowClassName={() => "clickable-row"}
         />
       </Card>
+
+      <Drawer
+        open={inlineOpen}
+        width={1100}
+        onClose={() => {
+          setInlineOpen(false)
+          setInlineOrder(null)
+        }}
+        title={
+          inlineOrder
+            ? `Панель заказа: ${inlineOrder.order_number || `#${inlineOrder.id}`}`
+            : "Панель заказа"
+        }
+      >
+        {inlineOrder?.id ? (
+          <div className="subtable-shell table-section">
+            <OrderInlinePanel
+              orderId={inlineOrder.id}
+              onOpenOrder={() => handleRowOpen(inlineOrder)}
+            />
+          </div>
+        ) : null}
+      </Drawer>
 
       <OrderDrawer
         open={drawerOpen}

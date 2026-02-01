@@ -2,8 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react"
 import {
   Button,
+  Collapse,
   Empty,
-  Input,
   message,
   Space,
   Table,
@@ -361,27 +361,76 @@ export default function AltOriginalsTable({ originalPartId }) {
     <div className="table-section">
       {headerInfo}
 
-      <Table
-        rowKey="id"
-        className="op-table"
-        size="small"
-        loading={loading}
-        columns={groupColumns}
-        dataSource={groups}
-        pagination={false}
-        tableLayout="fixed"
-        locale={{
-          emptyText: (
-            <Empty description="Нет альтернативных оригиналов" />
-          ),
-        }}
-        expandable={{
-          expandedRowRender: renderItemsTable,
-          columnWidth: 32,
-          expandRowByClick: true,
-          defaultExpandAllRows: true,
-        }}
-      />
+      {groups?.length ? (
+        <Collapse
+          defaultActiveKey={groups.map((g) => String(g.id))}
+          items={groups.map((g) => {
+            const stop = (e) => {
+              e.preventDefault?.()
+              e.stopPropagation?.()
+            }
+            return {
+              key: String(g.id),
+              collapsible: "icon",
+              label: (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    width: "100%",
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ flex: "1 1 auto", minWidth: 0 }} onClick={stop}>
+                    <Text
+                      editable={{
+                        onChange: (next) => updateGroupField(g, "name", next),
+                      }}
+                      type={g.name ? undefined : "secondary"}
+                      strong
+                      style={{ display: "block" }}
+                    >
+                      {g.name || "Без названия"}
+                    </Text>
+
+                    <Text
+                      editable={{
+                        onChange: (next) => updateGroupField(g, "comment", next),
+                      }}
+                      type="secondary"
+                      style={{ display: "block", fontSize: 12 }}
+                    >
+                      {g.comment || "Доп. пояснение (необязательно)"}
+                    </Text>
+                  </div>
+
+                  <Tag>{Array.isArray(g.items) ? g.items.length : 0}</Tag>
+
+                  <div onClick={stop} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Button size="small" onClick={() => openPickerForGroup(g)}>
+                      Добавить детали
+                    </Button>
+                    <Tooltip title="Удалить группу">
+                      <Button
+                        size="small"
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleDeleteGroup(g)}
+                        loading={savingId === g.id}
+                      />
+                    </Tooltip>
+                  </div>
+                </div>
+              ),
+              children: renderItemsTable(g),
+            }
+          })}
+        />
+      ) : (
+        <Empty description="Нет альтернативных оригиналов" />
+      )}
 
       <AltOriginalsPickerDrawer
         open={pickerOpen}

@@ -1,15 +1,15 @@
 // /src/components/originalParts/bundle/BundleTab.jsx
 import React, { useEffect, useMemo, useState } from "react"
-import { Button, Empty, Input, InputNumber, message, Space, Table, Tag, Tooltip, Typography } from "antd"
+import { Button, Collapse, Empty, Input, InputNumber, message, Space, Tag, Tooltip, Typography } from "antd"
 import { StarFilled } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import SupplierPartPickerDrawer from "./SupplierPartPickerDrawer"
 import ActionButtons from "@/components/common/ActionButtons"
+import confirmAction from "@/utils/confirmAction"
 
 const { Text } = Typography
 
 export default function BundleTab({ originalPartId, originalPart }) {
-  const expandColumnWidth = 36
   const [bundleId, setBundleId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [bundleTitle, setBundleTitle] = useState("")
@@ -25,6 +25,7 @@ export default function BundleTab({ originalPartId, originalPart }) {
   const [pickerItem, setPickerItem] = useState(null)
   const [qNewRole, setQNewRole] = useState("")
   const [defaultBusy, setDefaultBusy] = useState(false)
+  const [activeRoleKey, setActiveRoleKey] = useState(null)
 
   // --------------------- загрузка / создание комплекта ---------------------
   const ensureBundle = async () => {
@@ -102,6 +103,44 @@ export default function BundleTab({ originalPartId, originalPart }) {
   const resetBundleMeta = () => {
     setBundleTitle(bundleOriginal.title || "")
     setBundleNote(bundleOriginal.note || "")
+  }
+
+  const deleteBundle = async () => {
+    if (!bundleId) return
+    const { confirmed } = await confirmAction(
+      "Удалить комплект полностью? Будут удалены роли и варианты в этом комплекте.",
+    )
+    if (!confirmed) return
+
+    try {
+      setLoading(true)
+      await axios.delete(`/supplier-bundles/${bundleId}`)
+      message.success("Комплект удалён")
+
+      // 🔁 уведомим вкладку "Поставщики" (связи могли измениться)
+      window.dispatchEvent(
+        new CustomEvent("supplier-links:refresh", { detail: { original_part_id: originalPartId } }),
+      )
+
+      // Перезагрузим состояние для текущей детали
+      setBundleId(null)
+      setBundleTitle("")
+      setBundleNote("")
+      setBundleOriginal({ title: "", note: "" })
+      setItems([])
+      setOptions([])
+      setTotals([])
+      await ensureBundle()
+    } catch (e) {
+      console.error(e)
+      if (e?.response?.status === 409) {
+        message.error(e?.response?.data?.message || "Нельзя удалить: комплект уже используется")
+        return
+      }
+      message.error(e?.response?.data?.message || "Не удалось удалить комплект")
+    } finally {
+      setLoading(false)
+    }
   }
 
   // --------------------- загрузка содержимого ---------------------
@@ -294,75 +333,140 @@ export default function BundleTab({ originalPartId, originalPart }) {
     return m
   }, [options])
 
-  const renderOptionsTable = (item) => {
+  const renderOptions = (item) => {
     const data = optionsByItem.get(item.id) || []
-    const cols = [
-      { title: "Поставщик", dataIndex: "supplier_name", width: 220, render: (_, r) => r.supplier_name || r.name || "—" },
-      { title: "№ у поставщика", dataIndex: "supplier_part_number", width: 180, render: v => v || "—" },
-      { title: "Описание", dataIndex: "description", ellipsis: true, render: (_, r) => r.description ?? r.supplier_part_description ?? "—" },
-      { title: "Цена", dataIndex: "last_price", align: "right", width: 120, render: (v, r) => (v != null ? `${Number(v).toFixed(2)} ${r.last_currency || ""}` : "—") },
-      { title: "Дата", dataIndex: "last_price_date", width: 120, render: (v) => v ? new Date(v).toLocaleDateString() : "—" },
-      { title: "По умолчанию", dataIndex: "is_default", width: 120, render: (v) => v ? <Tag color="green">да</Tag> : <Tag>нет</Tag> },
-      {
-        title: "Действия",
-        key: "act",
-        width: 120,
-        render: (_, r) => (
-          <Space size="small">
-            <Tooltip title="Сделать по умолчанию">
-              <Button
-                size="small"
-                type="text"
-                icon={<StarFilled style={{ color: r.is_default ? '#52c41a' : undefined }} />}
-                disabled={!!r.is_default || defaultBusy}
-                onClick={() => setDefault(r.link_id)}
-                loading={defaultBusy}
-              />
-            </Tooltip>
-            <ActionButtons
-              size="small"
-              onDelete={() => deleteLink(r.link_id)}
-              titles={{ delete: "Удалить" }}
-            />
-          </Space>
-        )
-      }
-    ]
+    if (!data.length) {
+      return (
+        <div style={{ paddingTop: 8, paddingBottom: 8 }}>
+          <Empty description="Нет вариантов для этой роли" />
+        </div>
+      )
+    }
+
+    const headerCellStyle = {
+      fontWeight: 500,
+      fontSize: 12,
+      color: "#374151",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+    }
+
+    const cellBaseStyle = {
+      fontSize: 13,
+      color: "#1f2937",
+      minWidth: 0,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+    }
+
+    const colSupplier = { flex: "0 0 190px" }
+    const colNumber = { flex: "0 0 160px" }
+    const colDesc = { flex: "1 1 auto" }
+    const colPrice = { flex: "0 0 140px", textAlign: "right" }
+    const colDate = { flex: "0 0 110px" }
+    const colDef = { flex: "0 0 120px" }
+    const colActions = { flex: "0 0 110px", display: "flex", justifyContent: "flex-end", gap: 6 }
+
     return (
-      <div className="expanded-area" style={{ paddingLeft: expandColumnWidth }}>
-        <Table rowKey="link_id" className="op-table" size="small" columns={cols} dataSource={data} pagination={false} />
+      <div style={{ paddingTop: 8, paddingBottom: 8 }}>
+        <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
+          {/* header */}
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              padding: "8px 12px",
+              background: "#f3f4f6",
+              borderBottom: "1px solid #e5e7eb",
+            }}
+          >
+            <div style={{ ...colSupplier, ...headerCellStyle }}>Поставщик</div>
+            <div style={{ ...colNumber, ...headerCellStyle }}>№ у поставщика</div>
+            <div style={{ ...colDesc, ...headerCellStyle }}>Описание</div>
+            <div style={{ ...colPrice, ...headerCellStyle }}>Цена</div>
+            <div style={{ ...colDate, ...headerCellStyle }}>Дата</div>
+            <div style={{ ...colDef, ...headerCellStyle }}>По умолчанию</div>
+            <div style={{ ...colActions, ...headerCellStyle }}>Действия</div>
+          </div>
+
+          {/* rows */}
+          {data.map((r, idx) => {
+            const supplierName = r.supplier_name || r.name || "—"
+            const partNumber = r.supplier_part_number || "—"
+            const desc = r.description ?? r.supplier_part_description ?? "—"
+            const price =
+              r.last_price != null
+                ? `${Number(r.last_price).toFixed(2)} ${r.last_currency || ""}`.trim()
+                : "—"
+            const date = r.last_price_date ? new Date(r.last_price_date).toLocaleDateString() : "—"
+
+            return (
+              <div
+                key={r.link_id}
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  padding: "8px 12px",
+                  background: idx % 2 === 0 ? "#ffffff" : "#fafafa",
+                  borderTop: idx === 0 ? "none" : "1px solid #f0f0f0",
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ ...colSupplier, ...cellBaseStyle }}>
+                  <Text ellipsis={{ tooltip: supplierName }} style={{ width: "100%" }}>
+                    {supplierName}
+                  </Text>
+                </div>
+
+                <div style={{ ...colNumber, ...cellBaseStyle }}>
+                  <Text ellipsis={{ tooltip: partNumber }} style={{ width: "100%" }}>
+                    {partNumber}
+                  </Text>
+                </div>
+
+                <div style={{ ...colDesc, ...cellBaseStyle }}>
+                  <Text ellipsis={{ tooltip: desc }} style={{ width: "100%" }}>
+                    {desc}
+                  </Text>
+                </div>
+
+                <div style={{ ...colPrice, ...cellBaseStyle }}>
+                  <Text style={{ width: "100%", display: "block" }}>{price}</Text>
+                </div>
+
+                <div style={{ ...colDate, ...cellBaseStyle }}>
+                  <Text style={{ width: "100%", display: "block" }}>{date}</Text>
+                </div>
+
+                <div style={{ ...colDef, ...cellBaseStyle }}>
+                  {r.is_default ? <Tag color="green">да</Tag> : <Tag>нет</Tag>}
+                </div>
+
+                <div style={colActions}>
+                  <Tooltip title="Сделать по умолчанию">
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<StarFilled style={{ color: r.is_default ? "#52c41a" : undefined }} />}
+                      disabled={!!r.is_default || defaultBusy}
+                      onClick={() => setDefault(r.link_id)}
+                      loading={defaultBusy}
+                    />
+                  </Tooltip>
+                  <ActionButtons
+                    size="small"
+                    onDelete={() => deleteLink(r.link_id)}
+                    titles={{ delete: "Удалить" }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
     )
   }
-
-  const itemColumns = [
-    { title: "Роль", dataIndex: "role_label", width: 240 },
-    {
-      title: "Кол-во",
-      dataIndex: "qty",
-      width: 120,
-      align: "right",
-      render: (v, r) => (
-        <InputNumber
-          min={0.0001}
-          step={0.1}
-          value={Number(v || 1)}
-          onChange={(val) => updateItemQty(r.id, Number(val || 1))}
-        />
-      )
-    },
-    {
-      title: "Действия",
-      key: "actions",
-      width: 220,
-      render: (_, r) => (
-        <Space>
-          <Button size="small" onClick={() => openPicker(r)}>Добавить варианты</Button>
-          <ActionButtons size="small" onDelete={() => deleteItem(r.id)} titles={{ delete: "Удалить роль" }} />
-        </Space>
-      )
-    }
-  ]
 
   if (!originalPartId) {
     return <Empty description="Сначала выберите оригинальную деталь" />
@@ -420,23 +524,72 @@ export default function BundleTab({ originalPartId, originalPart }) {
             />
             <Button onClick={saveBundleMeta} disabled={!metaDirty} loading={bundleSaving}>Сохранить</Button>
             <Button onClick={resetBundleMeta} disabled={!metaDirty || bundleSaving}>Сбросить</Button>
+            <Button danger onClick={deleteBundle} disabled={bundleSaving} loading={loading}>
+              Удалить комплект
+            </Button>
           </Space>
 
-          <Table
-            rowKey="id"
-            className="op-table"
-            size="small"
-            loading={loading && !bundleId}
-            columns={itemColumns}
-            dataSource={items}
-            pagination={false}
-            locale={{ emptyText: <Empty description="Нет ролей в комплекте" /> }}
-            expandable={{
-              expandedRowRender: renderOptionsTable,
-              expandRowByClick: true,
-              columnWidth: expandColumnWidth,
-            }}
-          />
+          {items?.length ? (
+            <Collapse
+              accordion
+              activeKey={activeRoleKey}
+              onChange={(key) => setActiveRoleKey(key || null)}
+              style={{ background: "#fff", borderRadius: 8 }}
+              items={items.map((r) => {
+                const optionsCount = (optionsByItem.get(r.id) || []).length
+                const stop = (e) => {
+                  e.preventDefault?.()
+                  e.stopPropagation?.()
+                }
+                return {
+                  key: String(r.id),
+                  collapsible: "icon", // to avoid toggling while editing qty / pressing actions
+                  label: (
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, width: "100%" }}>
+                      <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+                        <Text strong ellipsis={{ tooltip: r.role_label || "" }} style={{ display: "block" }}>
+                          {r.role_label || "—"}
+                        </Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          Вариантов: {optionsCount}
+                        </Text>
+                      </div>
+
+                      <div onClick={stop}>
+                        <Space size={8} align="center" wrap>
+                          <Text type="secondary" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+                            Кол-во
+                          </Text>
+                          <InputNumber
+                            min={0.0001}
+                            step={0.1}
+                            value={Number(r.qty || 1)}
+                            onChange={(val) => updateItemQty(r.id, Number(val || 1))}
+                          />
+                        </Space>
+                      </div>
+
+                      <div onClick={stop} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Button size="small" onClick={() => openPicker(r)}>
+                          Добавить варианты
+                        </Button>
+                        <ActionButtons
+                          size="small"
+                          onDelete={() => deleteItem(r.id)}
+                          titles={{ delete: "Удалить роль" }}
+                        />
+                      </div>
+                    </div>
+                  ),
+                  children: renderOptions(r),
+                }
+              })}
+            />
+          ) : (
+            <div style={{ padding: 16, border: "1px solid #e5e7eb", borderRadius: 8 }}>
+              <Empty description="Нет ролей в комплекте" />
+            </div>
+          )}
         </>
       ) : (
         <Empty description="Комплект ещё не создан" />

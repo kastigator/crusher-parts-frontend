@@ -228,6 +228,8 @@ export default function LogisticsRoutesMain() {
           search={search}
           onSearch={setSearch}
           placeholder="Поиск по названию, странам, инкотермс"
+          searchWidth="clamp(280px, 42vw, 620px)"
+          searchEnterButton="Найти"
           onRefresh={fetchRoutes}
         />
 

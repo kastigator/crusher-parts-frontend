@@ -3,7 +3,6 @@ import TabsTable from "./TabsTable"
 import UsersTable from "./UsersTable"
 import RolePermissionsMatrix from "./RolePermissionsMatrix"
 import ActiveUsersPanel from "./ActiveUsersPanel"
-import PageWrapper from "@/components/common/PageWrapper"
 import { useAuth } from "@/auth/AuthContext"
 
 export default function UsersMain() {
@@ -20,38 +19,36 @@ export default function UsersMain() {
   }
 
   return (
-    <PageWrapper>
-      <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-        {isAdmin && (
-          <section>
-            <h2 style={{ fontWeight: 600, fontSize: 16, marginBottom: 12 }}>
-              Активные пользователи
-            </h2>
-            <ActiveUsersPanel />
-          </section>
-        )}
-
+    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+      {isAdmin && (
         <section>
           <h2 style={{ fontWeight: 600, fontSize: 16, marginBottom: 12 }}>
-            Таблица вкладок
+            Активные пользователи
           </h2>
-          <TabsTable />
+          <ActiveUsersPanel />
         </section>
+      )}
 
-        <section>
-          <h2 style={{ fontWeight: 600, fontSize: 16, marginBottom: 12 }}>
-            Таблица пользователей
-          </h2>
-          <UsersTable rolesRevision={rolesRevision} />
-        </section>
+      <section>
+        <h2 style={{ fontWeight: 600, fontSize: 16, marginBottom: 12 }}>
+          Таблица вкладок
+        </h2>
+        <TabsTable />
+      </section>
 
-        <section>
-          <h2 style={{ fontWeight: 600, fontSize: 16, marginBottom: 12 }}>
-            Права доступа по ролям
-          </h2>
-          <RolePermissionsMatrix onRolesChanged={handleRolesChanged} />
-        </section>
-      </div>
-    </PageWrapper>
+      <section>
+        <h2 style={{ fontWeight: 600, fontSize: 16, marginBottom: 12 }}>
+          Таблица пользователей
+        </h2>
+        <UsersTable rolesRevision={rolesRevision} />
+      </section>
+
+      <section>
+        <h2 style={{ fontWeight: 600, fontSize: 16, marginBottom: 12 }}>
+          Права доступа по ролям
+        </h2>
+        <RolePermissionsMatrix onRolesChanged={handleRolesChanged} />
+      </section>
+    </div>
   )
 }

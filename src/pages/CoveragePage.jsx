@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { Card, Empty, Select, Space, Table, Tag, Typography, message } from "antd"
+import { Button, Card, Drawer, Empty, Select, Space, Table, Tag, Typography, message } from "antd"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 
@@ -10,6 +10,8 @@ export default function CoveragePage() {
   const [rfqId, setRfqId] = useState(null)
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [detailsRecord, setDetailsRecord] = useState(null)
 
   const loadRfqs = async () => {
     try {
@@ -109,71 +111,13 @@ export default function CoveragePage() {
             loading={loading}
             className="op-table"
             pagination={false}
-            expandable={{
-              expandedRowRender: (record) => {
-                if (!record.components?.length) {
-                  return (
-                    <div style={{ padding: "8px 16px" }}>
-                      <Text type="secondary">Компоненты не определены</Text>
-                    </div>
-                  )
-                }
-                const columns = [
-                  {
-                    title: "Компонент",
-                    dataIndex: "cat_number",
-                    render: (v, r) => (
-                      <div>
-                        <div>{v || "—"}</div>
-                        <Text type="secondary">{r.description || "—"}</Text>
-                      </div>
-                    ),
-                  },
-                  {
-                    title: "Кол-во",
-                    dataIndex: "component_qty",
-                    width: 120,
-                    align: "right",
-                  },
-                  {
-                    title: "Требуется",
-                    dataIndex: "required_qty",
-                    width: 140,
-                    align: "right",
-                  },
-                  {
-                    title: "Поставщики",
-                    dataIndex: "suppliers",
-                    render: (v) => supplierTags(v),
-                  },
-                  {
-                    title: "Ответы",
-                    dataIndex: "responses",
-                    render: (v) => responseTags(v),
-                  },
-                  {
-                    title: "Комплекты",
-                    dataIndex: "bundle_count",
-                    width: 120,
-                    render: (v) => (v ? <Tag>{v}</Tag> : "—"),
-                  },
-                ]
-                return (
-                  <div style={{ padding: "8px 16px" }}>
-                    <Table
-                      rowKey={(r) => String(r.original_part_id)}
-                      className="op-table"
-                      size="small"
-                      columns={columns}
-                      dataSource={record.components}
-                      pagination={false}
-                    />
-                  </div>
-                )
+            onRow={(record) => ({
+              onClick: () => {
+                setDetailsRecord(record)
+                setDetailsOpen(true)
               },
-              rowExpandable: (record) => !!record.components?.length,
-              columnWidth: 36,
-            }}
+              style: { cursor: "pointer" },
+            })}
             columns={[
               { title: "№", dataIndex: "line_number", width: 80 },
               {
@@ -201,10 +145,95 @@ export default function CoveragePage() {
                 width: 110,
                 render: (v) => (v ? <Tag>{v}</Tag> : "—"),
               },
+              {
+                title: "Детали",
+                key: "details",
+                width: 110,
+                render: (_v, r) => (
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setDetailsRecord(r)
+                      setDetailsOpen(true)
+                    }}
+                  >
+                    Открыть
+                  </Button>
+                ),
+              },
             ]}
           />
         )}
       </Space>
+
+      <Drawer
+        open={detailsOpen}
+        onClose={() => {
+          setDetailsOpen(false)
+          setDetailsRecord(null)
+        }}
+        width={980}
+        title={
+          detailsRecord
+            ? `Покрытие: ${detailsRecord.original_cat_number || detailsRecord.client_part_number || "позиция"}`
+            : "Покрытие"
+        }
+      >
+        {!detailsRecord?.components?.length ? (
+          <Text type="secondary">Компоненты не определены</Text>
+        ) : (
+          <Table
+            rowKey={(r) => String(r.original_part_id)}
+            className="op-table"
+            size="small"
+            pagination={false}
+            dataSource={detailsRecord.components}
+            columns={[
+              {
+                title: "Компонент",
+                dataIndex: "cat_number",
+                render: (v, r) => (
+                  <div>
+                    <div>{v || "—"}</div>
+                    <Text type="secondary">{r.description || "—"}</Text>
+                  </div>
+                ),
+              },
+              {
+                title: "Кол-во",
+                dataIndex: "component_qty",
+                width: 120,
+                align: "right",
+              },
+              {
+                title: "Требуется",
+                dataIndex: "required_qty",
+                width: 140,
+                align: "right",
+              },
+              {
+                title: "Поставщики",
+                dataIndex: "suppliers",
+                render: (v) => supplierTags(v),
+              },
+              {
+                title: "Ответы",
+                dataIndex: "responses",
+                render: (v) => responseTags(v),
+              },
+              {
+                title: "Комплекты",
+                dataIndex: "bundle_count",
+                width: 120,
+                render: (v) => (v ? <Tag>{v}</Tag> : "—"),
+              },
+            ]}
+          />
+        )}
+      </Drawer>
     </PageWrapper>
   )
 }
