@@ -36,10 +36,12 @@ import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import dayjs from "dayjs"
 import confirmAction from "@/utils/confirmAction"
+import { useAuth } from "@/auth/AuthContext"
 
 const STATUS_OPTIONS = [
   { value: "draft", label: "Черновик" },
   { value: "in_progress", label: "В работе" },
+  { value: "released_to_procurement", label: "Релиз в закупку" },
   { value: "rfq_created", label: "RFQ создан" },
   { value: "rfq_sent", label: "RFQ отправлен" },
   { value: "responses_received", label: "Ответы получены" },
@@ -88,6 +90,7 @@ const IMPORT_REQUIRED_FIELDS = ["cat_number", "requested_qty"]
 const STATUS_COLORS = {
   draft: "default",
   in_progress: "blue",
+  released_to_procurement: "orange",
   rfq_created: "geekblue",
   rfq_sent: "gold",
   responses_received: "green",
@@ -100,6 +103,7 @@ const STATUS_COLORS = {
 const STATUS_STEPS = [
   { key: "draft", title: "Черновик" },
   { key: "in_progress", title: "В работе" },
+  { key: "released_to_procurement", title: "Релиз в закупку" },
   { key: "rfq_created", title: "RFQ создан" },
   { key: "rfq_sent", title: "RFQ отправлен" },
   { key: "responses_received", title: "Ответы" },
@@ -114,6 +118,7 @@ const getStatusStepIndex = (status) => {
 }
 
 export default function ClientRequestsPage() {
+  const { user } = useAuth()
   const [requests, setRequests] = useState([])
   const [clients, setClients] = useState([])
   const [users, setUsers] = useState([])
@@ -500,12 +505,16 @@ export default function ClientRequestsPage() {
     return parsed.isValid() ? parsed.format("YYYY-MM-DD") : null
   }
 
+  const role = String(user?.role || "").toLowerCase()
+  const canRelease = ["admin", "prodavec", "nachalnik-otdela-zakupok"].includes(role)
+
   const handleCreate = async (values) => {
     try {
       const payload = {
         client_id: values.client_id,
         source_type: values.source_type || null,
         received_at: formatDateTimeValue(values.received_at),
+        processing_deadline: formatDateValue(values.processing_deadline),
         assigned_to_user_id: values.assigned_to_user_id || null,
         internal_number: normalizeTextValue(values.internal_number),
         client_reference: values.client_reference || null,
@@ -547,7 +556,7 @@ export default function ClientRequestsPage() {
       loadRequests()
     } catch (e) {
       console.error(e)
-      message.error("Не удалось создать заявку")
+      message.error(e?.response?.data?.message || "Не удалось создать заявку")
     }
   }
 
@@ -620,6 +629,7 @@ export default function ClientRequestsPage() {
       comment_internal: record.comment_internal || null,
       comment_client: record.comment_client || null,
       received_at: record.received_at ? dayjs(record.received_at) : null,
+      processing_deadline: record.processing_deadline ? dayjs(record.processing_deadline) : null,
     })
     await loadContacts(record.client_id, false)
     await loadRevisions(record.id)
@@ -1525,6 +1535,7 @@ export default function ClientRequestsPage() {
       const payload = {
         source_type: values.source_type || null,
         received_at: formatDateTimeValue(values.received_at),
+        processing_deadline: formatDateValue(values.processing_deadline),
         assigned_to_user_id: values.assigned_to_user_id || null,
         internal_number: normalizeTextValue(values.internal_number),
         client_reference: values.client_reference || null,
@@ -1544,7 +1555,23 @@ export default function ClientRequestsPage() {
       await loadRequests()
     } catch (e) {
       console.error(e)
-      message.error("Не удалось обновить заявку")
+      message.error(e?.response?.data?.message || "Не удалось обновить заявку")
+    }
+  }
+
+  const handleReleaseRequest = async () => {
+    if (!activeRequest?.id) return
+    const { confirmed } = await confirmAction("Отправить релиз заявки в закупку? После отправки заявка будет заблокирована для изменений.")
+    if (!confirmed) return
+    try {
+      const { data } = await axios.post(`/client-requests/${activeRequest.id}/release`)
+      setActiveRequest(data?.request || activeRequest)
+      message.success("Релиз отправлен")
+      await loadRequests()
+      await openWorkspace(data?.request || activeRequest)
+    } catch (e) {
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось отправить релиз")
     }
   }
 
@@ -1661,7 +1688,7 @@ export default function ClientRequestsPage() {
   const formatDateTime = (value) => {
     if (!value) return "—"
     const parsed = dayjs(value)
-    return parsed.isValid() ? parsed.format("DD/MM/YYYY") : value
+    return parsed.isValid() ? parsed.format("DD.MM.YYYY") : value
   }
 
   const latestRevisionId = useMemo(() => {
@@ -1673,6 +1700,10 @@ export default function ClientRequestsPage() {
   }, [revisions])
   const activeRevision = revisions.find((rev) => rev.id === activeRevisionId) || null
   const isLatestRevision = !latestRevisionId || activeRevisionId === latestRevisionId
+  const isReleasedLocked = !!(
+    activeRequest?.is_locked_after_release ||
+    activeRequest?.released_to_procurement_at
+  )
   const activeRevisionLabel = activeRevision?.rev_number
     ? `Ревизия ${activeRevision.rev_number}`
     : "Ревизий нет"
@@ -1734,6 +1765,11 @@ export default function ClientRequestsPage() {
         ) : (
           "—"
         ),
+    },
+    {
+      title: "Дедлайн",
+      dataIndex: "processing_deadline",
+      render: formatDateTime,
     },
     { title: "Референс клиента", dataIndex: "client_reference" },
     { title: "Контакт", dataIndex: "contact_name" },
@@ -1977,7 +2013,7 @@ export default function ClientRequestsPage() {
       render: (_, row) => (
         <DatePicker
           value={row.required_date ? dayjs(row.required_date) : null}
-          format="DD/MM/YYYY"
+          format="DD.MM.YYYY"
           onChange={(value) =>
             updateStagedRow(row.id, { required_date: value })
           }
@@ -2038,7 +2074,7 @@ export default function ClientRequestsPage() {
   return (
     <PageWrapper
       title="Заявки клиентов"
-      helpText="Статусы: Черновик → В работе → RFQ создан → RFQ отправлен → Ответы → Выбор → КП → Контракт."
+      helpText="Статусы: Черновик → В работе → Релиз в закупку → RFQ создан → RFQ отправлен → Ответы → Выбор → КП → Контракт."
     >
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
         <Card title="Новая заявка" size="small">
@@ -2118,9 +2154,12 @@ export default function ClientRequestsPage() {
                       <Form.Item label="Дата получения" name="received_at">
                         <DatePicker
                           style={{ width: 200 }}
-                          format="DD/MM/YYYY"
-                          placeholder="ДД/ММ/ГГГГ"
+                          format="DD.MM.YYYY"
+                          placeholder="ДД.ММ.ГГГГ"
                         />
+                      </Form.Item>
+                      <Form.Item label="Дедлайн обработки" name="processing_deadline">
+                        <DatePicker style={{ width: 200 }} format="DD.MM.YYYY" />
                       </Form.Item>
                       <Form.Item
                         label="Контакт"
@@ -2229,6 +2268,14 @@ export default function ClientRequestsPage() {
                   <Text type="secondary">
                     {activeRevisionLabel} ({activeRevisionDate})
                   </Text>
+                  {isReleasedLocked ? <Tag color="orange">Заблокирована после релиза</Tag> : null}
+                </Space>
+                <Space>
+                  {canRelease && !isReleasedLocked ? (
+                    <Button type="primary" onClick={handleReleaseRequest}>
+                      Отправить релиз
+                    </Button>
+                  ) : null}
                 </Space>
               </Space>
 
@@ -2289,7 +2336,7 @@ export default function ClientRequestsPage() {
                               <Button
                                 type="primary"
                                 onClick={() => createRevisionAndEnterEdit()}
-                                disabled={!isLatestRevision}
+                                disabled={!isLatestRevision || isReleasedLocked}
                               >
                                 Создать ревизию
                               </Button>
@@ -2300,7 +2347,7 @@ export default function ClientRequestsPage() {
                                 setStagedRows([])
                                 resetImportState()
                               }}
-                              disabled={!isLatestRevision}
+                              disabled={!isLatestRevision || isReleasedLocked}
                             >
                               Импорт из Excel
                             </Button>
@@ -2508,6 +2555,9 @@ export default function ClientRequestsPage() {
                                     received_at: activeRequest?.received_at
                                       ? dayjs(activeRequest.received_at)
                                       : null,
+                                    processing_deadline: activeRequest?.processing_deadline
+                                      ? dayjs(activeRequest.processing_deadline)
+                                      : null,
                                   })
                                 }}
                               >
@@ -2517,6 +2567,7 @@ export default function ClientRequestsPage() {
                           ) : (
                             <Button
                               icon={<EditOutlined />}
+                              disabled={isReleasedLocked}
                               onClick={() => setRequestEditing(true)}
                             >
                               Редактировать
@@ -2564,7 +2615,14 @@ export default function ClientRequestsPage() {
                             <Form.Item label="Дата получения" name="received_at">
                               <DatePicker
                                 style={{ width: 200 }}
-                                format="DD/MM/YYYY"
+                                format="DD.MM.YYYY"
+                                disabled={!requestEditing}
+                              />
+                            </Form.Item>
+                            <Form.Item label="Дедлайн обработки" name="processing_deadline">
+                              <DatePicker
+                                style={{ width: 200 }}
+                                format="DD.MM.YYYY"
                                 disabled={!requestEditing}
                               />
                             </Form.Item>
@@ -2789,7 +2847,7 @@ export default function ClientRequestsPage() {
               <Input style={{ width: 140 }} />
             </Form.Item>
             <Form.Item label="Срок" name="required_date">
-              <DatePicker style={{ width: 160 }} format="DD/MM/YYYY" />
+              <DatePicker style={{ width: 160 }} format="DD.MM.YYYY" />
             </Form.Item>
             <Form.Item name="oem_only" valuePropName="checked">
               <Checkbox>OEM только</Checkbox>

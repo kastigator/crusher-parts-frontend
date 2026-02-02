@@ -184,14 +184,6 @@ export default function RfqWorkspacePage() {
 
   useEffect(() => {
     loadRfqs()
-    const loadRequests = async () => {
-      try {
-        const { data } = await axios.get("/client-requests")
-        setRequests(Array.isArray(data) ? data : [])
-      } catch (e) {
-        console.error(e)
-      }
-    }
     const loadSuppliers = async () => {
       try {
         const { data } = await axios.get("/suppliers")
@@ -200,17 +192,7 @@ export default function RfqWorkspacePage() {
         console.error(e)
       }
     }
-    const loadUsers = async () => {
-      try {
-        const { data } = await axios.get("/users")
-        setUsers(Array.isArray(data) ? data : [])
-      } catch (e) {
-        console.error(e)
-      }
-    }
-    loadRequests()
     loadSuppliers()
-    loadUsers()
   }, [])
 
   useEffect(() => {
@@ -1664,56 +1646,9 @@ export default function RfqWorkspacePage() {
   return (
     <PageWrapper
       title="RFQ Workspace"
-      helpText="Сквозной поток по RFQ: от заявки до заказа поставщику."
+      helpText="Сквозной поток по RFQ: от назначенного релиза заявки до заказа поставщику."
     >
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
-        <Card size="small" title="Создать RFQ">
-          <Form form={createForm} layout="vertical" onFinish={handleCreateRfq}>
-            <Space wrap align="start">
-              <Form.Item label="Заявка" name="client_request_id">
-                <Select
-                  style={{ width: 260 }}
-                  options={requestOptions}
-                  showSearch
-                  optionFilterProp="label"
-                  onChange={(val) => {
-                    createForm.setFieldsValue({ client_request_revision_id: null })
-                    loadRevisions(val)
-                  }}
-                />
-              </Form.Item>
-              <Form.Item
-                label="Ревизия"
-                name="client_request_revision_id"
-                rules={[{ required: true, message: "Выберите ревизию" }]}
-              >
-                <Select style={{ width: 180 }} options={revisionOptions} />
-              </Form.Item>
-              <Form.Item label="Ответственный (RFQ)" name="assigned_to_user_id">
-                <Select
-                  style={{ width: 220 }}
-                  options={userOptions}
-                  showSearch
-                  optionFilterProp="label"
-                  placeholder="Назначить"
-                  allowClear
-                />
-              </Form.Item>
-              <Form.Item label="Номер RFQ" name="rfq_number">
-                <Input style={{ width: 180 }} placeholder="Например RFQ-21" />
-              </Form.Item>
-              <Form.Item label="Комментарий" name="note">
-                <Input style={{ width: 240 }} />
-              </Form.Item>
-              <Form.Item style={{ marginTop: 30 }}>
-                <Button type="primary" htmlType="submit">
-                  Создать RFQ
-                </Button>
-              </Form.Item>
-            </Space>
-          </Form>
-        </Card>
-
         <Card size="small" title="RFQ список">
           <Space wrap align="center" style={{ marginBottom: 12 }}>
             <Select
