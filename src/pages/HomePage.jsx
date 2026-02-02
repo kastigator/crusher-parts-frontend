@@ -1,13 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Button,
   Card,
-  Col,
+  Checkbox,
   DatePicker,
   Empty,
   Form,
   Modal,
-  Row,
   Segmented,
   Select,
   Space,
@@ -39,6 +38,7 @@ const statusLabel = (value) => {
     selection_done: "Выбор сделан",
     quote_prepared: "КП подготовлено",
     contracted: "Контракт",
+    cancelled: "Отменено",
   }
   return labels[value] || value
 }
@@ -50,6 +50,8 @@ const statusColor = (value) => {
   if (value === "sent" || value === "rfq_sent") return "blue"
   if (value === "responded" || value === "responses_received") return "green"
   if (value === "rfq_created") return "geekblue"
+  if (value === "contracted") return "purple"
+  if (value === "cancelled") return "red"
   if (value === "draft") return "default"
   return "gold"
 }
@@ -62,6 +64,23 @@ const formatDate = (value) => {
     return "—"
   }
 }
+
+const CLOSED_REQUEST_STATUSES = ["contracted", "cancelled"]
+
+const REQUEST_STATUS_ORDER = [
+  "draft",
+  "in_progress",
+  "released_to_procurement",
+  "rfq_created",
+  "rfq_sent",
+  "responses_received",
+  "selection_done",
+  "quote_prepared",
+  "contracted",
+  "cancelled",
+]
+
+const RFQ_STATUS_ORDER = ["draft", "structured", "sent"]
 
 const deadlineIndicator = (value) => {
   if (!value) return { color: "default", text: "Без дедлайна" }
@@ -78,7 +97,7 @@ const HomePage = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [summary, setSummary] = useState(null)
-  const [notifications, setNotifications] = useState([])
+  const [assignmentCountMap, setAssignmentCountMap] = useState({})
   const [loading, setLoading] = useState(false)
   const [assignModalOpen, setAssignModalOpen] = useState(false)
   const [assignSubmitting, setAssignSubmitting] = useState(false)
@@ -86,68 +105,76 @@ const HomePage = () => {
   const [rfqDeadlineFilter, setRfqDeadlineFilter] = useState("all")
   const [assignForm] = Form.useForm()
 
+  const [requestsScope, setRequestsScope] = useState("current")
+  const [requestsStage, setRequestsStage] = useState("all")
+  const [requestsDeadline, setRequestsDeadline] = useState("all")
+  const [requestsOnlyNew, setRequestsOnlyNew] = useState(false)
+
+  const [rfqsScope, setRfqsScope] = useState("current")
+  const [rfqsStage, setRfqsStage] = useState("all")
+  const [rfqsDeadline, setRfqsDeadline] = useState("all")
+  const [rfqsOnlyNew, setRfqsOnlyNew] = useState(false)
+
   const role = String(user?.role || "").toLowerCase()
   const manager = role === "admin" || role === "nachalnik-otdela-zakupok"
 
-  const fetchSummary = async () => {
+  const buildAssignmentMap = useCallback((rows) => {
+    const next = {}
+    ;(Array.isArray(rows) ? rows : []).forEach((r) => {
+      const entityType = String(r.entity_type || "").trim()
+      const entityId = Number(r.entity_id)
+      if (!entityType || !Number.isFinite(entityId) || entityId <= 0) return
+      const key = `${entityType}:${entityId}`
+      const cnt = Number(r.cnt) || 0
+      if (cnt > 0) next[key] = cnt
+    })
+    return next
+  }, [])
+
+  const assignmentCountFor = useCallback(
+    (entityType, entityId) => Number(assignmentCountMap[`${entityType}:${Number(entityId)}`]) || 0,
+    [assignmentCountMap],
+  )
+
+  const fetchSummary = useCallback(async () => {
     setLoading(true)
     try {
       const { data } = await axios.get("/dashboard/summary")
       setSummary(data || null)
+      setAssignmentCountMap(buildAssignmentMap(data?.assignment_notification_counts))
     } catch (e) {
       console.error("dashboard summary error", e)
       message.error("Не удалось загрузить дашборд")
     } finally {
       setLoading(false)
     }
-  }
+  }, [buildAssignmentMap])
 
-  const fetchNotifications = async () => {
-    try {
-      const { data } = await axios.get("/dashboard/notifications", { params: { limit: 20 } })
-      setNotifications(Array.isArray(data?.notifications) ? data.notifications : [])
-    } catch (e) {
-      console.error("dashboard notifications error", e)
-    }
-  }
-
-  const openNotification = async (note) => {
-    if (!note) return
-    try {
-      await axios.post(`/dashboard/notifications/${note.id}/read`)
-      setNotifications((prev) => prev.filter((n) => n.id !== note.id))
-    } catch (e) {
-      console.error("mark notification read error", e)
-    }
-
-    if (note.entity_type === "client_request") {
-      navigate("/client-request-workspace")
-      return
-    }
-    if (note.entity_type === "rfq") {
-      navigate("/rfq-workspace")
-      return
-    }
-  }
-
-  const markNotificationsForEntity = async (entityType, entityId) => {
+  const markNotificationsReadForEntity = async (entityType, entityId, type) => {
     if (!entityType || !entityId) return
-    const targets = notifications.filter(
-      (n) => n.entity_type === entityType && Number(n.entity_id) === Number(entityId),
-    )
-    if (!targets.length) return
-    await Promise.all(
-      targets.map((n) => axios.post(`/dashboard/notifications/${n.id}/read`).catch(() => null)),
-    )
-    setNotifications((prev) =>
-      prev.filter((n) => !(n.entity_type === entityType && Number(n.entity_id) === Number(entityId))),
-    )
+    try {
+      await axios.post("/dashboard/notifications/mark-read", {
+        entity_type: entityType,
+        entity_id: entityId,
+        type: type || undefined,
+      })
+      if (type === "assignment") {
+        setAssignmentCountMap((prev) => {
+          const key = `${entityType}:${Number(entityId)}`
+          if (!prev[key]) return prev
+          const next = { ...prev }
+          delete next[key]
+          return next
+        })
+      }
+    } catch (e) {
+      console.error("mark notifications read for entity error", e)
+    }
   }
 
   useEffect(() => {
     fetchSummary()
-    fetchNotifications()
-  }, [])
+  }, [fetchSummary])
 
   const assignedRequests = summary?.assigned_requests || []
   const assignedRfqs = summary?.assigned_rfqs || []
@@ -174,63 +201,223 @@ const HomePage = () => {
     () =>
       rfqAssignees.map((u) => ({
         value: u.id,
-        label: `${u.full_name || u.username || `#${u.id}`}${u.role ? ` · ${u.role}` : ""}`,
+        label: `${u.full_name || u.username || `#${u.id}`}${
+          u.role_name || u.role_slug ? ` · ${u.role_name || u.role_slug}` : ""
+        }`,
       })),
     [rfqAssignees],
   )
 
+  const requestStageOptions = useMemo(() => {
+    const stages =
+      requestsScope === "closed"
+        ? REQUEST_STATUS_ORDER.filter((s) => CLOSED_REQUEST_STATUSES.includes(s))
+        : requestsScope === "current"
+          ? REQUEST_STATUS_ORDER.filter((s) => !CLOSED_REQUEST_STATUSES.includes(s))
+          : REQUEST_STATUS_ORDER
+
+    return [
+      { value: "all", label: "Все стадии" },
+      ...stages.map((s) => ({ value: s, label: statusLabel(s) })),
+    ]
+  }, [requestsScope])
+
+  useEffect(() => {
+    if (requestsStage === "all") return
+    if (requestStageOptions.some((o) => o.value === requestsStage)) return
+    setRequestsStage("all")
+  }, [requestsStage, requestStageOptions])
+
+  const rfqStageOptions = useMemo(() => {
+    return [
+      { value: "all", label: "Все стадии" },
+      ...RFQ_STATUS_ORDER.map((s) => ({ value: s, label: statusLabel(s) })),
+    ]
+  }, [])
+
+  useEffect(() => {
+    if (rfqsStage === "all") return
+    if (rfqStageOptions.some((o) => o.value === rfqsStage)) return
+    setRfqsStage("all")
+  }, [rfqsStage, rfqStageOptions])
+
+  const applyDeadlineFilter = (rows, deadlineValue, deadlineField) => {
+    if (deadlineValue === "all") return rows
+    const today = dayjs().startOf("day")
+    return rows.filter((row) => {
+      const deadlineRaw = row?.[deadlineField]
+      const deadline = deadlineRaw ? dayjs(deadlineRaw).startOf("day") : null
+      if (deadlineValue === "no_deadline") return !deadline || !deadline.isValid()
+      if (!deadline || !deadline.isValid()) return false
+      const diff = deadline.diff(today, "day")
+      if (deadlineValue === "overdue") return diff < 0
+      if (deadlineValue === "due_3_days") return diff >= 0 && diff <= 3
+      return true
+    })
+  }
+
+  const filteredAssignedRequests = useMemo(() => {
+    let rows = Array.isArray(assignedRequests) ? assignedRequests : []
+    if (requestsScope === "current") {
+      rows = rows.filter((r) => !CLOSED_REQUEST_STATUSES.includes(String(r.status || "")))
+    } else if (requestsScope === "closed") {
+      rows = rows.filter((r) => CLOSED_REQUEST_STATUSES.includes(String(r.status || "")))
+    }
+    if (requestsStage !== "all") rows = rows.filter((r) => String(r.status || "") === requestsStage)
+    if (requestsScope !== "closed") {
+      rows = applyDeadlineFilter(rows, requestsDeadline, "processing_deadline")
+    }
+    if (requestsOnlyNew) {
+      rows = rows.filter((r) => assignmentCountFor("client_request", r.id) > 0)
+    }
+    return rows
+  }, [
+    assignedRequests,
+    requestsScope,
+    requestsStage,
+    requestsDeadline,
+    requestsOnlyNew,
+    assignmentCountMap,
+  ])
+
+  const filteredAssignedRfqs = useMemo(() => {
+    let rows = Array.isArray(assignedRfqs) ? assignedRfqs : []
+    if (rfqsScope === "current") {
+      rows = rows.filter(
+        (r) => !CLOSED_REQUEST_STATUSES.includes(String(r.client_request_status || "")),
+      )
+    } else if (rfqsScope === "closed") {
+      rows = rows.filter((r) =>
+        CLOSED_REQUEST_STATUSES.includes(String(r.client_request_status || "")),
+      )
+    }
+    if (rfqsStage !== "all") rows = rows.filter((r) => String(r.status || "") === rfqsStage)
+    if (rfqsScope !== "closed") {
+      rows = applyDeadlineFilter(rows, rfqsDeadline, "processing_deadline")
+    }
+    if (rfqsOnlyNew) rows = rows.filter((r) => assignmentCountFor("rfq", r.id) > 0)
+    return rows
+  }, [assignedRfqs, rfqsScope, rfqsStage, rfqsDeadline, rfqsOnlyNew, assignmentCountMap])
+
   const requestColumns = useMemo(
     () => [
-      { title: "Заявка", dataIndex: "internal_number", key: "internal_number" },
-      { title: "Клиент", dataIndex: "client_name", key: "client_name" },
+      {
+        title: "",
+        key: "new_marker",
+        width: 90,
+        fixed: "left",
+        render: (_, record) => {
+          const cnt = Number(assignmentCountMap[`client_request:${Number(record.id)}`]) || 0
+          if (!cnt) return null
+          return <Tag color="blue">{cnt > 1 ? `Новое (${cnt})` : "Новое"}</Tag>
+        },
+      },
+      {
+        title: "Заявка",
+        dataIndex: "internal_number",
+        key: "internal_number",
+        width: 170,
+        fixed: "left",
+        ellipsis: true,
+      },
+      { title: "Клиент", dataIndex: "client_name", key: "client_name", width: 220, ellipsis: true },
       {
         title: "Статус",
         dataIndex: "status",
         key: "status",
+        width: 160,
         render: (value) => <Tag color={statusColor(value)}>{statusLabel(value)}</Tag>,
       },
-      { title: "Создано", dataIndex: "created_at", key: "created_at", render: formatDate },
-    ],
-    [],
-  )
-
-  const rfqColumns = useMemo(
-    () => [
-      { title: "RFQ", dataIndex: "rfq_number", key: "rfq_number" },
-      { title: "Заявка", dataIndex: "client_request_number", key: "client_request_number" },
-      { title: "Клиент", dataIndex: "client_name", key: "client_name" },
-      {
-        title: "Статус",
-        dataIndex: "status",
-        key: "status",
-        render: (value) => <Tag color={statusColor(value)}>{statusLabel(value)}</Tag>,
-      },
-      { title: "Создано", dataIndex: "created_at", key: "created_at", render: formatDate },
-    ],
-    [],
-  )
-
-  const releaseColumns = useMemo(
-    () => [
-      { title: "Заявка", dataIndex: "internal_number", key: "internal_number" },
-      { title: "Клиент", dataIndex: "client_name", key: "client_name" },
-      { title: "Поступила", dataIndex: "received_at", key: "received_at", render: formatDate },
       {
         title: "Дедлайн",
         dataIndex: "processing_deadline",
         key: "processing_deadline",
+        width: 120,
+        render: formatDate,
+      },
+      {
+        title: "Контроль срока",
+        dataIndex: "processing_deadline",
+        key: "deadline_indicator",
+        width: 160,
+        render: (value) => {
+          const indicator = deadlineIndicator(value)
+          return <Tag color={indicator.color}>{indicator.text}</Tag>
+        },
+      },
+      { title: "Создано", dataIndex: "created_at", key: "created_at", width: 120, render: formatDate },
+    ],
+    [assignmentCountMap],
+  )
+
+  const rfqColumns = useMemo(
+    () => [
+      {
+        title: "",
+        key: "new_marker",
+        width: 90,
+        fixed: "left",
+        render: (_, record) => {
+          const cnt = Number(assignmentCountMap[`rfq:${Number(record.id)}`]) || 0
+          if (!cnt) return null
+          return <Tag color="blue">{cnt > 1 ? `Новое (${cnt})` : "Новое"}</Tag>
+        },
+      },
+      { title: "RFQ", dataIndex: "rfq_number", key: "rfq_number", width: 190, fixed: "left", ellipsis: true },
+      { title: "Клиент", dataIndex: "client_name", key: "client_name", width: 220, ellipsis: true },
+      {
+        title: "Статус",
+        dataIndex: "status",
+        key: "status",
+        width: 140,
+        render: (value) => <Tag color={statusColor(value)}>{statusLabel(value)}</Tag>,
+      },
+      {
+        title: "Дедлайн",
+        dataIndex: "processing_deadline",
+        key: "processing_deadline",
+        width: 120,
+        render: formatDate,
+      },
+      {
+        title: "Контроль срока",
+        dataIndex: "processing_deadline",
+        key: "deadline_indicator",
+        width: 160,
+        render: (value) => {
+          const indicator = deadlineIndicator(value)
+          return <Tag color={indicator.color}>{indicator.text}</Tag>
+        },
+      },
+      { title: "Создано", dataIndex: "created_at", key: "created_at", width: 120, render: formatDate },
+    ],
+    [assignmentCountMap],
+  )
+
+  const releaseColumns = useMemo(
+    () => [
+      { title: "Заявка", dataIndex: "internal_number", key: "internal_number", width: 170, fixed: "left", ellipsis: true },
+      { title: "Клиент", dataIndex: "client_name", key: "client_name", width: 220, ellipsis: true },
+      { title: "Поступила", dataIndex: "received_at", key: "received_at", width: 120, render: formatDate },
+      {
+        title: "Дедлайн",
+        dataIndex: "processing_deadline",
+        key: "processing_deadline",
+        width: 120,
         render: formatDate,
       },
       {
         title: "Релиз",
         dataIndex: "released_to_procurement_at",
         key: "released_to_procurement_at",
+        width: 120,
         render: formatDate,
       },
       {
         title: "Кем отправлен",
         dataIndex: "released_by_name",
         key: "released_by_name",
+        width: 200,
         render: (value) => value || "—",
       },
       {
@@ -263,37 +450,42 @@ const HomePage = () => {
 
   const managerRfqColumns = useMemo(
     () => [
-      { title: "RFQ", dataIndex: "rfq_number", key: "rfq_number" },
-      { title: "Заявка", dataIndex: "client_request_number", key: "client_request_number" },
-      { title: "Клиент", dataIndex: "client_name", key: "client_name" },
+      { title: "RFQ", dataIndex: "rfq_number", key: "rfq_number", width: 190, fixed: "left", ellipsis: true },
+      { title: "Заявка", dataIndex: "client_request_number", key: "client_request_number", width: 150, ellipsis: true },
+      { title: "Клиент", dataIndex: "client_name", key: "client_name", width: 220, ellipsis: true },
       {
         title: "Кем релиз",
         dataIndex: "released_by_name",
         key: "released_by_name",
+        width: 200,
         render: (value) => value || "—",
       },
       {
         title: "Ответственный",
         dataIndex: "assigned_user_name",
         key: "assigned_user_name",
+        width: 200,
         render: (value) => value || "—",
       },
       {
         title: "Статус",
         dataIndex: "status",
         key: "status",
+        width: 140,
         render: (value) => <Tag color={statusColor(value)}>{statusLabel(value)}</Tag>,
       },
       {
         title: "Дедлайн",
         dataIndex: "processing_deadline",
         key: "processing_deadline",
+        width: 120,
         render: formatDate,
       },
       {
         title: "Контроль срока",
         dataIndex: "processing_deadline",
         key: "deadline_indicator",
+        width: 160,
         render: (value) => {
           const indicator = deadlineIndicator(value)
           return <Tag color={indicator.color}>{indicator.text}</Tag>
@@ -340,7 +532,6 @@ const HomePage = () => {
             icon={<ReloadOutlined />}
             onClick={() => {
               fetchSummary()
-              fetchNotifications()
             }}
           >
             Обновить
@@ -356,10 +547,12 @@ const HomePage = () => {
               rowKey="id"
               pagination={{ pageSize: 10 }}
               loading={loading}
+              tableLayout="fixed"
+              scroll={{ x: "max-content" }}
               locale={{ emptyText: <Empty description="Нет релизов, ожидающих назначения" /> }}
               onRow={(record) => ({
                 onClick: async () => {
-                  await markNotificationsForEntity("client_request", record.id)
+                  await markNotificationsReadForEntity("client_request", record.id)
                   navigate("/client-request-workspace")
                 },
                 style: { cursor: "pointer" },
@@ -390,10 +583,12 @@ const HomePage = () => {
               rowKey="id"
               pagination={{ pageSize: 10 }}
               loading={loading}
+              tableLayout="fixed"
+              scroll={{ x: "max-content" }}
               locale={{ emptyText: <Empty description="Нет RFQ для контроля" /> }}
               onRow={(record) => ({
                 onClick: async () => {
-                  await markNotificationsForEntity("rfq", record.id)
+                  await markNotificationsReadForEntity("rfq", record.id)
                   navigate("/rfq-workspace")
                 },
                 style: { cursor: "pointer" },
@@ -402,70 +597,110 @@ const HomePage = () => {
           </Card>
         ) : null}
 
-        <Row gutter={[16, 16]}>
-          <Col xs={24} lg={12}>
-            <Card size="small" title="Заявки, где я ответственный">
-              <Table
-                size="small"
-                columns={requestColumns}
-                dataSource={assignedRequests}
-                rowKey="id"
-                pagination={false}
-                locale={{ emptyText: <Empty description="Нет назначенных заявок" /> }}
-                loading={loading}
-                onRow={(record) => ({
-                  onClick: async () => {
-                    await markNotificationsForEntity("client_request", record.id)
-                    navigate("/client-request-workspace")
-                  },
-                  style: { cursor: "pointer" },
-                })}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} lg={12}>
-            <Card size="small" title="RFQ, где я ответственный">
-              <Table
-                size="small"
-                columns={rfqColumns}
-                dataSource={assignedRfqs}
-                rowKey="id"
-                pagination={false}
-                locale={{ emptyText: <Empty description="Нет назначенных RFQ" /> }}
-                loading={loading}
-                onRow={(record) => ({
-                  onClick: async () => {
-                    await markNotificationsForEntity("rfq", record.id)
-                    navigate("/rfq-workspace")
-                  },
-                  style: { cursor: "pointer" },
-                })}
-              />
-            </Card>
-          </Col>
-        </Row>
+        <Card size="small" title="Заявки, где я ответственный">
+          <Space style={{ marginBottom: 12 }} wrap>
+            <Text type="secondary">Показать:</Text>
+            <Segmented
+              value={requestsScope}
+              onChange={setRequestsScope}
+              options={[
+                { label: "Текущие", value: "current" },
+                { label: "Закрытые", value: "closed" },
+                { label: "Все", value: "all" },
+              ]}
+            />
+            <Select
+              value={requestsStage}
+              onChange={setRequestsStage}
+              options={requestStageOptions}
+              style={{ minWidth: 190 }}
+            />
+            <Segmented
+              value={requestsDeadline}
+              onChange={setRequestsDeadline}
+              disabled={requestsScope === "closed"}
+              options={[
+                { label: "Все", value: "all" },
+                { label: "Просрочено", value: "overdue" },
+                { label: "≤ 3 дня", value: "due_3_days" },
+                { label: "Без дедлайна", value: "no_deadline" },
+              ]}
+            />
+            <Checkbox checked={requestsOnlyNew} onChange={(e) => setRequestsOnlyNew(e.target.checked)}>
+              Только новые назначения
+            </Checkbox>
+          </Space>
+          <Table
+            size="small"
+            columns={requestColumns}
+            dataSource={filteredAssignedRequests}
+            rowKey="id"
+            pagination={{ pageSize: 10 }}
+            locale={{ emptyText: <Empty description="Нет назначенных заявок" /> }}
+            loading={loading}
+            tableLayout="fixed"
+            scroll={{ x: "max-content" }}
+            onRow={(record) => ({
+              onClick: async () => {
+                await markNotificationsReadForEntity("client_request", record.id, "assignment")
+                navigate("/client-request-workspace")
+              },
+              style: { cursor: "pointer" },
+            })}
+          />
+        </Card>
 
-        <Card size="small" title="Новые уведомления">
-          {notifications.length ? (
-            <Space direction="vertical" size={8} style={{ width: "100%" }}>
-              {notifications.map((n) => (
-                <Card
-                  key={n.id}
-                  size="small"
-                  style={{ background: "#f6faff", cursor: "pointer" }}
-                  onClick={() => openNotification(n)}
-                >
-                  <Space direction="vertical" size={6}>
-                    <Text strong>{n.title || "Уведомление"}</Text>
-                    <Text type="secondary">{n.message || "—"}</Text>
-                    <Text type="secondary">{formatDate(n.created_at)}</Text>
-                  </Space>
-                </Card>
-              ))}
-            </Space>
-          ) : (
-            <Empty description="Нет новых уведомлений" />
-          )}
+        <Card size="small" title="RFQ, где я ответственный">
+          <Space style={{ marginBottom: 12 }} wrap>
+            <Text type="secondary">Показать:</Text>
+            <Segmented
+              value={rfqsScope}
+              onChange={setRfqsScope}
+              options={[
+                { label: "Текущие", value: "current" },
+                { label: "Закрытые", value: "closed" },
+                { label: "Все", value: "all" },
+              ]}
+            />
+            <Select
+              value={rfqsStage}
+              onChange={setRfqsStage}
+              options={rfqStageOptions}
+              style={{ minWidth: 190 }}
+            />
+            <Segmented
+              value={rfqsDeadline}
+              onChange={setRfqsDeadline}
+              disabled={rfqsScope === "closed"}
+              options={[
+                { label: "Все", value: "all" },
+                { label: "Просрочено", value: "overdue" },
+                { label: "≤ 3 дня", value: "due_3_days" },
+                { label: "Без дедлайна", value: "no_deadline" },
+              ]}
+            />
+            <Checkbox checked={rfqsOnlyNew} onChange={(e) => setRfqsOnlyNew(e.target.checked)}>
+              Только новые назначения
+            </Checkbox>
+          </Space>
+          <Table
+            size="small"
+            columns={rfqColumns}
+            dataSource={filteredAssignedRfqs}
+            rowKey="id"
+            pagination={{ pageSize: 10 }}
+            locale={{ emptyText: <Empty description="Нет назначенных RFQ" /> }}
+            loading={loading}
+            tableLayout="fixed"
+            scroll={{ x: "max-content" }}
+            onRow={(record) => ({
+              onClick: async () => {
+                await markNotificationsReadForEntity("rfq", record.id, "assignment")
+                navigate("/rfq-workspace")
+              },
+              style: { cursor: "pointer" },
+            })}
+          />
         </Card>
       </Space>
 

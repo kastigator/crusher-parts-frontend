@@ -17,7 +17,7 @@ const Header = () => {
   const fetchUnread = async () => {
     try {
       const { data } = await axios.get("/dashboard/notifications", {
-        params: { unread_only: 1, limit: 1 },
+        params: { unread_only: 1, limit: 1, type: "assignment" },
       })
       setUnreadCount(Number(data?.unread_count) || 0)
     } catch (e) {
