@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Steps, Table, Tabs, Tag, Tree, Typography, message } from "antd"
+import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Steps, Table, Tabs, Tag, Tooltip, Tree, Typography, message } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
@@ -139,7 +139,10 @@ export default function RfqWorkspacePage() {
     loading: false,
     saving: false,
     selectedKeys: [],
+    hints: null,
+    onlyHinted: false,
   })
+  const [supplierHintsCache, setSupplierHintsCache] = useState({})
   const [bundleCache, setBundleCache] = useState({})
   const [bundleItemsCache, setBundleItemsCache] = useState({})
   const [bundleChoice, setBundleChoice] = useState({})
@@ -165,6 +168,124 @@ export default function RfqWorkspacePage() {
   const [users, setUsers] = useState([])
   const autoFillRef = useRef(new Set())
   const supplierSelectionInitRef = useRef(false)
+  const hintTypeOrder = useRef({ OEM: 0, ANALOG: 1, UNKNOWN: 2 })
+
+  const activeSupplierHints = useMemo(() => {
+    const supplierId = selectionModal?.supplier?.supplier_id
+    return selectionModal?.hints || (supplierId ? supplierHintsCache[supplierId] : null) || null
+  }, [selectionModal?.hints, selectionModal?.supplier?.supplier_id, supplierHintsCache])
+
+  const getOriginalHints = (partId) =>
+    activeSupplierHints?.originals?.[String(partId)] || []
+  const getBundleItemHints = (bundleItemId) =>
+    activeSupplierHints?.bundle_items?.[String(bundleItemId)] || []
+
+  const sortHints = (hints) =>
+    (Array.isArray(hints) ? [...hints] : []).sort((a, b) => {
+      const oa = hintTypeOrder.current[String(a?.part_type || "UNKNOWN")] ?? 99
+      const ob = hintTypeOrder.current[String(b?.part_type || "UNKNOWN")] ?? 99
+      return oa - ob || String(a?.supplier_part_number || "").localeCompare(String(b?.supplier_part_number || ""))
+    })
+
+  const buildHintsTooltip = (hints) => {
+    const list = sortHints(hints)
+    if (!list.length) return null
+    return (
+      <div style={{ maxWidth: 520 }}>
+        {list.slice(0, 12).map((h, idx) => (
+          <div key={`${h.supplier_part_id || h.supplier_part_number || idx}`}>
+            {h.supplier_part_number || "—"} {h.part_type ? `(${h.part_type})` : ""}
+            {h.description_ru || h.description_en ? ` · ${h.description_ru || h.description_en}` : ""}
+          </div>
+        ))}
+        {list.length > 12 ? <div>…ещё {list.length - 12}</div> : null}
+      </div>
+    )
+  }
+
+  const renderHintsBadge = (hints) => {
+    const list = sortHints(hints)
+    if (!list.length) return null
+    const numbers = list.map((h) => h.supplier_part_number).filter(Boolean)
+    const shown = numbers.slice(0, 2)
+    const more = Math.max(0, numbers.length - shown.length)
+    const summary = shown.join(", ") + (more ? ` +${more}` : "")
+    const tooltip = buildHintsTooltip(list)
+    return (
+      <Tooltip title={tooltip}>
+        <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+          Есть: {summary || list.length}
+        </Tag>
+      </Tooltip>
+    )
+  }
+
+  const hasHintsForSelectionKey = (key) => {
+    if (!activeSupplierHints) return false
+    const meta = selectionNodeMapRef.current.get(String(key))
+    const type = String(meta?.line_type || "").toUpperCase()
+    if (type === "DEMAND" || type === "BOM_COMPONENT") {
+      const effectivePartId = meta?.alt_original_part_id || meta?.original_part_id
+      if (!effectivePartId) return false
+      return getOriginalHints(effectivePartId).length > 0
+    }
+    if (type === "KIT_ROLE") {
+      const id = meta?.bundle_item_id
+      if (!id) return false
+      return getBundleItemHints(id).length > 0
+    }
+    return false
+  }
+
+  const filterSelectionTree = (nodes) => {
+    const list = Array.isArray(nodes) ? nodes : []
+    const walk = (node) => {
+      const children = Array.isArray(node.children) ? node.children : []
+      const keptChildren = children.map(walk).filter(Boolean)
+      if (keptChildren.length) return { ...node, children: keptChildren }
+
+      const key = String(node.key || "")
+      if (node.checkable === false) {
+        if (key.startsWith("alt-inline:")) {
+          const parts = key.split(":")
+          const basePartId = Number(parts[2])
+          const altParts = altPartsMap?.[basePartId] || []
+          return altParts.some((alt) => getOriginalHints(alt.alt_part_id).length) ? node : null
+        }
+        if (key.startsWith("kit-inline:")) {
+          const parts = key.split(":")
+          const rfqItemId = Number(parts[1])
+          const basePartId = Number(parts[2])
+          const bundleId = bundleChoice?.[`part:${basePartId}`] || bundleChoice?.[`item:${rfqItemId}`]
+          const roles = bundleId ? bundleItemsCache?.[bundleId] || [] : []
+          return roles.some((r) => getBundleItemHints(r.id).length) ? node : null
+        }
+        return null
+      }
+
+      return hasHintsForSelectionKey(node.key) ? node : null
+    }
+    return list.map(walk).filter(Boolean)
+  }
+
+  const handleSelectAllHinted = () => {
+    if (!activeSupplierHints) return
+    let next = new Set(selectionModal.selectedKeys || [])
+    selectionNodeMapRef.current.forEach((meta, key) => {
+      const type = String(meta?.line_type || "").toUpperCase()
+      if (type === "DEMAND" || type === "BOM_COMPONENT") {
+        if (meta?.alt_original_part_id) return
+        if (!hasHintsForSelectionKey(key)) return
+        next.add(key)
+        next = applyAltExclusion(next, key, true)
+      } else if (type === "KIT_ROLE") {
+        if (!hasHintsForSelectionKey(key)) return
+        next.add(key)
+        next = applyAltExclusion(next, key, true)
+      }
+    })
+    setSelectionModal((prev) => ({ ...prev, selectedKeys: Array.from(next) }))
+  }
 
   useEffect(() => {
     setActiveTabKey("rfq")
@@ -227,6 +348,23 @@ export default function RfqWorkspacePage() {
       setSuggestedSelection([])
     } catch (e) {
       console.error(e)
+    }
+  }
+
+  const loadSupplierHints = async (rfqId, supplierId) => {
+    if (!rfqId || !supplierId) return null
+    const cached = supplierHintsCache[supplierId]
+    if (cached) return cached
+    try {
+      const { data } = await axios.get(`/rfqs/${rfqId}/supplier-hints`, {
+        params: { supplier_id: supplierId },
+      })
+      setSupplierHintsCache((prev) => ({ ...prev, [supplierId]: data }))
+      return data
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось загрузить подсказки по поставщику")
+      return null
     }
   }
 
@@ -585,11 +723,23 @@ export default function RfqWorkspacePage() {
 
   const openSelectionModal = async (supplier) => {
     if (!activeRfqId || !supplier?.id) return
-    setSelectionModal({ open: true, supplier, loading: true, saving: false, selectedKeys: [] })
+    const supplierId = supplier?.supplier_id
+    const cachedHints = supplierId ? supplierHintsCache[supplierId] : null
+    setSelectionModal({
+      open: true,
+      supplier,
+      loading: true,
+      saving: false,
+      selectedKeys: [],
+      hints: cachedHints,
+      onlyHinted: false,
+    })
     try {
-      const { data } = await axios.get(
-        `/rfqs/${activeRfqId}/suppliers/${supplier.id}/line-selections`
-      )
+      const [selectionsResp, hints] = await Promise.all([
+        axios.get(`/rfqs/${activeRfqId}/suppliers/${supplier.id}/line-selections`),
+        supplierId ? loadSupplierHints(activeRfqId, supplierId) : Promise.resolve(null),
+      ])
+      const data = selectionsResp?.data
       const keys = []
       const nextBundleChoice = {}
       const partIdsToLoad = new Set()
@@ -639,7 +789,12 @@ export default function RfqWorkspacePage() {
           .filter(Boolean)
           .map((bundleId) => loadBundleItems(bundleId))
       )
-      setSelectionModal((prev) => ({ ...prev, loading: false, selectedKeys: keys }))
+      setSelectionModal((prev) => ({
+        ...prev,
+        loading: false,
+        selectedKeys: keys,
+        hints: hints || prev.hints,
+      }))
     } catch (e) {
       console.error(e)
       message.error("Не удалось загрузить выбор")
@@ -1097,8 +1252,9 @@ export default function RfqWorkspacePage() {
     const nodeMap = new Map()
     const selectedKeys = new Set(selectionModal.selectedKeys || [])
 
-    const renderSideColumn = ({ kitSelect, kitTags, altTags }) => (
+    const renderSideColumn = ({ hintsBadge, kitSelect, kitTags, altTags }) => (
       <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+        {hintsBadge ? <div>{hintsBadge}</div> : null}
         {kitSelect || kitTags ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
             <Tag color="green">Комплект</Tag>
@@ -1122,6 +1278,8 @@ export default function RfqWorkspacePage() {
         <Space size={4} wrap>
           {altParts.map((alt) => {
             const key = `alt:${rfqItemId}:${basePartId}:${alt.alt_part_id}`
+            const hints = getOriginalHints(alt.alt_part_id)
+            const hasHints = hints.length > 0
             nodeMap.set(key, {
               key,
               line_type: lineType,
@@ -1136,30 +1294,33 @@ export default function RfqWorkspacePage() {
             const label = alt.cat_number || "—"
             const desc = alt.description_ru || alt.description_en || ""
             const isSelected = selectedKeys.has(key)
+            const color = isSelected ? "orange" : hasHints ? "blue" : "default"
             return (
-              <Tag
-                key={key}
-                color={isSelected ? "orange" : "default"}
-                style={{ cursor: "pointer" }}
-                onClick={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  setSelectionModal((prev) => {
-                    const next = new Set(prev.selectedKeys || [])
-                    const willSelect = !next.has(key)
-                    if (willSelect) {
-                      next.add(key)
-                    } else {
-                      next.delete(key)
-                    }
-                    const normalized = applyAltExclusion(next, key, willSelect)
-                    return { ...prev, selectedKeys: Array.from(normalized) }
-                  })
-                }}
-              >
-                {label}
-                {desc ? ` · ${desc}` : ""}
-              </Tag>
+              <Tooltip key={key} title={buildHintsTooltip(hints)}>
+                <Tag
+                  color={color}
+                  style={{ cursor: "pointer" }}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setSelectionModal((prev) => {
+                      const next = new Set(prev.selectedKeys || [])
+                      const willSelect = !next.has(key)
+                      if (willSelect) {
+                        next.add(key)
+                      } else {
+                        next.delete(key)
+                      }
+                      const normalized = applyAltExclusion(next, key, willSelect)
+                      return { ...prev, selectedKeys: Array.from(normalized) }
+                    })
+                  }}
+                >
+                  {label}
+                  {desc ? ` · ${desc}` : ""}
+                  {hasHints ? ` (${hints.length})` : ""}
+                </Tag>
+              </Tooltip>
             )
           })}
         </Space>
@@ -1172,6 +1333,8 @@ export default function RfqWorkspacePage() {
         <Space size={4} wrap onClick={(event) => event.stopPropagation()}>
           {roles.map((role) => {
             const roleKey = `kit:${rfqItemId}:${bundleId}:${role.id}`
+            const hints = getBundleItemHints(role.id)
+            const hasHints = hints.length > 0
             nodeMap.set(roleKey, {
               key: roleKey,
               line_type: "KIT_ROLE",
@@ -1185,29 +1348,32 @@ export default function RfqWorkspacePage() {
               uom: uom || null,
             })
             const isSelected = selectedKeys.has(roleKey)
+            const color = isSelected ? "green" : hasHints ? "blue" : "default"
             return (
-              <Tag
-                key={roleKey}
-                color={isSelected ? "green" : "default"}
-                style={{ cursor: "pointer" }}
-                onClick={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  setSelectionModal((prev) => {
-                    const next = new Set(prev.selectedKeys || [])
-                    const willSelect = !next.has(roleKey)
-                    if (willSelect) {
-                      next.add(roleKey)
-                    } else {
-                      next.delete(roleKey)
-                    }
-                    const normalized = applyAltExclusion(next, roleKey, willSelect)
-                    return { ...prev, selectedKeys: Array.from(normalized) }
-                  })
-                }}
-              >
-                {role.role_label || "—"}
-              </Tag>
+              <Tooltip key={roleKey} title={buildHintsTooltip(hints)}>
+                <Tag
+                  color={color}
+                  style={{ cursor: "pointer" }}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setSelectionModal((prev) => {
+                      const next = new Set(prev.selectedKeys || [])
+                      const willSelect = !next.has(roleKey)
+                      if (willSelect) {
+                        next.add(roleKey)
+                      } else {
+                        next.delete(roleKey)
+                      }
+                      const normalized = applyAltExclusion(next, roleKey, willSelect)
+                      return { ...prev, selectedKeys: Array.from(normalized) }
+                    })
+                  }}
+                >
+                  {role.role_label || "—"}
+                  {hasHints ? ` (${hints.length})` : ""}
+                </Tag>
+              </Tooltip>
             )
           })}
         </Space>
@@ -1218,6 +1384,7 @@ export default function RfqWorkspacePage() {
       if (!Array.isArray(nodes) || !nodes.length) return []
       return nodes.map((comp) => {
         const key = `bom:${item.rfq_item_id}:${comp.original_part_id}`
+        const compHints = comp.original_part_id ? getOriginalHints(comp.original_part_id) : []
         nodeMap.set(key, {
           key,
           line_type: "BOM_COMPONENT",
@@ -1315,7 +1482,7 @@ export default function RfqWorkspacePage() {
                 <Text>{comp.cat_number || "—"}</Text>
                 {comp.description ? <Text type="secondary">· {comp.description}</Text> : null}
               </Space>
-              {renderSideColumn({ kitSelect, kitTags, altTags })}
+              {renderSideColumn({ hintsBadge: renderHintsBadge(compHints), kitSelect, kitTags, altTags })}
             </div>
           ),
           children,
@@ -1348,7 +1515,15 @@ export default function RfqWorkspacePage() {
       const children = [
         {
           key: demandKey,
-          title: "Позиция (оригинал)",
+          title: (
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, width: "100%" }}>
+              <Space>
+                <Text>Позиция (оригинал)</Text>
+                <Text type="secondary">{item.original_cat_number || item.client_part_number || ""}</Text>
+              </Space>
+              {renderHintsBadge(item.original_part_id ? getOriginalHints(item.original_part_id) : [])}
+            </div>
+          ),
           isLeaf: true,
         },
       ]
@@ -1403,7 +1578,7 @@ export default function RfqWorkspacePage() {
                 <Space>
                   <Text>Подмена</Text>
                 </Space>
-                {renderSideColumn({ kitSelect, kitTags, altTags })}
+                {renderSideColumn({ hintsBadge: null, kitSelect, kitTags, altTags })}
               </div>
             ),
             selectable: false,
@@ -1418,7 +1593,7 @@ export default function RfqWorkspacePage() {
                 <Space>
                   <Text>Комплект</Text>
                 </Space>
-                {renderSideColumn({ kitSelect, kitTags, altTags: null })}
+                {renderSideColumn({ hintsBadge: null, kitSelect, kitTags, altTags: null })}
               </div>
             ),
             selectable: false,
@@ -1451,7 +1626,13 @@ export default function RfqWorkspacePage() {
 
     selectionNodeMapRef.current = nodeMap
     return tree
-  }, [structureItems, bundleChoice, bundleCache, bundleItemsCache, loadBundleItems, loadBundlesForPart, altPartsMap, selectionModal.selectedKeys])
+  }, [structureItems, bundleChoice, bundleCache, bundleItemsCache, loadBundleItems, loadBundlesForPart, altPartsMap, selectionModal.selectedKeys, activeSupplierHints])
+
+  const selectionTreeDataVisible = useMemo(() => {
+    if (!selectionModal.onlyHinted) return selectionTreeData
+    if (!activeSupplierHints) return selectionTreeData
+    return filterSelectionTree(selectionTreeData)
+  }, [selectionTreeData, selectionModal.onlyHinted, activeSupplierHints, altPartsMap, bundleChoice, bundleItemsCache])
   const rfqTreeData = useMemo(() => {
     const mapBomNodes = (nodes) => {
       if (!Array.isArray(nodes)) return []
@@ -2182,24 +2363,43 @@ export default function RfqWorkspacePage() {
         {selectionModal.loading ? (
           <Text type="secondary">Загрузка…</Text>
         ) : (
-          <Tree
-            checkable
-            checkStrictly
-            defaultExpandAll
-            showLine
-            checkedKeys={selectionModal.selectedKeys}
-            onCheck={(checked, info) => {
-              const next = new Set(Array.isArray(checked) ? checked : checked.checked)
-              const actionKey = info?.node?.key
-              const actionChecked = info?.checked
-              const normalized =
-                actionKey !== undefined
-                  ? applyAltExclusion(next, actionKey, actionChecked)
-                  : next
-              setSelectionModal((prev) => ({ ...prev, selectedKeys: Array.from(normalized) }))
-            }}
-            treeData={selectionTreeData}
-          />
+          <Space direction="vertical" style={{ width: "100%" }} size={12}>
+            <Space wrap align="center">
+              <Checkbox
+                checked={selectionModal.onlyHinted}
+                disabled={!activeSupplierHints}
+                onChange={(e) =>
+                  setSelectionModal((prev) => ({ ...prev, onlyHinted: e.target.checked }))
+                }
+              >
+                Показать только где есть
+              </Checkbox>
+              <Button disabled={!activeSupplierHints} onClick={handleSelectAllHinted}>
+                Отметить всё где есть
+              </Button>
+              {!activeSupplierHints ? (
+                <Text type="secondary">Нет подсказок по поставщику</Text>
+              ) : null}
+            </Space>
+            <Tree
+              checkable
+              checkStrictly
+              defaultExpandAll
+              showLine
+              checkedKeys={selectionModal.selectedKeys}
+              onCheck={(checked, info) => {
+                const next = new Set(Array.isArray(checked) ? checked : checked.checked)
+                const actionKey = info?.node?.key
+                const actionChecked = info?.checked
+                const normalized =
+                  actionKey !== undefined
+                    ? applyAltExclusion(next, actionKey, actionChecked)
+                    : next
+                setSelectionModal((prev) => ({ ...prev, selectedKeys: Array.from(normalized) }))
+              }}
+              treeData={selectionTreeDataVisible}
+            />
+          </Space>
         )}
       </Modal>
 
