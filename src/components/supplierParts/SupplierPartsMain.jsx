@@ -32,6 +32,7 @@ import SupplierPartCreateAdvancedDrawer from "./SupplierPartCreateAdvancedDrawer
 import SupplierPartsFiltersDrawer, {
   countActiveFilters,
 } from "./SupplierPartsFiltersDrawer"
+import SupplierPriceListsDrawer from "./SupplierPriceListsDrawer"
 
 const SUPPLIER_TEMPLATE_URL =
   "https://storage.googleapis.com/shared-parts-bucket/templates/supplier_parts_template.xlsx"
@@ -45,6 +46,7 @@ export default function SupplierPartsMain() {
   const [search, setSearch] = useState("")
   const [version, setVersion] = useState(0)
   const [importOpen, setImportOpen] = useState(false)
+  const [priceListsOpen, setPriceListsOpen] = useState(false)
 
   const [form] = Form.useForm()
   const [adding, setAdding] = useState(false)
@@ -401,6 +403,13 @@ export default function SupplierPartsMain() {
             </Checkbox>
 
             <Button
+              onClick={() => setPriceListsOpen(true)}
+              disabled={!supplier}
+            >
+              Прайс-листы
+            </Button>
+
+            <Button
               icon={<ImportOutlined />}
               onClick={handleImportClick}
               disabled={!supplier}
@@ -660,6 +669,12 @@ export default function SupplierPartsMain() {
         onClose={() => setFiltersOpen(false)}
         value={filters}
         onApply={(next) => setFilters(next || {})}
+      />
+
+      <SupplierPriceListsDrawer
+        open={priceListsOpen}
+        supplier={supplier}
+        onClose={() => setPriceListsOpen(false)}
       />
     </Space>
   )

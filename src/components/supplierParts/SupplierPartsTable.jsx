@@ -307,6 +307,24 @@ export default function SupplierPartsTable({
     })
 
     cols.push({
+      key: "latest_price",
+      title: "Цена",
+      dataIndex: "latest_price",
+      width: 140,
+      align: "right",
+      render: (_, record) => {
+        if (record?.latest_price == null) return <ValueDisplay value={null} />
+        const text = `${record.latest_price}${record?.latest_currency ? ` ${record.latest_currency}` : ""}`
+        if (!record?.latest_price_date) return <span>{text}</span>
+        return (
+          <Tooltip title={`Дата цены: ${String(record.latest_price_date).slice(0, 10)}`}>
+            <span>{text}</span>
+          </Tooltip>
+        )
+      },
+    })
+
+    cols.push({
       key: "weight_kg",
       title: "Вес, кг",
       dataIndex: "weight_kg",

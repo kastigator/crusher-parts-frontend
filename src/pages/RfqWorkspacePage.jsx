@@ -244,22 +244,8 @@ export default function RfqWorkspacePage() {
       const keptChildren = children.map(walk).filter(Boolean)
       if (keptChildren.length) return { ...node, children: keptChildren }
 
-      const key = String(node.key || "")
       if (node.checkable === false) {
-        if (key.startsWith("alt-inline:")) {
-          const parts = key.split(":")
-          const basePartId = Number(parts[2])
-          const altParts = altPartsMap?.[basePartId] || []
-          return altParts.some((alt) => getOriginalHints(alt.alt_part_id).length) ? node : null
-        }
-        if (key.startsWith("kit-inline:")) {
-          const parts = key.split(":")
-          const rfqItemId = Number(parts[1])
-          const basePartId = Number(parts[2])
-          const bundleId = bundleChoice?.[`part:${basePartId}`] || bundleChoice?.[`item:${rfqItemId}`]
-          const roles = bundleId ? bundleItemsCache?.[bundleId] || [] : []
-          return roles.some((r) => getBundleItemHints(r.id).length) ? node : null
-        }
+        // Group/helper nodes are kept only when they have visible children.
         return null
       }
 
@@ -1250,134 +1236,87 @@ export default function RfqWorkspacePage() {
 
   const selectionTreeData = useMemo(() => {
     const nodeMap = new Map()
-    const selectedKeys = new Set(selectionModal.selectedKeys || [])
 
-    const renderSideColumn = ({ hintsBadge, kitSelect, kitTags, altTags }) => (
+    const renderSideColumn = ({ hintsBadge, kitSelect, altCount = 0, roleCount = 0 }) => (
       <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
         {hintsBadge ? <div>{hintsBadge}</div> : null}
-        {kitSelect || kitTags ? (
+        {kitSelect || altCount > 0 || roleCount > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-            <Tag color="green">Комплект</Tag>
             {kitSelect}
-            {kitTags}
-          </div>
-        ) : null}
-        {altTags ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-            <Tag color="orange">Подмена</Tag>
-            {altTags}
+            {roleCount > 0 ? <Tag color="green">Роли: {roleCount}</Tag> : null}
+            {altCount > 0 ? <Tag color="orange">Подмены: {altCount}</Tag> : null}
           </div>
         ) : null}
       </div>
     )
 
-    const buildAltTags = ({ rfqItemId, basePartId, lineType, qty, uom }) => {
+    const buildAltChildren = ({ rfqItemId, basePartId, lineType, qty, uom }) => {
       const altParts = altPartsMap[basePartId] || []
-      if (!altParts.length) return null
-      return (
-        <Space size={4} wrap>
-          {altParts.map((alt) => {
-            const key = `alt:${rfqItemId}:${basePartId}:${alt.alt_part_id}`
-            const hints = getOriginalHints(alt.alt_part_id)
-            const hasHints = hints.length > 0
-            nodeMap.set(key, {
-              key,
-              line_type: lineType,
-              rfq_item_id: rfqItemId,
-              original_part_id: basePartId,
-              alt_original_part_id: alt.alt_part_id,
-              line_label: alt.cat_number || "",
-              line_description: alt.description_ru || alt.description_en || "",
-              qty: qty ?? null,
-              uom: uom || null,
-            })
-            const label = alt.cat_number || "—"
-            const desc = alt.description_ru || alt.description_en || ""
-            const isSelected = selectedKeys.has(key)
-            const color = isSelected ? "orange" : hasHints ? "blue" : "default"
-            return (
-              <Tooltip key={key} title={buildHintsTooltip(hints)}>
-                <Tag
-                  color={color}
-                  style={{ cursor: "pointer" }}
-                  onClick={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    setSelectionModal((prev) => {
-                      const next = new Set(prev.selectedKeys || [])
-                      const willSelect = !next.has(key)
-                      if (willSelect) {
-                        next.add(key)
-                      } else {
-                        next.delete(key)
-                      }
-                      const normalized = applyAltExclusion(next, key, willSelect)
-                      return { ...prev, selectedKeys: Array.from(normalized) }
-                    })
-                  }}
-                >
-                  {label}
-                  {desc ? ` · ${desc}` : ""}
-                  {hasHints ? ` (${hints.length})` : ""}
-                </Tag>
-              </Tooltip>
-            )
-          })}
-        </Space>
-      )
+      if (!altParts.length) return []
+      return altParts.map((alt) => {
+        const key = `alt:${rfqItemId}:${basePartId}:${alt.alt_part_id}`
+        const hints = getOriginalHints(alt.alt_part_id)
+        nodeMap.set(key, {
+          key,
+          line_type: lineType,
+          rfq_item_id: rfqItemId,
+          original_part_id: basePartId,
+          alt_original_part_id: alt.alt_part_id,
+          line_label: alt.cat_number || "",
+          line_description: alt.description_ru || alt.description_en || "",
+          qty: qty ?? null,
+          uom: uom || null,
+        })
+        return {
+          key,
+          title: (
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, width: "100%" }}>
+              <Space>
+                <Tag color="orange">Подмена</Tag>
+                <Text>{alt.cat_number || "—"}</Text>
+                {alt.description_ru || alt.description_en ? (
+                  <Text type="secondary">· {alt.description_ru || alt.description_en}</Text>
+                ) : null}
+              </Space>
+              {renderHintsBadge(hints)}
+            </div>
+          ),
+          isLeaf: true,
+        }
+      })
     }
 
-    const buildKitTags = ({ rfqItemId, basePartId, bundleId, roles, qty, uom }) => {
-      if (!bundleId || !Array.isArray(roles) || !roles.length) return null
-      return (
-        <Space size={4} wrap onClick={(event) => event.stopPropagation()}>
-          {roles.map((role) => {
-            const roleKey = `kit:${rfqItemId}:${bundleId}:${role.id}`
-            const hints = getBundleItemHints(role.id)
-            const hasHints = hints.length > 0
-            nodeMap.set(roleKey, {
-              key: roleKey,
-              line_type: "KIT_ROLE",
-              rfq_item_id: rfqItemId,
-              original_part_id: basePartId || null,
-              bundle_id: bundleId,
-              bundle_item_id: role.id,
-              line_label: role.role_label || "",
-              line_description: role.role_label || "",
-              qty: (role.qty ?? 1) * (qty ?? 1),
-              uom: uom || null,
-            })
-            const isSelected = selectedKeys.has(roleKey)
-            const color = isSelected ? "green" : hasHints ? "blue" : "default"
-            return (
-              <Tooltip key={roleKey} title={buildHintsTooltip(hints)}>
-                <Tag
-                  color={color}
-                  style={{ cursor: "pointer" }}
-                  onClick={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    setSelectionModal((prev) => {
-                      const next = new Set(prev.selectedKeys || [])
-                      const willSelect = !next.has(roleKey)
-                      if (willSelect) {
-                        next.add(roleKey)
-                      } else {
-                        next.delete(roleKey)
-                      }
-                      const normalized = applyAltExclusion(next, roleKey, willSelect)
-                      return { ...prev, selectedKeys: Array.from(normalized) }
-                    })
-                  }}
-                >
-                  {role.role_label || "—"}
-                  {hasHints ? ` (${hints.length})` : ""}
-                </Tag>
-              </Tooltip>
-            )
-          })}
-        </Space>
-      )
+    const buildKitChildren = ({ rfqItemId, basePartId, bundleId, roles, qty, uom }) => {
+      if (!bundleId || !Array.isArray(roles) || !roles.length) return []
+      return roles.map((role) => {
+        const roleKey = `kit:${rfqItemId}:${bundleId}:${role.id}`
+        const hints = getBundleItemHints(role.id)
+        nodeMap.set(roleKey, {
+          key: roleKey,
+          line_type: "KIT_ROLE",
+          rfq_item_id: rfqItemId,
+          original_part_id: basePartId || null,
+          bundle_id: bundleId,
+          bundle_item_id: role.id,
+          line_label: role.role_label || "",
+          line_description: role.role_label || "",
+          qty: (role.qty ?? 1) * (qty ?? 1),
+          uom: uom || null,
+        })
+        return {
+          key: roleKey,
+          title: (
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, width: "100%" }}>
+              <Space>
+                <Tag color="green">Роль</Tag>
+                <Text>{role.role_label || "—"}</Text>
+              </Space>
+              {renderHintsBadge(hints)}
+            </div>
+          ),
+          isLeaf: true,
+        }
+      })
     }
 
     const buildBomNodes = (nodes, item) => {
@@ -1403,49 +1342,14 @@ export default function RfqWorkspacePage() {
         const compBundleItems = selectedBundleId
           ? bundleItemsCache[selectedBundleId] || []
           : []
-
-        const compKitChildren = selectedBundleId
-          ? compBundleItems.map((role) => {
-              const roleKey = `kit:${item.rfq_item_id}:${selectedBundleId}:${role.id}`
-              nodeMap.set(roleKey, {
-                key: roleKey,
-                line_type: "KIT_ROLE",
-                rfq_item_id: item.rfq_item_id,
-                original_part_id: comp.original_part_id,
-                bundle_id: selectedBundleId,
-                bundle_item_id: role.id,
-                line_label: role.role_label || "",
-                line_description: role.role_label || "",
-                qty: (role.qty ?? 1) * (comp.required_qty ?? 1),
-                uom: comp.uom || item.uom || null,
-              })
-              return {
-                key: roleKey,
-                title: (
-                  <Space>
-                    <Tag color="green">Роль</Tag>
-                    <Text>{role.role_label || "—"}</Text>
-                  </Space>
-                ),
-                isLeaf: true,
-              }
-            })
-          : []
-
-        const nested = buildBomNodes(comp.children || [], item)
-        if (nested.length) {
-          children.push(...nested)
-        }
-
-        const altTags = buildAltTags({
+        const altChildren = buildAltChildren({
           rfqItemId: item.rfq_item_id,
           basePartId: comp.original_part_id,
           lineType: "BOM_COMPONENT",
           qty: comp.required_qty ?? null,
           uom: comp.uom || item.uom || null,
         })
-
-        const kitTags = buildKitTags({
+        const kitChildren = buildKitChildren({
           rfqItemId: item.rfq_item_id,
           basePartId: comp.original_part_id,
           bundleId: selectedBundleId,
@@ -1474,6 +1378,30 @@ export default function RfqWorkspacePage() {
             />
           ) : null
 
+        if (altChildren.length) {
+          children.push({
+            key: `alt-group-bom:${item.rfq_item_id}:${comp.original_part_id}`,
+            title: <Text type="secondary">Подмены</Text>,
+            selectable: false,
+            checkable: false,
+            children: altChildren,
+          })
+        }
+        if (kitChildren.length) {
+          children.push({
+            key: `kit-group-bom:${item.rfq_item_id}:${comp.original_part_id}:${selectedBundleId}`,
+            title: <Text type="secondary">Роли комплекта</Text>,
+            selectable: false,
+            checkable: false,
+            children: kitChildren,
+          })
+        }
+
+        const nested = buildBomNodes(comp.children || [], item)
+        if (nested.length) {
+          children.push(...nested)
+        }
+
         return {
           key,
           title: (
@@ -1482,7 +1410,12 @@ export default function RfqWorkspacePage() {
                 <Text>{comp.cat_number || "—"}</Text>
                 {comp.description ? <Text type="secondary">· {comp.description}</Text> : null}
               </Space>
-              {renderSideColumn({ hintsBadge: renderHintsBadge(compHints), kitSelect, kitTags, altTags })}
+              {renderSideColumn({
+                hintsBadge: renderHintsBadge(compHints),
+                kitSelect,
+                altCount: altChildren.length,
+                roleCount: kitChildren.length,
+              })}
             </div>
           ),
           children,
@@ -1533,15 +1466,14 @@ export default function RfqWorkspacePage() {
         const selectedBundleId = bundleChoice[itemBundleKey]
         const bundleItems = selectedBundleId ? bundleItemsCache[selectedBundleId] || [] : []
 
-        const altTags = buildAltTags({
+        const altChildren = buildAltChildren({
           rfqItemId: item.rfq_item_id,
           basePartId: item.original_part_id,
           lineType: "DEMAND",
           qty: item.requested_qty ?? null,
           uom: item.uom || null,
         })
-
-        const kitTags = buildKitTags({
+        const kitChildren = buildKitChildren({
           rfqItemId: item.rfq_item_id,
           basePartId: item.original_part_id,
           bundleId: selectedBundleId,
@@ -1570,30 +1502,36 @@ export default function RfqWorkspacePage() {
             />
           ) : null
 
-        if (altTags) {
+        if (altChildren.length) {
           children.push({
-            key: `alt-inline:${item.rfq_item_id}:${item.original_part_id}`,
-            title: (
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, width: "100%" }}>
-                <Space>
-                  <Text>Подмена</Text>
-                </Space>
-                {renderSideColumn({ hintsBadge: null, kitSelect, kitTags, altTags })}
-              </div>
-            ),
+            key: `alt-group-item:${item.rfq_item_id}:${item.original_part_id}`,
+            title: <Text type="secondary">Подмены</Text>,
             selectable: false,
             checkable: false,
-            isLeaf: true,
+            children: altChildren,
           })
-        } else if (kitSelect || kitTags) {
+        }
+        if (kitChildren.length) {
           children.push({
-            key: `kit-inline:${item.rfq_item_id}:${item.original_part_id}`,
+            key: `kit-group-item:${item.rfq_item_id}:${item.original_part_id}:${selectedBundleId}`,
+            title: <Text type="secondary">Роли комплекта</Text>,
+            selectable: false,
+            checkable: false,
+            children: kitChildren,
+          })
+        }
+
+        if (kitSelect || altChildren.length || kitChildren.length) {
+          children.push({
+            key: `controls-inline:${item.rfq_item_id}:${item.original_part_id}`,
             title: (
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, width: "100%" }}>
-                <Space>
-                  <Text>Комплект</Text>
-                </Space>
-                {renderSideColumn({ hintsBadge: null, kitSelect, kitTags, altTags: null })}
+              <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
+                {renderSideColumn({
+                  hintsBadge: null,
+                  kitSelect,
+                  altCount: altChildren.length,
+                  roleCount: kitChildren.length,
+                })}
               </div>
             ),
             selectable: false,
@@ -1632,7 +1570,46 @@ export default function RfqWorkspacePage() {
     if (!selectionModal.onlyHinted) return selectionTreeData
     if (!activeSupplierHints) return selectionTreeData
     return filterSelectionTree(selectionTreeData)
-  }, [selectionTreeData, selectionModal.onlyHinted, activeSupplierHints, altPartsMap, bundleChoice, bundleItemsCache])
+  }, [selectionTreeData, selectionModal.onlyHinted, activeSupplierHints])
+  const selectionCoverage = useMemo(() => {
+    let total = 0
+    let hinted = 0
+    let selected = 0
+    let selectedHinted = 0
+    const selectedSet = new Set(selectionModal.selectedKeys || [])
+    const itemIds = new Set()
+    const hintedItemIds = new Set()
+    const selectedItemIds = new Set()
+
+    selectionNodeMapRef.current.forEach((meta, key) => {
+      const type = String(meta?.line_type || "").toUpperCase()
+      if (!["DEMAND", "BOM_COMPONENT", "KIT_ROLE"].includes(type)) return
+      const rfqItemId = Number(meta?.rfq_item_id)
+      if (rfqItemId) itemIds.add(rfqItemId)
+      total += 1
+      const hasHints = hasHintsForSelectionKey(key)
+      if (hasHints) {
+        hinted += 1
+        if (rfqItemId) hintedItemIds.add(rfqItemId)
+      }
+      if (selectedSet.has(key)) {
+        selected += 1
+        if (rfqItemId) selectedItemIds.add(rfqItemId)
+        if (hasHints) selectedHinted += 1
+      }
+    })
+
+    const totalItems = structureItems.length || itemIds.size
+    return {
+      total,
+      hinted,
+      selected,
+      selectedHinted,
+      totalItems,
+      hintedItems: hintedItemIds.size,
+      selectedItems: selectedItemIds.size,
+    }
+  }, [selectionTreeData, selectionModal.selectedKeys, activeSupplierHints, structureItems])
   const rfqTreeData = useMemo(() => {
     const mapBomNodes = (nodes) => {
       if (!Array.isArray(nodes)) return []
@@ -2379,6 +2356,31 @@ export default function RfqWorkspacePage() {
               </Button>
               {!activeSupplierHints ? (
                 <Text type="secondary">Нет подсказок по поставщику</Text>
+              ) : null}
+            </Space>
+            <Space wrap size={8} align="center">
+              <Text type="secondary">Легенда:</Text>
+              <Tag>Оригинал/BOM</Tag>
+              <Tag color="orange">Подмена</Tag>
+              <Tag color="green">Роль комплекта</Tag>
+              <Tag color="blue">Есть связь</Tag>
+            </Space>
+            <Space wrap size={8} align="center">
+              <Text strong>
+                Позиции покрыты: {selectionCoverage.hintedItems}/{selectionCoverage.totalItems}
+              </Text>
+              <Text type="secondary">
+                Позиции выбраны: {selectionCoverage.selectedItems}/{selectionCoverage.totalItems}
+              </Text>
+            </Space>
+            <Space wrap size={8} align="center">
+              <Text type="secondary">
+                Детальные варианты со связями: {selectionCoverage.hinted}/{selectionCoverage.total}
+              </Text>
+              {activeSupplierHints ? (
+                <Text type="secondary">
+                  Выбрано со связями: {selectionCoverage.selectedHinted}/{selectionCoverage.hinted}
+                </Text>
               ) : null}
             </Space>
             <Tree
