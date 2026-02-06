@@ -88,6 +88,7 @@ const formatMoney = (value, currency = "RUB") => {
     return new Intl.NumberFormat("ru-RU", {
       style: "currency",
       currency,
+      minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(num)
   } catch {

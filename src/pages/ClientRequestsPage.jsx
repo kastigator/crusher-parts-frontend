@@ -41,7 +41,7 @@ import { useAuth } from "@/auth/AuthContext"
 const STATUS_OPTIONS = [
   { value: "draft", label: "Черновик" },
   { value: "in_progress", label: "В работе" },
-  { value: "released_to_procurement", label: "Релиз в закупку" },
+  { value: "released_to_procurement", label: "Отправлена в закупку" },
   { value: "rfq_created", label: "RFQ создан" },
   { value: "rfq_sent", label: "RFQ отправлен" },
   { value: "responses_received", label: "Ответы получены" },
@@ -103,7 +103,7 @@ const STATUS_COLORS = {
 const STATUS_STEPS = [
   { key: "draft", title: "Черновик" },
   { key: "in_progress", title: "В работе" },
-  { key: "released_to_procurement", title: "Релиз в закупку" },
+  { key: "released_to_procurement", title: "Отправлена в закупку" },
   { key: "rfq_created", title: "RFQ создан" },
   { key: "rfq_sent", title: "RFQ отправлен" },
   { key: "responses_received", title: "Ответы" },
@@ -635,6 +635,13 @@ export default function ClientRequestsPage() {
     await loadRevisions(record.id)
   }
 
+  const refreshActiveRequest = async (requestId) => {
+    if (!requestId) return null
+    const { data } = await axios.get(`/client-requests/${requestId}`)
+    setActiveRequest(data || null)
+    return data || null
+  }
+
   const loadRevisions = async (requestId) => {
     setRevisionsLoading(true)
     try {
@@ -649,9 +656,11 @@ export default function ClientRequestsPage() {
       } else {
         setItems([])
       }
+      return sorted
     } catch (e) {
       console.error(e)
       message.error("Не удалось загрузить ревизии")
+      return []
     } finally {
       setRevisionsLoading(false)
     }
@@ -687,7 +696,7 @@ export default function ClientRequestsPage() {
         { note },
       )
       const revisionId = data?.id || null
-      await loadRevisions(activeRequest.id)
+      const revisionsList = await loadRevisions(activeRequest.id)
       if (revisionId) {
         const revisionItems = await fetchRevisionItems(revisionId)
         setActiveRevisionId(revisionId)
@@ -695,7 +704,31 @@ export default function ClientRequestsPage() {
         setWorkspaceTabKey("items")
         startChangeDraft({ force: true, itemsSnapshot: revisionItems })
       }
+      const refreshedRequest = await refreshActiveRequest(activeRequest.id)
       message.success("Ревизия создана. Режим редактирования включен")
+      const syncStatus = String(refreshedRequest?.rfq_sync_status || "").toLowerCase()
+      if (refreshedRequest?.rfq_id && syncStatus === "needs_sync") {
+        const currentRev = revisionsList.find((r) => Number(r.id) === Number(revisionId))
+        const previousRev = currentRev
+          ? revisionsList.find((r) => Number(r.rev_number) === Number(currentRev.rev_number) - 1)
+          : null
+        const previousItems = previousRev?.id ? await fetchRevisionItems(previousRev.id) : []
+        const currentItems = revisionId ? await fetchRevisionItems(revisionId) : []
+        const delta = calcRevisionDelta(previousItems, currentItems)
+        const { confirmed } = await confirmAction(
+          {
+            title: "Найдены несинхронизированные изменения RFQ",
+            text: `Добавлено: +${delta.added} · Удалено: -${delta.removed} · Изменено: ~${delta.changed}. Синхронизировать сейчас?`,
+          }
+        )
+        if (confirmed) {
+          await handleSyncRfq({
+            requestId: refreshedRequest.id,
+            skipConfirm: true,
+            successMessagePrefix: "RFQ синхронизирован после создания ревизии",
+          })
+        }
+      }
       return revisionId
     } catch (e) {
       console.error(e)
@@ -1171,6 +1204,45 @@ export default function ClientRequestsPage() {
     return Array.isArray(data) ? data : []
   }
 
+  const calcRevisionDelta = (previousItems = [], currentItems = []) => {
+    const prevMap = new Map()
+    const currMap = new Map()
+    previousItems.forEach((row) => {
+      const key = Number(row?.line_number || 0)
+      if (key > 0) prevMap.set(key, row)
+    })
+    currentItems.forEach((row) => {
+      const key = Number(row?.line_number || 0)
+      if (key > 0) currMap.set(key, row)
+    })
+
+    let added = 0
+    let removed = 0
+    let changed = 0
+
+    currMap.forEach((currRow, key) => {
+      const prevRow = prevMap.get(key)
+      if (!prevRow) {
+        added += 1
+        return
+      }
+      const isDifferent =
+        Number(currRow?.original_part_id || 0) !== Number(prevRow?.original_part_id || 0) ||
+        Number(currRow?.requested_qty || 0) !== Number(prevRow?.requested_qty || 0) ||
+        String(currRow?.uom || "") !== String(prevRow?.uom || "") ||
+        Number(currRow?.oem_only || 0) !== Number(prevRow?.oem_only || 0) ||
+        String(currRow?.client_part_number || "") !== String(prevRow?.client_part_number || "") ||
+        String(currRow?.client_description || "") !== String(prevRow?.client_description || "")
+      if (isDifferent) changed += 1
+    })
+
+    prevMap.forEach((_prevRow, key) => {
+      if (!currMap.has(key)) removed += 1
+    })
+
+    return { added, removed, changed }
+  }
+
   const startChangeDraft = (options = {}) => {
     const { force = false, itemsSnapshot = null } = options
     if (!force && !isLatestRevision) {
@@ -1561,17 +1633,45 @@ export default function ClientRequestsPage() {
 
   const handleReleaseRequest = async () => {
     if (!activeRequest?.id) return
-    const { confirmed } = await confirmAction("Отправить релиз заявки в закупку? После отправки заявка будет заблокирована для изменений.")
+    const { confirmed } = await confirmAction("Отправить заявку в закупку?")
     if (!confirmed) return
     try {
       const { data } = await axios.post(`/client-requests/${activeRequest.id}/release`)
       setActiveRequest(data?.request || activeRequest)
-      message.success("Релиз отправлен")
+      message.success("Заявка отправлена в закупку")
       await loadRequests()
       await openWorkspace(data?.request || activeRequest)
     } catch (e) {
       console.error(e)
-      message.error(e?.response?.data?.message || "Не удалось отправить релиз")
+      message.error(e?.response?.data?.message || "Не удалось отправить заявку в закупку")
+    }
+  }
+
+  const handleSyncRfq = async (options = {}) => {
+    const requestId = Number(options.requestId || activeRequest?.id || 0)
+    if (!requestId) return
+    if (!options.skipConfirm) {
+      const { confirmed } = await confirmAction(
+        "Синхронизировать текущую ревизию заявки с уже созданным RFQ?"
+      )
+      if (!confirmed) return
+    }
+    try {
+      const { data } = await axios.post(`/client-requests/${requestId}/sync-rfq`)
+      if (data?.request) {
+        setActiveRequest(data.request)
+      } else {
+        await refreshActiveRequest(requestId)
+      }
+      await loadRequests()
+      message.success(
+        `${options.successMessagePrefix || "RFQ синхронизирован"}${
+          Number(data?.added_items || 0) > 0 ? `: добавлено строк ${data.added_items}` : ""
+        }`
+      )
+    } catch (e) {
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось синхронизировать RFQ")
     }
   }
 
@@ -1700,16 +1800,23 @@ export default function ClientRequestsPage() {
   }, [revisions])
   const activeRevision = revisions.find((rev) => rev.id === activeRevisionId) || null
   const isLatestRevision = !latestRevisionId || activeRevisionId === latestRevisionId
-  const isReleasedLocked = !!(
-    activeRequest?.is_locked_after_release ||
-    activeRequest?.released_to_procurement_at
-  )
+  const isReleasedLocked = !!activeRequest?.is_locked_after_release
+  const isSentToProcurement = !!activeRequest?.released_to_procurement_at
+  const rfqSyncStatus = String(activeRequest?.rfq_sync_status || "").toLowerCase()
   const activeRevisionLabel = activeRevision?.rev_number
     ? `Ревизия ${activeRevision.rev_number}`
     : "Ревизий нет"
   const activeRevisionDate = activeRevision?.created_at
     ? formatDateTime(activeRevision.created_at)
     : "—"
+  const hasDraftChanges =
+    (pendingChanges?.adds?.length || 0) > 0 ||
+    (pendingChanges?.deletes?.length || 0) > 0 ||
+    Object.keys(pendingChanges?.updates || {}).length > 0
+  const hasBulkSelection = bulkSelectedRows.length > 0
+  const hasBulkEditsForSelected = bulkSelectedRows.some(
+    (row) => !!bulkEdits?.[row.line_number],
+  )
 
   const revisionOptions = useMemo(
     () =>
@@ -2268,13 +2375,22 @@ export default function ClientRequestsPage() {
                   <Text type="secondary">
                     {activeRevisionLabel} ({activeRevisionDate})
                   </Text>
-                  {isReleasedLocked ? <Tag color="orange">Заблокирована после релиза</Tag> : null}
+                  {isSentToProcurement ? (
+                    <Tag color="green">Заявка отправлена в закупку</Tag>
+                  ) : null}
+                  {rfqSyncStatus === "needs_sync" ? (
+                    <Tag color="orange">RFQ требует синхронизации</Tag>
+                  ) : null}
+                  {isReleasedLocked ? <Tag color="orange">Редактирование временно ограничено</Tag> : null}
                 </Space>
                 <Space>
-                  {canRelease && !isReleasedLocked ? (
+                  {canRelease && !isReleasedLocked && !isSentToProcurement ? (
                     <Button type="primary" onClick={handleReleaseRequest}>
-                      Отправить релиз
+                      Отправить заявку
                     </Button>
+                  ) : null}
+                  {rfqSyncStatus === "needs_sync" ? (
+                    <Button onClick={handleSyncRfq}>Синхронизировать RFQ</Button>
                   ) : null}
                 </Space>
               </Space>
@@ -2327,16 +2443,22 @@ export default function ClientRequestsPage() {
                             />
                             {changeDraftActive ? (
                               <>
-                                <Button type="primary" onClick={commitChangeDraft}>
-                                  Сохранить изменения
+                                <Button
+                                  type="primary"
+                                  onClick={commitChangeDraft}
+                                  disabled={!hasDraftChanges}
+                                >
+                                  Завершить ревизию
                                 </Button>
-                                <Button onClick={cancelChangeDraft}>Отменить</Button>
+                                <Button onClick={cancelChangeDraft}>
+                                  Отменить ревизию
+                                </Button>
                               </>
                             ) : (
                               <Button
                                 type="primary"
                                 onClick={() => createRevisionAndEnterEdit()}
-                                disabled={!isLatestRevision || isReleasedLocked}
+                                disabled={!isLatestRevision}
                               >
                                 Создать ревизию
                               </Button>
@@ -2347,7 +2469,7 @@ export default function ClientRequestsPage() {
                                 setStagedRows([])
                                 resetImportState()
                               }}
-                              disabled={!isLatestRevision || isReleasedLocked}
+                              disabled={!isLatestRevision}
                             >
                               Импорт из Excel
                             </Button>
@@ -2431,12 +2553,18 @@ export default function ClientRequestsPage() {
                         {bulkMode && (
                           <Space wrap align="center" style={{ width: "100%" }}>
                             <Text type="secondary">
-                              Меняйте значения прямо в таблице выбранных строк.
+                              Массовые действия применяются только к выбранным строкам.
                             </Text>
-                            <Button onClick={applyBulkUpdate}>Применить</Button>
-                            <Button danger onClick={applyBulkDelete}>
-                              Удалить
-                            </Button>
+                            {hasBulkSelection && hasBulkEditsForSelected ? (
+                              <Button onClick={applyBulkUpdate}>
+                                Применить к выбранным
+                              </Button>
+                            ) : null}
+                            {hasBulkSelection ? (
+                              <Button danger onClick={applyBulkDelete}>
+                                Удалить выбранные
+                              </Button>
+                            ) : null}
                           </Space>
                         )}
 

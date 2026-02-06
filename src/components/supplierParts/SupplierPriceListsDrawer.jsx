@@ -18,6 +18,7 @@ import {
 import { CloseOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, SaveOutlined, UploadOutlined } from "@ant-design/icons"
 import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
+import { formatPrice } from "@/utils/priceFormat"
 
 const STATUS_COLORS = {
   draft: "default",
@@ -420,7 +421,7 @@ export default function SupplierPriceListsDrawer({ open, supplier, onClose }) {
                       value={editingLineData?.price}
                       onChange={(v) => setEditingLineData((prev) => ({ ...(prev || {}), price: v }))}
                     />
-                  ) : (row.price ?? "—"),
+                  ) : (row.price == null ? "—" : formatPrice(row.price)),
               },
               {
                 title: "Валюта",

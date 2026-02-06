@@ -875,7 +875,7 @@ export default function OfferModal({
         dataIndex: "supplier_price",
         width: 120,
         render: (v, r) =>
-          v != null ? `${v} ${r.supplier_currency || ""}` : "—",
+          fmtMoney(v, r.supplier_currency || ""),
       },
       {
         title: "Логистика",
@@ -883,7 +883,7 @@ export default function OfferModal({
         width: 140,
         render: (v, r) =>
           r.logistics_cost != null
-            ? `${r.logistics_cost} ${r.logistics_currency || ""}`
+            ? fmtMoney(r.logistics_cost, r.logistics_currency || "")
             : "—",
       },
       {
@@ -891,7 +891,7 @@ export default function OfferModal({
         dataIndex: "client_price",
         width: 140,
         render: (v, r) =>
-          v != null ? `${v} ${r.client_currency || ""}` : "—",
+          fmtMoney(v, r.client_currency || ""),
       },
       {
         title: "ETA",
@@ -991,7 +991,7 @@ export default function OfferModal({
                 {o.last_price != null && (
                   <Text>
                     {" "}
-                    · {o.last_price} {o.last_currency || ""}
+                    · {fmtMoney(o.last_price, o.last_currency || "")}
                   </Text>
                 )}
               </div>
@@ -1011,7 +1011,7 @@ export default function OfferModal({
           <Space direction="vertical" size={2}>
             {totals.map((t, idx) => (
               <span key={idx}>
-                {t.total_price} {t.currency_iso3}
+                {fmtMoney(t.total_price, t.currency_iso3)}
               </span>
             ))}
           </Space>
@@ -1207,7 +1207,7 @@ export default function OfferModal({
                     {(r.defaults || []).map((d) => (
                       <Text key={`${d.role_label}-${d.supplier_part_number}`} type="secondary" style={{ fontSize: 12 }}>
                         {d.role_label || "деталь"}: {d.supplier_part_number} · {d.supplier_name || d.supplier_public_code || ""}
-                        {d.last_price != null && ` · ${d.last_price} ${d.last_currency || ""}`}
+                        {d.last_price != null && ` · ${fmtMoney(d.last_price, d.last_currency || "")}`}
                       </Text>
                     ))}
                   </Space>
@@ -1274,7 +1274,7 @@ export default function OfferModal({
               title: b.title || `Комплект #${b.id}`,
               price:
                 Array.isArray(b.totals) && b.totals[0]
-                  ? `${b.totals[0].total_price} ${b.totals[0].currency_iso3 || ""}`
+                  ? fmtMoney(b.totals[0].total_price, b.totals[0].currency_iso3 || "")
                   : "",
               defaults: Array.isArray(b.options)
                 ? b.options.filter((o) => o.is_default)
@@ -1301,7 +1301,7 @@ export default function OfferModal({
               ...s,
               price:
                 s.latest_price != null
-                  ? `${s.latest_price} ${s.latest_price_currency || ""}`
+                  ? fmtMoney(s.latest_price, s.latest_price_currency || "")
                   : "",
               raw: s.raw,
             })),

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Timeline, Tag, Space, Checkbox, Button, Typography, Divider, Tooltip, Empty } from "antd"
 import dayjs from "dayjs"
 import { DownloadOutlined, InfoCircleOutlined } from "@ant-design/icons"
+import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 const TYPE_COLORS = {
   order_status_change: "blue",
@@ -55,7 +56,7 @@ const summarizeEvent = (e) => {
     case "offer_added": {
       const price = payload.client_price || payload.supplier_price
       const cur = payload.client_currency || payload.supplier_currency
-      const priceStr = price != null ? `${price} ${cur || ""}` : ""
+      const priceStr = price != null ? formatPriceWithCurrency(price, cur || "", { empty: "" }) : ""
       const route = payload.logistics_route_name || payload.logistics_route_id
       const eta = payload.eta_days_effective || payload.lead_time_days
       const etaStr = eta != null ? ` · ETA ${eta} дн.` : ""

@@ -42,11 +42,47 @@ const CURRENCY_OPTIONS = cc.codes().map((code) => {
 
 const SOURCE_OPTIONS = [
   { value: "RFQ", label: "RFQ" },
-  { value: "PRICE_LIST", label: "Прайс" },
+  { value: "PRICE_LIST", label: "Прайс-лист" },
   { value: "NEGOTIATION", label: "Переговоры" },
   { value: "MANUAL", label: "Вручную" },
   { value: "OTHER", label: "Другое" },
 ]
+
+const sourceTypeLabel = (value) => {
+  const key = String(value || "").toUpperCase()
+  const map = {
+    RFQ: "RFQ",
+    PRICE_LIST: "Прайс-лист",
+    NEGOTIATION: "Переговоры",
+    MANUAL: "Вручную",
+    OTHER: "Другое",
+  }
+  return map[key] || (value || "—")
+}
+
+const sourceDetailsLabel = (row) => {
+  const type = String(row?.source_type || "").toUpperCase()
+  if (type === "PRICE_LIST") {
+    const name =
+      row?.price_list_name ||
+      row?.price_list_code ||
+      (row?.price_list_id ? `#${row.price_list_id}` : "")
+    const from = row?.price_list_valid_from
+      ? dayjs(row.price_list_valid_from).format("DD.MM.YYYY")
+      : null
+    const to = row?.price_list_valid_to
+      ? dayjs(row.price_list_valid_to).format("DD.MM.YYYY")
+      : null
+    const period = from || to ? ` (${from || "…"} — ${to || "…"})` : ""
+    return `${sourceTypeLabel(type)}${name ? `: ${name}` : ""}${period}`
+  }
+  if (type === "RFQ") {
+    const rfqLabel = row?.rfq_number || (row?.rfq_id ? `RFQ-${row.rfq_id}` : "RFQ")
+    const rev = row?.rfq_response_rev_number ? ` · rev ${row.rfq_response_rev_number}` : ""
+    return `${rfqLabel}${rev}`
+  }
+  return sourceTypeLabel(type)
+}
 
 // helpers для min/max, чтобы не зависеть от dayjs.min/max
 const minDay = (dates) =>
@@ -505,7 +541,7 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
     {
       title: "Источник",
       dataIndex: "source_type",
-      width: 140,
+      width: 260,
       render: (v, row) =>
         editingId === row.id ? (
           <Select
@@ -521,7 +557,7 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
             onKeyDown={onEditKeyDown}
           />
         ) : (
-          v || "—"
+          sourceDetailsLabel(row)
         ),
     },
     {

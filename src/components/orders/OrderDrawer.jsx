@@ -40,6 +40,7 @@ import BankDetailsModal from "./BankDetailsModal"
 import ProposalPreviewModal from "./ProposalPreviewModal"
 import OfferModal from "./OfferModal"
 import { useAuth } from "@/auth/AuthContext"
+import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 const { Text } = Typography
 
@@ -1186,10 +1187,7 @@ export default function OrderDrawer({
         title: "Сумма",
         dataIndex: "amount",
         width: 140,
-        render: (v) =>
-          v != null && v !== ""
-            ? Number(v).toLocaleString("ru-RU", { minimumFractionDigits: 2 })
-            : "—",
+        render: (v, record) => formatPriceWithCurrency(v, record?.currency || order?.currency),
       },
       {
         title: "Валюта",

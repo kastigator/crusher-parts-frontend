@@ -12,6 +12,7 @@ import {
 } from "antd"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
+import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 const TRANSPORT_OPTIONS = [
   { value: "SEA", label: "Море" },
@@ -293,7 +294,12 @@ export default function EconomicsPage() {
               { title: "Название", dataIndex: "name" },
               { title: "Транспорт", dataIndex: "transport_mode", width: 120 },
               { title: "ETA", dataIndex: "eta_days", width: 90 },
-              { title: "Стоимость", dataIndex: "cost", width: 120 },
+              {
+                title: "Стоимость",
+                dataIndex: "cost",
+                width: 150,
+                render: (v, r) => formatPriceWithCurrency(v, r?.currency),
+              },
             ]}
           />
         </Card>
@@ -359,7 +365,12 @@ export default function EconomicsPage() {
                 render: (v) => rfqMap.get(v) || "—",
               },
               { title: "Название", dataIndex: "name" },
-              { title: "Итого", dataIndex: "landed_total", width: 120 },
+              {
+                title: "Итого",
+                dataIndex: "landed_total",
+                width: 150,
+                render: (v, r) => formatPriceWithCurrency(v, r?.currency),
+              },
               { title: "Валюта", dataIndex: "currency", width: 90 },
               { title: "ETA", dataIndex: "eta_days", width: 90 },
             ]}

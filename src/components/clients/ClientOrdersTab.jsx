@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react"
 import { Card, Space, Table, message } from "antd"
 import axios from "@/api/axiosInstance"
+import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 export default function ClientOrdersTab({ clientId }) {
   const [requests, setRequests] = useState([])
@@ -57,7 +58,12 @@ export default function ClientOrdersTab({ clientId }) {
           columns={[
             { title: "Номер", dataIndex: "contract_number", width: 160 },
             { title: "Дата", dataIndex: "contract_date", width: 140 },
-            { title: "Сумма", dataIndex: "amount", width: 120 },
+            {
+              title: "Сумма",
+              dataIndex: "amount",
+              width: 160,
+              render: (v, r) => formatPriceWithCurrency(v, r?.currency),
+            },
             { title: "Валюта", dataIndex: "currency", width: 100 },
             { title: "Статус", dataIndex: "status", width: 120 },
           ]}

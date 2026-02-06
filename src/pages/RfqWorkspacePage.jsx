@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Steps, Table, Tabs, Tag, Tooltip, Tree, Typography, message } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
+import dayjs from "dayjs"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
+import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import confirmAction from "@/utils/confirmAction"
 import { useAuth } from "@/auth/AuthContext"
 
@@ -99,6 +101,38 @@ const renderMatchTypes = (value) => {
     .join(", ")
 }
 
+const buildPriceSourceText = (hint) => {
+  const type = String(hint?.latest_price_source_type || "").toUpperCase()
+  if (!type) return ""
+  if (type === "PRICE_LIST") {
+    const name =
+      hint?.latest_price_price_list_name ||
+      hint?.latest_price_price_list_code ||
+      (hint?.latest_price_price_list_id ? `#${hint.latest_price_price_list_id}` : "")
+    if (!name) return "Прайс-лист"
+    return `Прайс-лист: ${name}`
+  }
+  if (type === "RFQ") {
+    const rfqLabel = hint?.latest_price_rfq_number
+      ? hint.latest_price_rfq_number
+      : hint?.latest_price_rfq_id
+        ? `RFQ-${hint.latest_price_rfq_id}`
+        : "RFQ"
+    const rev = hint?.latest_price_rfq_rev_number ? ` · rev ${hint.latest_price_rfq_rev_number}` : ""
+    return `${rfqLabel}${rev}`
+  }
+  if (type === "MANUAL") return "Вручную"
+  if (type === "NEGOTIATION") return "Переговоры"
+  if (type === "OTHER") return "Другое"
+  return type
+}
+
+const formatHintDate = (value) => {
+  if (!value) return ""
+  const d = dayjs(value)
+  return d.isValid() ? d.format("DD.MM.YYYY") : String(value).slice(0, 10)
+}
+
 export default function RfqWorkspacePage() {
   const { user } = useAuth()
   const selectionNodeMapRef = useRef(new Map())
@@ -193,9 +227,29 @@ export default function RfqWorkspacePage() {
     return (
       <div style={{ maxWidth: 520 }}>
         {list.slice(0, 12).map((h, idx) => (
-          <div key={`${h.supplier_part_id || h.supplier_part_number || idx}`}>
-            {h.supplier_part_number || "—"} {h.part_type ? `(${h.part_type})` : ""}
-            {h.description_ru || h.description_en ? ` · ${h.description_ru || h.description_en}` : ""}
+          <div
+            key={`${h.supplier_part_id || h.supplier_part_number || idx}`}
+            style={{ marginBottom: idx === Math.min(list.length, 12) - 1 ? 0 : 8 }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 600 }}>
+              Вариант {idx + 1}: {h.supplier_part_number || "—"}{" "}
+              {h.part_type ? `(${h.part_type})` : ""}
+            </div>
+            {h.description_ru || h.description_en ? (
+              <div style={{ color: "#6b7280", fontSize: 12 }}>
+                {h.description_ru || h.description_en}
+              </div>
+            ) : null}
+            <div style={{ color: "#4b5563", fontSize: 12 }}>
+              Цена:{" "}
+              {h?.latest_price != null
+                ? formatPriceWithCurrency(h.latest_price, h.latest_currency)
+                : "не задана"}
+            </div>
+            <div style={{ color: "#6b7280", fontSize: 12 }}>
+              Источник: {buildPriceSourceText(h) || "—"}
+              {h?.latest_price_date ? ` · ${formatHintDate(h.latest_price_date)}` : ""}
+            </div>
           </div>
         ))}
         {list.length > 12 ? <div>…ещё {list.length - 12}</div> : null}
@@ -206,16 +260,67 @@ export default function RfqWorkspacePage() {
   const renderHintsBadge = (hints) => {
     const list = sortHints(hints)
     if (!list.length) return null
-    const numbers = list.map((h) => h.supplier_part_number).filter(Boolean)
-    const shown = numbers.slice(0, 2)
-    const more = Math.max(0, numbers.length - shown.length)
-    const summary = shown.join(", ") + (more ? ` +${more}` : "")
+    const preview = list.slice(0, 2)
+    const more = Math.max(0, list.length - preview.length)
     const tooltip = buildHintsTooltip(list)
     return (
-      <Tooltip title={tooltip}>
-        <Tag color="blue" style={{ marginInlineEnd: 0 }}>
-          Есть: {summary || list.length}
-        </Tag>
+      <Tooltip title={tooltip} placement="left">
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+          <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+            Варианты: {list.length}
+          </Tag>
+          {preview.map((h, idx) => {
+            const source = buildPriceSourceText(h)
+            const price =
+              h?.latest_price != null
+                ? formatPriceWithCurrency(h.latest_price, h.latest_currency)
+                : "цена не задана"
+            const date = formatHintDate(h?.latest_price_date)
+            return (
+              <div
+                key={`${h?.supplier_part_id || h?.supplier_part_number || idx}`}
+                style={{
+                  border: "1px solid #dbeafe",
+                  background: "#f8fbff",
+                  borderRadius: 6,
+                  padding: "4px 8px",
+                  minWidth: 280,
+                  maxWidth: 360,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 2 }}>
+                  <Text strong style={{ fontSize: 12 }}>
+                    Вариант {idx + 1}: {h?.supplier_part_number || "Без номера"}
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {h?.part_type || "UNKNOWN"}
+                  </Text>
+                </div>
+                {h?.description_ru || h?.description_en ? (
+                  <Text type="secondary" style={{ fontSize: 12, display: "block" }}>
+                    {h.description_ru || h.description_en}
+                  </Text>
+                ) : null}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 2 }}>
+                  <Text style={{ fontSize: 12, fontWeight: 600 }}>Цена: {price}</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Источник: {source || "—"}
+                  </Text>
+                  {date ? (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Дата: {date}
+                    </Text>
+                  ) : null}
+                </div>
+              </div>
+            )
+          })}
+          {more > 0 ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              + еще {more} вариантов (наведите для деталей)
+            </Text>
+          ) : null}
+        </div>
       </Tooltip>
     )
   }
@@ -1804,7 +1909,7 @@ export default function RfqWorkspacePage() {
   return (
     <PageWrapper
       title="RFQ Workspace"
-      helpText="Сквозной поток по RFQ: от назначенного релиза заявки до заказа поставщику."
+      helpText="Сквозной поток по RFQ: от отправленной в закупку заявки до заказа поставщику."
     >
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
         <Card size="small" title="RFQ список">
@@ -1933,6 +2038,12 @@ export default function RfqWorkspacePage() {
                               columns={[
                                 { title: "Поставщик", dataIndex: "supplier_name" },
                                 { title: "Совпадений", dataIndex: "parts_count", width: 130 },
+                                {
+                                  title: "С ценой",
+                                  dataIndex: "priced_parts_count",
+                                  width: 130,
+                                  render: (v, row) => `${Number(v || 0)}/${Number(row?.parts_count || 0)}`,
+                                },
                                 {
                                   title: "Типы",
                                   dataIndex: "match_types",
@@ -2149,7 +2260,7 @@ export default function RfqWorkspacePage() {
                             dataIndex: "best_price",
                             width: 140,
                             render: (value, record) =>
-                              value === "-" ? "-" : `${value} ${record.best_currency}`.trim(),
+                              value === "-" ? "-" : formatPriceWithCurrency(value, record.best_currency),
                           },
                           { title: "Поставщик", dataIndex: "best_supplier", width: 160 },
                         ]}
@@ -2187,7 +2298,7 @@ export default function RfqWorkspacePage() {
                               dataIndex: "price",
                               width: 120,
                               render: (value, record) =>
-                                value == null ? "-" : `${value} ${record.currency || ""}`.trim(),
+                                formatPriceWithCurrency(value, record.currency),
                             },
                             { title: "Qty", dataIndex: "qty", width: 80 },
                             { title: "Комментарий", dataIndex: "decision_note" },

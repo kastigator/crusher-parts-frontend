@@ -28,7 +28,7 @@ const statusLabel = (value) => {
   const labels = {
     draft: "Черновик",
     in_progress: "В работе",
-    released_to_procurement: "Релиз в закупку",
+    released_to_procurement: "Отправлена в закупку",
     structured: "Структура готова",
     sent: "RFQ отправлен",
     responded: "Ответы получены",
@@ -539,7 +539,7 @@ const HomePage = () => {
         </Space>
 
         {manager ? (
-          <Card size="small" title="Релизы заявок (назначение RFQ)">
+          <Card size="small" title="Заявки в закупке (назначение RFQ)">
             <Table
               size="small"
               columns={releaseColumns}
@@ -549,7 +549,7 @@ const HomePage = () => {
               loading={loading}
               tableLayout="fixed"
               scroll={{ x: "max-content" }}
-              locale={{ emptyText: <Empty description="Нет релизов, ожидающих назначения" /> }}
+              locale={{ emptyText: <Empty description="Нет заявок, ожидающих назначения RFQ" /> }}
               onRow={(record) => ({
                 onClick: async () => {
                   await markNotificationsReadForEntity("client_request", record.id)

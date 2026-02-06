@@ -62,6 +62,7 @@ const formatCurrency = (val, currency = "RUB") => {
       style: "currency",
       currency,
       minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(val)
   } catch {
     return val

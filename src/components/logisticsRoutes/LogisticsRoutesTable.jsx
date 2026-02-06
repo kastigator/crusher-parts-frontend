@@ -8,6 +8,7 @@ import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import createTablePagination from "@/utils/tablePagination"
 import ValueDisplay from "@/components/common/ValueDisplay"
+import { formatPrice, formatPriceWithCurrency } from "@/utils/priceFormat"
 
 export const ROUTE_TYPE_OPTIONS = [
   { value: "air", label: "Авиа" },
@@ -35,7 +36,8 @@ const pricingLabel = Object.fromEntries(
 const fmtRate = (rate, unit, currency) => {
   if (rate == null) return null
   const cur = currency || ""
-  return `${rate} ${cur}/${unit}`.trim()
+  const amount = formatPrice(rate)
+  return `${amount || rate} ${cur}/${unit}`.trim()
 }
 
 const formatPricingSummary = (record) => {
@@ -44,18 +46,18 @@ const formatPricingSummary = (record) => {
   if (model === "fixed") return pricingLabel.fixed
   if (model === "per_kg") {
     const main = fmtRate(record.rate_per_kg, "кг", cur)
-    const extra = record.min_cost != null ? `мин ${record.min_cost} ${cur}`.trim() : null
+    const extra = record.min_cost != null ? `мин ${formatPriceWithCurrency(record.min_cost, cur, { empty: "" })}`.trim() : null
     return [main, extra].filter(Boolean).join(" · ")
   }
   if (model === "per_cbm") {
     const main = fmtRate(record.rate_per_cbm, "м³", cur)
-    const extra = record.min_cost != null ? `мин ${record.min_cost} ${cur}`.trim() : null
+    const extra = record.min_cost != null ? `мин ${formatPriceWithCurrency(record.min_cost, cur, { empty: "" })}`.trim() : null
     return [main, extra].filter(Boolean).join(" · ")
   }
   if (model === "per_kg_or_cbm_max") {
     const main = fmtRate(record.rate_per_kg, "кг", cur) || fmtRate(record.rate_per_cbm, "м³", cur)
     const extra = [
-      record.min_cost != null ? `мин ${record.min_cost} ${cur}`.trim() : null,
+      record.min_cost != null ? `мин ${formatPriceWithCurrency(record.min_cost, cur, { empty: "" })}`.trim() : null,
       record.volumetric_kg_per_cbm != null ? `${record.volumetric_kg_per_cbm} кг/м³` : null,
     ]
       .filter(Boolean)
@@ -251,7 +253,7 @@ export default function LogisticsRoutesTable({
           <ValueDisplay
             value={
               (record.pricing_model || "fixed") === "fixed" && record.cost != null
-                ? `${record.cost} ${record.currency || ""}`.trim()
+                ? formatPriceWithCurrency(record.cost, record.currency || "", { empty: "" })
                 : null
             }
           />

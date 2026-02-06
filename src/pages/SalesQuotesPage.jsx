@@ -15,6 +15,7 @@ import {
 } from "antd"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
+import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 export default function SalesQuotesPage() {
   const [quotes, setQuotes] = useState([])
@@ -433,8 +434,18 @@ export default function SalesQuotesPage() {
                         render: (v) => revisionItemMap.get(v) || "—",
                       },
                       { title: "Кол-во", dataIndex: "qty", width: 90 },
-                      { title: "Себестоимость", dataIndex: "cost", width: 120 },
-                      { title: "Цена", dataIndex: "sell_price", width: 120 },
+                      {
+                        title: "Себестоимость",
+                        dataIndex: "cost",
+                        width: 150,
+                        render: (v, r) => formatPriceWithCurrency(v, r?.currency),
+                      },
+                      {
+                        title: "Цена",
+                        dataIndex: "sell_price",
+                        width: 150,
+                        render: (v, r) => formatPriceWithCurrency(v, r?.currency),
+                      },
                       { title: "Маржа %", dataIndex: "margin_pct", width: 100 },
                     ]}
                   />

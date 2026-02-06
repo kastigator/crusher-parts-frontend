@@ -4,6 +4,7 @@ import dayjs from "dayjs"
 import { Modal, Table, Space, Typography, Divider, Button, Tag, message, Segmented, Alert } from "antd"
 import { UploadOutlined, DownloadOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
+import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 const { Title, Text } = Typography
 
@@ -55,7 +56,7 @@ export default function ProposalPreviewModal({ open, onClose, order, items, view
           offer?.client_price != null ? Number(offer.client_price) : null
         const price =
           offer && offer.client_price != null
-            ? `${offer.client_price} ${offer.client_currency || order?.currency || ""}`
+            ? formatPriceWithCurrency(offer.client_price, offer.client_currency || order?.currency || "")
             : "—"
         const eta =
           offer && offer.eta_days_effective != null
@@ -91,11 +92,11 @@ export default function ProposalPreviewModal({ open, onClose, order, items, view
           supplier: supplierLabel,
           supplier_price:
             offer && offer.supplier_price != null
-              ? `${offer.supplier_price} ${offer.supplier_currency || ""}`
+              ? formatPriceWithCurrency(offer.supplier_price, offer.supplier_currency || "")
               : "",
           logistics:
             offer && offer.logistics_cost != null
-              ? `${offer.logistics_cost} ${offer.logistics_currency || ""}`
+              ? formatPriceWithCurrency(offer.logistics_cost, offer.logistics_currency || "")
               : "",
           price,
           priceNumber,
@@ -338,7 +339,7 @@ export default function ProposalPreviewModal({ open, onClose, order, items, view
 
         <div style={{ textAlign: "right", fontWeight: 600 }}>
           Итоговая сумма (утверждённые или первый видимый вариант):{" "}
-          {total ? `${total} ${order?.currency || ""}` : "—"}
+          {total ? formatPriceWithCurrency(total, order?.currency || "") : "—"}
         </div>
 
         {order?.comment_client && (

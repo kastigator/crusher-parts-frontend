@@ -12,6 +12,7 @@ import {
 } from "antd"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
+import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 export default function ContractsPage() {
   const [contracts, setContracts] = useState([])
@@ -147,7 +148,12 @@ export default function ContractsPage() {
               { title: "Клиент", dataIndex: "client_name" },
               { title: "Номер", dataIndex: "contract_number", width: 140 },
               { title: "Дата", dataIndex: "contract_date", width: 120 },
-              { title: "Сумма", dataIndex: "amount", width: 120 },
+              {
+                title: "Сумма",
+                dataIndex: "amount",
+                width: 160,
+                render: (v, r) => formatPriceWithCurrency(v, r?.currency),
+              },
               { title: "Валюта", dataIndex: "currency", width: 90 },
               { title: "Статус", dataIndex: "status", width: 120 },
             ]}

@@ -18,6 +18,7 @@ import {
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import cc from "currency-codes"
+import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 const OFFER_OPTIONS = [
   { value: "OEM", label: "OEM" },
@@ -136,8 +137,8 @@ export default function SupplierResponsesPage() {
           list.map((item) => ({
             value: item.id,
             label: item.supplier_part_number
-              ? `${item.supplier_part_number} — ${item.description || ""}${item.price ? ` · ${item.price} ${item.currency || ""}` : ""}`.trim()
-              : `Без номера — ${item.description || ""}${item.price ? ` · ${item.price} ${item.currency || ""}` : ""}`.trim(),
+              ? `${item.supplier_part_number} — ${item.description || ""}${item.price ? ` · ${formatPriceWithCurrency(item.price, item.currency, { empty: "" })}` : ""}`.trim()
+              : `Без номера — ${item.description || ""}${item.price ? ` · ${formatPriceWithCurrency(item.price, item.currency, { empty: "" })}` : ""}`.trim(),
             description: item.description || "",
             supplierName: item.supplier_name || "",
             meta: item,
@@ -306,7 +307,7 @@ export default function SupplierResponsesPage() {
     }
     lineForm.setFieldsValue(next)
     if (meta.price && meta.currency) {
-      setPriceHint(`Последняя цена: ${meta.price} ${meta.currency}`)
+      setPriceHint(`Последняя цена: ${formatPriceWithCurrency(meta.price, meta.currency)}`)
     } else {
       setPriceHint(null)
     }
@@ -702,8 +703,8 @@ export default function SupplierResponsesPage() {
                             options={suggestedParts.map((item) => ({
                               value: item.supplier_part_id,
                               label: item.supplier_part_number
-                                ? `${item.supplier_part_number} — ${item.description || ""}${item.price ? ` · ${item.price} ${item.currency || ""}` : ""}`.trim()
-                                : `Без номера — ${item.description || ""}${item.price ? ` · ${item.price} ${item.currency || ""}` : ""}`.trim(),
+                                ? `${item.supplier_part_number} — ${item.description || ""}${item.price ? ` · ${formatPriceWithCurrency(item.price, item.currency, { empty: "" })}` : ""}`.trim()
+                                : `Без номера — ${item.description || ""}${item.price ? ` · ${formatPriceWithCurrency(item.price, item.currency, { empty: "" })}` : ""}`.trim(),
                             }))}
                             onChange={(value) => {
                               applySupplierPartMeta(supplierPartMetaMap.get(value))
@@ -812,7 +813,12 @@ export default function SupplierResponsesPage() {
                       },
                       { title: "Тип", dataIndex: "offer_type", width: 90 },
                       { title: "Кол-во", dataIndex: "offered_qty", width: 90 },
-                      { title: "Цена", dataIndex: "price", width: 110 },
+                      {
+                        title: "Цена",
+                        dataIndex: "price",
+                        width: 140,
+                        render: (v, r) => formatPriceWithCurrency(v, r?.currency),
+                      },
                       { title: "Валюта", dataIndex: "currency", width: 90 },
                     ]}
                   />

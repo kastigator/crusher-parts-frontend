@@ -14,6 +14,7 @@ import {
 } from "antd"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
+import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 export default function PurchaseOrdersPage() {
   const [orders, setOrders] = useState([])
@@ -295,7 +296,12 @@ export default function PurchaseOrdersPage() {
                 render: (v) => responseLineMap.get(v) || "—",
               },
               { title: "Кол-во", dataIndex: "qty", width: 90 },
-              { title: "Цена", dataIndex: "price", width: 120 },
+              {
+                title: "Цена",
+                dataIndex: "price",
+                width: 140,
+                render: (v, r) => formatPriceWithCurrency(v, r?.currency),
+              },
               { title: "Валюта", dataIndex: "currency", width: 90 },
               { title: "Срок, дней", dataIndex: "lead_time_days", width: 110 },
             ]}

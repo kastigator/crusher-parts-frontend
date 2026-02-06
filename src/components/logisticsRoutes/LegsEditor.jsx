@@ -6,6 +6,7 @@ import CurrencySelect from "@/components/inputs/CurrencySelect"
 import IncotermsSelect from "@/components/inputs/IncotermsSelect"
 import { ROUTE_TYPE_OPTIONS } from "./LogisticsRoutesTable"
 import { ArrowUpOutlined, ArrowDownOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons"
+import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 const emptyLeg = (seq) => ({
   seq,
@@ -53,6 +54,7 @@ export default function LegsEditor({ legs, setLegs, compact = false }) {
     (sum, l) => sum + (Number.isFinite(Number(l.cost)) ? Number(l.cost) : 0),
     0
   )
+  const totalCostText = formatPriceWithCurrency(totalCost, legs[0]?.currency || "", { empty: "0.00" })
 
   return (
     <Card
@@ -61,7 +63,7 @@ export default function LegsEditor({ legs, setLegs, compact = false }) {
       extra={
         <Space size={8}>
           <span style={{ color: "#6b7280" }}>
-            Σ ETA: {totalEta || 0} дн. · Σ Cost: {totalCost || 0} {legs[0]?.currency || "—"}
+            Σ ETA: {totalEta || 0} дн. · Σ Cost: {totalCostText}
           </span>
           <Button icon={<PlusOutlined />} onClick={addLeg} size="small" type="dashed">
             Добавить звено

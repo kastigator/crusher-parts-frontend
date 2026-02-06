@@ -7,6 +7,7 @@ import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import confirmAction from "@/utils/confirmAction"
 import useTableScrollHints from "@/utils/useTableScrollHints"
+import { formatPrice } from "@/utils/priceFormat"
 
 function OriginalsCell({ row }) {
   const [items, setItems] = useState(null)
@@ -245,6 +246,48 @@ export default function SupplierPartsTable({
     <Tag color={v ? "green" : "default"}>{v ? "да" : "нет"}</Tag>
   )
 
+  const renderPriceSource = (raw) => {
+    const s = String(raw || "").trim().toUpperCase()
+    if (!s) return ""
+    const map = {
+      RFQ: "RFQ",
+      PRICE_LIST: "Прайс-лист",
+      NEGOTIATION: "Переговоры",
+      MANUAL: "Вручную",
+      OTHER: "Другое",
+    }
+    return map[s] || String(raw)
+  }
+
+  const renderPriceSourceDetails = (record) => {
+    const sourceType = String(record?.latest_price_source_type || "")
+      .trim()
+      .toUpperCase()
+    if (!sourceType) return ""
+
+    if (sourceType === "RFQ") {
+      const number = record?.latest_price_rfq_number || null
+      const rev =
+        record?.latest_price_rfq_rev_number != null
+          ? `rev ${record.latest_price_rfq_rev_number}`
+          : null
+      return [number, rev].filter(Boolean).join(" · ") || "RFQ"
+    }
+
+    if (sourceType === "PRICE_LIST") {
+      const listName =
+        record?.latest_price_price_list_name ||
+        record?.latest_price_price_list_code ||
+        (record?.latest_price_price_list_id
+          ? `#${record.latest_price_price_list_id}`
+          : null)
+      if (!listName) return "Прайс-лист"
+      return `Прайс-лист: ${listName}`
+    }
+
+    return renderPriceSource(sourceType)
+  }
+
   const columnDefs = useMemo(() => {
     const cols = []
 
@@ -310,11 +353,13 @@ export default function SupplierPartsTable({
       key: "latest_price",
       title: "Цена",
       dataIndex: "latest_price",
-      width: 140,
+      width: 220,
       align: "right",
       render: (_, record) => {
         if (record?.latest_price == null) return <ValueDisplay value={null} />
-        const text = `${record.latest_price}${record?.latest_currency ? ` ${record.latest_currency}` : ""}`
+        const priceText = `${formatPrice(record.latest_price)}${record?.latest_currency ? ` ${record.latest_currency}` : ""}`
+        const sourceText = renderPriceSourceDetails(record)
+        const text = sourceText ? `${priceText} · ${sourceText}` : priceText
         if (!record?.latest_price_date) return <span>{text}</span>
         return (
           <Tooltip title={`Дата цены: ${String(record.latest_price_date).slice(0, 10)}`}>
