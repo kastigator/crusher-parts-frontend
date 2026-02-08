@@ -22,14 +22,28 @@ import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 const { Text } = Typography
 
+const acceptedSourceSuffix = (row) => {
+  const explicitSource = String(row.line_source_type || "").toUpperCase()
+  if (explicitSource === "PRICE_LIST") return " (Прайс-лист)"
+  if (explicitSource === "RFQ") return " (RFQ)"
+
+  const note = String(row.note || "").toLowerCase()
+  if (!note) return ""
+  if (note.includes("прайс") || note.includes("price list")) return " (Прайс-лист)"
+  if (note.includes("rfq")) return " (RFQ)"
+  return ""
+}
+
 const formatSourceLabel = (row) => {
-  if (Number(row.accepted_from_existing_price) === 1) return "Принятая цена"
+  if (Number(row.accepted_from_existing_price) === 1) {
+    return `Принятая цена${acceptedSourceSuffix(row)}`
+  }
   const source = String(row.entry_source || "").toUpperCase()
   if (source === "SUPPLIER_FILE") return "Файл поставщика"
   if (source === "SUPPLIER_MANUAL") return "Вручную"
   if (source === "NEGOTIATION") return "Переговоры"
   if (source === "SYSTEM_IMPORT") return "Системный импорт"
-  if (source === "ACCEPTED_EXISTING") return "Принятая цена"
+  if (source === "ACCEPTED_EXISTING") return `Принятая цена${acceptedSourceSuffix(row)}`
   return "Ответ поставщика"
 }
 

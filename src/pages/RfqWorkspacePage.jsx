@@ -1379,7 +1379,7 @@ export default function RfqWorkspacePage() {
             bestHint.latest_price_price_list_code ||
             null,
           note: buildPriceSourceText(bestHint) || null,
-          new_revision: true,
+          new_revision: false,
         })
       }
       if (supplierId && statusLines.length) {
