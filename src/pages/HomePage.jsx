@@ -589,7 +589,7 @@ const HomePage = () => {
               onRow={(record) => ({
                 onClick: async () => {
                   await markNotificationsReadForEntity("rfq", record.id)
-                  navigate("/rfq-workspace")
+                  navigate("/rfq-workspace", { state: { rfqId: record.id } })
                 },
                 style: { cursor: "pointer" },
               })}
@@ -696,7 +696,7 @@ const HomePage = () => {
             onRow={(record) => ({
               onClick: async () => {
                 await markNotificationsReadForEntity("rfq", record.id, "assignment")
-                navigate("/rfq-workspace")
+                navigate("/rfq-workspace", { state: { rfqId: record.id } })
               },
               style: { cursor: "pointer" },
             })}

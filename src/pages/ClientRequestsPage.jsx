@@ -1412,6 +1412,28 @@ export default function ClientRequestsPage() {
         )
       }
 
+      if (activeRequest?.id) {
+        try {
+          await axios.post(`/client-requests/${activeRequest.id}/sync-rfq`)
+          message.success("RFQ синхронизирован")
+        } catch (e) {
+          const errMsg =
+            e?.response?.data?.message ||
+            (e?.response?.status === 409
+              ? "Синхронизация недоступна (не отправлено в закупку?)"
+              : "Не удалось синхронизировать RFQ автоматически")
+          message.warning(errMsg)
+          // fallback: помечаем needs_sync, чтобы пользователь мог синхронизировать вручную
+          try {
+            await axios.post(`/client-requests/${activeRequest.id}/mark-rfq-needs-sync`)
+          } catch {
+            /* ignore */
+          }
+        } finally {
+          await refreshActiveRequest(activeRequest.id)
+        }
+      }
+
       const refreshed = await fetchRevisionItems(revisionId)
       setActiveRevisionId(revisionId)
       setItems(refreshed)

@@ -1,12 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Steps, Table, Tabs, Tag, Tooltip, Tree, Typography, message } from "antd"
-import { DeleteOutlined } from "@ant-design/icons"
+import { Alert, Button, Card, Checkbox, Form, Input, Modal, Select, Space, Steps, Table, Tabs, Tag, Tooltip, Tree, Typography, message } from "antd"
+import { DeleteOutlined, UploadOutlined } from "@ant-design/icons"
 import dayjs from "dayjs"
 import PageWrapper from "@/components/common/PageWrapper"
+import ContractsTabContent from "@/components/rfqWorkspace/ContractsTabContent"
+import CoverageTabContent from "@/components/rfqWorkspace/CoverageTabContent"
+import EconomicsTabContent from "@/components/rfqWorkspace/EconomicsTabContent"
+import PurchaseOrdersTabContent from "@/components/rfqWorkspace/PurchaseOrdersTabContent"
+import ResponsesTabContent from "@/components/rfqWorkspace/ResponsesTabContent"
+import SalesTabContent from "@/components/rfqWorkspace/SalesTabContent"
+import SelectionTabContent from "@/components/rfqWorkspace/SelectionTabContent"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import confirmAction from "@/utils/confirmAction"
 import { useAuth } from "@/auth/AuthContext"
+import * as XLSX from "xlsx"
+import { useLocation } from "react-router-dom"
 
 const { Text } = Typography
 
@@ -133,8 +142,68 @@ const formatHintDate = (value) => {
   return d.isValid() ? d.format("DD.MM.YYYY") : String(value).slice(0, 10)
 }
 
+const parseNumberOrNull = (value) => {
+  if (value === undefined || value === null) return null
+  const raw = String(value).trim()
+  if (!raw) return null
+  const normalized = raw.replace(/\s+/g, "").replace(",", ".")
+  const num = Number(normalized)
+  return Number.isFinite(num) ? num : null
+}
+
+const parseImportRow = (cells) => {
+  const row = Array.isArray(cells) ? cells : []
+  const lineNumber = parseNumberOrNull(row[0])
+  if (!lineNumber) return null
+
+  const fromTemplatePrice = parseNumberOrNull(row[9])
+  const fromTemplateCurrency = row[10] ? String(row[10]).trim().toUpperCase() : null
+  if (fromTemplatePrice != null && fromTemplateCurrency) {
+    return {
+      line_number: Number(lineNumber),
+      price: Number(fromTemplatePrice),
+      currency: fromTemplateCurrency,
+      lead_time_days: parseNumberOrNull(row[11]),
+      note: row[18] ? String(row[18]).trim() : null,
+      offer_type: row[8] ? String(row[8]).trim().toUpperCase() : null,
+      moq: parseNumberOrNull(row[16]),
+      packaging: row[17] ? String(row[17]).trim() : null,
+      validity_days: null,
+      supplier_part_number: row[6] ? String(row[6]).trim() : null,
+      supplier_description: row[7] ? String(row[7]).trim() : null,
+    }
+  }
+
+  const fallbackPrice = parseNumberOrNull(row[1])
+  const fallbackCurrency = row[2] ? String(row[2]).trim().toUpperCase() : null
+  if (fallbackPrice == null || !fallbackCurrency) return null
+
+  return {
+    line_number: Number(lineNumber),
+    price: Number(fallbackPrice),
+    currency: fallbackCurrency,
+    lead_time_days: parseNumberOrNull(row[3]),
+    note: row[4] ? String(row[4]).trim() : null,
+    offer_type: row[5] ? String(row[5]).trim().toUpperCase() : null,
+    moq: parseNumberOrNull(row[6]),
+    packaging: row[7] ? String(row[7]).trim() : null,
+    validity_days: parseNumberOrNull(row[8]),
+    supplier_part_number: row[9] ? String(row[9]).trim() : null,
+    supplier_description: row[10] ? String(row[10]).trim() : null,
+  }
+}
+
+const parseImportTextRows = (text) =>
+  String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => parseImportRow(line.split(/\t|;/)))
+    .filter((row) => row && Number.isFinite(row.line_number) && Number.isFinite(row.price) && row.currency)
+
 export default function RfqWorkspacePage() {
   const { user } = useAuth()
+  const location = useLocation()
   const selectionNodeMapRef = useRef(new Map())
   const [rfqs, setRfqs] = useState([])
   const [requests, setRequests] = useState([])
@@ -153,10 +222,13 @@ export default function RfqWorkspacePage() {
   const [rfqDocuments, setRfqDocuments] = useState([])
   const [docsLoading, setDocsLoading] = useState(false)
   const [sending, setSending] = useState(false)
+  const [supplierSendingId, setSupplierSendingId] = useState(null)
   const [selectedSupplierIds, setSelectedSupplierIds] = useState([])
   const [supplierCreateOpen, setSupplierCreateOpen] = useState(false)
   const [autoAddCreatedSupplier, setAutoAddCreatedSupplier] = useState(true)
   const [responses, setResponses] = useState([])
+  const [responseLines, setResponseLines] = useState([])
+  const [showArchivedResponses, setShowArchivedResponses] = useState(false)
   const [structure, setStructure] = useState(null)
   const [coverage, setCoverage] = useState(null)
   const [selections, setSelections] = useState([])
@@ -173,6 +245,7 @@ export default function RfqWorkspacePage() {
     loading: false,
     saving: false,
     selectedKeys: [],
+    acceptedKeys: [],
     hints: null,
     onlyHinted: false,
   })
@@ -195,6 +268,20 @@ export default function RfqWorkspacePage() {
     partId: null,
     items: [],
   })
+  const [dispatchSummary, setDispatchSummary] = useState([])
+  const [dispatches, setDispatches] = useState([])
+  const [sendIncludePriced, setSendIncludePriced] = useState(false)
+  const [importModal, setImportModal] = useState({
+    open: false,
+    supplierId: null,
+    text: "",
+    rows: [],
+    loading: false,
+    fileName: "",
+    newRevision: false,
+  })
+  const [lineStatuses, setLineStatuses] = useState({})
+  const [lineStatusSaving, setLineStatusSaving] = useState(false)
 
   const [createForm] = Form.useForm()
   const [supplierForm] = Form.useForm()
@@ -257,7 +344,7 @@ export default function RfqWorkspacePage() {
     )
   }
 
-  const renderHintsBadge = (hints) => {
+  const renderHintsBadge = (hints, rfqItemId = null) => {
     const list = sortHints(hints)
     if (!list.length) return null
     const preview = list.slice(0, 2)
@@ -301,7 +388,7 @@ export default function RfqWorkspacePage() {
                     {h.description_ru || h.description_en}
                   </Text>
                 ) : null}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 2 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 2, alignItems: "center" }}>
                   <Text style={{ fontSize: 12, fontWeight: 600 }}>Цена: {price}</Text>
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     Источник: {source || "—"}
@@ -407,6 +494,37 @@ export default function RfqWorkspacePage() {
     loadSuppliers()
   }, [])
 
+  // Подхватываем rfq_id из query/state при переходе из дашборда
+  useEffect(() => {
+    if (!rfqs.length) return
+    const params = new URLSearchParams(location.search || "")
+    const queryId = Number(params.get("rfq") || params.get("rfq_id"))
+    const stateId = Number(location.state?.rfqId || location.state?.rfq_id)
+    const desiredId = Number.isFinite(queryId) && queryId > 0
+      ? queryId
+      : Number.isFinite(stateId) && stateId > 0
+      ? stateId
+      : null
+    if (desiredId && rfqs.some((row) => Number(row.id) === Number(desiredId))) {
+      setActiveRfqId(desiredId)
+    }
+  }, [location, rfqs])
+
+  // обновлять сводку/историю отправок при смене активного RFQ или его ревизии
+  useEffect(() => {
+    if (activeRfqId) {
+      loadDispatchSummary(activeRfqId)
+      loadDispatches(activeRfqId)
+    }
+  }, [activeRfqId, activeRfq?.rev_number])
+
+  // Автовыбор первого RFQ, если еще не выбрали ничего
+  useEffect(() => {
+    if (!activeRfqId && rfqs.length) {
+      setActiveRfqId(rfqs[0].id)
+    }
+  }, [rfqs, activeRfqId])
+
   useEffect(() => {
     if (user?.id) {
       createForm.setFieldsValue({ assigned_to_user_id: user.id })
@@ -473,6 +591,56 @@ export default function RfqWorkspacePage() {
       message.error("Не удалось загрузить документы RFQ")
     } finally {
       setDocsLoading(false)
+    }
+  }
+
+  const loadDispatchSummary = async (rfqId) => {
+    if (!rfqId) {
+      setDispatchSummary([])
+      return
+    }
+    try {
+      const { data } = await axios.get(`/rfqs/${rfqId}/dispatch-summary`)
+      setDispatchSummary(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const loadDispatches = async (rfqId) => {
+    if (!rfqId) {
+      setDispatches([])
+      return
+    }
+    try {
+      const { data } = await axios.get(`/rfqs/${rfqId}/dispatches`)
+      setDispatches(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const loadResponsesAndLines = async (rfqId, includeArchived = showArchivedResponses) => {
+    const id = Number(rfqId)
+    if (!Number.isFinite(id) || id <= 0) {
+      setResponses([])
+      setResponseLines([])
+      return
+    }
+    try {
+      const [respHeaders, respLines] = await Promise.all([
+        axios.get("/supplier-responses"),
+        axios.get("/supplier-responses/lines", {
+          params: { rfq_id: id, include_archived: includeArchived ? 1 : undefined },
+        }),
+      ])
+      const responseList = Array.isArray(respHeaders.data) ? respHeaders.data : []
+      const responseLinesList = Array.isArray(respLines.data) ? respLines.data : []
+      setResponses(responseList.filter((row) => Number(row.rfq_id) === Number(rfqId)))
+      setResponseLines(responseLinesList)
+    } catch (e) {
+      // не блокируем UI, просто лог
+      console.debug("loadResponsesAndLines skip:", e?.response?.data || e?.message)
     }
   }
 
@@ -548,57 +716,126 @@ export default function RfqWorkspacePage() {
       return
     }
 
-    let cancelled = false
-    const loadDetails = async () => {
-      try {
-        const rfq = rfqs.find((row) => Number(row.id) === Number(activeRfqId)) || null
-        setActiveRfq(rfq || null)
+      let cancelled = false
+      const loadDetails = async () => {
+        let attempts = 0
+        const maxAttempts = 3
+        const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-        const [
-          itemsResp,
-          suppliersResp,
-          suggestedResp,
-          docsResp,
-          responsesResp,
-          structureResp,
-          coverageResp,
-          selectionsResp,
-          groupsResp,
-          landedResp,
-          quotesResp,
-          contractsResp,
-          poResp,
-        ] = await Promise.all([
-          axios.get(`/rfqs/${activeRfqId}/items`),
-          axios.get(`/rfqs/${activeRfqId}/suppliers`),
-          axios.get(`/rfqs/${activeRfqId}/suggested-suppliers`),
-          axios.get(`/rfqs/${activeRfqId}/documents`),
-          axios.get("/supplier-responses"),
-          axios.get(`/rfqs/${activeRfqId}/structure`, { params: { view: "master" } }),
-          axios.get("/coverage", { params: { rfq_id: activeRfqId } }),
-          axios.get("/selection"),
-          axios.get("/economics/shipment-groups"),
-          axios.get("/economics/landed-costs"),
-          axios.get("/sales-quotes"),
-          rfq?.client_id ? axios.get("/contracts", { params: { client_id: rfq.client_id } }) : Promise.resolve({ data: [] }),
-          axios.get("/purchase-orders"),
-        ])
+        try {
+          const rfq = rfqs.find((row) => Number(row.id) === Number(activeRfqId)) || null
+          setActiveRfq(rfq || null)
+
+        const safeGet = async (promise, fallback) => {
+          try {
+            const resp = await promise
+            return resp?.data ?? fallback
+          } catch (err) {
+            console.debug("loadDetails safeGet", err?.response?.config?.url, err?.response?.data || err?.message)
+            return fallback
+          }
+        }
+
+        let itemsData = []
+        let suppliersData = []
+        let suggestedData = []
+        let docsData = []
+        let responsesData = []
+        let structureData = null
+        let coverageData = []
+        let selectionsData = []
+        let dispatchSummaryData = []
+        let dispatchesData = []
+        let groupsData = []
+        let landedData = []
+        let quotesData = []
+        let contractsData = []
+        let poData = []
+
+        while (!cancelled && attempts < maxAttempts) {
+          attempts += 1
+          ;[
+            itemsData,
+            suppliersData,
+            suggestedData,
+            docsData,
+            responsesData,
+            structureData,
+            coverageData,
+            selectionsData,
+            dispatchSummaryData,
+            dispatchesData,
+            groupsData,
+            landedData,
+            quotesData,
+            contractsData,
+            poData,
+          ] = await Promise.all([
+            safeGet(axios.get(`/rfqs/${activeRfqId}/items`), []),
+            safeGet(axios.get(`/rfqs/${activeRfqId}/suppliers`), []),
+            safeGet(axios.get(`/rfqs/${activeRfqId}/suggested-suppliers`), []),
+            safeGet(axios.get(`/rfqs/${activeRfqId}/documents`), []),
+            safeGet(axios.get("/supplier-responses"), []),
+            safeGet(axios.get(`/rfqs/${activeRfqId}/structure`, { params: { view: "master" } }), null),
+            safeGet(axios.get("/coverage", { params: { rfq_id: activeRfqId } }), []),
+            safeGet(axios.get("/selection"), []),
+            safeGet(axios.get(`/rfqs/${activeRfqId}/dispatch-summary`), []),
+            safeGet(axios.get(`/rfqs/${activeRfqId}/dispatches`), []),
+            safeGet(axios.get("/economics/shipment-groups"), []),
+            safeGet(axios.get("/economics/landed-costs"), []),
+            safeGet(axios.get("/sales-quotes"), []),
+            safeGet(rfq?.client_id ? axios.get("/contracts", { params: { client_id: rfq.client_id } }) : Promise.resolve({ data: [] }), []),
+            safeGet(axios.get("/purchase-orders"), []),
+          ])
+
+          if (Array.isArray(itemsData) && itemsData.length) break
+          // пробуем bulk и ждём чуть-чуть
+          try {
+            await axios.post(`/rfqs/${activeRfqId}/items/bulk`)
+          } catch (_e) {
+            // игнор, пробуем всё равно перезагрузить
+          }
+          await delay(500)
+        }
 
         if (cancelled) return
 
-        let itemList = Array.isArray(itemsResp.data) ? itemsResp.data : []
-        const supplierList = Array.isArray(suppliersResp.data) ? suppliersResp.data : []
-        const suggestedList = Array.isArray(suggestedResp.data) ? suggestedResp.data : []
-        const docsList = Array.isArray(docsResp.data) ? docsResp.data : []
-        const responseList = Array.isArray(responsesResp.data) ? responsesResp.data : []
-        const structurePayload = structureResp?.data || null
-        const coveragePayload = coverageResp?.data || null
-        const selectionList = Array.isArray(selectionsResp.data) ? selectionsResp.data : []
-        const groupList = Array.isArray(groupsResp.data) ? groupsResp.data : []
-        const landedList = Array.isArray(landedResp.data) ? landedResp.data : []
-        const quoteList = Array.isArray(quotesResp.data) ? quotesResp.data : []
-        const contractList = Array.isArray(contractsResp.data) ? contractsResp.data : []
-        const poList = Array.isArray(poResp.data) ? poResp.data : []
+        const refetchItemsAndStructure = async () => {
+          const [refItems, refStructure] = await Promise.all([
+            axios.get(`/rfqs/${activeRfqId}/items`),
+            axios.get(`/rfqs/${activeRfqId}/structure`, { params: { view: "master" } }),
+          ])
+          return {
+            items: Array.isArray(refItems.data) ? refItems.data : [],
+            structure: refStructure?.data || null,
+          }
+        }
+
+        let itemList = Array.isArray(itemsData) ? itemsData : []
+        const supplierList = Array.isArray(suppliersData) ? suppliersData : []
+        const suggestedList = Array.isArray(suggestedData) ? suggestedData : []
+        const docsList = Array.isArray(docsData) ? docsData : []
+        const responseList = Array.isArray(responsesData) ? responsesData : []
+        let responseLinesList = []
+        const rfqIdNum = Number(activeRfqId)
+        if (supplierList.length > 0 && Number.isFinite(rfqIdNum) && rfqIdNum > 0) {
+          responseLinesList = await safeGet(
+            axios.get("/supplier-responses/lines", {
+              params: { rfq_id: rfqIdNum, include_archived: showArchivedResponses ? 1 : undefined },
+            }),
+            []
+          )
+        }
+        const structurePayload = structureData
+        const coveragePayload = Array.isArray(coverageData) ? coverageData : []
+        const selectionList = Array.isArray(selectionsData) ? selectionsData : []
+        const dispatchSummaryList = Array.isArray(dispatchSummaryData) ? dispatchSummaryData : []
+        const dispatchesList = Array.isArray(dispatchesData) ? dispatchesData : []
+        const groupList = Array.isArray(groupsData) ? groupsData : []
+        const landedList = Array.isArray(landedData) ? landedData : []
+        const quoteList = Array.isArray(quotesData) ? quotesData : []
+        const contractList = Array.isArray(contractsData) ? contractsData : []
+        const poList = Array.isArray(poData) ? poData : []
 
         const rfqResponses = responseList.filter((row) => Number(row.rfq_id) === Number(activeRfqId))
         const rfqSelections = selectionList.filter((row) => Number(row.rfq_id) === Number(activeRfqId))
@@ -619,20 +856,43 @@ export default function RfqWorkspacePage() {
           autoFillRef.current.add(activeRfqId)
           try {
             await axios.post(`/rfqs/${activeRfqId}/items/bulk`)
-            const refreshed = await axios.get(`/rfqs/${activeRfqId}/items`)
-            itemList = Array.isArray(refreshed.data) ? refreshed.data : []
-            const refreshedStructure = await axios.get(`/rfqs/${activeRfqId}/structure`, {
-              params: { view: "master" },
-            })
-            const refreshedSuggested = await axios.get(`/rfqs/${activeRfqId}/suggested-suppliers`)
+            const refreshed = await refetchItemsAndStructure()
+            itemList = refreshed.items
             if (!cancelled) {
-              setStructure(refreshedStructure?.data || null)
-              setSuggestedSuppliers(Array.isArray(refreshedSuggested.data) ? refreshedSuggested.data : [])
-              setSuggestedSelection([])
+              setStructure(refreshed.structure)
             }
           } catch (e) {
-            console.error(e)
+            console.debug("auto-fill items failed", e?.response?.data || e?.message)
           }
+        }
+
+        // если после попытки всё ещё пусто — пробуем ещё раз под этим же токеном
+        if (!itemList.length) {
+          try {
+            const refreshed = await refetchItemsAndStructure()
+            itemList = refreshed.items
+            if (!cancelled && !structurePayload) {
+              setStructure(refreshed.structure)
+            }
+          } catch (e) {
+            console.debug("second fetch items failed", e?.response?.data || e?.message)
+          }
+        }
+
+        // Если структура не приехала, а строки уже есть — строим простой фолбэк, чтобы таблица не была пустой
+        let finalStructure = structurePayload
+        if (!finalStructure && itemList.length) {
+          const fallbackItems = itemList.map((it) => ({
+            rfq_item_id: it.id || it.rfq_item_id,
+            line_number: it.line_number,
+            description: it.client_description || it.original_description_ru || it.original_description_en || "",
+            original_cat_number: it.original_cat_number || "",
+            client_part_number: it.client_part_number || "",
+            requested_qty: it.requested_qty || it.client_requested_qty || "",
+            uom: it.uom || it.client_uom || "",
+            options: [],
+          }))
+          finalStructure = { items: fallbackItems }
         }
 
         setItems(itemList)
@@ -641,9 +901,12 @@ export default function RfqWorkspacePage() {
         setSuggestedSelection([])
         setRfqDocuments(docsList)
         setResponses(rfqResponses)
-        setStructure(structurePayload)
+        setResponseLines(responseLinesList)
+        setStructure(finalStructure)
         setCoverage(coveragePayload)
         setSelections(rfqSelections)
+        setDispatchSummary(dispatchSummaryList)
+        setDispatches(dispatchesList)
         setShipmentGroups(rfqGroups)
         setLandedCosts(rfqLanded)
         setSalesQuotes(rfqQuotes)
@@ -661,7 +924,8 @@ export default function RfqWorkspacePage() {
         }
       } catch (e) {
         if (!cancelled) {
-          console.error(e)
+          // логируем URL и тело ответа, чтобы быстро найти 400
+          console.error("loadDetails error", e?.response?.config?.url, e?.response?.data || e?.message)
         }
       }
     }
@@ -670,7 +934,7 @@ export default function RfqWorkspacePage() {
     return () => {
       cancelled = true
     }
-  }, [activeRfqId, rfqs])
+  }, [activeRfqId, rfqs, showArchivedResponses])
 
   useEffect(() => {
     if (!suppliers.length) {
@@ -812,6 +1076,36 @@ export default function RfqWorkspacePage() {
     }
   }
 
+  const loadLineStatuses = async (rfqId, supplierId) => {
+    if (!rfqId || !supplierId) return
+    try {
+      const { data } = await axios.get(`/rfqs/${rfqId}/suppliers/${supplierId}/line-status`)
+      const map = {}
+      ;(Array.isArray(data) ? data : []).forEach((row) => {
+        if (row.rfq_item_id) map[row.rfq_item_id] = row.status
+      })
+      setLineStatuses((prev) => ({ ...prev, [supplierId]: map }))
+    } catch (e) {
+      console.debug("loadLineStatuses skip:", e?.response?.data || e?.message)
+    }
+  }
+
+  const saveLineStatus = async ({ supplierId, rfqItemId, status }) => {
+    if (!activeRfqId || !supplierId || !rfqItemId) return
+    setLineStatusSaving(true)
+    try {
+      await axios.put(`/rfqs/${activeRfqId}/suppliers/${supplierId}/line-status`, {
+        lines: [{ rfq_item_id: rfqItemId, status }],
+      })
+      await loadLineStatuses(activeRfqId, supplierId)
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось обновить статус строки")
+    } finally {
+      setLineStatusSaving(false)
+    }
+  }
+
   const openSelectionModal = async (supplier) => {
     if (!activeRfqId || !supplier?.id) return
     const supplierId = supplier?.supplier_id
@@ -822,6 +1116,7 @@ export default function RfqWorkspacePage() {
       loading: true,
       saving: false,
       selectedKeys: [],
+      acceptedKeys: [],
       hints: cachedHints,
       onlyHinted: false,
     })
@@ -830,30 +1125,42 @@ export default function RfqWorkspacePage() {
         axios.get(`/rfqs/${activeRfqId}/suppliers/${supplier.id}/line-selections`),
         supplierId ? loadSupplierHints(activeRfqId, supplierId) : Promise.resolve(null),
       ])
+      await loadLineStatuses(activeRfqId, supplierId)
       const data = selectionsResp?.data
       const keys = []
+      const acceptedKeys = []
       const nextBundleChoice = {}
       const partIdsToLoad = new Set()
       ;(Array.isArray(data) ? data : []).forEach((row) => {
         const type = String(row.line_type || "").toUpperCase()
+        const savedSelectionKey = String(row.selection_key || "").trim()
+        const pushSelectionKey = (key) => {
+          if (!key) return
+          keys.push(key)
+          if (Number(row.use_existing_price) === 1) acceptedKeys.push(key)
+        }
+        if (savedSelectionKey) {
+          pushSelectionKey(savedSelectionKey)
+        } else
         if (type === "DEMAND") {
           if (row.alt_original_part_id) {
-            keys.push(
-              `alt:${row.rfq_item_id}:${row.original_part_id}:${row.alt_original_part_id}`
-            )
+            const key = `alt:${row.rfq_item_id}:${row.original_part_id}:${row.alt_original_part_id}`
+            pushSelectionKey(key)
           } else {
-            keys.push(`demand:${row.rfq_item_id}`)
+            const key = `demand:${row.rfq_item_id}`
+            pushSelectionKey(key)
           }
         } else if (type === "BOM_COMPONENT") {
           if (row.alt_original_part_id) {
-            keys.push(
-              `alt:${row.rfq_item_id}:${row.original_part_id}:${row.alt_original_part_id}`
-            )
+            const key = `alt:${row.rfq_item_id}:${row.original_part_id}:${row.alt_original_part_id}`
+            pushSelectionKey(key)
           } else {
-            keys.push(`bom:${row.rfq_item_id}:${row.original_part_id}`)
+            const key = `bom:${row.rfq_item_id}:${row.original_part_id}`
+            pushSelectionKey(key)
           }
         } else if (type === "KIT_ROLE") {
-          keys.push(`kit:${row.rfq_item_id}:${row.bundle_id}:${row.bundle_item_id}`)
+          const key = `kit:${row.rfq_item_id}:${row.bundle_id}:${row.bundle_item_id}`
+          pushSelectionKey(key)
           if (row.bundle_id) {
             if (row.original_part_id) {
               nextBundleChoice[`part:${row.original_part_id}`] = row.bundle_id
@@ -884,6 +1191,7 @@ export default function RfqWorkspacePage() {
         ...prev,
         loading: false,
         selectedKeys: keys,
+        acceptedKeys,
         hints: hints || prev.hints,
       }))
     } catch (e) {
@@ -956,14 +1264,32 @@ export default function RfqWorkspacePage() {
     setAltModal({ open: true, loading: false, partId, items })
   }
 
+  const getHintsForNode = (node, hintsPayload) => {
+    const type = String(node?.line_type || "").toUpperCase()
+    if (type === "DEMAND" || type === "BOM_COMPONENT") {
+      const effectivePartId = node?.alt_original_part_id || node?.original_part_id
+      if (!effectivePartId) return []
+      return hintsPayload?.originals?.[String(effectivePartId)] || []
+    }
+    if (type === "KIT_ROLE") {
+      const bundleItemId = Number(node?.bundle_item_id || 0)
+      if (!bundleItemId) return []
+      return hintsPayload?.bundle_items?.[String(bundleItemId)] || []
+    }
+    return []
+  }
+
   const saveSelections = async (nodeMap) => {
     if (!activeRfqId || !selectionModal.supplier?.id) return
-    const supplierId = selectionModal.supplier.id
+    const rfqSupplierId = selectionModal.supplier.id
+    const supplierId = selectionModal.supplier.supplier_id
+    const acceptedSet = new Set(selectionModal.acceptedKeys || [])
     const payload = selectionModal.selectedKeys
       .map((key) => {
         const node = nodeMap.get(key)
         if (!node) return null
         return {
+          selection_key: key,
           rfq_item_id: node.rfq_item_id,
           line_type: node.line_type,
           original_part_id: node.original_part_id || null,
@@ -974,15 +1300,94 @@ export default function RfqWorkspacePage() {
           line_description: node.line_description || null,
           qty: node.qty ?? null,
           uom: node.uom || null,
+          use_existing_price: acceptedSet.has(key) ? 1 : 0,
         }
       })
       .filter(Boolean)
+    const requestRows = payload.filter((row) => Number(row.use_existing_price) !== 1)
+    const requestItemIds = new Set(
+      requestRows
+        .map((row) => Number(row.rfq_item_id))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    )
+    const activeItemIds = [
+      ...new Set(
+        (Array.isArray(structureItems) ? structureItems : [])
+          .map((item) => Number(item?.rfq_item_id))
+          .filter((id) => Number.isFinite(id) && id > 0)
+      ),
+    ]
+    const statusLines = activeItemIds.map((rfqItemId) => {
+      let nextStatus = "NONE"
+      if (requestItemIds.has(rfqItemId)) {
+        nextStatus = "REQUEST"
+      }
+      return { rfq_item_id: rfqItemId, status: nextStatus }
+    })
     setSelectionModal((prev) => ({ ...prev, saving: true }))
     try {
       await axios.put(
-        `/rfqs/${activeRfqId}/suppliers/${supplierId}/line-selections`,
-        { selections: payload }
+        `/rfqs/${activeRfqId}/suppliers/${rfqSupplierId}/line-selections`,
+        {
+          selections: payload,
+        }
       )
+      const existingAcceptedSignatures = new Set(
+        (Array.isArray(responseLines) ? responseLines : [])
+          .filter((row) => Number(row.supplier_id) === Number(supplierId))
+          .filter((row) => Number(row.accepted_from_existing_price) === 1)
+          .map(
+            (row) =>
+              `${Number(row.rfq_item_id) || 0}:${Number(row.original_part_id) || 0}:${Number(
+                row.bundle_item_id
+              ) || 0}`
+          )
+      )
+      const accepts = payload.filter((row) => Number(row.use_existing_price) === 1)
+      for (const row of accepts) {
+        const node = nodeMap.get(row.selection_key)
+        if (!node) continue
+        const hints = getHintsForNode(node, selectionModal.hints)
+        const bestHint =
+          sortHints(hints).find((h) => h?.latest_price != null && h?.latest_currency) || null
+        if (!bestHint) continue
+        const effectiveOriginalPartId =
+          Number(node.alt_original_part_id || node.original_part_id || 0) || null
+        const requestedOriginalPartId = Number(node.original_part_id || 0) || null
+        const sig = `${Number(row.rfq_item_id) || 0}:${effectiveOriginalPartId || 0}:${
+          Number(row.bundle_item_id) || 0
+        }`
+        if (existingAcceptedSignatures.has(sig)) continue
+        await axios.post(`/rfqs/${activeRfqId}/suppliers/${supplierId}/accept-price`, {
+          rfq_item_id: row.rfq_item_id,
+          selection_key: row.selection_key,
+          supplier_part_id: bestHint.supplier_part_id || null,
+          requested_original_part_id: requestedOriginalPartId,
+          original_part_id: effectiveOriginalPartId,
+          rfq_item_component_id: node.rfq_item_component_id || null,
+          bundle_id: row.bundle_id || null,
+          bundle_item_id: row.bundle_item_id || null,
+          price: bestHint.latest_price,
+          currency: bestHint.latest_currency,
+          lead_time_days: bestHint.lead_time_days || null,
+          validity_days: bestHint.latest_price_validity_days || null,
+          offer_type: bestHint.part_type || "UNKNOWN",
+          source_type: bestHint.latest_price_source_type || null,
+          source_ref:
+            bestHint.latest_price_price_list_id ||
+            bestHint.latest_price_rfq_id ||
+            bestHint.latest_price_price_list_code ||
+            null,
+          note: buildPriceSourceText(bestHint) || null,
+          new_revision: true,
+        })
+      }
+      if (supplierId && statusLines.length) {
+        await axios.put(`/rfqs/${activeRfqId}/suppliers/${supplierId}/line-status`, {
+          lines: statusLines,
+        })
+      }
+      await Promise.all([loadLineStatuses(activeRfqId, supplierId), loadResponsesAndLines(activeRfqId)])
       message.success("Выбор сохранен")
       setSelectionModal((prev) => ({ ...prev, saving: false, open: false }))
     } catch (e) {
@@ -1027,11 +1432,17 @@ export default function RfqWorkspacePage() {
       const supplierIds = selectedSupplierIds.length
         ? selectedSupplierIds
         : suppliers.map((s) => s.supplier_id)
-      await axios.post(`/rfqs/${activeRfqId}/send`, {
+      const { data } = await axios.post(`/rfqs/${activeRfqId}/send`, {
         supplier_ids: supplierIds,
+        include_priced: sendIncludePriced,
       })
       await loadRfqs()
-      await loadDocuments(activeRfqId)
+      if (Array.isArray(data?.documents) && data.documents.length) {
+        setRfqDocuments(data.documents)
+      } else {
+        await loadDocuments(activeRfqId)
+      }
+      await loadDispatches(activeRfqId)
       const refreshed = await axios.get(`/rfqs/${activeRfqId}/suppliers`)
       setSuppliers(Array.isArray(refreshed.data) ? refreshed.data : [])
       message.success("RFQ отправлен и файлы сформированы")
@@ -1039,7 +1450,43 @@ export default function RfqWorkspacePage() {
       console.error(e)
       message.error("Не удалось сформировать RFQ")
     } finally {
+      if (activeRfqId) {
+        await loadDispatchSummary(activeRfqId)
+      }
       setSending(false)
+    }
+  }
+
+  const handleSendForSupplier = async (supplier, mode = "full") => {
+    if (!activeRfqId || !supplier?.supplier_id) return
+    setSupplierSendingId(supplier.supplier_id)
+    try {
+      const { data } = await axios.post(`/rfqs/${activeRfqId}/send`, {
+        supplier_ids: [supplier.supplier_id],
+        mode,
+        include_priced: sendIncludePriced,
+      })
+      if (data?.errors?.length) {
+        message.warning(
+          data.errors.map((e) => e.message).join("; ") || "Ошибка формирования файла",
+        )
+      } else {
+        message.success(
+          mode === "delta" ? "Delta Excel сформирован" : "Excel сформирован",
+        )
+      }
+      if (Array.isArray(data?.documents) && data.documents.length) {
+        setRfqDocuments(data.documents)
+      } else {
+        await loadDocuments(activeRfqId)
+      }
+      await loadDispatches(activeRfqId)
+      await loadDispatchSummary(activeRfqId)
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось сформировать файл")
+    } finally {
+      setSupplierSendingId(null)
     }
   }
 
@@ -1166,6 +1613,44 @@ export default function RfqWorkspacePage() {
     [allSuppliers]
   )
 
+  const dispatchSummaryMap = useMemo(() => {
+    const map = new Map()
+    dispatchSummary.forEach((row) => {
+      map.set(row.supplier_id, row)
+    })
+    return map
+  }, [dispatchSummary])
+
+  const responseSuppliers = useMemo(() => {
+    const ids = new Set()
+    const list = []
+    responseLines.forEach((row) => {
+      if (!ids.has(row.supplier_id)) {
+        ids.add(row.supplier_id)
+        list.push({ value: row.supplier_id, label: row.supplier_name || `Поставщик #${row.supplier_id}` })
+      }
+    })
+    return list
+  }, [responseLines])
+
+  const [responseSupplierFilter, setResponseSupplierFilter] = useState(null)
+
+  const filteredResponseLines = useMemo(() => {
+    if (!responseSupplierFilter) return responseLines
+    return responseLines.filter((r) => Number(r.supplier_id) === Number(responseSupplierFilter))
+  }, [responseLines, responseSupplierFilter])
+
+  const fileDispatches = useMemo(() => dispatches, [dispatches])
+
+  const totalNewLines = useMemo(
+    () => dispatchSummary.reduce((sum, row) => sum + (row.new_lines_count || 0), 0),
+    [dispatchSummary]
+  )
+  const hasAnySupplierSent = useMemo(
+    () => dispatchSummary.some((row) => Number(row.last_sent_rfq_revision_id) > 0),
+    [dispatchSummary]
+  )
+
   const filteredRfqs = useMemo(() => {
     const needle = String(filterRequestNumber || "").trim().toLowerCase()
     return rfqs.filter((rfq) => {
@@ -1258,7 +1743,10 @@ export default function RfqWorkspacePage() {
     if (lineType === "DEMAND") {
       next.delete(`demand:${rfqItemId}`)
     } else if (lineType === "BOM_COMPONENT") {
-      next.delete(`bom:${rfqItemId}:${basePartId}`)
+      const prefix = `bom:${rfqItemId}:${basePartId}`
+      Array.from(next).forEach((key) => {
+        if (String(key).startsWith(prefix)) next.delete(key)
+      })
     }
   }
 
@@ -1340,26 +1828,86 @@ export default function RfqWorkspacePage() {
   }, [structureItems])
 
   const selectionTreeData = useMemo(() => {
+    const supplierId = selectionModal?.supplier?.supplier_id
+    const supplierSummary = supplierId ? dispatchSummaryMap.get(supplierId) : null
+    const newLineSet = new Set(supplierSummary?.new_line_numbers || [])
+    const selectedSet = new Set(selectionModal.selectedKeys || [])
+    const acceptedSet = new Set(selectionModal.acceptedKeys || [])
     const nodeMap = new Map()
 
-    const renderSideColumn = ({ hintsBadge, kitSelect, altCount = 0, roleCount = 0 }) => (
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
-        {hintsBadge ? <div>{hintsBadge}</div> : null}
-        {kitSelect || altCount > 0 || roleCount > 0 ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-            {kitSelect}
-            {roleCount > 0 ? <Tag color="green">Роли: {roleCount}</Tag> : null}
-            {altCount > 0 ? <Tag color="orange">Подмены: {altCount}</Tag> : null}
-          </div>
-        ) : null}
-      </div>
-    )
+    const renderSideColumn = ({
+      hintsBadge,
+      kitSelect,
+      altCount = 0,
+      roleCount = 0,
+      statusTag = null,
+      rfqItemId = null,
+      nodeKey = null,
+      hints = [],
+    }) => {
+      const acceptedChecked = nodeKey ? acceptedSet.has(nodeKey) : false
+      const isSelected = nodeKey ? selectedSet.has(nodeKey) : false
+      const bestHint =
+        sortHints(hints).find((h) => h?.latest_price != null && h?.latest_currency) || null
 
-    const buildAltChildren = ({ rfqItemId, basePartId, lineType, qty, uom }) => {
+      const handleAcceptToggle = (checked) => {
+        if (checked) {
+          if (!isSelected) {
+            message.warning("Сначала отметьте строку галочкой в структуре")
+            return
+          }
+          if (!bestHint) {
+            message.warning("Для этой позиции нет цены")
+            return
+          }
+        }
+        setSelectionModal((prev) => {
+          const next = new Set(prev.acceptedKeys || [])
+          if (checked) next.add(nodeKey)
+          else next.delete(nodeKey)
+          return { ...prev, acceptedKeys: Array.from(next) }
+        })
+      }
+
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+          {statusTag}
+          {isSelected && (bestHint || acceptedChecked) ? (
+            <Checkbox
+              checked={acceptedChecked}
+              disabled={lineStatusSaving || (!bestHint && !acceptedChecked)}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => handleAcceptToggle(e.target.checked)}
+            >
+              Использовать цену
+            </Checkbox>
+          ) : null}
+          {hintsBadge ? <div>{hintsBadge}</div> : null}
+          {kitSelect || altCount > 0 || roleCount > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              {kitSelect}
+              {roleCount > 0 ? <Tag color="green">Роли: {roleCount}</Tag> : null}
+              {altCount > 0 ? <Tag color="orange">Подмены: {altCount}</Tag> : null}
+            </div>
+          ) : null}
+        </div>
+      )
+    }
+
+    const buildAltChildren = ({
+      rfqItemId,
+      basePartId,
+      lineType,
+      qty,
+      uom,
+      keyContext = null,
+      rfqItemComponentId = null,
+    }) => {
       const altParts = altPartsMap[basePartId] || []
       if (!altParts.length) return []
       return altParts.map((alt) => {
-        const key = `alt:${rfqItemId}:${basePartId}:${alt.alt_part_id}`
+        const baseKey = `alt:${rfqItemId}:${basePartId}:${alt.alt_part_id}`
+        const key = keyContext ? `${baseKey}:${keyContext}` : baseKey
         const hints = getOriginalHints(alt.alt_part_id)
         nodeMap.set(key, {
           key,
@@ -1367,6 +1915,7 @@ export default function RfqWorkspacePage() {
           rfq_item_id: rfqItemId,
           original_part_id: basePartId,
           alt_original_part_id: alt.alt_part_id,
+          rfq_item_component_id: rfqItemComponentId,
           line_label: alt.cat_number || "",
           line_description: alt.description_ru || alt.description_en || "",
           qty: qty ?? null,
@@ -1383,7 +1932,13 @@ export default function RfqWorkspacePage() {
                   <Text type="secondary">· {alt.description_ru || alt.description_en}</Text>
                 ) : null}
               </Space>
-              {renderHintsBadge(hints)}
+              {renderSideColumn({
+                hintsBadge: renderHintsBadge(hints, rfqItemId),
+                statusTag: acceptedSet.has(key) ? <Tag color="green">Цена принята</Tag> : null,
+                rfqItemId,
+                nodeKey: key,
+                hints,
+              })}
             </div>
           ),
           isLeaf: true,
@@ -1391,16 +1946,27 @@ export default function RfqWorkspacePage() {
       })
     }
 
-    const buildKitChildren = ({ rfqItemId, basePartId, bundleId, roles, qty, uom }) => {
+    const buildKitChildren = ({
+      rfqItemId,
+      basePartId,
+      bundleId,
+      roles,
+      qty,
+      uom,
+      keyContext = null,
+      rfqItemComponentId = null,
+    }) => {
       if (!bundleId || !Array.isArray(roles) || !roles.length) return []
       return roles.map((role) => {
-        const roleKey = `kit:${rfqItemId}:${bundleId}:${role.id}`
+        const roleKeyBase = `kit:${rfqItemId}:${bundleId}:${role.id}`
+        const roleKey = keyContext ? `${roleKeyBase}:${keyContext}` : roleKeyBase
         const hints = getBundleItemHints(role.id)
         nodeMap.set(roleKey, {
           key: roleKey,
           line_type: "KIT_ROLE",
           rfq_item_id: rfqItemId,
           original_part_id: basePartId || null,
+          rfq_item_component_id: rfqItemComponentId,
           bundle_id: bundleId,
           bundle_item_id: role.id,
           line_label: role.role_label || "",
@@ -1416,7 +1982,13 @@ export default function RfqWorkspacePage() {
                 <Tag color="green">Роль</Tag>
                 <Text>{role.role_label || "—"}</Text>
               </Space>
-              {renderHintsBadge(hints)}
+              {renderSideColumn({
+                hintsBadge: renderHintsBadge(hints, rfqItemId),
+                statusTag: acceptedSet.has(roleKey) ? <Tag color="green">Цена принята</Tag> : null,
+                rfqItemId,
+                nodeKey: roleKey,
+                hints,
+              })}
             </div>
           ),
           isLeaf: true,
@@ -1424,15 +1996,31 @@ export default function RfqWorkspacePage() {
       })
     }
 
-    const buildBomNodes = (nodes, item) => {
+    const collectBomCounts = (nodes, item, counts) => {
+      if (!Array.isArray(nodes) || !nodes.length) return
+      nodes.forEach((comp) => {
+        const key = `${item.rfq_item_id}:${comp.original_part_id}`
+        counts.set(key, (counts.get(key) || 0) + 1)
+        collectBomCounts(comp.children || [], item, counts)
+      })
+    }
+
+    const buildBomNodes = (nodes, item, bomCounts) => {
       if (!Array.isArray(nodes) || !nodes.length) return []
       return nodes.map((comp) => {
-        const key = `bom:${item.rfq_item_id}:${comp.original_part_id}`
+        const baseKey = `bom:${item.rfq_item_id}:${comp.original_part_id}`
+        const dupCount = bomCounts.get(`${item.rfq_item_id}:${comp.original_part_id}`) || 0
+        const suffix = String(
+          comp.key || comp.rfq_item_component_id || comp.required_qty || ""
+        ).trim()
+        const key = dupCount > 1 && suffix ? `${baseKey}:${suffix}` : baseKey
+        const keyContext = key !== baseKey ? key : null
         const compHints = comp.original_part_id ? getOriginalHints(comp.original_part_id) : []
         nodeMap.set(key, {
           key,
           line_type: "BOM_COMPONENT",
           rfq_item_id: item.rfq_item_id,
+          rfq_item_component_id: comp.rfq_item_component_id || comp.id || null,
           original_part_id: comp.original_part_id,
           line_label: comp.cat_number || "",
           line_description: comp.description || "",
@@ -1453,6 +2041,8 @@ export default function RfqWorkspacePage() {
           lineType: "BOM_COMPONENT",
           qty: comp.required_qty ?? null,
           uom: comp.uom || item.uom || null,
+          keyContext,
+          rfqItemComponentId: comp.rfq_item_component_id || comp.id || null,
         })
         const kitChildren = buildKitChildren({
           rfqItemId: item.rfq_item_id,
@@ -1461,7 +2051,10 @@ export default function RfqWorkspacePage() {
           roles: compBundleItems,
           qty: comp.required_qty ?? null,
           uom: comp.uom || item.uom || null,
+          keyContext,
+          rfqItemComponentId: comp.rfq_item_component_id || comp.id || null,
         })
+        const statusTag = acceptedSet.has(key) ? <Tag color="green">Цена принята</Tag> : null
 
         const kitSelect =
           (comp.bundle_count || 0) > 0 ? (
@@ -1502,7 +2095,7 @@ export default function RfqWorkspacePage() {
           })
         }
 
-        const nested = buildBomNodes(comp.children || [], item)
+        const nested = buildBomNodes(comp.children || [], item, bomCounts)
         if (nested.length) {
           children.push(...nested)
         }
@@ -1516,10 +2109,14 @@ export default function RfqWorkspacePage() {
                 {comp.description ? <Text type="secondary">· {comp.description}</Text> : null}
               </Space>
               {renderSideColumn({
-                hintsBadge: renderHintsBadge(compHints),
+                hintsBadge: renderHintsBadge(compHints, item.rfq_item_id),
                 kitSelect,
                 altCount: altChildren.length,
                 roleCount: kitChildren.length,
+                statusTag,
+                rfqItemId: item.rfq_item_id,
+                nodeKey: key,
+                hints: compHints,
               })}
             </div>
           ),
@@ -1530,15 +2127,18 @@ export default function RfqWorkspacePage() {
 
     const tree = structureItems.map((item) => {
       const itemNodeKey = `item:${item.rfq_item_id}`
+      const demandKey = `demand:${item.rfq_item_id}`
+      const statusTag = acceptedSet.has(demandKey) ? <Tag color="green">Цена принята</Tag> : null
       const itemTitle = (
         <Space>
           <Tag>{item.line_number}</Tag>
+          {newLineSet.has(Number(item.line_number)) ? <Tag color="orange">NEW</Tag> : null}
           <Text strong>{item.original_cat_number || item.client_part_number || "—"}</Text>
           <Text type="secondary">{item.description || ""}</Text>
+          {statusTag}
         </Space>
       )
 
-      const demandKey = `demand:${item.rfq_item_id}`
       nodeMap.set(demandKey, {
         key: demandKey,
         line_type: "DEMAND",
@@ -1558,8 +2158,15 @@ export default function RfqWorkspacePage() {
               <Space>
                 <Text>Позиция (оригинал)</Text>
                 <Text type="secondary">{item.original_cat_number || item.client_part_number || ""}</Text>
+                {newLineSet.has(Number(item.line_number)) ? <Tag color="orange">NEW</Tag> : null}
               </Space>
-              {renderHintsBadge(item.original_part_id ? getOriginalHints(item.original_part_id) : [])}
+              {renderSideColumn({
+                hintsBadge: renderHintsBadge(item.original_part_id ? getOriginalHints(item.original_part_id) : [], item.rfq_item_id),
+                statusTag,
+                rfqItemId: item.rfq_item_id,
+                nodeKey: demandKey,
+                hints: item.original_part_id ? getOriginalHints(item.original_part_id) : [],
+              })}
             </div>
           ),
           isLeaf: true,
@@ -1636,6 +2243,7 @@ export default function RfqWorkspacePage() {
                   kitSelect,
                   altCount: altChildren.length,
                   roleCount: kitChildren.length,
+                  rfqItemId: item.rfq_item_id,
                 })}
               </div>
             ),
@@ -1647,7 +2255,9 @@ export default function RfqWorkspacePage() {
       }
 
       const bomOpt = (item.options || []).find((opt) => opt.type === "BOM")
-      const bomChildren = buildBomNodes(bomOpt?.children || [], item)
+      const bomCounts = new Map()
+      collectBomCounts(bomOpt?.children || [], item, bomCounts)
+      const bomChildren = buildBomNodes(bomOpt?.children || [], item, bomCounts)
       if (bomChildren.length) {
         children.push({
           key: `bomgroup:${item.rfq_item_id}`,
@@ -1669,7 +2279,19 @@ export default function RfqWorkspacePage() {
 
     selectionNodeMapRef.current = nodeMap
     return tree
-  }, [structureItems, bundleChoice, bundleCache, bundleItemsCache, loadBundleItems, loadBundlesForPart, altPartsMap, selectionModal.selectedKeys, activeSupplierHints])
+  }, [
+    structureItems,
+    bundleChoice,
+    bundleCache,
+    bundleItemsCache,
+    loadBundleItems,
+    loadBundlesForPart,
+    altPartsMap,
+    selectionModal.selectedKeys,
+    selectionModal.acceptedKeys,
+    activeSupplierHints,
+    selectionModal?.supplier?.supplier_id,
+  ])
 
   const selectionTreeDataVisible = useMemo(() => {
     if (!selectionModal.onlyHinted) return selectionTreeData
@@ -2100,6 +2722,14 @@ export default function RfqWorkspacePage() {
                         </Card>
 
                         <Card size="small" title="Поставщики в RFQ">
+                          {hasAnySupplierSent && totalNewLines > 0 ? (
+                            <Alert
+                              type="info"
+                              showIcon
+                              style={{ marginBottom: 12 }}
+                              message={`Новые позиции в ревизии: ${totalNewLines}. Нажмите «Только новые» у выбранных поставщиков — старые файлы останутся в истории, новые отправятся отдельным Excel.`}
+                            />
+                          ) : null}
                           <Table
                             rowKey="supplier_id"
                             dataSource={suppliers}
@@ -2158,6 +2788,50 @@ export default function RfqWorkspacePage() {
                                 ),
                               },
                               {
+                               title: "Отправка",
+                               width: 360,
+                               render: (_, record) => {
+                                  const summary = dispatchSummaryMap.get(record.supplier_id) || {}
+                                  const newCount = summary.new_lines_count || 0
+                                  const lastRev = summary.last_sent_rfq_revision_number
+                                  const lastAt = summary.last_sent_at ? formatDate(summary.last_sent_at) : null
+                                  return (
+                                    <Space direction="vertical" size={4}>
+                                      <Space size={6} wrap>
+                                        <Tag color={lastRev ? "blue" : "default"}>
+                                          {lastRev ? `Отправлено: Rev ${lastRev}` : "Еще не отправляли"}
+                                        </Tag>
+                                        {lastAt ? <Text type="secondary">{lastAt}</Text> : null}
+                                        <Tag color={newCount > 0 ? "orange" : "green"}>
+                                          Новых строк: {newCount}
+                                        </Tag>
+                                        {!lastRev ? <Tag>Первичная отправка</Tag> : null}
+                                      </Space>
+                                      <Space size={8} wrap>
+                                        <Button
+                                          size="small"
+                                          loading={supplierSendingId === record.supplier_id}
+                                          onClick={() => handleSendForSupplier(record, "full")}
+                                        >
+                                          Отправить все
+                                        </Button>
+                                        {lastRev ? (
+                                          <Button
+                                            size="small"
+                                            type="primary"
+                                            disabled={newCount === 0}
+                                            loading={supplierSendingId === record.supplier_id}
+                                            onClick={() => handleSendForSupplier(record, "delta")}
+                                          >
+                                            Только новые
+                                          </Button>
+                                        ) : null}
+                                      </Space>
+                                    </Space>
+                                  )
+                               },
+                             },
+                              {
                                 title: "Статус",
                                 dataIndex: "status",
                                 width: 120,
@@ -2189,30 +2863,75 @@ export default function RfqWorkspacePage() {
                               >
                                 Сформировать Excel
                               </Button>
+                              <Button onClick={() => activeRfqId && loadDocuments(activeRfqId)}>
+                                Обновить список
+                              </Button>
+                              <Checkbox
+                                checked={sendIncludePriced}
+                                onChange={(e) => setSendIncludePriced(e.target.checked)}
+                              >
+                                Включать строки с уже принятой ценой
+                              </Checkbox>
                               <Text type="secondary">
-                                После формирования статус станет «RFQ отправлен».
+                                Показываются все сформированные файлы RFQ. После формирования статус RFQ станет «отправлен».
                               </Text>
                             </Space>
                             <Table
                               rowKey="id"
-                              dataSource={rfqDocuments}
+                              dataSource={fileDispatches}
                               loading={docsLoading}
                               pagination={false}
                               columns={[
                                 {
                                   title: "Файл",
                                   dataIndex: "file_name",
-                                  render: (value, record) =>
-                                    record.file_url ? (
+                                  render: (value, record) => {
+                                    const fallback =
+                                      value ||
+                                      `${activeRfq?.rfq_number || `RFQ-${activeRfqId || ""}`} Rev ${
+                                        record.rfq_revision_number || "-"
+                                      } ${record.dispatch_type === "DELTA" ? "Delta" : "Full"}`
+                                    return record.file_url ? (
                                       <a href={record.file_url} target="_blank" rel="noreferrer">
-                                        {value || "Документ"}
+                                        {fallback}
                                       </a>
                                     ) : (
-                                      value || "Документ"
-                                    ),
+                                      <Text type="secondary">{fallback}</Text>
+                                    )
+                                  },
                                 },
-                                { title: "Поставщик", dataIndex: "supplier_name", width: 220 },
-                                { title: "Создано", dataIndex: "created_at", width: 140, render: formatDate },
+                                {
+                                  title: "Rev",
+                                  dataIndex: "rfq_revision_number",
+                                  width: 80,
+                                  render: (v) => v || "—",
+                                },
+                                {
+                                  title: "Поставщик",
+                                  dataIndex: "supplier_name",
+                                  width: 220,
+                                },
+                                {
+                                  title: "Режим",
+                                  dataIndex: "dispatch_type",
+                                  width: 100,
+                                  render: (v) => (
+                                    <Tag color={v === "DELTA" ? "orange" : "blue"}>
+                                      {v === "DELTA" ? "Delta" : "Full"}
+                                    </Tag>
+                                  ),
+                                },
+                                {
+                                  title: "Строки",
+                                  width: 140,
+                                  render: (_, r) =>
+                                    r.rows_total
+                                      ? `${r.rows_total}${
+                                          r.rows_changed ? ` (новых: ${r.rows_changed})` : ""
+                                        }`
+                                      : "—",
+                                },
+                                { title: "Создано", dataIndex: "sent_at", width: 140, render: formatDate },
                               ]}
                             />
                           </Space>
@@ -2225,15 +2944,20 @@ export default function RfqWorkspacePage() {
                     label: "Ответы",
                     disabled: !isStructureConfirmed,
                     children: (
-                      <Table
-                        rowKey="id"
-                        dataSource={responses}
-                        pagination={false}
-                        columns={[
-                          { title: "Поставщик", dataIndex: "supplier_name" },
-                          { title: "Статус", dataIndex: "status", width: 120 },
-                          { title: "Создано", dataIndex: "created_at", width: 120, render: formatDate },
-                        ]}
+                      <ResponsesTabContent
+                        activeRfqId={activeRfqId}
+                        suppliers={suppliers}
+                        items={items}
+                        responseSuppliers={responseSuppliers}
+                        responseSupplierFilter={responseSupplierFilter}
+                        setResponseSupplierFilter={setResponseSupplierFilter}
+                        reloadResponses={() => loadResponsesAndLines(activeRfqId)}
+                        showArchivedResponses={showArchivedResponses}
+                        setShowArchivedResponses={setShowArchivedResponses}
+                        importModal={importModal}
+                        setImportModal={setImportModal}
+                        filteredResponseLines={filteredResponseLines}
+                        formatDate={formatDate}
                       />
                     ),
                   },
@@ -2241,70 +2965,18 @@ export default function RfqWorkspacePage() {
                     key: "coverage",
                     label: "Coverage",
                     disabled: !isStructureConfirmed,
-                    children: (
-                      <Table
-                        rowKey="key"
-                        dataSource={coverageRows}
-                        pagination={false}
-                        columns={[
-                          { title: "RFQ", dataIndex: "line_number", width: 70 },
-                          { title: "Позиция", dataIndex: "item_description" },
-                          { title: "Компонент", dataIndex: "component_cat_number", width: 160 },
-                          { title: "Описание", dataIndex: "component_description" },
-                          { title: "Кол-во", dataIndex: "required_qty", width: 90 },
-                          { title: "Стратегия", dataIndex: "strategy_mode", width: 100 },
-                          { title: "Поставщики", dataIndex: "suppliers_count", width: 110 },
-                          { title: "Ответы", dataIndex: "responses_count", width: 90 },
-                          {
-                            title: "Лучшее",
-                            dataIndex: "best_price",
-                            width: 140,
-                            render: (value, record) =>
-                              value === "-" ? "-" : formatPriceWithCurrency(value, record.best_currency),
-                          },
-                          { title: "Поставщик", dataIndex: "best_supplier", width: 160 },
-                        ]}
-                      />
-                    ),
+                    children: <CoverageTabContent coverageRows={coverageRows} />,
                   },
                   {
                     key: "selection",
                     label: "Selection",
                     disabled: !isStructureConfirmed,
                     children: (
-                      <Space direction="vertical" style={{ width: "100%" }}>
-                        <Table
-                          rowKey="id"
-                          dataSource={selections}
-                          pagination={false}
-                          columns={[
-                            { title: "Статус", dataIndex: "status", width: 120 },
-                            { title: "Комментарий", dataIndex: "note" },
-                            { title: "Создано", dataIndex: "created_at", width: 120, render: formatDate },
-                          ]}
-                        />
-                        <Table
-                          rowKey="id"
-                          dataSource={selectionLines}
-                          pagination={false}
-                          columns={[
-                            { title: "RFQ item", dataIndex: "rfq_item_id", width: 90 },
-                            { title: "Компонент", dataIndex: "component_cat_number", width: 160 },
-                            { title: "Поставщик", dataIndex: "supplier_name", width: 180 },
-                            { title: "Предложение", dataIndex: "supplier_part_number", width: 160 },
-                            { title: "Тип", dataIndex: "offer_type", width: 90 },
-                            {
-                              title: "Цена",
-                              dataIndex: "price",
-                              width: 120,
-                              render: (value, record) =>
-                                formatPriceWithCurrency(value, record.currency),
-                            },
-                            { title: "Qty", dataIndex: "qty", width: 80 },
-                            { title: "Комментарий", dataIndex: "decision_note" },
-                          ]}
-                        />
-                      </Space>
+                      <SelectionTabContent
+                        selections={selections}
+                        selectionLines={selectionLines}
+                        formatDate={formatDate}
+                      />
                     ),
                   },
                   {
@@ -2312,79 +2984,32 @@ export default function RfqWorkspacePage() {
                     label: "Экономика",
                     disabled: !isStructureConfirmed,
                     children: (
-                      <Space direction="vertical" style={{ width: "100%" }}>
-                        <Table
-                          rowKey="id"
-                          dataSource={shipmentGroups}
-                          pagination={false}
-                          columns={[
-                            { title: "Группа", dataIndex: "name" },
-                            { title: "Маршрут", dataIndex: "origin_location" },
-                            { title: "Транспорт", dataIndex: "transport_mode", width: 120 },
-                          ]}
-                        />
-                        <Table
-                          rowKey="id"
-                          dataSource={landedCosts}
-                          pagination={false}
-                          columns={[
-                            { title: "Снимок", dataIndex: "name" },
-                            { title: "Итого", dataIndex: "landed_total", width: 120 },
-                            { title: "Валюта", dataIndex: "currency", width: 90 },
-                          ]}
-                        />
-                      </Space>
+                      <EconomicsTabContent
+                        shipmentGroups={shipmentGroups}
+                        landedCosts={landedCosts}
+                      />
                     ),
                   },
                   {
                     key: "sales",
                     label: "КП",
                     disabled: !isStructureConfirmed,
-                    children: (
-                      <Table
-                        rowKey="id"
-                        dataSource={salesQuotes}
-                        pagination={false}
-                        columns={[
-                          { title: "Статус", dataIndex: "status", width: 120 },
-                          { title: "Валюта", dataIndex: "currency", width: 90 },
-                          { title: "Создано", dataIndex: "created_at", width: 120, render: formatDate },
-                        ]}
-                      />
-                    ),
+                    children: <SalesTabContent salesQuotes={salesQuotes} formatDate={formatDate} />,
                   },
                   {
                     key: "contracts",
                     label: "Контракт",
                     disabled: !isStructureConfirmed,
-                    children: (
-                      <Table
-                        rowKey="id"
-                        dataSource={contracts}
-                        pagination={false}
-                        columns={[
-                          { title: "Номер", dataIndex: "contract_number" },
-                          { title: "Статус", dataIndex: "status", width: 120 },
-                          { title: "Дата", dataIndex: "contract_date", width: 120, render: formatDate },
-                        ]}
-                      />
-                    ),
+                    children: <ContractsTabContent contracts={contracts} formatDate={formatDate} />,
                   },
                   {
                     key: "po",
                     label: "PO",
                     disabled: !isStructureConfirmed,
                     children: (
-                      <Table
-                        rowKey="id"
-                        dataSource={purchaseOrders}
-                        pagination={false}
-                        columns={[
-                          { title: "Поставщик", dataIndex: "supplier_name" },
-                          { title: "Статус", dataIndex: "status", width: 120 },
-                          { title: "Ссылка", dataIndex: "supplier_reference" },
-                          { title: "Создано", dataIndex: "created_at", width: 120, render: formatDate },
-                        ]}
+                      <PurchaseOrdersTabContent
+                        purchaseOrders={purchaseOrders}
+                        formatDate={formatDate}
                       />
                     ),
                   },
@@ -2508,7 +3133,17 @@ export default function RfqWorkspacePage() {
                   actionKey !== undefined
                     ? applyAltExclusion(next, actionKey, actionChecked)
                     : next
-                setSelectionModal((prev) => ({ ...prev, selectedKeys: Array.from(normalized) }))
+                setSelectionModal((prev) => {
+                  const accepted = new Set(prev.acceptedKeys || [])
+                  Array.from(accepted).forEach((key) => {
+                    if (!normalized.has(key)) accepted.delete(key)
+                  })
+                  return {
+                    ...prev,
+                    selectedKeys: Array.from(normalized),
+                    acceptedKeys: Array.from(accepted),
+                  }
+                })
               }}
               treeData={selectionTreeDataVisible}
             />
@@ -2602,6 +3237,158 @@ export default function RfqWorkspacePage() {
             ]}
           />
         )}
+      </Modal>
+
+      <Modal
+        open={importModal.open}
+        title="Импорт ответов поставщика"
+        onCancel={() =>
+          setImportModal({
+            open: false,
+            supplierId: null,
+            text: "",
+            rows: [],
+            loading: false,
+            fileName: "",
+            newRevision: false,
+          })
+        }
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() =>
+              setImportModal({
+                open: false,
+                supplierId: null,
+                text: "",
+                rows: [],
+                loading: false,
+                fileName: "",
+                newRevision: false,
+              })
+            }
+          >
+            Отмена
+          </Button>,
+          <Button
+            key="import"
+            type="primary"
+            loading={importModal.loading}
+            onClick={async () => {
+              if (!activeRfqId) return
+              if (!importModal.supplierId) {
+                message.warning("Выберите поставщика (фильтр выше)")
+                return
+              }
+              const rows =
+                Array.isArray(importModal.rows) && importModal.rows.length
+                  ? importModal.rows
+                  : parseImportTextRows(importModal.text)
+
+              if (!rows.length) {
+                message.warning("Не удалось распарсить данные. Формат: <строка> <tab> <цена> <tab> <валюта> [<tab> срок]")
+                return
+              }
+
+              setImportModal((prev) => ({ ...prev, loading: true }))
+              try {
+                await axios.post(`/rfqs/${activeRfqId}/responses/import`, {
+                  supplier_id: importModal.supplierId,
+                  rows,
+                  new_revision: importModal.newRevision === true,
+                })
+                message.success("Ответы импортированы")
+                await loadResponsesAndLines(activeRfqId)
+                setImportModal({
+                  open: false,
+                  supplierId: null,
+                  text: "",
+                  rows: [],
+                  loading: false,
+                  fileName: "",
+                  newRevision: false,
+                })
+              } catch (err) {
+                console.error(err)
+                message.error("Импорт не удался")
+                setImportModal((prev) => ({ ...prev, loading: false }))
+              }
+            }}
+          >
+            Импортировать
+          </Button>,
+        ]}
+      >
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Text type="secondary">
+            Вставьте данные из Excel/TSV: столбцы «Строка», «Цена», «Валюта», «Срок (дн.)», «Примечание».
+            Разделитель — табуляция или точка с запятой.
+          </Text>
+          <Checkbox
+            checked={importModal.newRevision || false}
+            onChange={(e) => setImportModal((prev) => ({ ...prev, newRevision: e.target.checked }))}
+          >
+            Создать новую ревизию ответа
+          </Checkbox>
+          <Input.TextArea
+            rows={8}
+            value={importModal.text}
+            onChange={(e) =>
+              setImportModal((prev) => ({ ...prev, text: e.target.value, rows: [] }))
+            }
+            placeholder={"1\t100\tEUR\t10\n2\t50\tUSD\t7"}
+          />
+          <Button
+            icon={<UploadOutlined />}
+            onClick={() => document.getElementById("rfq-import-file")?.click()}
+          >
+            Загрузить из Excel
+          </Button>
+          <input
+            id="rfq-import-file"
+            type="file"
+            accept=".xlsx,.xls"
+            style={{ display: "none" }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              try {
+                const data = await file.arrayBuffer()
+                const wb = XLSX.read(data, { type: "array" })
+                const ws = wb.Sheets[wb.SheetNames[0]]
+                const json = XLSX.utils.sheet_to_json(ws, { header: 1 })
+                const rowsParsed = json
+                  .map((r) => parseImportRow(r))
+                  .filter((r) => r && Number.isFinite(r.line_number) && Number.isFinite(r.price) && r.currency)
+                if (!rowsParsed.length) {
+                  message.warning("Не удалось распарсить файл: убедитесь, что заполнены колонки Строка/Цена/Валюта")
+                  return
+                }
+                const text = rowsParsed
+                  .map(
+                    (r) =>
+                      `${r.line_number}\t${r.price}\t${r.currency}\t${r.lead_time_days || ""}\t${r.note || ""}`
+                  )
+                  .join("\n")
+                setImportModal((prev) => ({
+                  ...prev,
+                  text,
+                  rows: rowsParsed,
+                  fileName: file.name,
+                }))
+                message.success("Файл прочитан, данные подставлены")
+              } catch (err) {
+                console.error(err)
+                message.error("Не удалось прочитать файл")
+              } finally {
+                e.target.value = ""
+              }
+            }}
+          />
+          {importModal.fileName ? (
+            <Text type="secondary">Файл: {importModal.fileName}</Text>
+          ) : null}
+        </Space>
       </Modal>
 
     </PageWrapper>
