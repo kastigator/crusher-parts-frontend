@@ -482,7 +482,7 @@ export default function SuppliersMain() {
         onClose={() => setImportOpen(false)}
         type="suppliers"
         templateUrl={SUPPLIERS_TEMPLATE_URL}
-        onImported={fetchSuppliers}
+        onSuccess={fetchSuppliers}
       />
 
       {showDeleted && (
