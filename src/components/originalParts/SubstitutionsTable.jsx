@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 import { Table, Button, message, Empty } from "antd"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
@@ -7,7 +7,7 @@ export default function SubstitutionsTable({ originalPartId }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!originalPartId) return
     setLoading(true)
     try {
@@ -21,9 +21,9 @@ export default function SubstitutionsTable({ originalPartId }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [originalPartId])
 
-  useEffect(() => { load() }, [originalPartId])
+  useEffect(() => { load() }, [originalPartId, load])
 
   const deleteGroup = async (row) => {
     const { confirmed } = await confirmAction("Удалить группу замен?")
@@ -39,7 +39,6 @@ export default function SubstitutionsTable({ originalPartId }) {
   }
 
   const columns = [
-    { title: "ID", dataIndex: "id", width: 80 },
     { title: "Название", dataIndex: "name", ellipsis: true },
     { title: "Комментарий", dataIndex: "comment", ellipsis: true },
     { title: "Режим", dataIndex: "mode", width: 100 },

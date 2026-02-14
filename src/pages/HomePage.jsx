@@ -176,11 +176,26 @@ const HomePage = () => {
     fetchSummary()
   }, [fetchSummary])
 
-  const assignedRequests = summary?.assigned_requests || []
-  const assignedRfqs = summary?.assigned_rfqs || []
-  const releaseQueue = summary?.release_queue || []
-  const rfqAssignees = summary?.rfq_assignees || []
-  const managerRfqs = summary?.manager_rfqs || []
+  const assignedRequests = useMemo(
+    () => (Array.isArray(summary?.assigned_requests) ? summary.assigned_requests : []),
+    [summary?.assigned_requests]
+  )
+  const assignedRfqs = useMemo(
+    () => (Array.isArray(summary?.assigned_rfqs) ? summary.assigned_rfqs : []),
+    [summary?.assigned_rfqs]
+  )
+  const releaseQueue = useMemo(
+    () => (Array.isArray(summary?.release_queue) ? summary.release_queue : []),
+    [summary?.release_queue]
+  )
+  const rfqAssignees = useMemo(
+    () => (Array.isArray(summary?.rfq_assignees) ? summary.rfq_assignees : []),
+    [summary?.rfq_assignees]
+  )
+  const managerRfqs = useMemo(
+    () => (Array.isArray(summary?.manager_rfqs) ? summary.manager_rfqs : []),
+    [summary?.manager_rfqs]
+  )
 
   const filteredManagerRfqs = useMemo(() => {
     if (!Array.isArray(managerRfqs)) return []
@@ -277,7 +292,7 @@ const HomePage = () => {
     requestsStage,
     requestsDeadline,
     requestsOnlyNew,
-    assignmentCountMap,
+    assignmentCountFor,
   ])
 
   const filteredAssignedRfqs = useMemo(() => {
@@ -297,7 +312,7 @@ const HomePage = () => {
     }
     if (rfqsOnlyNew) rows = rows.filter((r) => assignmentCountFor("rfq", r.id) > 0)
     return rows
-  }, [assignedRfqs, rfqsScope, rfqsStage, rfqsDeadline, rfqsOnlyNew, assignmentCountMap])
+  }, [assignedRfqs, rfqsScope, rfqsStage, rfqsDeadline, rfqsOnlyNew, assignmentCountFor])
 
   const requestColumns = useMemo(
     () => [

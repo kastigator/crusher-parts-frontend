@@ -12,7 +12,6 @@ import {
   Tooltip,
   Badge,
 } from "antd"
-import dayjs from "dayjs"
 import {
   ReloadOutlined,
   PlusOutlined,
@@ -187,7 +186,7 @@ export default function ClientOrdersMain() {
     handleRowOpen(record)
   }
 
-  const handleDelete = async (order) => {
+  const handleDelete = useCallback(async (order) => {
     const { confirmed } = await confirmAction("Удалить заказ?")
     if (!confirmed) return
     setDeletingId(order.id)
@@ -202,9 +201,9 @@ export default function ClientOrdersMain() {
     } finally {
       setDeletingId(null)
     }
-  }
+  }, [])
 
-  const handleStatusChange = async (orderId, nextStatus) => {
+  const handleStatusChange = useCallback(async (orderId, nextStatus) => {
     if (!orderId || !nextStatus) return
     setStatusUpdatingId(orderId)
     try {
@@ -220,9 +219,9 @@ export default function ClientOrdersMain() {
     } finally {
       setStatusUpdatingId(null)
     }
-  }
+  }, [])
 
-  const handleOpenProposal = async (order) => {
+  const handleOpenProposal = useCallback(async (order) => {
     if (!order?.id) return
     try {
       const { data } = await axios.get(`/client-orders/${order.id}`)
@@ -233,7 +232,7 @@ export default function ClientOrdersMain() {
       console.error("load proposal error", e)
       message.error("Не удалось открыть предложение")
     }
-  }
+  }, [])
 
   const columns = useMemo(
     () => [
@@ -266,7 +265,6 @@ export default function ClientOrdersMain() {
         key: "status",
         width: 140,
         render: (v, record) => {
-          const meta = ORDER_STATUS_META[v] || { color: "default", label: v || "—" }
           return (
             <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
               <Select
@@ -358,7 +356,7 @@ export default function ClientOrdersMain() {
         ),
       },
     ],
-    [handleDelete, deletingId],
+    [handleDelete, deletingId, handleStatusChange, statusUpdatingId, handleOpenProposal],
   )
 
   const filtered = useMemo(() => {

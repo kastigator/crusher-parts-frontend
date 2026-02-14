@@ -27,11 +27,10 @@ import SupplierPickerDrawer from "./SupplierPickerDrawer"
 import SupplierPartsTable from "./SupplierPartsTable"
 import ImportModal from "@/components/common/ImportModal"
 import axios from "@/api/axiosInstance"
-import { getCountryLabel } from "@/components/inputs/CountrySelect"
+import { getCountryLabel } from "@/components/inputs/countryUtils"
 import SupplierPartCreateAdvancedDrawer from "./SupplierPartCreateAdvancedDrawer"
-import SupplierPartsFiltersDrawer, {
-  countActiveFilters,
-} from "./SupplierPartsFiltersDrawer"
+import SupplierPartsFiltersDrawer from "./SupplierPartsFiltersDrawer"
+import { countActiveFilters } from "./supplierPartsFiltersUtils"
 import SupplierPriceListsDrawer from "./SupplierPriceListsDrawer"
 
 const SUPPLIER_TEMPLATE_URL =
@@ -350,7 +349,6 @@ export default function SupplierPartsMain() {
       }
     }
     initSupplierOnly()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supplierIdParam, focusId])
 
   useEffect(() => {

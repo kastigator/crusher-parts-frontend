@@ -4,7 +4,6 @@ import { Input, Button, Space, message, AutoComplete } from "antd"
 export default function PlaceAddressInput({
   value = {},
   onChange,
-  debugId = "?",
   resetTrigger,
 }) {
   const mapRef = useRef(null)          // DOM-контейнер карты
@@ -16,6 +15,16 @@ export default function PlaceAddressInput({
   const [options, setOptions] = useState([])
   const [geoObjects, setGeoObjects] = useState(null)
   const [open, setOpen] = useState(false)
+  const valueRef = useRef(value)
+  const onChangeRef = useRef(onChange)
+
+  useEffect(() => {
+    valueRef.current = value
+  }, [value])
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
 
   // сброс при смене resetTrigger
   useEffect(() => {
@@ -28,6 +37,7 @@ export default function PlaceAddressInput({
   // ИНИЦИАЛИЗАЦИЯ КАРТЫ (StrictMode-safe)
   useEffect(() => {
     if (!mapRef.current) return
+    const mapNode = mapRef.current
     if (typeof window.ymaps === "undefined") {
       console.error("❌ Yandex Maps API не загружен")
       message.error("Не удалось загрузить Яндекс.Карты")
@@ -37,21 +47,23 @@ export default function PlaceAddressInput({
     let cancelled = false
 
     const initMap = () => {
-      if (cancelled || !mapRef.current) return
+      if (cancelled || !mapNode) return
 
       // убираем возможный старый инстанс/DOM
       try {
         mapInstance.current?.destroy?.()
-      } catch {}
+      } catch {
+        // ignore map destroy errors during re-init
+      }
       mapInstance.current = null
-      mapRef.current.innerHTML = ""
+      mapNode.innerHTML = ""
 
       const ymaps = window.ymaps
-      const { lat, lng } = value || {}
+      const { lat, lng } = valueRef.current || {}
       const center =
         lat != null && lng != null ? [Number(lat), Number(lng)] : [55.751574, 37.573856]
 
-      const map = new ymaps.Map(mapRef.current, {
+      const map = new ymaps.Map(mapNode, {
         center,
         zoom: 10,
         controls: ["zoomControl"],
@@ -89,7 +101,7 @@ export default function PlaceAddressInput({
 
           setQuery(addressLine)
           setOpen(false)
-          onChange?.({
+          onChangeRef.current?.({
             address_line: addressLine,
             place_id: meta.id,
             lat: coords[0],
@@ -114,10 +126,12 @@ export default function PlaceAddressInput({
       cancelled = true
       try {
         mapInstance.current?.destroy?.()
-      } catch {}
+      } catch {
+        // ignore map destroy errors during cleanup
+      }
       mapInstance.current = null
       placemarkRef.current = null
-      if (mapRef.current) mapRef.current.innerHTML = ""
+      if (mapNode) mapNode.innerHTML = ""
     }
     // ИНИЦИАЛИЗИРУЕМ по resetTrigger (и при первом рендере)
   }, [resetTrigger]) // ⬅️ не зависим от value, чтобы не переинициализировать карту
@@ -203,7 +217,7 @@ export default function PlaceAddressInput({
     setQuery(addressLine)
     setOpen(false)
 
-    onChange?.({
+    onChangeRef.current?.({
       address_line: addressLine,
       place_id: meta.id,
       lat: coords[0],

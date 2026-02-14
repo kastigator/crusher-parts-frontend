@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Card,
   Space,
@@ -128,7 +128,7 @@ export default function RfqPage() {
     }
   }
 
-  const loadRevisionItems = async (revisionId) => {
+  const loadRevisionItems = useCallback(async (revisionId) => {
     if (!revisionId) {
       setRevisionItems([])
       return
@@ -141,7 +141,7 @@ export default function RfqPage() {
     } catch (e) {
       console.error(e)
     }
-  }
+  }, [])
 
   const loadSuppliers = async () => {
     try {
@@ -247,27 +247,7 @@ export default function RfqPage() {
     }
   }
 
-  const openDrawer = async (record) => {
-    setActiveRfq(record)
-    setDrawerOpen(true)
-    await loadRevisionItems(record.client_request_revision_id)
-    await loadRfqItems(record.id)
-    await loadRfqStructure(record.id)
-    await loadRfqSuppliers(record.id)
-    await loadSuggestedSuppliers(record.id)
-    await loadRfqDocuments(record.id)
-  }
-
-  useEffect(() => {
-    if (!pendingOpenId || !rfqs.length) return
-    const record = rfqs.find((item) => Number(item.id) === Number(pendingOpenId))
-    if (record) {
-      openDrawer(record)
-      setPendingOpenId(null)
-    }
-  }, [pendingOpenId, rfqs])
-
-  const loadRfqItems = async (rfqId) => {
+  const loadRfqItems = useCallback(async (rfqId) => {
     try {
       const { data } = await axios.get(`/rfqs/${rfqId}/items`)
       setRfqItems(Array.isArray(data) ? data : [])
@@ -275,9 +255,9 @@ export default function RfqPage() {
       console.error(e)
       message.error("Не удалось загрузить строки RFQ")
     }
-  }
+  }, [])
 
-  const loadRfqStructure = async (rfqId) => {
+  const loadRfqStructure = useCallback(async (rfqId) => {
     if (!rfqId) {
       setRfqStructure([])
       return
@@ -292,7 +272,7 @@ export default function RfqPage() {
     } finally {
       setStructureLoading(false)
     }
-  }
+  }, [])
 
   const componentPickerExcludeIds = useMemo(() => {
     const comps = componentPickerItem?.components || []
@@ -388,7 +368,7 @@ export default function RfqPage() {
     }
   }
 
-  const loadRfqSuppliers = async (rfqId) => {
+  const loadRfqSuppliers = useCallback(async (rfqId) => {
     try {
       const { data } = await axios.get(`/rfqs/${rfqId}/suppliers`)
       setRfqSuppliers(Array.isArray(data) ? data : [])
@@ -396,9 +376,9 @@ export default function RfqPage() {
       console.error(e)
       message.error("Не удалось загрузить поставщиков")
     }
-  }
+  }, [])
 
-  const loadRfqDocuments = async (rfqId) => {
+  const loadRfqDocuments = useCallback(async (rfqId) => {
     if (!rfqId) {
       setRfqDocuments([])
       return
@@ -413,9 +393,9 @@ export default function RfqPage() {
     } finally {
       setDocsLoading(false)
     }
-  }
+  }, [])
 
-  const loadSuggestedSuppliers = async (rfqId) => {
+  const loadSuggestedSuppliers = useCallback(async (rfqId) => {
     if (!rfqId) {
       setSuggestedSuppliers([])
       return
@@ -429,7 +409,34 @@ export default function RfqPage() {
     } finally {
       setSuggestedLoading(false)
     }
-  }
+  }, [])
+
+  const openDrawer = useCallback(async (record) => {
+    setActiveRfq(record)
+    setDrawerOpen(true)
+    await loadRevisionItems(record.client_request_revision_id)
+    await loadRfqItems(record.id)
+    await loadRfqStructure(record.id)
+    await loadRfqSuppliers(record.id)
+    await loadSuggestedSuppliers(record.id)
+    await loadRfqDocuments(record.id)
+  }, [
+    loadRevisionItems,
+    loadRfqItems,
+    loadRfqStructure,
+    loadRfqSuppliers,
+    loadSuggestedSuppliers,
+    loadRfqDocuments,
+  ])
+
+  useEffect(() => {
+    if (!pendingOpenId || !rfqs.length) return
+    const record = rfqs.find((item) => Number(item.id) === Number(pendingOpenId))
+    if (record) {
+      openDrawer(record)
+      setPendingOpenId(null)
+    }
+  }, [pendingOpenId, rfqs, openDrawer])
 
   const handleAddItem = async (values) => {
     if (!activeRfq?.id) return

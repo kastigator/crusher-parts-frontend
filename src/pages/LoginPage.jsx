@@ -25,8 +25,6 @@ const LoginPage = () => {
     try {
       const res = await axios.post('/auth/login', { username, password })
 
-      console.log('🔐 /auth/login response:', res.data)
-
       const { token, userData, user } = res.data
       const payload = userData || user
 
@@ -35,8 +33,6 @@ const LoginPage = () => {
         setError('Ошибка авторизации: некорректный ответ сервера')
         return
       }
-
-      console.log('✅ login() payload:', payload)
 
       // сохраняем токен и пользователя в AuthContext
       login(token, payload)

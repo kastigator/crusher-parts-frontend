@@ -8,7 +8,8 @@ import axios from "@/api/axiosInstance"
 import TableToolbar from "@/components/common/TableToolbar"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import ClientsTable from "./ClientsTable"
-import ClientsFiltersDrawer, { countActiveFilters } from "./ClientsFiltersDrawer"
+import ClientsFiltersDrawer from "./ClientsFiltersDrawer"
+import { countActiveFilters } from "./clientsFiltersUtils"
 
 const trimOrNull = (v) => {
   const s = (v ?? "").toString().trim()

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from "react"
 import { Badge, Button, Checkbox, Col, Drawer, Form, Input, InputNumber, Row, Select, Space, Typography } from "antd"
+import { countActiveFilters } from "./suppliersFiltersUtils"
 
 const { Text } = Typography
 
@@ -24,21 +25,6 @@ const normalize = (raw = {}) => {
     country_q: (f.country_q || "").toString(),
     cap_mode: f.cap_mode || "all",
   }
-}
-
-export const countActiveFilters = (filters) => {
-  const f = normalize(filters)
-  let n = 0
-  if (f.can_oem) n++
-  if (f.can_analog) n++
-  if (f.has_contact) n++
-  if (f.has_address) n++
-  if (f.risk_level) n++
-  ;["reliability_min", "reliability_max", "lead_time_min", "lead_time_max"].forEach((k) => {
-    if (f[k] != null) n++
-  })
-  if (f.country_q.trim()) n++
-  return n
 }
 
 export default function SuppliersFiltersDrawer({ open, onClose, value, onApply }) {
@@ -154,4 +140,3 @@ export default function SuppliersFiltersDrawer({ open, onClose, value, onApply }
     </Drawer>
   )
 }
-

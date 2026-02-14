@@ -13,7 +13,7 @@ export default function FormAddressFields({
 
   useEffect(() => {
     onChange?.(address)
-  }, [address])
+  }, [address, onChange])
 
   const handleAddressChange = (val) => {
     setAddress((prev) => ({ ...prev, ...val }))

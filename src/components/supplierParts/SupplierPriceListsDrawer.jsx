@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Button,
   Checkbox,
@@ -59,7 +59,7 @@ export default function SupplierPriceListsDrawer({ open, supplier, onClose }) {
   const supplierId = supplier?.id || null
   const activeList = useMemo(() => lists.find((x) => Number(x.id) === Number(activeListId)) || null, [lists, activeListId])
 
-  const loadLists = async () => {
+  const loadLists = useCallback(async () => {
     if (!supplierId) return
     setLoading(true)
     try {
@@ -76,7 +76,7 @@ export default function SupplierPriceListsDrawer({ open, supplier, onClose }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [supplierId, activeListId])
 
   const loadLines = async (listId) => {
     if (!listId) {
@@ -98,13 +98,11 @@ export default function SupplierPriceListsDrawer({ open, supplier, onClose }) {
   useEffect(() => {
     if (!open) return
     loadLists()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, supplierId])
+  }, [open, supplierId, loadLists])
 
   useEffect(() => {
     if (!open) return
     loadLines(activeListId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activeListId])
 
   const handleCreate = async (values) => {

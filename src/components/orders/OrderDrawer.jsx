@@ -181,6 +181,33 @@ export default function OrderDrawer({
     }
   }, [effectiveOrderId])
 
+  const fetchBanks = useCallback(async (clientId) => {
+    if (!clientId) {
+      setBankOptions([])
+      setSelectedBankId(null)
+      return
+    }
+    setBankLoading(true)
+    try {
+      const { data } = await axios.get("/client-bank-details", {
+        params: { client_id: clientId },
+      })
+      const list = Array.isArray(data) ? data : []
+      setBankOptions(list)
+      const first = list[0]
+      if (first) {
+        setSelectedBankId(first.id)
+        form.setFieldsValue({
+          currency: first.currency || form.getFieldValue("currency"),
+        })
+      }
+    } catch (e) {
+      console.error("load banks error", e)
+    } finally {
+      setBankLoading(false)
+    }
+  }, [form])
+
   const loadDetail = useCallback(async (targetId) => {
     const id = targetId || effectiveOrderId
     if (!id) return
@@ -207,7 +234,7 @@ export default function OrderDrawer({
     } finally {
       setLoading(false)
     }
-  }, [effectiveOrderId, form, loadContracts])
+  }, [effectiveOrderId, form, loadContracts, fetchBanks])
 
   useEffect(() => {
     if (open) {
@@ -227,33 +254,6 @@ export default function OrderDrawer({
     setContracts([])
   }, [open, effectiveOrderId, loadDetail, form])
 
-  const fetchBanks = async (clientId) => {
-    if (!clientId) {
-      setBankOptions([])
-      setSelectedBankId(null)
-      return
-    }
-    setBankLoading(true)
-    try {
-      const { data } = await axios.get("/client-bank-details", {
-        params: { client_id: clientId },
-      })
-      const list = Array.isArray(data) ? data : []
-      setBankOptions(list)
-      const first = list[0]
-      if (first) {
-        setSelectedBankId(first.id)
-        form.setFieldsValue({
-          currency: first.currency || form.getFieldValue("currency"),
-        })
-      }
-    } catch (e) {
-      console.error("load banks error", e)
-    } finally {
-      setBankLoading(false)
-    }
-  }
-
   const fetchResponsibleUsers = async () => {
     try {
       const { data } = await axios.get("/client-orders/responsible-users")
@@ -264,10 +264,10 @@ export default function OrderDrawer({
     }
   }
 
-  const openOfferModal = (record) => {
+  const openOfferModal = useCallback((record) => {
     setOfferItem(record)
     setOfferModalOpen(true)
-  }
+  }, [])
 
   const closeOfferModal = () => {
     setOfferModalOpen(false)
@@ -638,11 +638,14 @@ export default function OrderDrawer({
     [order?.id, loadDetail],
   )
 
-  const uomOptions = [
-    { value: "pcs", label: "шт" },
-    { value: "kg", label: "кг" },
-    { value: "set", label: "компл." },
-  ]
+  const uomOptions = useMemo(
+    () => [
+      { value: "pcs", label: "шт" },
+      { value: "kg", label: "кг" },
+      { value: "set", label: "компл." },
+    ],
+    [],
+  )
 
   const formatDims = (r) => {
     const { length_cm, width_cm, height_cm } = r
@@ -663,7 +666,7 @@ export default function OrderDrawer({
     r.local_id ||
     `${r.original_part_id}_${r.line_number || ""}`
 
-  const summarizeOffers = (record) => {
+  const summarizeOffers = useCallback((record) => {
     const offers = Array.isArray(record.offers) ? record.offers : []
     const total = offers.length
     const visible = offers.filter(
@@ -671,9 +674,9 @@ export default function OrderDrawer({
     ).length
     const approved = offers.filter((o) => o.status === "approved").length
     return { total, visible, approved }
-  }
+  }, [])
 
-  const getOfferStage = (record) => {
+  const getOfferStage = useCallback((record) => {
     const { total, visible, approved } = summarizeOffers(record)
     if (record.decision_offer_id || approved > 0) {
       return {
@@ -701,16 +704,16 @@ export default function OrderDrawer({
       color: "default",
       className: "order-item-stage-empty",
     }
-  }
+  }, [summarizeOffers])
 
   const isStatusLocked = (record) => {
     const offers = Array.isArray(record?.offers) ? record.offers : []
     return !!record?.decision_offer_id || offers.some((o) => o.status === "approved")
   }
 
-  const isEditingRow = (record) =>
+  const isEditingRow = useCallback((record) =>
     editingItemId &&
-    (record.id === editingItemId || record.local_id === editingItemId)
+    (record.id === editingItemId || record.local_id === editingItemId), [editingItemId])
 
   const columnsItems = useMemo(
     () => [
@@ -923,7 +926,7 @@ export default function OrderDrawer({
         },
       },
     ],
-    [handleSaveItem, handleDeleteItem, editingItemId, order?.id, openOfferModal],
+    [handleSaveItem, handleDeleteItem, order?.id, openOfferModal, getOfferStage, isEditingRow, summarizeOffers, uomOptions],
   )
 
   const renderHeaderTab = () => (

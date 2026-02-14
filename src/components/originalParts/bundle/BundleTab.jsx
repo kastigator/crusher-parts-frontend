@@ -1,5 +1,5 @@
 // /src/components/originalParts/bundle/BundleTab.jsx
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { Button, Collapse, Empty, Input, InputNumber, message, Space, Tag, Tooltip, Typography } from "antd"
 import { StarFilled } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
@@ -28,7 +28,7 @@ export default function BundleTab({ originalPartId, originalPart }) {
   const [activeRoleKey, setActiveRoleKey] = useState(null)
 
   // --------------------- загрузка / создание комплекта ---------------------
-  const ensureBundle = async () => {
+  const ensureBundle = useCallback(async () => {
     if (!originalPartId) return
     try {
       setLoading(true)
@@ -53,7 +53,7 @@ export default function BundleTab({ originalPartId, originalPart }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [originalPartId])
 
   const createBundle = async () => {
     if (!originalPartId) return
@@ -144,7 +144,7 @@ export default function BundleTab({ originalPartId, originalPart }) {
   }
 
   // --------------------- загрузка содержимого ---------------------
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!bundleId) return
     try {
       setLoading(true)
@@ -162,7 +162,7 @@ export default function BundleTab({ originalPartId, originalPart }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [bundleId])
 
   useEffect(() => {
     setBundleId(null)
@@ -173,8 +173,8 @@ export default function BundleTab({ originalPartId, originalPart }) {
     setOptions([])
     setTotals([])
   }, [originalPartId])
-  useEffect(() => { if (originalPartId) ensureBundle() }, [originalPartId])
-  useEffect(() => { if (bundleId) loadData() }, [bundleId])
+  useEffect(() => { if (originalPartId) ensureBundle() }, [originalPartId, ensureBundle])
+  useEffect(() => { if (bundleId) loadData() }, [bundleId, loadData])
 
   // --------------------- роли ---------------------
   const addRole = async () => {

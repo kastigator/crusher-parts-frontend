@@ -1,6 +1,10 @@
 const BASE_URL_RAW = import.meta.env.BASE_URL ?? "/"
-const ICONS_BASE_URL =
-  BASE_URL_RAW === "/" ? "" : BASE_URL_RAW.endsWith("/") ? BASE_URL_RAW : `${BASE_URL_RAW}/`
+const normalizeBaseUrl = (value) => {
+  const raw = String(value || "").trim()
+  if (!raw || raw === "." || raw === "./") return "/"
+  return raw.endsWith("/") ? raw : `${raw}/`
+}
+const ICONS_BASE_URL = normalizeBaseUrl(BASE_URL_RAW)
 
 export const buildIconPath = (name) => `icons/${name}.svg`
 

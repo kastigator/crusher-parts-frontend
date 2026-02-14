@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 import {
   Table,
   Upload,
@@ -28,7 +28,7 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
   const [editingId, setEditingId] = useState(null)
   const [editingDescription, setEditingDescription] = useState("")
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!partId) {
       setRows([])
       return
@@ -43,13 +43,13 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [partId])
 
   useEffect(() => {
     load()
     setEditingId(null)
     setEditingDescription("")
-  }, [partId])
+  }, [partId, load])
 
   const handleUpload = async ({ file }) => {
     if (!partId) {
@@ -283,8 +283,6 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
           loading={loading}
           pagination={false}
           tableLayout="fixed"
-          onRow={(record) => ({
-          })}
         />
       </div>
     </Space>

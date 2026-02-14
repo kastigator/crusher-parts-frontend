@@ -4,7 +4,6 @@ import axios from 'axios'
 import { logout } from '../auth/authService' // ✅ добавлено
 
 const API_BASE = `${import.meta.env.VITE_API_URL}/api`
-console.log('🔧 API_BASE =', API_BASE)
 
 const instance = axios.create({
   baseURL: API_BASE,

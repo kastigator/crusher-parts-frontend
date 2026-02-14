@@ -4,7 +4,7 @@ import { Button, Card, Input, InputNumber, Select, Space, Tooltip } from "antd"
 import CountrySelect from "@/components/inputs/CountrySelect"
 import CurrencySelect from "@/components/inputs/CurrencySelect"
 import IncotermsSelect from "@/components/inputs/IncotermsSelect"
-import { ROUTE_TYPE_OPTIONS } from "./LogisticsRoutesTable"
+import { ROUTE_TYPE_OPTIONS } from "./logisticsRouteOptions"
 import { ArrowUpOutlined, ArrowDownOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 

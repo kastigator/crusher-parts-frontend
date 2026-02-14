@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import React, { useCallback, useEffect, useState } from "react"
+import { useLocation, useNavigate } from "react-router-dom"
 import { Badge, Button, Typography } from "antd"
 import { useAuth } from "../auth/AuthContext"
 import axios from "@/api/axiosInstance"
@@ -7,6 +7,7 @@ import axios from "@/api/axiosInstance"
 const Header = () => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [unreadCount, setUnreadCount] = useState(0)
 
   const handleLogout = () => {
@@ -14,7 +15,7 @@ const Header = () => {
     navigate("/login")
   }
 
-  const fetchUnread = async () => {
+  const fetchUnread = useCallback(async () => {
     try {
       const { data } = await axios.get("/dashboard/notifications", {
         params: { unread_only: 1, limit: 1, type: "assignment" },
@@ -23,13 +24,22 @@ const Header = () => {
     } catch (e) {
       console.error("notifications unread error", e)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchUnread()
+  }, [fetchUnread, location.pathname])
+
+  useEffect(() => {
     const timer = setInterval(fetchUnread, 30000)
-    return () => clearInterval(timer)
-  }, [])
+    const handleFocus = () => fetchUnread()
+    window.addEventListener("focus", handleFocus)
+
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener("focus", handleFocus)
+    }
+  }, [fetchUnread])
 
   return (
     <div

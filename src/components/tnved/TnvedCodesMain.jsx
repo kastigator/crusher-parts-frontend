@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import { Button, Card, Checkbox, Form, Input, InputNumber, Popover, Space, message } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
@@ -56,16 +56,16 @@ export default function TnvedCodesMain() {
     setData((prev) => prev.filter((r) => r.id !== id))
 
   // ---------- API ----------
-  const fetchEtag = async () => {
+  const fetchEtag = useCallback(async () => {
     try {
       const { data: e } = await axios.get("/tnved-codes/etag")
       return e?.etag || null
     } catch {
       return null
     }
-  }
+  }, [])
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     try {
       const res = await axios.get("/tnved-codes")
@@ -80,11 +80,11 @@ export default function TnvedCodesMain() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [fetchEtag])
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [fetchData])
 
   // Load column prefs once
   useEffect(() => {
@@ -146,7 +146,7 @@ export default function TnvedCodesMain() {
       clearInterval(timer)
       document.removeEventListener("visibilitychange", vis)
     }
-  }, [etag, loading])
+  }, [etag, loading, fetchEtag])
 
   // ---------- create ----------
   const handleAdd = async () => {

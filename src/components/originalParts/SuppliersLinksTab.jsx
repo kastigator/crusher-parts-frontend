@@ -1,5 +1,5 @@
 // /src/components/originalParts/suppliers/SuppliersLinksTab.jsx
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { Empty, Space, Table, Tooltip, Typography, Tag, Button } from "antd"
 import { ArrowUpOutlined, ArrowDownOutlined, LinkOutlined, DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
@@ -24,7 +24,7 @@ export default function SuppliersLinksTab({ originalPartId }) {
   const [sortDesc, setSortDesc] = useState(false)
 
   // -------- data: DIRECT offers через /original-parts/:id/options --------
-  const loadDirectOffers = async () => {
+  const loadDirectOffers = useCallback(async () => {
     if (!originalPartId) return
     try {
       setLoading(true)
@@ -57,10 +57,10 @@ export default function SuppliersLinksTab({ originalPartId }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [originalPartId])
 
   // -------- data: BUNDLE defaults через /supplier-bundles/:id/options --------
-  const loadBundleDefaults = async () => {
+  const loadBundleDefaults = useCallback(async () => {
     if (!originalPartId) { setBundleOptions([]); return }
     try {
       setBundleLoading(true)
@@ -80,9 +80,9 @@ export default function SuppliersLinksTab({ originalPartId }) {
     } finally {
       setBundleLoading(false)
     }
-  }
+  }, [originalPartId])
 
-  useEffect(() => { loadDirectOffers(); loadBundleDefaults() }, [originalPartId])
+  useEffect(() => { loadDirectOffers(); loadBundleDefaults() }, [originalPartId, loadDirectOffers, loadBundleDefaults])
 
   // ✅ авто-рефреш из вкладки «Комплект (сборный)»
   useEffect(() => {
@@ -95,7 +95,7 @@ export default function SuppliersLinksTab({ originalPartId }) {
     }
     window.addEventListener("supplier-links:refresh", onRefresh)
     return () => window.removeEventListener("supplier-links:refresh", onRefresh)
-  }, [originalPartId])
+  }, [originalPartId, loadDirectOffers, loadBundleDefaults])
 
   // -------- actions --------
   const removeLink = async (supplierPartId) => {

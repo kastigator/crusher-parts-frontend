@@ -3,8 +3,8 @@ import React from "react"
 import ReactDOM from "react-dom/client"
 import App from "./App.jsx"
 import { BrowserRouter, HashRouter } from "react-router-dom"
-import { AuthProvider } from "./auth/AuthContext"
-import TabsProvider from "./context/TabsContext"
+import AuthProvider from "./auth/AuthProvider"
+import TabsProvider from "./context/TabsProvider"
 import { Toaster } from "react-hot-toast"
 import loadYandexMaps from "@/utils/loadYandexMaps"
 import { ConfigProvider, App as AntdApp } from "antd"
@@ -16,11 +16,6 @@ import "@fontsource/inter/500.css"
 import "@fontsource/inter/600.css"
 import "./styles/global.css"
 import "./styles/tableStyles.css"
-
-console.log(
-  "🔑 VITE_YANDEX_MAPS_API_KEY =",
-  import.meta.env.VITE_YANDEX_MAPS_API_KEY
-)
 
 const baseUrl = import.meta.env.BASE_URL || "/"
 const routerBase = baseUrl === "./" ? "/" : baseUrl

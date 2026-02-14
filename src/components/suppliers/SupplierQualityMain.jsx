@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Card,
   Space,
@@ -68,7 +68,7 @@ export default function SupplierQualityMain({ supplierId }) {
   const [form] = Form.useForm()
   const eventType = Form.useWatch("event_type", form)
 
-  const loadSummary = async () => {
+  const loadSummary = useCallback(async () => {
     if (!supplierId) return
     try {
       const { data } = await axios.get(`/suppliers/${supplierId}/quality-summary`)
@@ -76,9 +76,9 @@ export default function SupplierQualityMain({ supplierId }) {
     } catch (e) {
       console.error(e)
     }
-  }
+  }, [supplierId])
 
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     if (!supplierId) return
     setLoading(true)
     try {
@@ -90,13 +90,13 @@ export default function SupplierQualityMain({ supplierId }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [supplierId])
 
   useEffect(() => {
     if (!supplierId) return
     loadSummary()
     loadEvents()
-  }, [supplierId])
+  }, [supplierId, loadSummary, loadEvents])
 
   useEffect(() => {
     if (!modalOpen || !supplierId) return

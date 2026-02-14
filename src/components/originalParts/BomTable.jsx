@@ -25,7 +25,9 @@ export default function BomTable({ part }) {
     }
     try {
       abortRef.current?.abort?.()
-    } catch {}
+    } catch {
+      // ignore abort errors
+    }
     const controller = new AbortController()
     abortRef.current = controller
     setLoading(true)
@@ -52,7 +54,9 @@ export default function BomTable({ part }) {
       clearTimeout(t)
       try {
         abortRef.current?.abort?.()
-      } catch {}
+      } catch {
+        // ignore abort errors
+      }
     }
   }, [load, parentId])
 
@@ -84,7 +88,7 @@ export default function BomTable({ part }) {
   }
 
   // ===== Обновление количества =====
-  const updateQty = async (childId, nextQty) => {
+  const updateQty = useCallback(async (childId, nextQty) => {
     if (!parentId || !childId) return
     const qtyNum = Number(nextQty)
     if (!(qtyNum > 0)) {
@@ -102,10 +106,10 @@ export default function BomTable({ part }) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось обновить количество")
     }
-  }
+  }, [parentId, load])
 
   // ===== Удаление строки =====
-  const removeRow = async (childId) => {
+  const removeRow = useCallback(async (childId) => {
     const { confirmed } = await confirmAction("Удалить позицию из BOM?")
     if (!confirmed) return
     try {
@@ -118,7 +122,7 @@ export default function BomTable({ part }) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось удалить позицию")
     }
-  }
+  }, [parentId, load])
 
   const columns = useMemo(
     () => [
@@ -169,7 +173,7 @@ export default function BomTable({ part }) {
         ),
       },
     ],
-    [updateQty] // removeRow стабилен, но можно добавить при желании
+    [updateQty, removeRow]
   )
 
   // уже находящиеся в составе — чтобы скрыть их в пикере

@@ -243,8 +243,6 @@ export default function OriginalPartGroupsManager({ open, onClose, onChanged }) 
           dataSource={rows}
           loading={loading || savingEdit}
           pagination={{ pageSize: 50 }}
-          onRow={(record) => ({
-          })}
         />
       </Space>
     </Modal>

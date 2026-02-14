@@ -1,5 +1,5 @@
 // src/components/orders/ProposalPreviewModal.jsx
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useMemo, useState } from "react"
 import dayjs from "dayjs"
 import { Modal, Table, Space, Typography, Divider, Button, Tag, message, Segmented, Alert } from "antd"
 import { UploadOutlined, DownloadOutlined } from "@ant-design/icons"
@@ -25,12 +25,7 @@ const canViewSupplierDetails = (role = "") => {
 export default function ProposalPreviewModal({ open, onClose, order, items, viewRole }) {
   const roleCanSeeSupplier = canViewSupplierDetails(viewRole)
   const [uploading, setUploading] = useState(false)
-  const [pdfUrl, setPdfUrl] = useState(order?.proposal_file_url || "")
   const [viewMode, setViewMode] = useState("client") // client | internal
-
-  useEffect(() => {
-    setPdfUrl(order?.proposal_file_url || "")
-  }, [order?.proposal_file_url, order?.id])
 
   const uomLabel = (uom) => {
     if (!uom) return "—"
@@ -187,9 +182,6 @@ export default function ProposalPreviewModal({ open, onClose, order, items, view
       const { data } = await axios.post(`/client-orders/${order.id}/proposal-generate`)
       const url = data?.url
       if (url) {
-        setPdfUrl(url)
-        // eslint-disable-next-line no-param-reassign
-        order.proposal_file_url = url
         window.open(url, "_blank", "noopener")
         message.success("PDF сформирован и сохранён")
       } else {
@@ -201,10 +193,6 @@ export default function ProposalPreviewModal({ open, onClose, order, items, view
     } finally {
       setUploading(false)
     }
-  }
-
-  const handleDownloadPdf = () => {
-    if (pdfUrl) window.open(pdfUrl, "_blank", "noopener")
   }
 
   const companyBlock = (

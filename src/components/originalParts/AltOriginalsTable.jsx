@@ -1,5 +1,5 @@
 // src/components/originalParts/AltOriginalsTable.jsx
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Button,
   Collapse,
@@ -20,7 +20,7 @@ const { Text } = Typography
 
 export default function AltOriginalsTable({ originalPartId }) {
   const [groups, setGroups] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [_loading, setLoading] = useState(false)
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerGroup, setPickerGroup] = useState(null)
@@ -29,7 +29,7 @@ export default function AltOriginalsTable({ originalPartId }) {
   const [creating, setCreating] = useState(false)
 
   // ---------- загрузка ----------
-  const loadGroups = async () => {
+  const loadGroups = useCallback(async () => {
     if (!originalPartId) return
     setLoading(true)
     try {
@@ -43,15 +43,15 @@ export default function AltOriginalsTable({ originalPartId }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [originalPartId])
 
   useEffect(() => {
     setGroups([])
     if (originalPartId) loadGroups()
-  }, [originalPartId])
+  }, [originalPartId, loadGroups])
 
   // ---------- создать группу ----------
-  const handleCreate = async () => {
+  const handleCreate = useCallback(async () => {
     if (!originalPartId) return
     setCreating(true)
     try {
@@ -74,7 +74,7 @@ export default function AltOriginalsTable({ originalPartId }) {
     } finally {
       setCreating(false)
     }
-  }
+  }, [originalPartId, loadGroups])
 
   // ---------- обновление name / comment ----------
   const updateGroupField = async (group, field, value) => {
@@ -190,7 +190,7 @@ export default function AltOriginalsTable({ originalPartId }) {
   }
 
   // ---------- таблица групп ----------
-  const groupColumns = [
+  const _groupColumns = [
     {
       title: "Название группы",
       dataIndex: "name",
@@ -348,7 +348,7 @@ export default function AltOriginalsTable({ originalPartId }) {
         </Text>
       </Space>
     ),
-    [groups.length, creating, originalPartId],
+    [groups.length, creating, originalPartId, handleCreate],
   )
 
   if (!originalPartId) {

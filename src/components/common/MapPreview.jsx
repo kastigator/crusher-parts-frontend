@@ -42,7 +42,7 @@ export default function MapPreview({ address, onSelect, height = 240 }) {
         })
       }
     })
-  }, [address])
+  }, [address, onSelect])
 
   return (
     <div

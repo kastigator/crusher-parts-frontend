@@ -35,9 +35,10 @@ export default function SelectionPage() {
   const rfqItemMap = useMemo(() => {
     const map = new Map()
     rfqItems.forEach((item) => {
+      const linePrefix = item.line_number ? `${item.line_number} · ` : ""
       map.set(
         item.id,
-        `${item.original_cat_number || "Без номера"} · ${item.client_description || ""}`.trim(),
+        `${linePrefix}${item.original_cat_number || "Без номера"} · ${item.client_description || ""}`.trim(),
       )
     })
     return map
@@ -301,13 +302,14 @@ export default function SelectionPage() {
                 <Form.Item
                   label="Строка RFQ"
                   name="rfq_item_id"
-                  rules={[{ required: true, message: "Укажите RFQ item" }]}
+                  rules={[{ required: true, message: "Укажите строку RFQ" }]}
                 >
                   <Select
                     style={{ width: 260 }}
                     options={rfqItems.map((item) => ({
                       value: item.id,
-                      label: `${item.original_cat_number || "Без номера"} · ${item.client_description || ""}`.trim(),
+                      label:
+                        `${item.line_number || "—"} · ${item.original_cat_number || "Без номера"} · ${item.client_description || ""}`.trim(),
                     }))}
                     placeholder="Выберите строку RFQ"
                     onChange={(val) => {

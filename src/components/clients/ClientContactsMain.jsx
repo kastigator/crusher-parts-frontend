@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 import { Card, Button, Input, Row, Col, Checkbox, message } from "antd"
 import axios from "@/api/axiosInstance"
 
@@ -26,7 +26,7 @@ export default function ClientContactsMain({ clientId, onChanged }) {
     notes: "",
   })
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!clientId) return
     setLoading(true)
     try {
@@ -40,12 +40,12 @@ export default function ClientContactsMain({ clientId, onChanged }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [clientId])
 
   useEffect(() => {
     if (!clientId) return
     fetchData()
-  }, [clientId])
+  }, [clientId, fetchData])
 
   const handleAdd = async () => {
     if (!clientId) return

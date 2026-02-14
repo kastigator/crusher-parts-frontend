@@ -32,7 +32,7 @@ export default function ClientMetaCard({ client, onSaved }) {
   useEffect(() => {
     setMeta(metaFromClient(client))
     setDirty(false)
-  }, [clientId])
+  }, [clientId, client])
 
   const canSave = useMemo(() => dirty && !saving, [dirty, saving])
 
@@ -157,4 +157,3 @@ export default function ClientMetaCard({ client, onSaved }) {
     </Card>
   )
 }
-

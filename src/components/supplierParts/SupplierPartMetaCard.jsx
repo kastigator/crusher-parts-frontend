@@ -43,7 +43,7 @@ export default function SupplierPartMetaCard({ part, onSaved }) {
   useEffect(() => {
     setMeta(metaFromPart(part))
     setDirty(false)
-  }, [partId])
+  }, [partId, part])
 
   const canSave = useMemo(() => dirty && !saving, [dirty, saving])
 
@@ -256,4 +256,3 @@ export default function SupplierPartMetaCard({ part, onSaved }) {
     </Card>
   )
 }
-

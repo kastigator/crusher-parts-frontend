@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from "react"
 import { Badge, Button, Checkbox, Drawer, Form, Space, Typography } from "antd"
+import { countActiveFilters } from "./clientsFiltersUtils"
 
 const { Text } = Typography
 
@@ -11,16 +12,6 @@ const normalize = (raw = {}) => {
     has_tax_id: !!f.has_tax_id,
     has_website: !!f.has_website,
   }
-}
-
-export const countActiveFilters = (filters) => {
-  const f = normalize(filters)
-  let n = 0
-  if (f.has_phone) n++
-  if (f.has_email) n++
-  if (f.has_tax_id) n++
-  if (f.has_website) n++
-  return n
 }
 
 export default function ClientsFiltersDrawer({ open, onClose, value, onApply }) {
@@ -92,4 +83,3 @@ export default function ClientsFiltersDrawer({ open, onClose, value, onApply }) 
     </Drawer>
   )
 }
-

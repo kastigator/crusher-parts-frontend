@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { notification, Tag, Space, Button, Typography } from "antd"
 import { useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
@@ -17,12 +17,12 @@ export default function useDashboardNotifications() {
   const navigate = useNavigate()
   const lastEventRef = useRef({ at: null, id: 0 })
 
-  const openOrderById = (orderId) => {
+  const openOrderById = useCallback((orderId) => {
     if (!orderId) return
     navigate(`/client-orders?orderId=${encodeURIComponent(orderId)}`)
-  }
+  }, [navigate])
 
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     const last = lastEventRef.current
     if (!last?.at) {
       lastEventRef.current.at = new Date().toISOString()
@@ -70,7 +70,7 @@ export default function useDashboardNotifications() {
     } catch (e) {
       console.error("dashboard events error", e)
     }
-  }
+  }, [openOrderById])
 
   useEffect(() => {
     if (!lastEventRef.current.at) {
@@ -79,5 +79,5 @@ export default function useDashboardNotifications() {
     }
     const eventsTimer = setInterval(fetchEvents, EVENTS_POLL_INTERVAL_MS)
     return () => clearInterval(eventsTimer)
-  }, [])
+  }, [fetchEvents])
 }

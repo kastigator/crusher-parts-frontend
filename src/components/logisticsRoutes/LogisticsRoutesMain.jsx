@@ -18,10 +18,8 @@ import TableToolbar from "@/components/common/TableToolbar"
 import CountrySelect from "@/components/inputs/CountrySelect"
 import CurrencySelect from "@/components/inputs/CurrencySelect"
 import IncotermsSelect from "@/components/inputs/IncotermsSelect"
-import LogisticsRoutesTable, {
-  ROUTE_TYPE_OPTIONS,
-  PRICING_MODEL_OPTIONS,
-} from "./LogisticsRoutesTable"
+import LogisticsRoutesTable from "./LogisticsRoutesTable"
+import { PRICING_MODEL_OPTIONS, ROUTE_TYPE_OPTIONS } from "./logisticsRouteOptions"
 import LegsEditor from "./LegsEditor"
 import LegsModal from "./LegsModal"
 

@@ -1,5 +1,5 @@
 // src/components/suppliers/SuppliersMain.jsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import {
   Badge,
   Button,
@@ -19,7 +19,8 @@ import TableToolbar from "@/components/common/TableToolbar"
 import ImportModal from "@/components/common/ImportModal"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import SuppliersTable from "./SuppliersTable"
-import SuppliersFiltersDrawer, { countActiveFilters } from "./SuppliersFiltersDrawer"
+import SuppliersFiltersDrawer from "./SuppliersFiltersDrawer"
+import { countActiveFilters } from "./suppliersFiltersUtils"
 import SupplierCreateAdvancedDrawer from "./SupplierCreateAdvancedDrawer"
 
 const SUPPLIERS_TEMPLATE_URL =
@@ -178,7 +179,9 @@ export default function SuppliersMain() {
   const fetchSuppliers = useCallback(async () => {
     try {
       abortRef.current?.abort()
-    } catch {}
+    } catch {
+      // ignore abort errors
+    }
     const controller = new AbortController()
     abortRef.current = controller
 

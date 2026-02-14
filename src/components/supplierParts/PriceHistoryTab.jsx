@@ -42,6 +42,7 @@ const CURRENCY_OPTIONS = cc.codes().map((code) => {
 
 const SOURCE_OPTIONS = [
   { value: "RFQ", label: "RFQ" },
+  { value: "RFQ_RESPONSE", label: "Ответ RFQ" },
   { value: "PRICE_LIST", label: "Прайс-лист" },
   { value: "NEGOTIATION", label: "Переговоры" },
   { value: "MANUAL", label: "Вручную" },
@@ -52,6 +53,7 @@ const sourceTypeLabel = (value) => {
   const key = String(value || "").toUpperCase()
   const map = {
     RFQ: "RFQ",
+    RFQ_RESPONSE: "Ответ RFQ",
     PRICE_LIST: "Прайс-лист",
     NEGOTIATION: "Переговоры",
     MANUAL: "Вручную",
@@ -79,7 +81,22 @@ const sourceDetailsLabel = (row) => {
   if (type === "RFQ") {
     const rfqLabel = row?.rfq_number || (row?.rfq_id ? `RFQ-${row.rfq_id}` : "RFQ")
     const rev = row?.rfq_response_rev_number ? ` · rev ${row.rfq_response_rev_number}` : ""
-    return `${rfqLabel}${rev}`
+    return `RFQ: ${rfqLabel}${rev}`
+  }
+  if (type === "RFQ_RESPONSE") {
+    const rfqLabel = row?.rfq_number || (row?.rfq_id ? `RFQ-${row.rfq_id}` : "RFQ")
+    const rev = row?.rfq_response_rev_number ? ` · rev ${row.rfq_response_rev_number}` : ""
+    const subtype = String(row?.source_subtype || row?.response_entry_source || "").toUpperCase()
+    const subtypeLabel = {
+      SUPPLIER_MANUAL: "вручную",
+      SUPPLIER_FILE: "файл поставщика",
+      NEGOTIATION: "переговоры",
+      ACCEPTED_EXISTING: "принятая цена",
+      SYSTEM_IMPORT: "системный импорт",
+    }[subtype]
+    return subtypeLabel
+      ? `Ответ RFQ (${subtypeLabel}): ${rfqLabel}${rev}`
+      : `Ответ RFQ: ${rfqLabel}${rev}`
   }
   return sourceTypeLabel(type)
 }
@@ -558,19 +575,6 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
           />
         ) : (
           sourceDetailsLabel(row)
-        ),
-    },
-    {
-      title: "RFQ",
-      dataIndex: "rfq_id",
-      width: 120,
-      render: (v, row) =>
-        row.source_type === "RFQ" && row.rfq_id ? (
-          <a href={`/rfq?open=${row.rfq_id}`} target="_blank" rel="noreferrer">
-            RFQ-{row.rfq_id}
-          </a>
-        ) : (
-          "—"
         ),
     },
     {

@@ -42,29 +42,6 @@ const normalizeFilters = (raw = {}) => {
   }
 }
 
-export const countActiveFilters = (filters) => {
-  const f = normalizeFilters(filters)
-  let n = 0
-  ;[
-    "weight_min",
-    "weight_max",
-    "length_min",
-    "length_max",
-    "width_min",
-    "width_max",
-    "height_min",
-    "height_max",
-    "material_id",
-    "bom_material_id",
-  ].forEach((k) => {
-    if (f[k] != null) n += 1
-  })
-  if (f.has_drawing) n += 1
-  if (f.is_overweight) n += 1
-  if (f.is_oversize) n += 1
-  return n
-}
-
 export default function OriginalPartsFiltersDrawer({ open, onClose, value, onApply }) {
   const [form] = Form.useForm()
   const initial = useMemo(() => normalizeFilters(value), [value])
@@ -244,4 +221,3 @@ export default function OriginalPartsFiltersDrawer({ open, onClose, value, onApp
     </Drawer>
   )
 }
-

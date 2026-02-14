@@ -1,5 +1,5 @@
 // src/components/clients/BillingAddressesMain.jsx
-import React, { useEffect, useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 import { Card, Button, message, Input, Row, Col } from "antd"
 import axios from "@/api/axiosInstance"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
@@ -32,7 +32,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
   // ==========================
   // Load
   // ==========================
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!clientId) return
     setLoading(true)
     try {
@@ -46,11 +46,11 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [clientId])
 
   useEffect(() => {
     if (clientId) fetchData()
-  }, [clientId])
+  }, [clientId, fetchData])
 
   // ==========================
   // Add

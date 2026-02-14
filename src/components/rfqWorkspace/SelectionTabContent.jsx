@@ -20,7 +20,12 @@ export default function SelectionTabContent({ selections, selectionLines, format
         dataSource={selectionLines}
         pagination={false}
         columns={[
-          { title: "RFQ item", dataIndex: "rfq_item_id", width: 90 },
+          {
+            title: "Строка RFQ",
+            dataIndex: "rfq_item_id",
+            width: 110,
+            render: (_, record) => record.rfq_line_number || record.line_number || "—",
+          },
           { title: "Компонент", dataIndex: "component_cat_number", width: 160 },
           { title: "Поставщик", dataIndex: "supplier_name", width: 180 },
           { title: "Предложение", dataIndex: "supplier_part_number", width: 160 },

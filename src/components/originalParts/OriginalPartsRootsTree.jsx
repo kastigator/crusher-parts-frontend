@@ -172,7 +172,7 @@ export default function OriginalPartsRootsTree({
     setExpandedKeys([modelKey])
     setSelectedKeys([])
     setLoadedIds(new Set())
-  }, [model?.id, model?.model_name, manufacturer?.name, rootsKey, modelKey])
+  }, [model?.id, model?.model_name, manufacturer?.name, rootsKey, modelKey, roots, onOpenDetail])
 
   // Focus a node (best-effort): works for root nodes and for already-loaded children.
   useEffect(() => {
@@ -200,13 +200,16 @@ export default function OriginalPartsRootsTree({
       try {
         treeRef.current?.scrollTo?.({ key: id, align: "top" })
         // If scrollTo isn't available, fall back to DOM.
-      } catch {}
+      } catch {
+        // ignore scroll API errors
+      }
       try {
         const el = document.querySelector(`.op-roots-tree [data-node-key="${id}"]`)
         el?.scrollIntoView?.({ block: "center", behavior: "smooth" })
-      } catch {}
+      } catch {
+        // ignore DOM scroll errors
+      }
     }, 0)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId, model?.id, rootsKey, treeData])
 
   const loadData = async (node) => {

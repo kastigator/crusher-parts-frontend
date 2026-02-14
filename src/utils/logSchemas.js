@@ -140,7 +140,6 @@ export const logSchemas = {
 
       // контакты (supplier_contacts)
       role: "Роль",
-      is_primary: "Основной контакт",         // ⬅ добавить для совпадения с полем таблицы
       is_primary_contact: "Основной контакт", // на случай старых логов
 
       // банки (supplier_bank_details)

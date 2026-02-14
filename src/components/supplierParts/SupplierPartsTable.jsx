@@ -96,9 +96,9 @@ export default function SupplierPartsTable({
   showAll = false,
   onOpenDetail,
   highlightRowId = null,
-  onFlashRow,
+  onFlashRow: _onFlashRow,
   visibleColumnKeys = null,
-  onVisibleColumnKeysChange = null,
+  onVisibleColumnKeysChange: _onVisibleColumnKeysChange = null,
   onColumnsMeta = null,
 }) {
   const [rows, setRows] = useState([])
@@ -121,7 +121,9 @@ export default function SupplierPartsTable({
 
     try {
       abortRef.current?.abort()
-    } catch {}
+    } catch {
+      // ignore abort errors
+    }
     const controller = new AbortController()
     abortRef.current = controller
 
@@ -217,11 +219,13 @@ export default function SupplierPartsTable({
     return () => {
       try {
         abortRef.current?.abort()
-      } catch {}
+      } catch {
+        // ignore abort errors
+      }
     }
   }, [load, version, page, pageSize])
 
-  const handleDelete = async (id) => {
+  const handleDelete = useCallback(async (id) => {
     const { confirmed } = await confirmAction("Удалить деталь?")
     if (!confirmed) return
     try {
@@ -230,10 +234,10 @@ export default function SupplierPartsTable({
       setTotal((t) => Math.max(0, t - 1))
       message.success("Деталь удалена")
       onReload?.()
-    } catch (e) {
+    } catch (_e) {
       message.error("Не удалось удалить деталь")
     }
-  }
+  }, [onReload])
 
   const renderOemCell = (record) => {
     const type = String(record?.part_type || "").toUpperCase()
@@ -246,32 +250,47 @@ export default function SupplierPartsTable({
     <Tag color={v ? "green" : "default"}>{v ? "да" : "нет"}</Tag>
   )
 
-  const renderPriceSource = (raw) => {
+  const renderPriceSource = useCallback((raw) => {
     const s = String(raw || "").trim().toUpperCase()
     if (!s) return ""
     const map = {
       RFQ: "RFQ",
+      RFQ_RESPONSE: "Ответ RFQ",
       PRICE_LIST: "Прайс-лист",
       NEGOTIATION: "Переговоры",
       MANUAL: "Вручную",
       OTHER: "Другое",
     }
     return map[s] || String(raw)
-  }
+  }, [])
 
-  const renderPriceSourceDetails = (record) => {
+  const renderPriceSourceDetails = useCallback((record) => {
     const sourceType = String(record?.latest_price_source_type || "")
       .trim()
       .toUpperCase()
     if (!sourceType) return ""
 
-    if (sourceType === "RFQ") {
+    if (sourceType === "RFQ" || sourceType === "RFQ_RESPONSE") {
       const number = record?.latest_price_rfq_number || null
       const rev =
         record?.latest_price_rfq_rev_number != null
           ? `rev ${record.latest_price_rfq_rev_number}`
           : null
-      return [number, rev].filter(Boolean).join(" · ") || "RFQ"
+      if (sourceType === "RFQ") {
+        return [number, rev].filter(Boolean).join(" · ") || "RFQ"
+      }
+      const subtype = String(
+        record?.latest_price_source_subtype || record?.latest_price_entry_source || ""
+      ).toUpperCase()
+      const subtypeLabel = {
+        SUPPLIER_MANUAL: "вручную",
+        SUPPLIER_FILE: "файл поставщика",
+        NEGOTIATION: "переговоры",
+        ACCEPTED_EXISTING: "принятая цена",
+        SYSTEM_IMPORT: "системный импорт",
+      }[subtype]
+      const rfqLabel = [number, rev].filter(Boolean).join(" · ") || "RFQ"
+      return subtypeLabel ? `Ответ RFQ (${subtypeLabel}): ${rfqLabel}` : `Ответ RFQ: ${rfqLabel}`
     }
 
     if (sourceType === "PRICE_LIST") {
@@ -286,7 +305,7 @@ export default function SupplierPartsTable({
     }
 
     return renderPriceSource(sourceType)
-  }
+  }, [renderPriceSource])
 
   const columnDefs = useMemo(() => {
     const cols = []
@@ -490,7 +509,7 @@ export default function SupplierPartsTable({
     })
 
     return cols
-  }, [showAll])
+  }, [showAll, handleDelete, renderPriceSourceDetails])
 
   const defaultVisible = useMemo(() => columnDefs.map((c) => c.key), [columnDefs])
   const effectiveVisibleKeys =

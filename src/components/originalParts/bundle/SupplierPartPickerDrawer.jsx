@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Drawer, Table, Input, Button, Space, Empty, message, Typography } from "antd";
 import axios from "@/api/axiosInstance";
 
@@ -18,8 +18,7 @@ export default function SupplierPartPickerDrawer({
   const [loading, setLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const abortRef = useRef(null);
-
-  const doSearch = async (query) => {
+  const doSearch = useCallback(async (query) => {
     abortRef.current?.abort?.();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -52,15 +51,14 @@ export default function SupplierPartPickerDrawer({
     } finally {
       setLoading(false);
     }
-  };
+  }, [excludeIds]);
 
   useEffect(() => {
     if (!open) return;
     const queryToUse = q?.trim() ? q : initialQuery?.trim?.() || "";
     const t = setTimeout(() => doSearch(queryToUse), 250);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, open, (excludeIds || []).join(","), initialQuery]);
+  }, [q, open, initialQuery, doSearch]);
 
   useEffect(() => {
     if (!open) {
@@ -70,7 +68,7 @@ export default function SupplierPartPickerDrawer({
     } else if (initialQuery && !q) {
       setQ(initialQuery);
     }
-  }, [open]);
+  }, [open, initialQuery, q]);
 
   const columns = useMemo(
     () => [

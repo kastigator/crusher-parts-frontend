@@ -7,7 +7,6 @@ import {
   Input,
   InputNumber,
   Select,
-  AutoComplete,
   DatePicker,
   Button,
   message,
@@ -15,9 +14,7 @@ import {
   Tag,
   Typography,
   Modal,
-  Upload,
   Alert,
-  Switch,
   Tooltip,
   Timeline,
   Collapse,
@@ -29,10 +26,16 @@ import {
   EditOutlined,
   SaveOutlined,
   CloseOutlined,
-  UploadOutlined,
-  FileExcelOutlined,
 } from "@ant-design/icons"
+import AddPositionsModal from "@/components/clientRequests/AddPositionsModal"
+import CreateClientModal from "@/components/clientRequests/CreateClientModal"
+import ClientRequestWorkspaceCard from "@/components/clientRequests/ClientRequestWorkspaceCard"
+import EditItemModal from "@/components/clientRequests/EditItemModal"
+import ImportExcelModal from "@/components/clientRequests/ImportExcelModal"
+import NewRequestCard from "@/components/clientRequests/NewRequestCard"
 import PageWrapper from "@/components/common/PageWrapper"
+import RevisionNoteModal from "@/components/clientRequests/RevisionNoteModal"
+import RequestsListCard from "@/components/clientRequests/RequestsListCard"
 import axios from "@/api/axiosInstance"
 import dayjs from "dayjs"
 import confirmAction from "@/utils/confirmAction"
@@ -737,7 +740,7 @@ export default function ClientRequestsPage() {
     }
   }
 
-  const handleAddRevision = async (values) => {
+  const _handleAddRevision = async (values) => {
     const note = String(values.note || "").trim()
     if (!note) {
       message.warning("Укажите комментарий для ревизии")
@@ -1153,7 +1156,7 @@ export default function ClientRequestsPage() {
     setRevisionNoteOpen(false)
   }
 
-  const createRevisionForChange = async () => {
+  const _createRevisionForChange = async () => {
     if (!activeRequest?.id) return null
     if (!isLatestRevision) {
       message.warning("Изменения доступны только в последней ревизии")
@@ -1870,7 +1873,7 @@ export default function ClientRequestsPage() {
       setBulkEdits({})
       originalItemsRef.current = []
     }
-  }, [isLatestRevision])
+  }, [isLatestRevision, changeDraftActive])
 
   const requestColumns = [
     {
@@ -2206,694 +2209,109 @@ export default function ClientRequestsPage() {
       helpText="Статусы: Черновик → В работе → Релиз в закупку → RFQ создан → RFQ отправлен → Ответы → Выбор → КП → Контракт."
     >
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
-        <Card title="Новая заявка" size="small">
-          <Form
-            form={createForm}
-            layout="vertical"
-            onFinish={handleCreate}
-          >
-            <Space wrap align="start">
-              <Form.Item
-                label="Клиент"
-                name="client_id"
-                rules={[{ required: true, message: "Выберите клиента" }]}
-              >
-                <Select
-                  style={{ width: 260 }}
-                  options={clientSelectOptions}
-                  showSearch
-                  optionFilterProp="label"
-                  placeholder="Выберите клиента"
-                  onChange={(val) => {
-                    if (val === "__create__") {
-                      createForm.setFieldsValue({ client_id: null })
-                      setCreateClientOpen(true)
-                      return
-                    }
-                    const client = clients.find((c) => c.id === val)
-                    if (!client) return
-                    const current = createForm.getFieldsValue([
-                      "contact_name",
-                      "contact_email",
-                      "contact_phone",
-                    ])
-                    createForm.setFieldsValue({
-                      contact_name: current.contact_name || client.contact_person || "",
-                      contact_email: current.contact_email || client.email || "",
-                      contact_phone: current.contact_phone || client.phone || "",
-                    })
-                    loadContacts(val)
-                  }}
-                />
-              </Form.Item>
-              <Form.Item label="Ответственный" name="assigned_to_user_id">
-                <Select
-                  style={{ width: 220 }}
-                  options={userOptions}
-                  showSearch
-                  optionFilterProp="label"
-                  placeholder="Назначить"
-                  allowClear
-                />
-              </Form.Item>
-              <Form.Item
-                label="Внутренний номер"
-                name="internal_number"
-                rules={[{ required: true, message: "Введите внутренний номер" }]}
-              >
-                <Input style={{ width: 200 }} />
-              </Form.Item>
-              <Form.Item label="Референс клиента" name="client_reference">
-                <Input style={{ width: 220 }} />
-              </Form.Item>
-              <Form.Item label="Комментарий (внутр.)" name="comment_internal">
-                <Input.TextArea style={{ width: 320 }} rows={2} />
-              </Form.Item>
-            </Space>
-            <Collapse
-              items={[
-                {
-                  key: "extra",
-                  label: "Дополнительно",
-                  children: (
-                    <Space wrap align="start">
-                      <Form.Item label="Источник" name="source_type">
-                        <Select style={{ width: 200 }} options={SOURCE_OPTIONS} />
-                      </Form.Item>
-                      <Form.Item label="Дата получения" name="received_at">
-                        <DatePicker
-                          style={{ width: 200 }}
-                          format="DD.MM.YYYY"
-                          placeholder="ДД.ММ.ГГГГ"
-                        />
-                      </Form.Item>
-                      <Form.Item label="Дедлайн обработки" name="processing_deadline">
-                        <DatePicker style={{ width: 200 }} format="DD.MM.YYYY" />
-                      </Form.Item>
-                      <Form.Item
-                        label="Контакт"
-                        name="contact_name"
-                        tooltip={contactsLoading ? "Загрузка контактов клиента..." : undefined}
-                        extra="Новый контакт будет добавлен в карточку клиента."
-                      >
-                        <AutoComplete
-                          style={{ width: 220 }}
-                          options={contactOptions}
-                          placeholder="Выберите или введите"
-                          filterOption={false}
-                          open={contactDropdownOpen}
-                          onFocus={() => {
-                            setContactDropdownOpen(true)
-                            const clientId = createForm.getFieldValue("client_id")
-                            if (clientId) {
-                              loadContacts(clientId, false)
-                            }
-                          }}
-                          onBlur={() => setContactDropdownOpen(false)}
-                          onSelect={(_, option) => {
-                            setContactDropdownOpen(false)
-                            if (option?.email || option?.phone) {
-                              createForm.setFieldsValue({
-                                contact_name: option.value || "",
-                                contact_email: option.email || "",
-                                contact_phone: option.phone || "",
-                              })
-                            }
-                          }}
-                          onChange={(value) => {
-                            const match = contactOptions.find((opt) => opt.value === value)
-                            if (!match) {
-                              createForm.setFieldsValue({
-                                contact_email: "",
-                                contact_phone: "",
-                              })
-                            }
-                          }}
-                        >
-                          <Input />
-                        </AutoComplete>
-                      </Form.Item>
-                      <Form.Item
-                        label="E-mail"
-                        name="contact_email"
-                        tooltip="E-mail для связи по этой заявке"
-                      >
-                        <Input style={{ width: 200 }} />
-                      </Form.Item>
-                      <Form.Item label="Телефон" name="contact_phone">
-                        <Input style={{ width: 180 }} />
-                      </Form.Item>
-                      <Form.Item label="Комментарий клиента" name="comment_client">
-                        <Input.TextArea style={{ width: 320 }} rows={2} />
-                      </Form.Item>
-                    </Space>
-                  ),
-                },
-              ]}
-            />
-            <div style={{ marginTop: 12 }}>
-              <Button type="primary" htmlType="submit">
-                Создать заявку
-              </Button>
-            </div>
-          </Form>
-        </Card>
+        <NewRequestCard
+          createForm={createForm}
+          handleCreate={handleCreate}
+          clientSelectOptions={clientSelectOptions}
+          clients={clients}
+          setCreateClientOpen={setCreateClientOpen}
+          loadContacts={loadContacts}
+          userOptions={userOptions}
+          sourceOptions={SOURCE_OPTIONS}
+          contactsLoading={contactsLoading}
+          contactOptions={contactOptions}
+          contactDropdownOpen={contactDropdownOpen}
+          setContactDropdownOpen={setContactDropdownOpen}
+        />
 
-        <Card title="Список заявок" size="small">
-          <Table
-            rowKey="id"
-            columns={requestColumns}
-            dataSource={requests}
-            loading={loading}
-            pagination={{ pageSize: 20 }}
-            onRow={(record) => ({
-              onClick: () => openWorkspace(record),
-            })}
-            rowClassName={(record) =>
-              Number(record.id) === Number(activeRequest?.id)
-                ? "ant-table-row-selected"
-                : ""
-            }
-          />
-        </Card>
+        <RequestsListCard
+          requestColumns={requestColumns}
+          requests={requests}
+          loading={loading}
+          openWorkspace={openWorkspace}
+          activeRequestId={activeRequest?.id}
+        />
 
-        <Card title="Рабочая зона" size="small">
-          {activeRequest ? (
-            <Space direction="vertical" size={16} style={{ width: "100%" }}>
-              <Space wrap align="center" style={{ justifyContent: "space-between" }}>
-                <Space wrap align="center">
-                  <Text strong>
-                    {activeRequest?.internal_number || "Заявка клиента"}
-                  </Text>
-                  {activeRequest?.status ? (
-                    <Tag color={STATUS_COLORS[activeRequest.status] || "default"}>
-                      {STATUS_OPTIONS.find((opt) => opt.value === activeRequest.status)?.label ||
-                        activeRequest.status}
-                    </Tag>
-                  ) : null}
-                  <Text type="secondary">
-                    Клиент: {activeRequest?.client_name || "—"}
-                  </Text>
-                  <Text type="secondary">
-                    {activeRevisionLabel} ({activeRevisionDate})
-                  </Text>
-                  {isSentToProcurement ? (
-                    <Tag color="green">Заявка отправлена в закупку</Tag>
-                  ) : null}
-                  {rfqSyncStatus === "needs_sync" ? (
-                    <Tag color="orange">RFQ требует синхронизации</Tag>
-                  ) : null}
-                  {isReleasedLocked ? <Tag color="orange">Редактирование временно ограничено</Tag> : null}
-                </Space>
-                <Space>
-                  {canRelease && !isReleasedLocked && !isSentToProcurement ? (
-                    <Button type="primary" onClick={handleReleaseRequest}>
-                      Отправить заявку
-                    </Button>
-                  ) : null}
-                  {rfqSyncStatus === "needs_sync" ? (
-                    <Button onClick={handleSyncRfq}>Синхронизировать RFQ</Button>
-                  ) : null}
-                </Space>
-              </Space>
-
-              <Steps
-                size="small"
-                current={getStatusStepIndex(activeRequest?.status)}
-                items={STATUS_STEPS.map((step) => ({ title: step.title }))}
-              />
-
-              <Tabs
-                activeKey={workspaceTabKey}
-                onChange={setWorkspaceTabKey}
-                items={[
-                  {
-                    key: "items",
-                    label: "Позиции",
-                    children: (
-                      <Space direction="vertical" style={{ width: "100%" }} size="middle">
-                        <Space
-                          align="center"
-                          style={{ width: "100%", justifyContent: "space-between" }}
-                        >
-                          <Space direction="vertical" size={4}>
-                            <Text type="secondary">
-                              Быстрое добавление — строка ниже. Импорт из Excel доступен справа.
-                            </Text>
-                            <Space size="small">
-                              <Tag color={isLatestRevision ? "green" : "orange"}>
-                                {activeRevisionLabel}
-                              </Tag>
-                              {changeDraftActive && (
-                                <Tag color="blue">Черновик изменений</Tag>
-                              )}
-                              {!isLatestRevision && (
-                                <Text type="warning">
-                                  Просмотр архивной ревизии — редактирование отключено.
-                                </Text>
-                              )}
-                            </Space>
-                          </Space>
-                          <Space>
-                            <Select
-                              style={{ width: 240 }}
-                              placeholder="Ревизия"
-                              options={revisionOptions}
-                              value={activeRevisionId || undefined}
-                              onChange={handleSelectRevision}
-                              disabled={!revisions.length || changeDraftActive}
-                            />
-                            {changeDraftActive ? (
-                              <>
-                                <Button
-                                  type="primary"
-                                  onClick={commitChangeDraft}
-                                  disabled={!hasDraftChanges}
-                                >
-                                  Завершить ревизию
-                                </Button>
-                                <Button onClick={cancelChangeDraft}>
-                                  Отменить ревизию
-                                </Button>
-                              </>
-                            ) : (
-                              <Button
-                                type="primary"
-                                onClick={() => createRevisionAndEnterEdit()}
-                                disabled={!isLatestRevision}
-                              >
-                                Создать ревизию
-                              </Button>
-                            )}
-                            <Button
-                              onClick={() => {
-                                setImportModalOpen(true)
-                                setStagedRows([])
-                                resetImportState()
-                              }}
-                              disabled={!isLatestRevision}
-                            >
-                              Импорт из Excel
-                            </Button>
-                          </Space>
-                        </Space>
-
-                        <Space wrap align="center" style={{ width: "100%" }}>
-                          <Switch
-                            checked={bulkMode}
-                            onChange={(checked) => {
-                              setBulkMode(checked)
-                              if (!checked) {
-                                setBulkSelectedKeys([])
-                                setBulkSelectedRows([])
-                                setBulkEdits({})
-                              }
-                            }}
-                            disabled={!changeDraftActive}
-                          />
-                          <Text type="secondary">Массовое редактирование</Text>
-                          <AutoComplete
-                            style={{ minWidth: 420, maxWidth: "100%" }}
-                            options={quickResults.map((part) => ({
-                              value:
-                                part.cat_number ||
-                                part.description_ru ||
-                                part.description_en ||
-                                "",
-                              label: formatPartLabel(part),
-                              part,
-                            }))}
-                            value={quickSearch}
-                            onChange={(value) => {
-                              setQuickSearch(value)
-                              if (quickSelectedPart?.cat_number !== value) {
-                                setQuickSelectedPart(null)
-                              }
-                            }}
-                            onSelect={(value, option) => {
-                              setQuickSearch(value)
-                              setQuickSelectedPart(option.part || null)
-                            }}
-                            placeholder="Быстрое добавление: введите кат. номер"
-                            notFoundContent={quickLoading ? "Поиск..." : "Нет совпадений"}
-                          >
-                            <Input
-                              style={{ width: "100%" }}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.preventDefault()
-                                  handleQuickAdd()
-                                }
-                              }}
-                            />
-                          </AutoComplete>
-                          <InputNumber
-                            min={1}
-                            value={quickQty}
-                            onChange={(value) => setQuickQty(value || 1)}
-                            style={{ width: 100 }}
-                            placeholder="Кол-во"
-                          />
-                          <Checkbox
-                            checked={quickOemOnly}
-                            onChange={(event) => setQuickOemOnly(event.target.checked)}
-                          >
-                            OEM
-                          </Checkbox>
-                          <Button
-                            type="primary"
-                            onClick={handleQuickAdd}
-                            disabled={!quickSearch.trim()}
-                          >
-                            Добавить
-                          </Button>
-                          <Button type="link" onClick={() => setAddModalOpen(true)}>
-                            Расширенный поиск
-                          </Button>
-                        </Space>
-
-                        {bulkMode && (
-                          <Space wrap align="center" style={{ width: "100%" }}>
-                            <Text type="secondary">
-                              Массовые действия применяются только к выбранным строкам.
-                            </Text>
-                            {hasBulkSelection && hasBulkEditsForSelected ? (
-                              <Button onClick={applyBulkUpdate}>
-                                Применить к выбранным
-                              </Button>
-                            ) : null}
-                            {hasBulkSelection ? (
-                              <Button danger onClick={applyBulkDelete}>
-                                Удалить выбранные
-                              </Button>
-                            ) : null}
-                          </Space>
-                        )}
-
-                        <Table
-                          rowKey="id"
-                          columns={itemsColumns}
-                          dataSource={items}
-                          loading={itemsLoading}
-                          pagination={false}
-                          rowSelection={
-                            bulkMode
-                              ? {
-                                  selectedRowKeys: bulkSelectedKeys,
-                                  onChange: (keys, rows) => {
-                                    setBulkSelectedKeys(keys)
-                                    setBulkSelectedRows(rows)
-                                    setBulkEdits((prev) => {
-                                      const next = { ...prev }
-                                      const allowed = new Set(
-                                        rows
-                                          .map((r) => r.line_number)
-                                          .filter((v) => v !== null && v !== undefined),
-                                      )
-                                      rows.forEach((row) => {
-                                        if (
-                                          row.line_number === null ||
-                                          row.line_number === undefined
-                                        ) {
-                                          return
-                                        }
-                                        if (!next[row.line_number]) {
-                                          next[row.line_number] = {
-                                            requested_qty: row.requested_qty,
-                                            oem_only: !!row.oem_only,
-                                          }
-                                        }
-                                      })
-                                      Object.keys(next).forEach((key) => {
-                                        if (!allowed.has(Number(key))) delete next[key]
-                                      })
-                                      return next
-                                    })
-                                  },
-                                }
-                              : undefined
-                          }
-                        />
-
-                        <Collapse
-                          items={[
-                            {
-                              key: "revision-history",
-                              label: `История ревизий (${revisions.length})`,
-                              children: (
-                                <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-                                  {revisionTimelineItems.length ? (
-                                    <Timeline items={revisionTimelineItems} />
-                                  ) : (
-                                    <Text type="secondary">Ревизий пока нет.</Text>
-                                  )}
-                                  <Table
-                                    rowKey="id"
-                                    columns={revisionColumns}
-                                    dataSource={revisions}
-                                    loading={revisionsLoading}
-                                    pagination={false}
-                                    onRow={(record) => ({
-                                      onClick: async () => {
-                                        await handleSelectRevision(record.id)
-                                      },
-                                    })}
-                                    rowClassName={(record) =>
-                                      record.id === activeRevisionId
-                                        ? "ant-table-row-selected"
-                                        : ""
-                                    }
-                                  />
-                                </Space>
-                              ),
-                            },
-                          ]}
-                        />
-                      </Space>
-                    ),
-                  },
-                  {
-                    key: "details",
-                    label: "Данные заявки",
-                    children: (
-                      <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-                        <Space style={{ width: "100%", justifyContent: "flex-end" }}>
-                          {requestEditing ? (
-                            <>
-                              <Button
-                                type="primary"
-                                icon={<SaveOutlined />}
-                                onClick={() => requestForm.submit()}
-                              >
-                                Сохранить
-                              </Button>
-                              <Button
-                                icon={<CloseOutlined />}
-                                onClick={() => {
-                                  setRequestEditing(false)
-                                  requestForm.setFieldsValue({
-                                    client_id: activeRequest?.client_id,
-                                    source_type: activeRequest?.source_type || null,
-                                    assigned_to_user_id: activeRequest?.assigned_to_user_id || null,
-                                    internal_number: activeRequest?.internal_number || null,
-                                    client_reference: activeRequest?.client_reference || null,
-                                    contact_name: activeRequest?.contact_name || null,
-                                    contact_email: activeRequest?.contact_email || null,
-                                    contact_phone: activeRequest?.contact_phone || null,
-                                    comment_internal: activeRequest?.comment_internal || null,
-                                    comment_client: activeRequest?.comment_client || null,
-                                    received_at: activeRequest?.received_at
-                                      ? dayjs(activeRequest.received_at)
-                                      : null,
-                                    processing_deadline: activeRequest?.processing_deadline
-                                      ? dayjs(activeRequest.processing_deadline)
-                                      : null,
-                                  })
-                                }}
-                              >
-                                Отмена
-                              </Button>
-                            </>
-                          ) : (
-                            <Button
-                              icon={<EditOutlined />}
-                              disabled={isReleasedLocked}
-                              onClick={() => setRequestEditing(true)}
-                            >
-                              Редактировать
-                            </Button>
-                          )}
-                        </Space>
-                        <Form
-                          form={requestForm}
-                          layout="vertical"
-                          onFinish={handleUpdateRequest}
-                        >
-                          <Space wrap align="start">
-                            <Form.Item label="Клиент" name="client_id">
-                              <Select
-                                style={{ width: 260 }}
-                                options={clientOptions}
-                                showSearch
-                                optionFilterProp="label"
-                                disabled
-                              />
-                            </Form.Item>
-                            <Form.Item label="Внутренний номер" name="internal_number">
-                              <Input style={{ width: 180 }} disabled={!requestEditing} />
-                            </Form.Item>
-                            <Form.Item label="Источник" name="source_type">
-                              <Select
-                                style={{ width: 160 }}
-                                options={SOURCE_OPTIONS}
-                                disabled={!requestEditing}
-                              />
-                            </Form.Item>
-                            <Form.Item label="Ответственный" name="assigned_to_user_id">
-                              <Select
-                                style={{ width: 200 }}
-                                options={userOptions}
-                                showSearch
-                                optionFilterProp="label"
-                                allowClear
-                                disabled={!requestEditing}
-                              />
-                            </Form.Item>
-                            <Form.Item label="Референс клиента" name="client_reference">
-                              <Input style={{ width: 220 }} disabled={!requestEditing} />
-                            </Form.Item>
-                            <Form.Item label="Дата получения" name="received_at">
-                              <DatePicker
-                                style={{ width: 200 }}
-                                format="DD.MM.YYYY"
-                                disabled={!requestEditing}
-                              />
-                            </Form.Item>
-                            <Form.Item label="Дедлайн обработки" name="processing_deadline">
-                              <DatePicker
-                                style={{ width: 200 }}
-                                format="DD.MM.YYYY"
-                                disabled={!requestEditing}
-                              />
-                            </Form.Item>
-                            <Form.Item label="Контакт" name="contact_name">
-                              {requestEditing ? (
-                                <AutoComplete
-                                  style={{ width: 200 }}
-                                  options={contactOptions}
-                                  placeholder="Выберите или введите"
-                                  filterOption={false}
-                                  open={contactDropdownOpen}
-                                  onFocus={() => {
-                                    setContactDropdownOpen(true)
-                                    if (activeRequest?.client_id) {
-                                      loadContacts(activeRequest.client_id, false)
-                                    }
-                                  }}
-                                  onBlur={() => setContactDropdownOpen(false)}
-                                  onSelect={(_, option) => {
-                                    setContactDropdownOpen(false)
-                                    if (option?.email || option?.phone) {
-                                      requestForm.setFieldsValue({
-                                        contact_name: option.value || "",
-                                        contact_email: option.email || "",
-                                        contact_phone: option.phone || "",
-                                      })
-                                    }
-                                  }}
-                                  onChange={(value) => {
-                                    const match = contactOptions.find((opt) => opt.value === value)
-                                    if (!match) {
-                                      requestForm.setFieldsValue({
-                                        contact_email: "",
-                                        contact_phone: "",
-                                      })
-                                    }
-                                  }}
-                                >
-                                  <Input />
-                                </AutoComplete>
-                              ) : (
-                                <Input style={{ width: 200 }} disabled />
-                              )}
-                            </Form.Item>
-                            <Form.Item label="E-mail" name="contact_email">
-                              <Input style={{ width: 200 }} disabled={!requestEditing} />
-                            </Form.Item>
-                            <Form.Item label="Телефон" name="contact_phone">
-                              <Input style={{ width: 180 }} disabled={!requestEditing} />
-                            </Form.Item>
-                          </Space>
-                          <Space wrap align="start">
-                            <Form.Item label="Комментарий (внутр.)" name="comment_internal">
-                              <Input.TextArea
-                                style={{ width: 320 }}
-                                rows={2}
-                                disabled={!requestEditing}
-                              />
-                            </Form.Item>
-                            <Form.Item label="Комментарий клиента" name="comment_client">
-                              <Input.TextArea
-                                style={{ width: 320 }}
-                                rows={2}
-                                disabled={!requestEditing}
-                              />
-                            </Form.Item>
-                          </Space>
-                        </Form>
-                      </Space>
-                    ),
-                  },
-                  {
-                    key: "margin",
-                    label: "Маржа/Экономика",
-                    children: (
-                      <Alert
-                        type="info"
-                        message="Раздел в разработке"
-                        description="Тут будет блок расчета маржи и экономики после работы закупщика."
-                        showIcon
-                      />
-                    ),
-                  },
-                  {
-                    key: "quote",
-                    label: "КП",
-                    children: (
-                      <Alert
-                        type="info"
-                        message="Раздел в разработке"
-                        description="Тут появится подготовка коммерческого предложения."
-                        showIcon
-                      />
-                    ),
-                  },
-                  {
-                    key: "contract",
-                    label: "Контракт",
-                    children: (
-                      <Alert
-                        type="info"
-                        message="Раздел в разработке"
-                        description="Тут будет хранение и согласование контракта."
-                        showIcon
-                      />
-                    ),
-                  },
-                ]}
-              />
-            </Space>
-          ) : (
-            <Text type="secondary">Выберите заявку в списке, чтобы открыть workspace.</Text>
-          )}
-        </Card>
+        <ClientRequestWorkspaceCard
+          activeRequest={activeRequest}
+          statusColors={STATUS_COLORS}
+          statusOptions={STATUS_OPTIONS}
+          canRelease={canRelease}
+          isReleasedLocked={isReleasedLocked}
+          isSentToProcurement={isSentToProcurement}
+          rfqSyncStatus={rfqSyncStatus}
+          handleReleaseRequest={handleReleaseRequest}
+          handleSyncRfq={handleSyncRfq}
+          getStatusStepIndex={getStatusStepIndex}
+          statusSteps={STATUS_STEPS}
+          workspaceTabKey={workspaceTabKey}
+          setWorkspaceTabKey={setWorkspaceTabKey}
+          isLatestRevision={isLatestRevision}
+          activeRevisionLabel={activeRevisionLabel}
+          activeRevisionDate={activeRevisionDate}
+          changeDraftActive={changeDraftActive}
+          revisionOptions={revisionOptions}
+          activeRevisionId={activeRevisionId}
+          revisions={revisions}
+          handleSelectRevision={handleSelectRevision}
+          commitChangeDraft={commitChangeDraft}
+          hasDraftChanges={hasDraftChanges}
+          cancelChangeDraft={cancelChangeDraft}
+          createRevisionAndEnterEdit={createRevisionAndEnterEdit}
+          openImportModal={() => {
+            setImportModalOpen(true)
+            setStagedRows([])
+            resetImportState()
+          }}
+          bulkMode={bulkMode}
+          setBulkMode={setBulkMode}
+          setBulkSelectedKeys={setBulkSelectedKeys}
+          setBulkSelectedRows={setBulkSelectedRows}
+          setBulkEdits={setBulkEdits}
+          quickResults={quickResults}
+          formatPartLabel={formatPartLabel}
+          quickSearch={quickSearch}
+          setQuickSearch={setQuickSearch}
+          quickSelectedPart={quickSelectedPart}
+          setQuickSelectedPart={setQuickSelectedPart}
+          quickLoading={quickLoading}
+          handleQuickAdd={handleQuickAdd}
+          quickQty={quickQty}
+          setQuickQty={setQuickQty}
+          quickOemOnly={quickOemOnly}
+          setQuickOemOnly={setQuickOemOnly}
+          setAddModalOpen={setAddModalOpen}
+          hasBulkSelection={hasBulkSelection}
+          hasBulkEditsForSelected={hasBulkEditsForSelected}
+          applyBulkUpdate={applyBulkUpdate}
+          applyBulkDelete={applyBulkDelete}
+          itemsColumns={itemsColumns}
+          items={items}
+          itemsLoading={itemsLoading}
+          bulkSelectedKeys={bulkSelectedKeys}
+          revisionTimelineItems={revisionTimelineItems}
+          revisionColumns={revisionColumns}
+          revisionsLoading={revisionsLoading}
+          requestEditing={requestEditing}
+          setRequestEditing={setRequestEditing}
+          requestForm={requestForm}
+          handleUpdateRequest={handleUpdateRequest}
+          clientOptions={clientOptions}
+          sourceOptions={SOURCE_OPTIONS}
+          userOptions={userOptions}
+          contactOptions={contactOptions}
+          contactDropdownOpen={contactDropdownOpen}
+          setContactDropdownOpen={setContactDropdownOpen}
+          loadContacts={loadContacts}
+        />
       </Space>
 
-      <Modal
-        title="Комментарий к ревизии"
+      <RevisionNoteModal
         open={revisionNoteOpen}
+        revisionNote={revisionNote}
+        setRevisionNote={setRevisionNote}
         onCancel={() => closeRevisionNote(null)}
-        onOk={() => {
+        onConfirm={() => {
           const note = String(revisionNote || "").trim()
           if (!note) {
             message.warning("Укажите комментарий для новой ревизии")
@@ -2901,121 +2319,32 @@ export default function ClientRequestsPage() {
           }
           closeRevisionNote(note)
         }}
-        okText="Создать ревизию"
-        cancelText="Отмена"
-        destroyOnClose
-      >
-        <Input.TextArea
-          value={revisionNote}
-          onChange={(event) => setRevisionNote(event.target.value)}
-          rows={4}
-          placeholder="Причина изменений (обязательно)"
-        />
-      </Modal>
+      />
 
-      <Modal
-        title="Создать клиента"
+      <CreateClientModal
         open={createClientOpen}
         onCancel={() => setCreateClientOpen(false)}
-        onOk={() => createClientForm.submit()}
-        confirmLoading={createClientLoading}
-        okText="Создать"
-        cancelText="Отмена"
-        destroyOnClose
-      >
-        <Form form={createClientForm} layout="vertical" onFinish={handleCreateClient}>
-          <Form.Item
-            label="Название компании"
-            name="company_name"
-            rules={[{ required: true, message: "Введите название компании" }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item label="Контактное лицо" name="contact_person">
-            <Input />
-          </Form.Item>
-          <Form.Item label="Телефон" name="phone">
-            <Input />
-          </Form.Item>
-          <Form.Item label="E-mail" name="email">
-            <Input />
-          </Form.Item>
-          <Form.Item label="Комментарий" name="notes">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-        </Form>
-      </Modal>
+        form={createClientForm}
+        onFinish={handleCreateClient}
+        loading={createClientLoading}
+      />
 
-      <Modal
-        title="Редактировать позицию"
+      <EditItemModal
         open={itemEditOpen}
         onCancel={() => {
           setItemEditOpen(false)
           setItemEditRecord(null)
           itemForm.resetFields()
         }}
-        onOk={() => itemForm.submit()}
-        okText="Сохранить"
-        cancelText="Отмена"
-        width={760}
-      >
-        <Form form={itemForm} onFinish={handleUpdateItem} layout="vertical">
-          <Space wrap align="start">
-            <Form.Item
-              label="Оригинал"
-              name="original_part_id"
-              tooltip="Поиск по каталожному номеру или названию"
-            >
-              <Select
-                style={{ width: 220 }}
-                showSearch
-                allowClear
-                filterOption={false}
-                onSearch={setOriginalSearch}
-                notFoundContent={originalLoading ? "Поиск..." : "Нет совпадений"}
-                options={originalOptions.map((opt) => ({
-                  value: opt.value,
-                  label: opt.label,
-                  title: opt.description || undefined,
-                }))}
-                optionLabelProp="label"
-              />
-            </Form.Item>
-            <Form.Item label="№ клиента" name="client_part_number">
-              <Input style={{ width: 200 }} />
-            </Form.Item>
-            <Form.Item label="Описание клиента" name="client_description">
-              <Input style={{ width: 220 }} />
-            </Form.Item>
-            <Form.Item label="Кол-во" name="requested_qty">
-              <InputNumber style={{ width: 120 }} min={0} />
-            </Form.Item>
-            <Form.Item label="Ед." name="uom">
-              <Select style={{ width: 100 }} options={UOM_OPTIONS} />
-            </Form.Item>
-            <Form.Item label="Приоритет" name="priority">
-              <Input style={{ width: 140 }} />
-            </Form.Item>
-            <Form.Item label="Срок" name="required_date">
-              <DatePicker style={{ width: 160 }} format="DD.MM.YYYY" />
-            </Form.Item>
-            <Form.Item name="oem_only" valuePropName="checked">
-              <Checkbox>OEM только</Checkbox>
-            </Form.Item>
-          </Space>
-          <Space wrap align="start">
-            <Form.Item label="Комментарий клиента" name="client_comment">
-              <Input.TextArea style={{ width: 320 }} rows={2} />
-            </Form.Item>
-            <Form.Item label="Комментарий внутр." name="internal_comment">
-              <Input.TextArea style={{ width: 320 }} rows={2} />
-            </Form.Item>
-          </Space>
-        </Form>
-      </Modal>
+        form={itemForm}
+        onFinish={handleUpdateItem}
+        setOriginalSearch={setOriginalSearch}
+        originalLoading={originalLoading}
+        originalOptions={originalOptions}
+        uomOptions={UOM_OPTIONS}
+      />
 
-      <Modal
-        title="Добавить позиции"
+      <AddPositionsModal
         open={addModalOpen}
         onCancel={() => {
           setAddModalOpen(false)
@@ -3031,365 +2360,62 @@ export default function ClientRequestsPage() {
           setModalOemOnly(false)
           resetImportState()
         }}
-        footer={null}
-        width={1060}
-      >
-        <Space direction="vertical" size="large" style={{ width: "100%" }}>
-          <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-            <Text type="secondary">
-              Можно искать по каталожному номеру сразу или уточнять через производителя и модель.
-            </Text>
-            <Space wrap align="center">
-              <AutoComplete
-                style={{ width: 360 }}
-                options={modalResults.map((part) => ({
-                  value:
-                    part.cat_number ||
-                    part.description_ru ||
-                    part.description_en ||
-                    "",
-                  label: formatPartLabel(part),
-                  part,
-                }))}
-                value={modalSearch}
-                onChange={(value) => {
-                  setModalSearch(value)
-                  if (modalSelectedPart?.cat_number !== value) {
-                    setModalSelectedPart(null)
-                  }
-                }}
-                onSelect={(value, option) => {
-                  setModalSearch(value)
-                  setModalSelectedPart(option.part || null)
-                }}
-                placeholder="Глобальный поиск по оригинальным деталям"
-                notFoundContent={modalLoading ? "Поиск..." : "Нет совпадений"}
-              >
-                <Input
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault()
-                      handleModalGlobalAdd()
-                    }
-                  }}
-                />
-              </AutoComplete>
-              <InputNumber
-                min={1}
-                value={modalQty}
-                onChange={(value) => setModalQty(value || 1)}
-                style={{ width: 110 }}
-                placeholder="Кол-во"
-              />
-              <Checkbox
-                checked={modalOemOnly}
-                onChange={(event) => setModalOemOnly(event.target.checked)}
-              >
-                OEM
-              </Checkbox>
-              <Button type="primary" onClick={handleModalGlobalAdd}>
-                Добавить
-              </Button>
-            </Space>
-            <Space wrap>
-              <Select
-                style={{ width: 220 }}
-                options={manufacturerOptions}
-                placeholder="Производитель"
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                value={manufacturerId || undefined}
-                onChange={(value) => setManufacturerId(value || null)}
-              />
-              <Select
-                style={{ width: 240 }}
-                options={modelOptions}
-                placeholder="Модель"
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                disabled={!manufacturerId}
-                value={modelId || undefined}
-                onChange={(value) => setModelId(value || null)}
-              />
-              <Input.Search
-                style={{ minWidth: 260 }}
-                placeholder="Каталожный номер или описание"
-                allowClear
-                value={catalogSearch}
-                onSearch={(value) => setCatalogSearch(value)}
-                onChange={(e) => setCatalogSearch(e.target.value)}
-              />
-            </Space>
-            {catalogSearch && catalogSearch.length < 2 ? (
-              <Text type="secondary">
-                Введите минимум 2 символа для фильтра, сейчас показан полный список.
-              </Text>
-            ) : null}
-            <Card size="small" title="Часто используемые">
-              {frequentParts.length ? (
-                <Space wrap>
-                  {frequentParts.map((part) => (
-                    <Button
-                      key={part.id}
-                      size="small"
-                      onClick={() => handleAddFromCatalog(part)}
-                    >
-                      {part.cat_number || "Без номера"}{" "}
-                      {part.model_name ? `• ${part.model_name}` : ""}
-                    </Button>
-                  ))}
-                </Space>
-              ) : (
-                <Text type="secondary">
-                  {frequentLoading
-                    ? "Загрузка..."
-                    : "Пока нет часто используемых деталей."}
-                </Text>
-              )}
-            </Card>
-            <Space
-              align="center"
-              style={{ width: "100%", justifyContent: "space-between" }}
-            >
-              <Text type="secondary">
-                {catalogSearch && catalogSearch.length >= 2
-                  ? "Результаты поиска"
-                  : "Все детали выбранной модели"}
-              </Text>
-              <Space>
-                <Button
-                  onClick={handleAddSelectedFromCatalog}
-                  disabled={!catalogSelection.length || catalogAddLoading}
-                  loading={catalogAddLoading}
-                >
-                  Добавить выбранные ({catalogSelection.length})
-                </Button>
-                <Button
-                  onClick={() => setCatalogSelection([])}
-                  disabled={!catalogSelection.length}
-                >
-                  Снять выбор
-                </Button>
-              </Space>
-            </Space>
-            <Table
-              rowKey="id"
-              size="small"
-              dataSource={catalogResults}
-              loading={catalogLoading}
-              rowSelection={{
-                selectedRowKeys: catalogSelection,
-                onChange: setCatalogSelection,
-              }}
-              pagination={{ pageSize: 8, showSizeChanger: true }}
-              locale={{
-                emptyText: !modelId
-                  ? "Сначала выберите производителя и модель"
-                  : "Нет данных по этой модели",
-              }}
-              columns={[
-                {
-                  title: "Кат. номер",
-                  dataIndex: "cat_number",
-                  width: 160,
-                },
-                {
-                  title: "Описание",
-                  render: (_, row) =>
-                    row.description_ru || row.description_en || "—",
-                },
-                {
-                  title: "Кол-во",
-                  width: 110,
-                  render: (_, row) => (
-                    <InputNumber
-                      min={1}
-                      value={catalogRowInputs[row.id]?.qty || 1}
-                      onChange={(value) =>
-                        setCatalogRowInputs((prev) => ({
-                          ...prev,
-                          [row.id]: {
-                            ...(prev[row.id] || {}),
-                            qty: value || 1,
-                          },
-                        }))
-                      }
-                      style={{ width: 90 }}
-                    />
-                  ),
-                },
-                {
-                  title: "OEM",
-                  width: 90,
-                  render: (_, row) => (
-                    <Checkbox
-                      checked={!!catalogRowInputs[row.id]?.oem_only}
-                      onChange={(event) =>
-                        setCatalogRowInputs((prev) => ({
-                          ...prev,
-                          [row.id]: {
-                            ...(prev[row.id] || {}),
-                            oem_only: event.target.checked,
-                          },
-                        }))
-                      }
-                    >
-                      OEM
-                    </Checkbox>
-                  ),
-                },
-                {
-                  title: "",
-                  width: 110,
-                  render: (_, row) => (
-                    <Button
-                      size="small"
-                      onClick={() => handleAddFromCatalog(row)}
-                      loading={catalogAddLoading}
-                    >
-                      Добавить
-                    </Button>
-                  ),
-                },
-              ]}
-            />
-          </Space>
+        modalResults={modalResults}
+        formatPartLabel={formatPartLabel}
+        modalSearch={modalSearch}
+        setModalSearch={setModalSearch}
+        modalSelectedPart={modalSelectedPart}
+        setModalSelectedPart={setModalSelectedPart}
+        modalLoading={modalLoading}
+        handleModalGlobalAdd={handleModalGlobalAdd}
+        modalQty={modalQty}
+        setModalQty={setModalQty}
+        modalOemOnly={modalOemOnly}
+        setModalOemOnly={setModalOemOnly}
+        manufacturerOptions={manufacturerOptions}
+        manufacturerId={manufacturerId}
+        setManufacturerId={setManufacturerId}
+        modelOptions={modelOptions}
+        modelId={modelId}
+        setModelId={setModelId}
+        catalogSearch={catalogSearch}
+        setCatalogSearch={setCatalogSearch}
+        frequentParts={frequentParts}
+        frequentLoading={frequentLoading}
+        handleAddFromCatalog={handleAddFromCatalog}
+        handleAddSelectedFromCatalog={handleAddSelectedFromCatalog}
+        catalogSelection={catalogSelection}
+        catalogAddLoading={catalogAddLoading}
+        setCatalogSelection={setCatalogSelection}
+        catalogResults={catalogResults}
+        catalogLoading={catalogLoading}
+        catalogRowInputs={catalogRowInputs}
+        setCatalogRowInputs={setCatalogRowInputs}
+      />
 
-        </Space>
-      </Modal>
-
-      <Modal
-        title="Импорт из Excel"
+      <ImportExcelModal
         open={importModalOpen}
         onCancel={() => {
           setImportModalOpen(false)
           setStagedRows([])
           resetImportState()
         }}
-        footer={null}
-        width={960}
-      >
-        <Space direction="vertical" size="large" style={{ width: "100%" }}>
-          <Space wrap align="center">
-            <Button
-              icon={<FileExcelOutlined />}
-              href={CLIENT_REQUEST_TEMPLATE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-            >
-              Скачать шаблон
-            </Button>
-            <Upload
-              accept=".xlsx"
-              showUploadList={false}
-              beforeUpload={(file) => {
-                handleExcelUpload(file)
-                return false
-              }}
-            >
-              <Button icon={<UploadOutlined />}>Загрузить Excel</Button>
-            </Upload>
-            <Text type="secondary">
-              Файл будет проверен перед добавлением в заявку.
-            </Text>
-          </Space>
-
-          <Card
-            size="small"
-            title={`Позиции к импорту (${stagedRows.length})`}
-            extra={
-              <Space>
-                <Button
-                  danger
-                  onClick={() => {
-                    setStagedRows([])
-                    resetImportState()
-                  }}
-                >
-                  Очистить
-                </Button>
-              </Space>
-            }
-          >
-            <Table
-              rowKey="id"
-              size="small"
-              dataSource={stagedRows}
-              pagination={false}
-              columns={stagedColumns}
-              locale={{ emptyText: "Загрузите Excel-файл" }}
-            />
-            <Space wrap align="center" style={{ marginTop: 12 }}>
-              <Button
-                onClick={() => handlePreviewRows(stagedRows)}
-                disabled={!stagedRows.length}
-              >
-                Проверить
-              </Button>
-              <Switch
-                checked={createMissing}
-                onChange={setCreateMissing}
-                checkedChildren="Создавать недостающие"
-                unCheckedChildren="Без создания"
-              />
-              <Text type="secondary">
-                Недостающие производители/модели/детали можно добавить автоматически.
-              </Text>
-            </Space>
-            <Space style={{ marginTop: 12 }}>
-              <Button
-                type="primary"
-                onClick={() => handleCommitRows(stagedRows)}
-                disabled={
-                  !stagedRows.length ||
-                  importErrors.length > 0 ||
-                  (importPreview.length &&
-                    importPreview.some((row) => row.status === "error")) ||
-                  (!createMissing &&
-                    importPreview.some((row) => row.status === "warning"))
-                }
-                loading={importLoading}
-              >
-                Добавить в заявку
-              </Button>
-            </Space>
-          </Card>
-
-          {importErrors.length > 0 && (
-            <Alert
-              type="error"
-              message={
-                <ul style={{ margin: 0, paddingLeft: 20 }}>
-                  {importErrors.map((err, idx) => (
-                    <li key={idx}>{err}</li>
-                  ))}
-                </ul>
-              }
-            />
-          )}
-
-          {importSummary && (
-            <Alert
-              type="info"
-              message={`Всего строк: ${importSummary.total}. Ок: ${importSummary.ok}. Предупреждения: ${importSummary.warning}. Ошибки: ${importSummary.error}.`}
-            />
-          )}
-
-          {importPreview.length > 0 && (
-            <Table
-              rowKey="row_number"
-              size="small"
-              dataSource={importPreview}
-              pagination={false}
-              locale={{ emptyText: "Нет данных для проверки" }}
-              columns={previewColumns}
-            />
-          )}
-        </Space>
-      </Modal>
+        templateUrl={CLIENT_REQUEST_TEMPLATE_URL}
+        handleExcelUpload={handleExcelUpload}
+        stagedRows={stagedRows}
+        setStagedRows={setStagedRows}
+        resetImportState={resetImportState}
+        stagedColumns={stagedColumns}
+        handlePreviewRows={handlePreviewRows}
+        createMissing={createMissing}
+        setCreateMissing={setCreateMissing}
+        handleCommitRows={handleCommitRows}
+        importErrors={importErrors}
+        importSummary={importSummary}
+        importPreview={importPreview}
+        importLoading={importLoading}
+        previewColumns={previewColumns}
+      />
     </PageWrapper>
   )
 }

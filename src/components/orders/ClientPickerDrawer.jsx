@@ -20,7 +20,9 @@ export default function ClientPickerDrawer({ open, onClose, onPick }) {
   const cancelIfRunning = () => {
     try {
       abortRef.current?.abort?.()
-    } catch {}
+    } catch {
+      // ignore abort errors
+    }
     abortRef.current = null
   }
 

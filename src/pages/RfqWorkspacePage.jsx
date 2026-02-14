@@ -1,20 +1,40 @@
-import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Alert, Button, Card, Checkbox, Form, Input, Modal, Select, Space, Steps, Table, Tabs, Tag, Tooltip, Tree, Typography, message } from "antd"
-import { DeleteOutlined, UploadOutlined } from "@ant-design/icons"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Steps, Table, Tabs, Tag, Tooltip, Tree, Typography, message } from "antd"
+import { DeleteOutlined } from "@ant-design/icons"
 import dayjs from "dayjs"
 import PageWrapper from "@/components/common/PageWrapper"
+import AltPartsModal from "@/components/rfqWorkspace/AltPartsModal"
 import ContractsTabContent from "@/components/rfqWorkspace/ContractsTabContent"
 import CoverageTabContent from "@/components/rfqWorkspace/CoverageTabContent"
 import EconomicsTabContent from "@/components/rfqWorkspace/EconomicsTabContent"
+import ImportResponsesModal from "@/components/rfqWorkspace/ImportResponsesModal"
+import KitPreviewModal from "@/components/rfqWorkspace/KitPreviewModal"
 import PurchaseOrdersTabContent from "@/components/rfqWorkspace/PurchaseOrdersTabContent"
 import ResponsesTabContent from "@/components/rfqWorkspace/ResponsesTabContent"
+import RfqOverviewTabContent from "@/components/rfqWorkspace/RfqOverviewTabContent"
+import RfqWorkspaceMainContent from "@/components/rfqWorkspace/RfqWorkspaceMainContent"
 import SalesTabContent from "@/components/rfqWorkspace/SalesTabContent"
 import SelectionTabContent from "@/components/rfqWorkspace/SelectionTabContent"
+import SelectionStructureModal from "@/components/rfqWorkspace/SelectionStructureModal"
+import SuppliersTabContent from "@/components/rfqWorkspace/SuppliersTabContent"
+import SupplierCreateModal from "@/components/rfqWorkspace/SupplierCreateModal"
+import {
+  buildPriceSourceText,
+  formatDate,
+  formatHintDate,
+  renderMatchTypes,
+  rfqStatusLabel,
+  STEP_LABELS,
+  STEP_TO_TAB,
+  statusToColor,
+  supplierStatusLabel,
+  TAB_TO_STEP,
+} from "@/components/rfqWorkspace/rfqWorkspaceUtils"
+import { applyAltExclusionToKeys } from "@/components/rfqWorkspace/rfqSelectionUtils"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import confirmAction from "@/utils/confirmAction"
 import { useAuth } from "@/auth/AuthContext"
-import * as XLSX from "xlsx"
 import { useLocation } from "react-router-dom"
 
 const { Text } = Typography
@@ -25,188 +45,12 @@ const debugLog = (...args) => {
   }
 }
 
-const formatDate = (value) => {
-  if (!value) return "-"
-  try {
-    return new Date(value).toLocaleDateString("ru-RU")
-  } catch {
-    return "-"
-  }
-}
-
-const STEP_LABELS = [
-  "RFQ",
-  "Поставщики",
-  "Ответы",
-  "Выбор",
-  "Экономика",
-  "КП",
-  "Контракт",
-  "PO",
-]
-
-const STEP_TO_TAB = [
-  "rfq",
-  "suppliers",
-  "responses",
-  "selection",
-  "economics",
-  "sales",
-  "contracts",
-  "po",
-]
-
-const TAB_TO_STEP = STEP_TO_TAB.reduce((acc, key, index) => {
-  acc[key] = index
-  return acc
-}, {
-  coverage: 2,
-})
-
-const statusToColor = (value) => {
-  if (!value) return "default"
-  if (value === "invited") return "default"
-  if (value === "sent") return "blue"
-  if (value === "received") return "green"
-  if (value === "responded") return "green"
-  if (value === "structured") return "cyan"
-  if (value === "draft") return "default"
-  return "gold"
-}
-
-const rfqStatusLabel = (value) => {
-  if (!value) return "—"
-  const labels = {
-    draft: "Черновик",
-    structured: "Структура готова",
-    sent: "RFQ отправлен",
-    responded: "Ответы получены",
-  }
-  return labels[value] || value
-}
-
-const supplierStatusLabel = (value) => {
-  if (!value) return "—"
-  const labels = {
-    invited: "Приглашен",
-    sent: "Отправлен",
-    received: "Ответ получен",
-    responded: "Ответ получен",
-  }
-  return labels[value] || value
-}
-
-const matchTypeLabel = {
-  WHOLE: "Целиком",
-  BOM: "BOM",
-  KIT: "Комплект",
-}
-
-const renderMatchTypes = (value) => {
-  if (!value) return "—"
-  return value
-    .split(",")
-    .map((v) => matchTypeLabel[v] || v)
-    .join(", ")
-}
-
-const buildPriceSourceText = (hint) => {
-  const type = String(hint?.latest_price_source_type || "").toUpperCase()
-  if (!type) return ""
-  if (type === "PRICE_LIST") {
-    const name =
-      hint?.latest_price_price_list_name ||
-      hint?.latest_price_price_list_code ||
-      (hint?.latest_price_price_list_id ? `#${hint.latest_price_price_list_id}` : "")
-    if (!name) return "Прайс-лист"
-    return `Прайс-лист: ${name}`
-  }
-  if (type === "RFQ") {
-    const rfqLabel = hint?.latest_price_rfq_number
-      ? hint.latest_price_rfq_number
-      : hint?.latest_price_rfq_id
-        ? `RFQ-${hint.latest_price_rfq_id}`
-        : "RFQ"
-    const rev = hint?.latest_price_rfq_rev_number ? ` · rev ${hint.latest_price_rfq_rev_number}` : ""
-    return `${rfqLabel}${rev}`
-  }
-  if (type === "MANUAL") return "Вручную"
-  if (type === "NEGOTIATION") return "Переговоры"
-  if (type === "OTHER") return "Другое"
-  return type
-}
-
-const formatHintDate = (value) => {
-  if (!value) return ""
-  const d = dayjs(value)
-  return d.isValid() ? d.format("DD.MM.YYYY") : String(value).slice(0, 10)
-}
-
-const parseNumberOrNull = (value) => {
-  if (value === undefined || value === null) return null
-  const raw = String(value).trim()
-  if (!raw) return null
-  const normalized = raw.replace(/\s+/g, "").replace(",", ".")
-  const num = Number(normalized)
-  return Number.isFinite(num) ? num : null
-}
-
-const parseImportRow = (cells) => {
-  const row = Array.isArray(cells) ? cells : []
-  const lineNumber = parseNumberOrNull(row[0])
-  if (!lineNumber) return null
-
-  const fromTemplatePrice = parseNumberOrNull(row[9])
-  const fromTemplateCurrency = row[10] ? String(row[10]).trim().toUpperCase() : null
-  if (fromTemplatePrice != null && fromTemplateCurrency) {
-    return {
-      line_number: Number(lineNumber),
-      price: Number(fromTemplatePrice),
-      currency: fromTemplateCurrency,
-      lead_time_days: parseNumberOrNull(row[11]),
-      note: row[18] ? String(row[18]).trim() : null,
-      offer_type: row[8] ? String(row[8]).trim().toUpperCase() : null,
-      moq: parseNumberOrNull(row[16]),
-      packaging: row[17] ? String(row[17]).trim() : null,
-      validity_days: null,
-      supplier_part_number: row[6] ? String(row[6]).trim() : null,
-      supplier_description: row[7] ? String(row[7]).trim() : null,
-    }
-  }
-
-  const fallbackPrice = parseNumberOrNull(row[1])
-  const fallbackCurrency = row[2] ? String(row[2]).trim().toUpperCase() : null
-  if (fallbackPrice == null || !fallbackCurrency) return null
-
-  return {
-    line_number: Number(lineNumber),
-    price: Number(fallbackPrice),
-    currency: fallbackCurrency,
-    lead_time_days: parseNumberOrNull(row[3]),
-    note: row[4] ? String(row[4]).trim() : null,
-    offer_type: row[5] ? String(row[5]).trim().toUpperCase() : null,
-    moq: parseNumberOrNull(row[6]),
-    packaging: row[7] ? String(row[7]).trim() : null,
-    validity_days: parseNumberOrNull(row[8]),
-    supplier_part_number: row[9] ? String(row[9]).trim() : null,
-    supplier_description: row[10] ? String(row[10]).trim() : null,
-  }
-}
-
-const parseImportTextRows = (text) =>
-  String(text || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => parseImportRow(line.split(/\t|;/)))
-    .filter((row) => row && Number.isFinite(row.line_number) && Number.isFinite(row.price) && row.currency)
-
 export default function RfqWorkspacePage() {
   const { user } = useAuth()
   const location = useLocation()
   const selectionNodeMapRef = useRef(new Map())
   const [rfqs, setRfqs] = useState([])
-  const [requests, setRequests] = useState([])
+  const [_requests, _setRequests] = useState([])
   const [revisions, setRevisions] = useState([])
   const [loading, setLoading] = useState(false)
   const [activeRfqId, setActiveRfqId] = useState(null)
@@ -219,7 +63,7 @@ export default function RfqWorkspacePage() {
   const [suggestedSuppliers, setSuggestedSuppliers] = useState([])
   const [suggestedSelection, setSuggestedSelection] = useState([])
   const [allSuppliers, setAllSuppliers] = useState([])
-  const [rfqDocuments, setRfqDocuments] = useState([])
+  const [_rfqDocuments, setRfqDocuments] = useState([])
   const [docsLoading, setDocsLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [supplierSendingId, setSupplierSendingId] = useState(null)
@@ -228,6 +72,7 @@ export default function RfqWorkspacePage() {
   const [autoAddCreatedSupplier, setAutoAddCreatedSupplier] = useState(true)
   const [responses, setResponses] = useState([])
   const [responseLines, setResponseLines] = useState([])
+  const [responseWorkspaceRows, setResponseWorkspaceRows] = useState([])
   const [showArchivedResponses, setShowArchivedResponses] = useState(false)
   const [structure, setStructure] = useState(null)
   const [coverage, setCoverage] = useState(null)
@@ -246,6 +91,7 @@ export default function RfqWorkspacePage() {
     saving: false,
     selectedKeys: [],
     acceptedKeys: [],
+    acceptedPriceByKey: {},
     hints: null,
     onlyHinted: false,
   })
@@ -274,19 +120,21 @@ export default function RfqWorkspacePage() {
   const [importModal, setImportModal] = useState({
     open: false,
     supplierId: null,
+    detectedSupplierId: null,
+    detectedSupplierName: "",
     text: "",
     rows: [],
     loading: false,
     fileName: "",
     newRevision: false,
   })
-  const [lineStatuses, setLineStatuses] = useState({})
+  const [_lineStatuses, setLineStatuses] = useState({})
   const [lineStatusSaving, setLineStatusSaving] = useState(false)
 
   const [createForm] = Form.useForm()
   const [supplierForm] = Form.useForm()
   const [supplierCreateForm] = Form.useForm()
-  const [users, setUsers] = useState([])
+  const [_users, _setUsers] = useState([])
   const autoFillRef = useRef(new Set())
   const supplierSelectionInitRef = useRef(false)
   const hintTypeOrder = useRef({ OEM: 0, ANALOG: 1, UNKNOWN: 2 })
@@ -296,19 +144,154 @@ export default function RfqWorkspacePage() {
     return selectionModal?.hints || (supplierId ? supplierHintsCache[supplierId] : null) || null
   }, [selectionModal?.hints, selectionModal?.supplier?.supplier_id, supplierHintsCache])
 
-  const getOriginalHints = (partId) =>
-    activeSupplierHints?.originals?.[String(partId)] || []
-  const getBundleItemHints = (bundleItemId) =>
-    activeSupplierHints?.bundle_items?.[String(bundleItemId)] || []
+  const getOriginalHints = useCallback(
+    (partId) => activeSupplierHints?.originals?.[String(partId)] || [],
+    [activeSupplierHints]
+  )
+  const getBundleItemHints = useCallback(
+    (bundleItemId) => activeSupplierHints?.bundle_items?.[String(bundleItemId)] || [],
+    [activeSupplierHints]
+  )
 
-  const sortHints = (hints) =>
-    (Array.isArray(hints) ? [...hints] : []).sort((a, b) => {
-      const oa = hintTypeOrder.current[String(a?.part_type || "UNKNOWN")] ?? 99
-      const ob = hintTypeOrder.current[String(b?.part_type || "UNKNOWN")] ?? 99
-      return oa - ob || String(a?.supplier_part_number || "").localeCompare(String(b?.supplier_part_number || ""))
+  const sortHints = useCallback(
+    (hints) =>
+      (Array.isArray(hints) ? [...hints] : []).sort((a, b) => {
+        const oa = hintTypeOrder.current[String(a?.part_type || "UNKNOWN")] ?? 99
+        const ob = hintTypeOrder.current[String(b?.part_type || "UNKNOWN")] ?? 99
+        return (
+          oa - ob ||
+          String(a?.supplier_part_number || "").localeCompare(
+            String(b?.supplier_part_number || "")
+          )
+        )
+      }),
+    []
+  )
+
+  const buildHintPriceChoices = useCallback((hints) => {
+    const result = []
+    const seen = new Set()
+    sortHints(hints).forEach((hint, hintIndex) => {
+      const history =
+        Array.isArray(hint?.price_history) && hint.price_history.length
+          ? hint.price_history
+          : [
+              {
+                price_id: `latest:${hint?.supplier_part_id || hintIndex}`,
+                price: hint?.latest_price,
+                currency: hint?.latest_currency,
+                date: hint?.latest_price_date,
+                offer_type: hint?.part_type || "UNKNOWN",
+                lead_time_days: hint?.lead_time_days,
+                min_order_qty: hint?.min_order_qty,
+                packaging: hint?.packaging,
+                validity_days: hint?.latest_price_validity_days,
+                source_type: hint?.latest_price_source_type || null,
+                source_subtype:
+                  hint?.latest_price_source_subtype ||
+                  hint?.latest_price_entry_source ||
+                  null,
+                source_id:
+                  hint?.latest_price_price_list_id ||
+                  hint?.latest_price_rfq_id ||
+                  null,
+                rfq_id: hint?.latest_price_rfq_id || null,
+                rfq_number: hint?.latest_price_rfq_number || null,
+                rfq_response_rev_number: hint?.latest_price_rfq_rev_number || null,
+                price_list_id: hint?.latest_price_price_list_id || null,
+                price_list_code: hint?.latest_price_price_list_code || null,
+                price_list_name: hint?.latest_price_price_list_name || null,
+                price_list_valid_from: hint?.latest_price_price_list_valid_from || null,
+                price_list_valid_to: hint?.latest_price_price_list_valid_to || null,
+                comment: null,
+                response_entry_source: hint?.latest_price_entry_source || null,
+              },
+            ]
+
+      history.forEach((entry, entryIndex) => {
+        const price = Number(entry?.price)
+        const currency = String(entry?.currency || "").toUpperCase()
+        if (!Number.isFinite(price) || !currency) return
+        const sourceType = String(
+          entry?.source_type || hint?.latest_price_source_type || ""
+        ).toUpperCase()
+        const sourceSubtype = String(
+          entry?.source_subtype ||
+            entry?.response_entry_source ||
+            hint?.latest_price_source_subtype ||
+            hint?.latest_price_entry_source ||
+            ""
+        ).toUpperCase()
+        const key =
+          entry?.price_id != null
+            ? String(entry.price_id)
+            : `${hint?.supplier_part_id || "sp"}:${sourceType}:${sourceSubtype}:${
+                entry?.source_id || "src"
+              }:${entry?.date || "date"}:${entryIndex}`
+        if (seen.has(key)) return
+        seen.add(key)
+
+        result.push({
+          key,
+          price,
+          currency,
+          date: entry?.date || hint?.latest_price_date || null,
+          offer_type: entry?.offer_type || hint?.part_type || "UNKNOWN",
+          lead_time_days:
+            entry?.lead_time_days != null ? entry.lead_time_days : hint?.lead_time_days,
+          min_order_qty:
+            entry?.min_order_qty != null ? entry.min_order_qty : hint?.min_order_qty,
+          packaging: entry?.packaging != null ? entry.packaging : hint?.packaging,
+          validity_days:
+            entry?.validity_days != null
+              ? entry.validity_days
+              : hint?.latest_price_validity_days,
+          source_type: sourceType || null,
+          source_subtype: sourceSubtype || null,
+          source_id: entry?.source_id || null,
+          source_price_id: entry?.price_id || null,
+          rfq_id: entry?.rfq_id || hint?.latest_price_rfq_id || null,
+          rfq_number: entry?.rfq_number || hint?.latest_price_rfq_number || null,
+          rfq_response_rev_number:
+            entry?.rfq_response_rev_number || hint?.latest_price_rfq_rev_number || null,
+          price_list_id: entry?.price_list_id || hint?.latest_price_price_list_id || null,
+          price_list_code:
+            entry?.price_list_code || hint?.latest_price_price_list_code || null,
+          price_list_name:
+            entry?.price_list_name || hint?.latest_price_price_list_name || null,
+          price_list_valid_from:
+            entry?.price_list_valid_from ||
+            hint?.latest_price_price_list_valid_from ||
+            null,
+          price_list_valid_to:
+            entry?.price_list_valid_to || hint?.latest_price_price_list_valid_to || null,
+          comment: entry?.comment || null,
+          supplier_part_id: hint?.supplier_part_id || null,
+          supplier_part_number: hint?.supplier_part_number || null,
+          supplier_part_description: hint?.description_ru || hint?.description_en || null,
+          part_type: hint?.part_type || null,
+        })
+      })
     })
 
-  const buildHintsTooltip = (hints) => {
+    return result.sort((a, b) => {
+      const aDate = dayjs(a.date).valueOf()
+      const bDate = dayjs(b.date).valueOf()
+      const aSafe = Number.isFinite(aDate) ? aDate : 0
+      const bSafe = Number.isFinite(bDate) ? bDate : 0
+      if (aSafe !== bSafe) return bSafe - aSafe
+      return String(a.supplier_part_number || "").localeCompare(
+        String(b.supplier_part_number || "")
+      )
+    })
+  }, [sortHints])
+
+  const isHintPriced = useCallback(
+    (hint) => buildHintPriceChoices([hint]).length > 0,
+    [buildHintPriceChoices]
+  )
+
+  const buildHintsTooltip = useCallback((hints) => {
     const list = sortHints(hints)
     if (!list.length) return null
     return (
@@ -342,27 +325,28 @@ export default function RfqWorkspacePage() {
         {list.length > 12 ? <div>…ещё {list.length - 12}</div> : null}
       </div>
     )
-  }
+  }, [sortHints])
 
-  const renderHintsBadge = (hints, rfqItemId = null) => {
-    const list = sortHints(hints)
+  const renderHintsBadge = useCallback((hints) => {
+    const list = sortHints(hints).filter(isHintPriced)
     if (!list.length) return null
+    const pricedCount = list.length
     const preview = list.slice(0, 2)
     const more = Math.max(0, list.length - preview.length)
     const tooltip = buildHintsTooltip(list)
     return (
       <Tooltip title={tooltip} placement="left">
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-          <Tag color="blue" style={{ marginInlineEnd: 0 }}>
-            Варианты: {list.length}
+          <Tag color={pricedCount > 0 ? "blue" : "default"} style={{ marginInlineEnd: 0 }}>
+            {pricedCount > 0 ? `Варианты с ценой: ${pricedCount}` : `Варианты без цены: ${list.length}`}
           </Tag>
           {preview.map((h, idx) => {
-            const source = buildPriceSourceText(h)
-            const price =
-              h?.latest_price != null
-                ? formatPriceWithCurrency(h.latest_price, h.latest_currency)
-                : "цена не задана"
-            const date = formatHintDate(h?.latest_price_date)
+            const choice = buildHintPriceChoices([h])[0] || null
+            const source = choice ? buildPriceSourceText(choice) : buildPriceSourceText(h)
+            const price = choice
+              ? formatPriceWithCurrency(choice.price, choice.currency)
+              : formatPriceWithCurrency(h.latest_price, h.latest_currency)
+            const date = formatHintDate(choice?.date || h?.latest_price_date)
             return (
               <div
                 key={`${h?.supplier_part_id || h?.supplier_part_number || idx}`}
@@ -389,7 +373,9 @@ export default function RfqWorkspacePage() {
                   </Text>
                 ) : null}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 2, alignItems: "center" }}>
-                  <Text style={{ fontSize: 12, fontWeight: 600 }}>Цена: {price}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: 600 }}>
+                    Цена: {price}
+                  </Text>
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     Источник: {source || "—"}
                   </Text>
@@ -410,26 +396,106 @@ export default function RfqWorkspacePage() {
         </div>
       </Tooltip>
     )
-  }
+  }, [sortHints, buildHintsTooltip, isHintPriced, buildHintPriceChoices])
 
-  const hasHintsForSelectionKey = (key) => {
+  const hasHintsForSelectionKey = useCallback((key) => {
     if (!activeSupplierHints) return false
     const meta = selectionNodeMapRef.current.get(String(key))
     const type = String(meta?.line_type || "").toUpperCase()
     if (type === "DEMAND" || type === "BOM_COMPONENT") {
       const effectivePartId = meta?.alt_original_part_id || meta?.original_part_id
       if (!effectivePartId) return false
-      return getOriginalHints(effectivePartId).length > 0
+      return buildHintPriceChoices(getOriginalHints(effectivePartId)).length > 0
     }
     if (type === "KIT_ROLE") {
       const id = meta?.bundle_item_id
       if (!id) return false
-      return getBundleItemHints(id).length > 0
+      return buildHintPriceChoices(getBundleItemHints(id)).length > 0
     }
     return false
-  }
+  }, [activeSupplierHints, getOriginalHints, getBundleItemHints, buildHintPriceChoices])
 
-  const filterSelectionTree = (nodes) => {
+  const applyAltExclusion = useCallback(
+    (prevKeys, actionKey, actionChecked) =>
+      applyAltExclusionToKeys(
+        prevKeys,
+        actionKey,
+        actionChecked,
+        selectionNodeMapRef.current,
+      ),
+    [],
+  )
+
+  const applySelectedKeysWithCleanup = useCallback((prevState, selectedSet) => {
+    const accepted = new Set(prevState.acceptedKeys || [])
+    const acceptedPriceByKey = { ...(prevState.acceptedPriceByKey || {}) }
+    Array.from(accepted).forEach((key) => {
+      if (!selectedSet.has(key)) {
+        accepted.delete(key)
+        delete acceptedPriceByKey[key]
+      }
+    })
+    return {
+      ...prevState,
+      selectedKeys: Array.from(selectedSet),
+      acceptedKeys: Array.from(accepted),
+      acceptedPriceByKey,
+    }
+  }, [])
+
+  const clearKitRoleSelectionForContext = useCallback(
+    ({ rfqItemId, originalPartId, rfqItemComponentId = null }) => {
+      if (!rfqItemId || !originalPartId) return
+      setSelectionModal((prev) => {
+        const next = new Set(prev.selectedKeys || [])
+        Array.from(next).forEach((key) => {
+          const keyStr = String(key)
+          if (!keyStr.startsWith(`kit:${rfqItemId}:`)) return
+          const node = selectionNodeMapRef.current.get(keyStr)
+          const nodeOriginalId = Number(node?.original_part_id || 0)
+          const nodeComponentId = Number(node?.rfq_item_component_id || 0)
+          if (!node && keyStr.startsWith(`kit:${rfqItemId}:`)) {
+            next.delete(keyStr)
+            return
+          }
+          if (nodeOriginalId !== Number(originalPartId || 0)) return
+          if (nodeComponentId !== Number(rfqItemComponentId || 0)) return
+          next.delete(keyStr)
+        })
+        return applySelectedKeysWithCleanup(prev, next)
+      })
+    },
+    [applySelectedKeysWithCleanup]
+  )
+
+  const selectKitRoleQuick = useCallback(
+    (roleKey) => {
+      const keyStr = String(roleKey || "")
+      if (!keyStr) return
+      const node = selectionNodeMapRef.current.get(keyStr)
+      if (!node) return
+      const rfqItemId = Number(node.rfq_item_id || 0)
+      const originalPartId = Number(node.original_part_id || 0)
+      const rfqItemComponentId = Number(node.rfq_item_component_id || 0)
+      if (!rfqItemId || !originalPartId) return
+      setSelectionModal((prev) => {
+        const next = new Set(prev.selectedKeys || [])
+        selectionNodeMapRef.current.forEach((meta, key) => {
+          if (String(meta?.line_type || "").toUpperCase() !== "KIT_ROLE") return
+          if (Number(meta?.rfq_item_id || 0) !== rfqItemId) return
+          if (Number(meta?.original_part_id || 0) !== originalPartId) return
+          if (Number(meta?.rfq_item_component_id || 0) !== rfqItemComponentId) return
+          next.delete(String(key))
+        })
+        next.add(keyStr)
+        const normalized = applyAltExclusion(next, keyStr, true)
+        return applySelectedKeysWithCleanup(prev, normalized)
+      })
+    },
+    [applyAltExclusion, applySelectedKeysWithCleanup]
+  )
+
+  const filterSelectionTree = useCallback((nodes) => {
     const list = Array.isArray(nodes) ? nodes : []
     const walk = (node) => {
       const children = Array.isArray(node.children) ? node.children : []
@@ -444,7 +510,7 @@ export default function RfqWorkspacePage() {
       return hasHintsForSelectionKey(node.key) ? node : null
     }
     return list.map(walk).filter(Boolean)
-  }
+  }, [hasHintsForSelectionKey])
 
   const handleSelectAllHinted = () => {
     if (!activeSupplierHints) return
@@ -462,7 +528,7 @@ export default function RfqWorkspacePage() {
         next = applyAltExclusion(next, key, true)
       }
     })
-    setSelectionModal((prev) => ({ ...prev, selectedKeys: Array.from(next) }))
+    setSelectionModal((prev) => applySelectedKeysWithCleanup(prev, next))
   }
 
   useEffect(() => {
@@ -531,7 +597,7 @@ export default function RfqWorkspacePage() {
     }
   }, [createForm, user])
 
-  const loadRevisions = async (requestId) => {
+  const _loadRevisions = async (requestId) => {
     if (!requestId) {
       setRevisions([])
       return
@@ -625,26 +691,32 @@ export default function RfqWorkspacePage() {
     if (!Number.isFinite(id) || id <= 0) {
       setResponses([])
       setResponseLines([])
+      setResponseWorkspaceRows([])
       return
     }
     try {
-      const [respHeaders, respLines] = await Promise.all([
+      const [respHeaders, respLines, workspaceRows] = await Promise.all([
         axios.get("/supplier-responses"),
         axios.get("/supplier-responses/lines", {
+          params: { rfq_id: id, include_archived: includeArchived ? 1 : undefined },
+        }),
+        axios.get("/supplier-responses/workspace", {
           params: { rfq_id: id, include_archived: includeArchived ? 1 : undefined },
         }),
       ])
       const responseList = Array.isArray(respHeaders.data) ? respHeaders.data : []
       const responseLinesList = Array.isArray(respLines.data) ? respLines.data : []
+      const workspaceList = Array.isArray(workspaceRows.data) ? workspaceRows.data : []
       setResponses(responseList.filter((row) => Number(row.rfq_id) === Number(rfqId)))
       setResponseLines(responseLinesList)
+      setResponseWorkspaceRows(workspaceList)
     } catch (e) {
       // не блокируем UI, просто лог
       console.debug("loadResponsesAndLines skip:", e?.response?.data || e?.message)
     }
   }
 
-  const handleCreateRfq = async (values) => {
+  const _handleCreateRfq = async (values) => {
     if (!values.client_request_revision_id) {
       message.warning("Выберите ревизию заявки")
       return
@@ -705,6 +777,7 @@ export default function RfqWorkspacePage() {
       setSelectedSupplierIds([])
       setRfqDocuments([])
       setResponses([])
+      setResponseWorkspaceRows([])
       setStructure(null)
       setSelections([])
       setSelectionLines([])
@@ -741,6 +814,7 @@ export default function RfqWorkspacePage() {
         let suggestedData = []
         let docsData = []
         let responsesData = []
+        let workspaceData = []
         let structureData = null
         let coverageData = []
         let selectionsData = []
@@ -760,6 +834,7 @@ export default function RfqWorkspacePage() {
             suggestedData,
             docsData,
             responsesData,
+            workspaceData,
             structureData,
             coverageData,
             selectionsData,
@@ -776,6 +851,12 @@ export default function RfqWorkspacePage() {
             safeGet(axios.get(`/rfqs/${activeRfqId}/suggested-suppliers`), []),
             safeGet(axios.get(`/rfqs/${activeRfqId}/documents`), []),
             safeGet(axios.get("/supplier-responses"), []),
+            safeGet(
+              axios.get("/supplier-responses/workspace", {
+                params: { rfq_id: activeRfqId, include_archived: showArchivedResponses ? 1 : undefined },
+              }),
+              []
+            ),
             safeGet(axios.get(`/rfqs/${activeRfqId}/structure`, { params: { view: "master" } }), null),
             safeGet(axios.get("/coverage", { params: { rfq_id: activeRfqId } }), []),
             safeGet(axios.get("/selection"), []),
@@ -792,7 +873,7 @@ export default function RfqWorkspacePage() {
           // пробуем bulk и ждём чуть-чуть
           try {
             await axios.post(`/rfqs/${activeRfqId}/items/bulk`)
-          } catch (_e) {
+          } catch {
             // игнор, пробуем всё равно перезагрузить
           }
           await delay(500)
@@ -816,6 +897,7 @@ export default function RfqWorkspacePage() {
         const suggestedList = Array.isArray(suggestedData) ? suggestedData : []
         const docsList = Array.isArray(docsData) ? docsData : []
         const responseList = Array.isArray(responsesData) ? responsesData : []
+        const workspaceList = Array.isArray(workspaceData) ? workspaceData : []
         let responseLinesList = []
         const rfqIdNum = Number(activeRfqId)
         if (supplierList.length > 0 && Number.isFinite(rfqIdNum) && rfqIdNum > 0) {
@@ -902,6 +984,7 @@ export default function RfqWorkspacePage() {
         setRfqDocuments(docsList)
         setResponses(rfqResponses)
         setResponseLines(responseLinesList)
+        setResponseWorkspaceRows(workspaceList)
         setStructure(finalStructure)
         setCoverage(coveragePayload)
         setSelections(rfqSelections)
@@ -948,7 +1031,7 @@ export default function RfqWorkspacePage() {
     }
   }, [suppliers])
 
-  const refreshStructure = async (opts = {}) => {
+  const _refreshStructure = async (opts = {}) => {
     if (!activeRfqId) return
     try {
       const { data } = await axios.get(`/rfqs/${activeRfqId}/structure`, {
@@ -1012,7 +1095,7 @@ export default function RfqWorkspacePage() {
     }
   }
 
-  const loadBundlesForPart = async (partId) => {
+  const loadBundlesForPart = useCallback(async (partId) => {
     if (!partId || bundleCache[partId]) return bundleCache[partId] || []
     try {
       const { data } = await axios.get("/supplier-bundles", {
@@ -1026,9 +1109,9 @@ export default function RfqWorkspacePage() {
       message.error("Не удалось загрузить комплекты")
       return []
     }
-  }
+  }, [bundleCache])
 
-  const loadBundleItems = async (bundleId) => {
+  const loadBundleItems = useCallback(async (bundleId) => {
     if (!bundleId || bundleItemsCache[bundleId]) return bundleItemsCache[bundleId] || []
     try {
       const { data } = await axios.get(`/supplier-bundles/${bundleId}/items`)
@@ -1040,17 +1123,17 @@ export default function RfqWorkspacePage() {
       message.error("Не удалось загрузить состав комплекта")
       return []
     }
-  }
+  }, [bundleItemsCache])
 
-  const collectBomPartIds = (nodes, set) => {
+  const collectBomPartIds = useCallback((nodes, set) => {
     if (!Array.isArray(nodes)) return
     nodes.forEach((node) => {
       if (node?.original_part_id) set.add(node.original_part_id)
       if (node?.children?.length) collectBomPartIds(node.children, set)
     })
-  }
+  }, [])
 
-  const loadAltPartsBulk = async (partIds) => {
+  const loadAltPartsBulk = useCallback(async (partIds) => {
     const ids = Array.isArray(partIds) ? partIds.filter(Boolean) : []
     if (!ids.length) {
       setAltPartsMap({})
@@ -1074,7 +1157,7 @@ export default function RfqWorkspacePage() {
       setAltPartsMap({})
       return {}
     }
-  }
+  }, [])
 
   const loadLineStatuses = async (rfqId, supplierId) => {
     if (!rfqId || !supplierId) return
@@ -1090,7 +1173,7 @@ export default function RfqWorkspacePage() {
     }
   }
 
-  const saveLineStatus = async ({ supplierId, rfqItemId, status }) => {
+  const _saveLineStatus = async ({ supplierId, rfqItemId, status }) => {
     if (!activeRfqId || !supplierId || !rfqItemId) return
     setLineStatusSaving(true)
     try {
@@ -1117,6 +1200,7 @@ export default function RfqWorkspacePage() {
       saving: false,
       selectedKeys: [],
       acceptedKeys: [],
+      acceptedPriceByKey: {},
       hints: cachedHints,
       onlyHinted: false,
     })
@@ -1192,6 +1276,7 @@ export default function RfqWorkspacePage() {
         loading: false,
         selectedKeys: keys,
         acceptedKeys,
+        acceptedPriceByKey: {},
         hints: hints || prev.hints,
       }))
     } catch (e) {
@@ -1284,6 +1369,7 @@ export default function RfqWorkspacePage() {
     const rfqSupplierId = selectionModal.supplier.id
     const supplierId = selectionModal.supplier.supplier_id
     const acceptedSet = new Set(selectionModal.acceptedKeys || [])
+    const acceptedPriceByKey = selectionModal.acceptedPriceByKey || {}
     const payload = selectionModal.selectedKeys
       .map((key) => {
         const node = nodeMap.get(key)
@@ -1348,9 +1434,13 @@ export default function RfqWorkspacePage() {
         const node = nodeMap.get(row.selection_key)
         if (!node) continue
         const hints = getHintsForNode(node, selectionModal.hints)
+        const priceChoices = buildHintPriceChoices(hints)
+        const selectedPriceKey = acceptedPriceByKey[row.selection_key]
         const bestHint =
-          sortHints(hints).find((h) => h?.latest_price != null && h?.latest_currency) || null
-        if (!bestHint) continue
+          priceChoices.find((choice) => choice.key === selectedPriceKey) ||
+          priceChoices[0] ||
+          null
+        if (!bestHint || bestHint.price == null || !bestHint.currency) continue
         const effectiveOriginalPartId =
           Number(node.alt_original_part_id || node.original_part_id || 0) || null
         const requestedOriginalPartId = Number(node.original_part_id || 0) || null
@@ -1367,16 +1457,19 @@ export default function RfqWorkspacePage() {
           rfq_item_component_id: node.rfq_item_component_id || null,
           bundle_id: row.bundle_id || null,
           bundle_item_id: row.bundle_item_id || null,
-          price: bestHint.latest_price,
-          currency: bestHint.latest_currency,
+          price: bestHint.price,
+          currency: bestHint.currency,
           lead_time_days: bestHint.lead_time_days || null,
-          validity_days: bestHint.latest_price_validity_days || null,
-          offer_type: bestHint.part_type || "UNKNOWN",
-          source_type: bestHint.latest_price_source_type || null,
+          validity_days: bestHint.validity_days || null,
+          offer_type: bestHint.offer_type || bestHint.part_type || "UNKNOWN",
+          source_type: bestHint.source_type || null,
+          source_subtype: bestHint.source_subtype || null,
           source_ref:
-            bestHint.latest_price_price_list_id ||
-            bestHint.latest_price_rfq_id ||
-            bestHint.latest_price_price_list_code ||
+            bestHint.source_price_id ||
+            bestHint.source_id ||
+            bestHint.price_list_id ||
+            bestHint.rfq_id ||
+            bestHint.price_list_code ||
             null,
           note: buildPriceSourceText(bestHint) || null,
           new_revision: false,
@@ -1472,7 +1565,7 @@ export default function RfqWorkspacePage() {
         )
       } else {
         message.success(
-          mode === "delta" ? "Delta Excel сформирован" : "Excel сформирован",
+          mode === "delta" ? "Excel (только новые) сформирован" : "Excel (полный) сформирован",
         )
       }
       if (Array.isArray(data?.documents) && data.documents.length) {
@@ -1577,25 +1670,25 @@ export default function RfqWorkspacePage() {
     return Array.from(map.entries()).map(([value, label]) => ({ value, label }))
   }, [rfqs])
 
-  const requestOptions = useMemo(
+  const _requestOptions = useMemo(
     () =>
-      requests.map((r) => ({
+      _requests.map((r) => ({
         value: r.id,
         label: `${r.client_name || "Клиент"} · ${r.internal_number || r.client_reference || `#${r.id}`}`,
       })),
-    [requests]
+    [_requests]
   )
 
-  const userOptions = useMemo(
+  const _userOptions = useMemo(
     () =>
-      users.map((u) => ({
+      _users.map((u) => ({
         value: u.id,
         label: u.full_name || u.username || `User ${u.id}`,
       })),
-    [users]
+    [_users]
   )
 
-  const revisionOptions = useMemo(
+  const _revisionOptions = useMemo(
     () =>
       revisions.map((rev) => ({
         value: rev.id,
@@ -1608,7 +1701,7 @@ export default function RfqWorkspacePage() {
     () =>
       allSuppliers.map((s) => ({
         value: s.id,
-        label: `${s.name || `Поставщик #${s.id}`}${s.public_code ? ` · ${s.public_code}` : ""}`,
+        label: `${s.name || "Поставщик без названия"}${s.public_code ? ` · ${s.public_code}` : ""}`,
       })),
     [allSuppliers]
   )
@@ -1624,21 +1717,37 @@ export default function RfqWorkspacePage() {
   const responseSuppliers = useMemo(() => {
     const ids = new Set()
     const list = []
+    suppliers.forEach((row) => {
+      if (!ids.has(row.supplier_id)) {
+        ids.add(row.supplier_id)
+        list.push({
+          value: row.supplier_id,
+          label: row.supplier_name || "Поставщик без названия",
+        })
+      }
+    })
+    responseWorkspaceRows.forEach((row) => {
+      if (!ids.has(row.supplier_id)) {
+        ids.add(row.supplier_id)
+        list.push({
+          value: row.supplier_id,
+          label: row.supplier_name || "Поставщик без названия",
+        })
+      }
+    })
     responseLines.forEach((row) => {
       if (!ids.has(row.supplier_id)) {
         ids.add(row.supplier_id)
-        list.push({ value: row.supplier_id, label: row.supplier_name || `Поставщик #${row.supplier_id}` })
+        list.push({
+          value: row.supplier_id,
+          label: row.supplier_name || "Поставщик без названия",
+        })
       }
     })
     return list
-  }, [responseLines])
+  }, [suppliers, responseWorkspaceRows, responseLines])
 
   const [responseSupplierFilter, setResponseSupplierFilter] = useState(null)
-
-  const filteredResponseLines = useMemo(() => {
-    if (!responseSupplierFilter) return responseLines
-    return responseLines.filter((r) => Number(r.supplier_id) === Number(responseSupplierFilter))
-  }, [responseLines, responseSupplierFilter])
 
   const fileDispatches = useMemo(() => dispatches, [dispatches])
 
@@ -1703,109 +1812,6 @@ export default function RfqWorkspacePage() {
   )
   const altLoadKeyRef = useRef("")
 
-  const parseAltKey = (key) => {
-    const parts = String(key).split(":")
-    if (parts[0] !== "alt" || parts.length < 4) return null
-    return {
-      rfqItemId: Number(parts[1]),
-      basePartId: Number(parts[2]),
-      altPartId: Number(parts[3]),
-    }
-  }
-
-  const parseBomKey = (key) => {
-    const parts = String(key).split(":")
-    if (parts[0] !== "bom" || parts.length < 3) return null
-    return {
-      rfqItemId: Number(parts[1]),
-      basePartId: Number(parts[2]),
-    }
-  }
-
-  const parseKitKey = (key) => {
-    const parts = String(key).split(":")
-    if (parts[0] !== "kit" || parts.length < 4) return null
-    return {
-      rfqItemId: Number(parts[1]),
-      bundleId: Number(parts[2]),
-      roleId: Number(parts[3]),
-    }
-  }
-
-  const removeAltForBase = (next, rfqItemId, basePartId) => {
-    const prefix = `alt:${rfqItemId}:${basePartId}:`
-    Array.from(next).forEach((key) => {
-      if (String(key).startsWith(prefix)) next.delete(key)
-    })
-  }
-
-  const removeOriginalForBase = (next, lineType, rfqItemId, basePartId) => {
-    if (lineType === "DEMAND") {
-      next.delete(`demand:${rfqItemId}`)
-    } else if (lineType === "BOM_COMPONENT") {
-      const prefix = `bom:${rfqItemId}:${basePartId}`
-      Array.from(next).forEach((key) => {
-        if (String(key).startsWith(prefix)) next.delete(key)
-      })
-    }
-  }
-
-  const removeKitRolesForBase = (next, rfqItemId, basePartId) => {
-    Array.from(next).forEach((key) => {
-      const node = selectionNodeMapRef.current.get(key)
-      if (
-        node?.line_type === "KIT_ROLE" &&
-        Number(node.rfq_item_id) === Number(rfqItemId) &&
-        Number(node.original_part_id) === Number(basePartId)
-      ) {
-        next.delete(key)
-      }
-    })
-  }
-
-  const applyAltExclusion = (prevKeys, actionKey, actionChecked) => {
-    const next = new Set(prevKeys)
-    if (!actionChecked) return next
-    const keyStr = String(actionKey)
-    if (keyStr.startsWith("alt:")) {
-      const parsed = parseAltKey(keyStr)
-      if (!parsed) return next
-      const lineType = selectionNodeMapRef.current.get(keyStr)?.line_type
-      if (!lineType) return next
-      removeOriginalForBase(next, lineType, parsed.rfqItemId, parsed.basePartId)
-      removeKitRolesForBase(next, parsed.rfqItemId, parsed.basePartId)
-      return next
-    }
-    if (keyStr.startsWith("kit:")) {
-      const parsed = parseKitKey(keyStr)
-      if (!parsed) return next
-      const node = selectionNodeMapRef.current.get(keyStr)
-      const basePartId = node?.original_part_id
-      if (basePartId) {
-        removeOriginalForBase(next, "DEMAND", parsed.rfqItemId, basePartId)
-        removeOriginalForBase(next, "BOM_COMPONENT", parsed.rfqItemId, basePartId)
-        removeAltForBase(next, parsed.rfqItemId, basePartId)
-      }
-      return next
-    }
-    if (keyStr.startsWith("demand:")) {
-      const node = selectionNodeMapRef.current.get(keyStr)
-      if (node?.original_part_id) {
-        removeAltForBase(next, node.rfq_item_id, node.original_part_id)
-        removeKitRolesForBase(next, node.rfq_item_id, node.original_part_id)
-      }
-      return next
-    }
-    if (keyStr.startsWith("bom:")) {
-      const parsed = parseBomKey(keyStr)
-      if (parsed) {
-        removeAltForBase(next, parsed.rfqItemId, parsed.basePartId)
-        removeKitRolesForBase(next, parsed.rfqItemId, parsed.basePartId)
-      }
-    }
-    return next
-  }
-
   useEffect(() => {
     if (!structureItems.length) {
       if (altLoadKeyRef.current) {
@@ -1825,7 +1831,7 @@ export default function RfqWorkspacePage() {
     if (!key || key === altLoadKeyRef.current) return
     altLoadKeyRef.current = key
     loadAltPartsBulk(list)
-  }, [structureItems])
+  }, [structureItems, collectBomPartIds, loadAltPartsBulk])
 
   const selectionTreeData = useMemo(() => {
     const supplierId = selectionModal?.supplier?.supplier_id
@@ -1833,22 +1839,26 @@ export default function RfqWorkspacePage() {
     const newLineSet = new Set(supplierSummary?.new_line_numbers || [])
     const selectedSet = new Set(selectionModal.selectedKeys || [])
     const acceptedSet = new Set(selectionModal.acceptedKeys || [])
+    const acceptedPriceByKey = selectionModal.acceptedPriceByKey || {}
     const nodeMap = new Map()
 
     const renderSideColumn = ({
       hintsBadge,
       kitSelect,
+      roleSelect,
       altCount = 0,
-      roleCount = 0,
       statusTag = null,
-      rfqItemId = null,
       nodeKey = null,
       hints = [],
     }) => {
       const acceptedChecked = nodeKey ? acceptedSet.has(nodeKey) : false
       const isSelected = nodeKey ? selectedSet.has(nodeKey) : false
-      const bestHint =
-        sortHints(hints).find((h) => h?.latest_price != null && h?.latest_currency) || null
+      const priceChoices = buildHintPriceChoices(hints)
+      const selectedPriceKey = nodeKey ? acceptedPriceByKey[nodeKey] : null
+      const selectedPrice =
+        (selectedPriceKey
+          ? priceChoices.find((choice) => choice.key === selectedPriceKey)
+          : null) || priceChoices[0] || null
 
       const handleAcceptToggle = (checked) => {
         if (checked) {
@@ -1856,37 +1866,78 @@ export default function RfqWorkspacePage() {
             message.warning("Сначала отметьте строку галочкой в структуре")
             return
           }
-          if (!bestHint) {
+          if (!selectedPrice) {
             message.warning("Для этой позиции нет цены")
             return
           }
         }
         setSelectionModal((prev) => {
           const next = new Set(prev.acceptedKeys || [])
+          const nextPriceByKey = { ...(prev.acceptedPriceByKey || {}) }
           if (checked) next.add(nodeKey)
-          else next.delete(nodeKey)
-          return { ...prev, acceptedKeys: Array.from(next) }
+          else {
+            next.delete(nodeKey)
+            if (nodeKey) delete nextPriceByKey[nodeKey]
+          }
+          if (checked && nodeKey && selectedPrice?.key) {
+            nextPriceByKey[nodeKey] = selectedPrice.key
+          }
+          return {
+            ...prev,
+            acceptedKeys: Array.from(next),
+            acceptedPriceByKey: nextPriceByKey,
+          }
         })
+      }
+
+      const changeAcceptedPrice = (value) => {
+        if (!nodeKey) return
+        setSelectionModal((prev) => ({
+          ...prev,
+          acceptedPriceByKey: {
+            ...(prev.acceptedPriceByKey || {}),
+            [nodeKey]: value,
+          },
+        }))
       }
 
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
           {statusTag}
-          {isSelected && (bestHint || acceptedChecked) ? (
+          {isSelected && (selectedPrice || acceptedChecked) ? (
             <Checkbox
               checked={acceptedChecked}
-              disabled={lineStatusSaving || (!bestHint && !acceptedChecked)}
+              disabled={lineStatusSaving || (!selectedPrice && !acceptedChecked)}
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => handleAcceptToggle(e.target.checked)}
             >
               Использовать цену
             </Checkbox>
           ) : null}
+          {isSelected && priceChoices.length > 1 ? (
+            <Select
+              size="small"
+              style={{ width: 340 }}
+              value={selectedPrice?.key}
+              disabled={lineStatusSaving}
+              onClick={(event) => event.stopPropagation()}
+              onChange={changeAcceptedPrice}
+              options={priceChoices.map((choice) => ({
+                value: choice.key,
+                label: `${choice.supplier_part_number || "Без номера"} · ${formatPriceWithCurrency(
+                  choice.price,
+                  choice.currency
+                )} · ${buildPriceSourceText(choice) || "Источник не указан"}${
+                  choice.date ? ` · ${formatHintDate(choice.date)}` : ""
+                }`,
+              }))}
+            />
+          ) : null}
           {hintsBadge ? <div>{hintsBadge}</div> : null}
-          {kitSelect || altCount > 0 || roleCount > 0 ? (
+          {kitSelect || roleSelect || altCount > 0 ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               {kitSelect}
-              {roleCount > 0 ? <Tag color="green">Роли: {roleCount}</Tag> : null}
+              {roleSelect}
               {altCount > 0 ? <Tag color="orange">Подмены: {altCount}</Tag> : null}
             </div>
           ) : null}
@@ -1991,6 +2042,8 @@ export default function RfqWorkspacePage() {
               })}
             </div>
           ),
+          selectable: false,
+          checkable: false,
           isLeaf: true,
         }
       })
@@ -2070,8 +2123,49 @@ export default function RfqWorkspacePage() {
               onFocus={() => loadBundlesForPart(comp.original_part_id)}
               onClick={(event) => event.stopPropagation()}
               onChange={async (value) => {
+                clearKitRoleSelectionForContext({
+                  rfqItemId: item.rfq_item_id,
+                  originalPartId: comp.original_part_id,
+                  rfqItemComponentId: comp.rfq_item_component_id || comp.id || null,
+                })
                 setBundleChoice((prev) => ({ ...prev, [compBundleKey]: value }))
-                await loadBundleItems(value)
+                const loadedRoles = await loadBundleItems(value)
+                if (Array.isArray(loadedRoles) && loadedRoles.length === 1) {
+                  const autoKeyBase = `kit:${item.rfq_item_id}:${value}:${loadedRoles[0].id}`
+                  const autoKey = keyContext ? `${autoKeyBase}:${keyContext}` : autoKeyBase
+                  selectKitRoleQuick(autoKey)
+                }
+              }}
+            />
+          ) : null
+
+        const kitRoleOptions = kitChildren.map((roleNode) => {
+          const roleMeta = nodeMap.get(String(roleNode.key))
+          const roleLabel = String(roleMeta?.line_label || "Роль")
+          return { value: String(roleNode.key), label: roleLabel }
+        })
+        const selectedRoleKey =
+          kitRoleOptions.find((opt) => selectedSet.has(opt.value))?.value || undefined
+        const roleSelect =
+          kitRoleOptions.length > 0 ? (
+            <Select
+              size="small"
+              style={{ width: 220 }}
+              placeholder="Роль"
+              value={selectedRoleKey}
+              options={kitRoleOptions}
+              allowClear
+              onClick={(event) => event.stopPropagation()}
+              onChange={(value) => {
+                if (!value) {
+                  clearKitRoleSelectionForContext({
+                    rfqItemId: item.rfq_item_id,
+                    originalPartId: comp.original_part_id,
+                    rfqItemComponentId: comp.rfq_item_component_id || comp.id || null,
+                  })
+                  return
+                }
+                selectKitRoleQuick(value)
               }}
             />
           ) : null
@@ -2085,16 +2179,6 @@ export default function RfqWorkspacePage() {
             children: altChildren,
           })
         }
-        if (kitChildren.length) {
-          children.push({
-            key: `kit-group-bom:${item.rfq_item_id}:${comp.original_part_id}:${selectedBundleId}`,
-            title: <Text type="secondary">Роли комплекта</Text>,
-            selectable: false,
-            checkable: false,
-            children: kitChildren,
-          })
-        }
-
         const nested = buildBomNodes(comp.children || [], item, bomCounts)
         if (nested.length) {
           children.push(...nested)
@@ -2111,8 +2195,8 @@ export default function RfqWorkspacePage() {
               {renderSideColumn({
                 hintsBadge: renderHintsBadge(compHints, item.rfq_item_id),
                 kitSelect,
+                roleSelect,
                 altCount: altChildren.length,
-                roleCount: kitChildren.length,
                 statusTag,
                 rfqItemId: item.rfq_item_id,
                 nodeKey: key,
@@ -2208,8 +2292,48 @@ export default function RfqWorkspacePage() {
               onFocus={() => item.original_part_id && loadBundlesForPart(item.original_part_id)}
               onClick={(event) => event.stopPropagation()}
               onChange={async (value) => {
+                clearKitRoleSelectionForContext({
+                  rfqItemId: item.rfq_item_id,
+                  originalPartId: item.original_part_id,
+                  rfqItemComponentId: null,
+                })
                 setBundleChoice((prev) => ({ ...prev, [itemBundleKey]: value }))
-                await loadBundleItems(value)
+                const loadedRoles = await loadBundleItems(value)
+                if (Array.isArray(loadedRoles) && loadedRoles.length === 1) {
+                  const autoKey = `kit:${item.rfq_item_id}:${value}:${loadedRoles[0].id}`
+                  selectKitRoleQuick(autoKey)
+                }
+              }}
+            />
+          ) : null
+
+        const kitRoleOptions = kitChildren.map((roleNode) => {
+          const roleMeta = nodeMap.get(String(roleNode.key))
+          const roleLabel = String(roleMeta?.line_label || "Роль")
+          return { value: String(roleNode.key), label: roleLabel }
+        })
+        const selectedRoleKey =
+          kitRoleOptions.find((opt) => selectedSet.has(opt.value))?.value || undefined
+        const roleSelect =
+          kitRoleOptions.length > 0 ? (
+            <Select
+              size="small"
+              style={{ width: 220 }}
+              placeholder="Роль"
+              value={selectedRoleKey}
+              options={kitRoleOptions}
+              allowClear
+              onClick={(event) => event.stopPropagation()}
+              onChange={(value) => {
+                if (!value) {
+                  clearKitRoleSelectionForContext({
+                    rfqItemId: item.rfq_item_id,
+                    originalPartId: item.original_part_id,
+                    rfqItemComponentId: null,
+                  })
+                  return
+                }
+                selectKitRoleQuick(value)
               }}
             />
           ) : null
@@ -2223,17 +2347,7 @@ export default function RfqWorkspacePage() {
             children: altChildren,
           })
         }
-        if (kitChildren.length) {
-          children.push({
-            key: `kit-group-item:${item.rfq_item_id}:${item.original_part_id}:${selectedBundleId}`,
-            title: <Text type="secondary">Роли комплекта</Text>,
-            selectable: false,
-            checkable: false,
-            children: kitChildren,
-          })
-        }
-
-        if (kitSelect || altChildren.length || kitChildren.length) {
+        if (kitSelect || roleSelect || altChildren.length) {
           children.push({
             key: `controls-inline:${item.rfq_item_id}:${item.original_part_id}`,
             title: (
@@ -2241,8 +2355,8 @@ export default function RfqWorkspacePage() {
                 {renderSideColumn({
                   hintsBadge: null,
                   kitSelect,
+                  roleSelect,
                   altCount: altChildren.length,
-                  roleCount: kitChildren.length,
                   rfqItemId: item.rfq_item_id,
                 })}
               </div>
@@ -2289,15 +2403,23 @@ export default function RfqWorkspacePage() {
     altPartsMap,
     selectionModal.selectedKeys,
     selectionModal.acceptedKeys,
-    activeSupplierHints,
+    selectionModal.acceptedPriceByKey,
     selectionModal?.supplier?.supplier_id,
+    buildHintPriceChoices,
+    dispatchSummaryMap,
+    getBundleItemHints,
+    getOriginalHints,
+    lineStatusSaving,
+    renderHintsBadge,
+    clearKitRoleSelectionForContext,
+    selectKitRoleQuick,
   ])
 
   const selectionTreeDataVisible = useMemo(() => {
     if (!selectionModal.onlyHinted) return selectionTreeData
     if (!activeSupplierHints) return selectionTreeData
     return filterSelectionTree(selectionTreeData)
-  }, [selectionTreeData, selectionModal.onlyHinted, activeSupplierHints])
+  }, [selectionTreeData, selectionModal.onlyHinted, activeSupplierHints, filterSelectionTree])
   const selectionCoverage = useMemo(() => {
     let total = 0
     let hinted = 0
@@ -2336,7 +2458,11 @@ export default function RfqWorkspacePage() {
       hintedItems: hintedItemIds.size,
       selectedItems: selectedItemIds.size,
     }
-  }, [selectionTreeData, selectionModal.selectedKeys, activeSupplierHints, structureItems])
+  }, [
+    selectionModal.selectedKeys,
+    structureItems,
+    hasHintsForSelectionKey,
+  ])
   const rfqTreeData = useMemo(() => {
     const mapBomNodes = (nodes) => {
       if (!Array.isArray(nodes)) return []
@@ -2376,1020 +2502,133 @@ export default function RfqWorkspacePage() {
   }, [structureItems])
   const activeStep = TAB_TO_STEP[activeTabKey] ?? 0
   const isStructureConfirmed = true
-
-  const rfqColumns = [
-    { title: "Клиент", dataIndex: "client_name", width: 220 },
-    {
-      title: "Заявка",
-      dataIndex: "client_request_number",
-      width: 160,
-      render: (value, record) =>
-        value || record.client_reference || `#${record.client_request_id}`,
+  const handleStepChange = useCallback(
+    (index) => {
+      const nextKey = STEP_TO_TAB[index]
+      if (!nextKey) return
+      if (index > 0 && !isStructureConfirmed) {
+        message.warning("Сначала подтвердите структуру RFQ")
+        return
+      }
+      setActiveTabKey(nextKey)
     },
-    {
-      title: "Ответственный",
-      dataIndex: "assigned_user_name",
-      width: 180,
-      render: (value) => value || "—",
-    },
-    {
-      title: "RFQ",
-      dataIndex: "rfq_number",
-      width: 140,
-      render: (value, record) => value || `RFQ-${record.id}`,
-    },
-    { title: "Rev", dataIndex: "rev_number", width: 70 },
-    {
-      title: "Статус",
-      dataIndex: "status",
-      width: 120,
-      render: (value) => <Tag color={statusToColor(value)}>{rfqStatusLabel(value)}</Tag>,
-    },
-    {
-      title: "Создано",
-      dataIndex: "created_at",
-      width: 120,
-      render: formatDate,
-    },
-    {
-      title: "Действия",
-      dataIndex: "actions",
-      width: 90,
-      render: (_, record) => (
-        <Button
-          danger
-          type="text"
-          icon={<DeleteOutlined />}
-          onClick={(event) => {
-            event.stopPropagation()
-            handleDeleteRfq(record.id)
-          }}
-        />
-      ),
-    },
-  ]
-
-  const rfqStructureColumns = [
-    {
-      title: "Позиция",
-      dataIndex: "item",
-      render: (_, record) => {
-        if (record.type === "DEMAND") {
-          const cat = record.original_cat_number || record.client_part_number || "-"
-          return (
-            <Space>
-              <Tag>{record.line_number}</Tag>
-              <Text strong>{cat}</Text>
-            </Space>
-          )
-        }
-        if (record.type === "BOM_COMPONENT") {
-          return record.cat_number || "-"
-        }
-        return "-"
-      },
-    },
-    {
-      title: "Описание",
-      dataIndex: "description",
-      render: (value, record) => {
-        return value || "-"
-      },
-    },
-    {
-      title: "Признаки",
-      dataIndex: "flags",
-      width: 160,
-      render: (_, record) => {
-        const tags = []
-        if (record.has_bom) {
-          tags.push(<Tag key="assembly" color="blue">Сборка</Tag>)
-        }
-        if ((record.bundle_count || 0) > 0) {
-          tags.push(
-            <Tag
-              key="kit"
-              color="green"
-              style={{ cursor: "pointer" }}
-              onClick={() => openKitPreview(record.original_part_id)}
-            >
-              Комплект
-            </Tag>
-          )
-        }
-        const altCount =
-          record.original_part_id && altPartsMap[record.original_part_id]
-            ? altPartsMap[record.original_part_id].length
-            : 0
-        if (altCount > 0) {
-          tags.push(
-            <Tag
-              key="alt"
-              color="orange"
-              style={{ cursor: "pointer" }}
-              onClick={() => openAltModal(record.original_part_id)}
-            >
-              Альтернативы {altCount}
-            </Tag>
-          )
-        }
-        return tags.length ? <Space size={4} wrap>{tags}</Space> : "—"
-      },
-    },
-    {
-      title: "Кол-во",
-      dataIndex: "qty",
-      width: 100,
-      render: (_, record) => {
-        if (record.type === "DEMAND") return record.requested_qty ?? "-"
-        if (record.type === "BOM_COMPONENT") return record.required_qty ?? "-"
-        return "-"
-      },
-    },
-    {
-      title: "Ед.",
-      dataIndex: "uom",
-      width: 80,
-      render: (_, record) => {
-        if (record.type === "DEMAND") return record.uom || "-"
-        if (record.type === "BOM_COMPONENT") return record.uom || "-"
-        return "-"
-      },
-    },
-    {
-      title: "Тип",
-      dataIndex: "type",
-      width: 120,
-      render: (value, record) => {
-        if (record.type === "DEMAND") return <Tag>Заявка</Tag>
-        if (record.type === "BOM_COMPONENT") return <Tag>Компонент</Tag>
-        return "-"
-      },
-    },
-  ]
+    [isStructureConfirmed]
+  )
 
   return (
     <PageWrapper
       title="RFQ Workspace"
       helpText="Сквозной поток по RFQ: от отправленной в закупку заявки до заказа поставщику."
     >
-      <Space direction="vertical" size={16} style={{ width: "100%" }}>
-        <Card size="small" title="RFQ список">
-          <Space wrap align="center" style={{ marginBottom: 12 }}>
-            <Select
-              style={{ width: 220 }}
-              options={clientFilterOptions}
-              placeholder="Фильтр по клиенту"
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              value={filterClientId || undefined}
-              onChange={(value) => setFilterClientId(value || null)}
-            />
-            <Input
-              style={{ width: 220 }}
-              placeholder="Номер заявки / RFQ"
-              allowClear
-              value={filterRequestNumber}
-              onChange={(event) => setFilterRequestNumber(event.target.value)}
-            />
-          </Space>
-          <Table
-            rowKey="id"
-            columns={rfqColumns}
-            dataSource={filteredRfqs}
-            loading={loading}
-            pagination={{ pageSize: 12 }}
-            onRow={(record) => ({
-              onClick: () => setActiveRfqId(record.id),
-            })}
-            rowClassName={(record) =>
-              Number(record.id) === Number(activeRfqId) ? "ant-table-row-selected" : ""
-            }
-          />
-        </Card>
-
-        {activeRfq ? (
-          <Card size="small" title="Рабочая зона">
-            <Space direction="vertical" size={16} style={{ width: "100%" }}>
-              <Space wrap align="center" style={{ justifyContent: "space-between" }}>
-                <Space wrap align="center">
-                  <Text strong>
-                    {activeRfq.rfq_number || `RFQ-${activeRfq.id}`}
-                  </Text>
-                  <Tag color={statusToColor(activeRfq.status)}>
-                    {rfqStatusLabel(activeRfq.status)}
-                  </Tag>
-                  <Text type="secondary">
-                    {activeRfq.client_name || "Клиент"}
-                  </Text>
-                  <Text type="secondary">
-                    Rev {activeRfq.rev_number || "-"}
-                  </Text>
-                </Space>
-              </Space>
-
-              <Steps
-                size="small"
-                current={activeStep}
-                onChange={(index) => {
-                  const nextKey = STEP_TO_TAB[index]
-                  if (!nextKey) return
-                  if (index > 0 && !isStructureConfirmed) {
-                    message.warning("Сначала подтвердите структуру RFQ")
-                    return
-                  }
-                  setActiveTabKey(nextKey)
-                }}
-                items={STEP_LABELS.map((label, index) => ({
-                  title: label,
-                  status: flowStatus.steps[index] ? "finish" : index === flowStatus.current ? "process" : "wait",
-                }))}
-              />
-
-              <Tabs
-                activeKey={activeTabKey}
-                onChange={setActiveTabKey}
-                items={[
-                  {
-                    key: "rfq",
-                    label: "RFQ",
-                    children: (
-                      <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                        <Space wrap align="center">
-                          <Tag color="blue">Структура (обзор)</Tag>
-                          <Text type="secondary">
-                            Показываем состав заявки и признаки сборок/комплектов.
-                          </Text>
-                        </Space>
-                        <Table
-                          rowKey="key"
-                          loading={!structure && !!activeRfqId}
-                          dataSource={rfqTreeData}
-                          pagination={false}
-                          columns={rfqStructureColumns}
-                          onRow={(record) => {
-                            if (Number(record.bundle_count || 0) > 0) {
-                              return { style: { background: "#f1fff2" } }
-                            }
-                            if (record.type === "DEMAND" && record.has_bom) {
-                              return { style: { background: "#f0f7ff" } }
-                            }
-                            return {}
-                          }}
-                        />
-                      </Space>
-                    ),
-                  },
-                  {
-                    key: "suppliers",
-                    label: "Поставщики",
-                    disabled: !isStructureConfirmed,
-                    children: (
-                      <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                        <Card size="small" title="Подсказки по поставщикам">
-                          <Space direction="vertical" style={{ width: "100%" }}>
-                            <Table
-                              rowKey="supplier_id"
-                              dataSource={suggestedSuppliers}
-                              pagination={false}
-                              rowSelection={{
-                                selectedRowKeys: suggestedSelection,
-                                onChange: setSuggestedSelection,
-                              }}
-                              columns={[
-                                { title: "Поставщик", dataIndex: "supplier_name" },
-                                { title: "Совпадений", dataIndex: "parts_count", width: 130 },
-                                {
-                                  title: "С ценой",
-                                  dataIndex: "priced_parts_count",
-                                  width: 130,
-                                  render: (v, row) => `${Number(v || 0)}/${Number(row?.parts_count || 0)}`,
-                                },
-                                {
-                                  title: "Типы",
-                                  dataIndex: "match_types",
-                                  width: 160,
-                                  render: renderMatchTypes,
-                                },
-                              ]}
-                            />
-                            <Button
-                              type="primary"
-                              onClick={handleAddSuggestedSuppliers}
-                              disabled={!suggestedSuppliers.length}
-                            >
-                              Добавить выбранных
-                            </Button>
-                          </Space>
-                        </Card>
-
-                        <Card size="small" title="Добавить поставщика">
-                          <Form
-                            form={supplierForm}
-                            onFinish={handleAddSupplier}
-                            layout="vertical"
-                          >
-                            <Space wrap align="start">
-                              <Form.Item
-                                label="Поставщик"
-                                name="supplier_id"
-                                rules={[{ required: true, message: "Выберите поставщика" }]}
-                              >
-                                <Select
-                                  showSearch
-                                  optionFilterProp="label"
-                                  style={{ width: 260 }}
-                                  options={supplierOptions}
-                                  placeholder="Поиск по названию"
-                                />
-                              </Form.Item>
-                              <Form.Item label="Комментарий" name="note">
-                                <Input style={{ width: 220 }} />
-                              </Form.Item>
-                              <Form.Item style={{ marginTop: 30 }}>
-                                <Button type="primary" htmlType="submit">
-                                  Добавить
-                                </Button>
-                              </Form.Item>
-                              <Form.Item style={{ marginTop: 30 }}>
-                                <Button onClick={() => setSupplierCreateOpen(true)}>
-                                  Создать поставщика
-                                </Button>
-                              </Form.Item>
-                            </Space>
-                          </Form>
-                        </Card>
-
-                        <Card size="small" title="Поставщики в RFQ">
-                          {hasAnySupplierSent && totalNewLines > 0 ? (
-                            <Alert
-                              type="info"
-                              showIcon
-                              style={{ marginBottom: 12 }}
-                              message={`Новые позиции в ревизии: ${totalNewLines}. Нажмите «Только новые» у выбранных поставщиков — старые файлы останутся в истории, новые отправятся отдельным Excel.`}
-                            />
-                          ) : null}
-                          <Table
-                            rowKey="supplier_id"
-                            dataSource={suppliers}
-                            pagination={false}
-                            rowSelection={{
-                              selectedRowKeys: selectedSupplierIds,
-                              onChange: setSelectedSupplierIds,
-                            }}
-                            columns={[
-                              { title: "Поставщик", dataIndex: "supplier_name" },
-                              {
-                                title: "Контакт",
-                                dataIndex: "contact_person",
-                                render: (_, record) => {
-                                  const parts = [
-                                    record.contact_person,
-                                    record.contact_email,
-                                    record.contact_phone,
-                                  ].filter(Boolean)
-                                  return parts.length ? parts.join(" / ") : "—"
-                                },
-                              },
-                              {
-                                title: "RU",
-                                width: 70,
-                                align: "center",
-                                render: (_, record) => (
-                                  <Checkbox
-                                    checked={(record.language || "ru") === "ru"}
-                                    onChange={() =>
-                                      handleSupplierLanguage(record, "ru")
-                                    }
-                                  />
-                                ),
-                              },
-                              {
-                                title: "EN",
-                                width: 70,
-                                align: "center",
-                                render: (_, record) => (
-                                  <Checkbox
-                                    checked={(record.language || "ru") === "en"}
-                                    onChange={() =>
-                                      handleSupplierLanguage(record, "en")
-                                    }
-                                  />
-                                ),
-                              },
-                              {
-                                title: "Настройка",
-                                width: 130,
-                                render: (_, record) => (
-                                  <Button size="small" onClick={() => openSelectionModal(record)}>
-                                    Структура
-                                  </Button>
-                                ),
-                              },
-                              {
-                               title: "Отправка",
-                               width: 360,
-                               render: (_, record) => {
-                                  const summary = dispatchSummaryMap.get(record.supplier_id) || {}
-                                  const newCount = summary.new_lines_count || 0
-                                  const lastRev = summary.last_sent_rfq_revision_number
-                                  const lastAt = summary.last_sent_at ? formatDate(summary.last_sent_at) : null
-                                  return (
-                                    <Space direction="vertical" size={4}>
-                                      <Space size={6} wrap>
-                                        <Tag color={lastRev ? "blue" : "default"}>
-                                          {lastRev ? `Отправлено: Rev ${lastRev}` : "Еще не отправляли"}
-                                        </Tag>
-                                        {lastAt ? <Text type="secondary">{lastAt}</Text> : null}
-                                        <Tag color={newCount > 0 ? "orange" : "green"}>
-                                          Новых строк: {newCount}
-                                        </Tag>
-                                        {!lastRev ? <Tag>Первичная отправка</Tag> : null}
-                                      </Space>
-                                      <Space size={8} wrap>
-                                        <Button
-                                          size="small"
-                                          loading={supplierSendingId === record.supplier_id}
-                                          onClick={() => handleSendForSupplier(record, "full")}
-                                        >
-                                          Отправить все
-                                        </Button>
-                                        {lastRev ? (
-                                          <Button
-                                            size="small"
-                                            type="primary"
-                                            disabled={newCount === 0}
-                                            loading={supplierSendingId === record.supplier_id}
-                                            onClick={() => handleSendForSupplier(record, "delta")}
-                                          >
-                                            Только новые
-                                          </Button>
-                                        ) : null}
-                                      </Space>
-                                    </Space>
-                                  )
-                               },
-                             },
-                              {
-                                title: "Статус",
-                                dataIndex: "status",
-                                width: 120,
-                                render: (value) => (
-                                  <Tag color={statusToColor(value)}>
-                                    {supplierStatusLabel(value || "invited")}
-                                  </Tag>
-                                ),
-                              },
-                              {
-                                title: "Дата",
-                                dataIndex: "invited_at",
-                                width: 120,
-                                render: formatDate,
-                              },
-                              { title: "Комментарий", dataIndex: "note" },
-                            ]}
-                          />
-                        </Card>
-
-                        <Card size="small" title="Файлы RFQ">
-                          <Space direction="vertical" style={{ width: "100%" }}>
-                            <Space wrap align="center">
-                              <Button
-                                type="primary"
-                                onClick={handleSendRfq}
-                                disabled={!suppliers.length}
-                                loading={sending}
-                              >
-                                Сформировать Excel
-                              </Button>
-                              <Button onClick={() => activeRfqId && loadDocuments(activeRfqId)}>
-                                Обновить список
-                              </Button>
-                              <Checkbox
-                                checked={sendIncludePriced}
-                                onChange={(e) => setSendIncludePriced(e.target.checked)}
-                              >
-                                Включать строки с уже принятой ценой
-                              </Checkbox>
-                              <Text type="secondary">
-                                Показываются все сформированные файлы RFQ. После формирования статус RFQ станет «отправлен».
-                              </Text>
-                            </Space>
-                            <Table
-                              rowKey="id"
-                              dataSource={fileDispatches}
-                              loading={docsLoading}
-                              pagination={false}
-                              columns={[
-                                {
-                                  title: "Файл",
-                                  dataIndex: "file_name",
-                                  render: (value, record) => {
-                                    const fallback =
-                                      value ||
-                                      `${activeRfq?.rfq_number || `RFQ-${activeRfqId || ""}`} Rev ${
-                                        record.rfq_revision_number || "-"
-                                      } ${record.dispatch_type === "DELTA" ? "Delta" : "Full"}`
-                                    return record.file_url ? (
-                                      <a href={record.file_url} target="_blank" rel="noreferrer">
-                                        {fallback}
-                                      </a>
-                                    ) : (
-                                      <Text type="secondary">{fallback}</Text>
-                                    )
-                                  },
-                                },
-                                {
-                                  title: "Rev",
-                                  dataIndex: "rfq_revision_number",
-                                  width: 80,
-                                  render: (v) => v || "—",
-                                },
-                                {
-                                  title: "Поставщик",
-                                  dataIndex: "supplier_name",
-                                  width: 220,
-                                },
-                                {
-                                  title: "Режим",
-                                  dataIndex: "dispatch_type",
-                                  width: 100,
-                                  render: (v) => (
-                                    <Tag color={v === "DELTA" ? "orange" : "blue"}>
-                                      {v === "DELTA" ? "Delta" : "Full"}
-                                    </Tag>
-                                  ),
-                                },
-                                {
-                                  title: "Строки",
-                                  width: 140,
-                                  render: (_, r) =>
-                                    r.rows_total
-                                      ? `${r.rows_total}${
-                                          r.rows_changed ? ` (новых: ${r.rows_changed})` : ""
-                                        }`
-                                      : "—",
-                                },
-                                { title: "Создано", dataIndex: "sent_at", width: 140, render: formatDate },
-                              ]}
-                            />
-                          </Space>
-                        </Card>
-                      </Space>
-                    ),
-                  },
-                  {
-                    key: "responses",
-                    label: "Ответы",
-                    disabled: !isStructureConfirmed,
-                    children: (
-                      <ResponsesTabContent
-                        activeRfqId={activeRfqId}
-                        suppliers={suppliers}
-                        items={items}
-                        responseSuppliers={responseSuppliers}
-                        responseSupplierFilter={responseSupplierFilter}
-                        setResponseSupplierFilter={setResponseSupplierFilter}
-                        reloadResponses={() => loadResponsesAndLines(activeRfqId)}
-                        showArchivedResponses={showArchivedResponses}
-                        setShowArchivedResponses={setShowArchivedResponses}
-                        importModal={importModal}
-                        setImportModal={setImportModal}
-                        filteredResponseLines={filteredResponseLines}
-                        formatDate={formatDate}
-                      />
-                    ),
-                  },
-                  {
-                    key: "coverage",
-                    label: "Coverage",
-                    disabled: !isStructureConfirmed,
-                    children: <CoverageTabContent coverageRows={coverageRows} />,
-                  },
-                  {
-                    key: "selection",
-                    label: "Selection",
-                    disabled: !isStructureConfirmed,
-                    children: (
-                      <SelectionTabContent
-                        selections={selections}
-                        selectionLines={selectionLines}
-                        formatDate={formatDate}
-                      />
-                    ),
-                  },
-                  {
-                    key: "economics",
-                    label: "Экономика",
-                    disabled: !isStructureConfirmed,
-                    children: (
-                      <EconomicsTabContent
-                        shipmentGroups={shipmentGroups}
-                        landedCosts={landedCosts}
-                      />
-                    ),
-                  },
-                  {
-                    key: "sales",
-                    label: "КП",
-                    disabled: !isStructureConfirmed,
-                    children: <SalesTabContent salesQuotes={salesQuotes} formatDate={formatDate} />,
-                  },
-                  {
-                    key: "contracts",
-                    label: "Контракт",
-                    disabled: !isStructureConfirmed,
-                    children: <ContractsTabContent contracts={contracts} formatDate={formatDate} />,
-                  },
-                  {
-                    key: "po",
-                    label: "PO",
-                    disabled: !isStructureConfirmed,
-                    children: (
-                      <PurchaseOrdersTabContent
-                        purchaseOrders={purchaseOrders}
-                        formatDate={formatDate}
-                      />
-                    ),
-                  },
-                ]}
-              />
-            </Space>
-          </Card>
-        ) : (
-          <Card size="small">
-            <Text type="secondary">Выберите RFQ для просмотра рабочего пространства.</Text>
-          </Card>
-        )}
-      </Space>
-      <Modal
+      <RfqWorkspaceMainContent
+        clientFilterOptions={clientFilterOptions}
+        filterClientId={filterClientId}
+        setFilterClientId={setFilterClientId}
+        filterRequestNumber={filterRequestNumber}
+        setFilterRequestNumber={setFilterRequestNumber}
+        filteredRfqs={filteredRfqs}
+        loading={loading}
+        setActiveRfqId={setActiveRfqId}
+        activeRfqId={activeRfqId}
+        activeRfq={activeRfq}
+        activeStep={activeStep}
+        handleStepChange={handleStepChange}
+        flowStatus={flowStatus}
+        stepLabels={STEP_LABELS}
+        activeTabKey={activeTabKey}
+        setActiveTabKey={setActiveTabKey}
+        isStructureConfirmed={isStructureConfirmed}
+        structure={structure}
+        activeRfqIdForTabs={activeRfqId}
+        rfqTreeData={rfqTreeData}
+        openKitPreview={openKitPreview}
+        altPartsMap={altPartsMap}
+        openAltModal={openAltModal}
+        suggestedSuppliers={suggestedSuppliers}
+        suggestedSelection={suggestedSelection}
+        setSuggestedSelection={setSuggestedSelection}
+        renderMatchTypes={renderMatchTypes}
+        handleAddSuggestedSuppliers={handleAddSuggestedSuppliers}
+        supplierForm={supplierForm}
+        handleAddSupplier={handleAddSupplier}
+        supplierOptions={supplierOptions}
+        setSupplierCreateOpen={setSupplierCreateOpen}
+        hasAnySupplierSent={hasAnySupplierSent}
+        totalNewLines={totalNewLines}
+        suppliers={suppliers}
+        selectedSupplierIds={selectedSupplierIds}
+        setSelectedSupplierIds={setSelectedSupplierIds}
+        handleSupplierLanguage={handleSupplierLanguage}
+        openSelectionModal={openSelectionModal}
+        dispatchSummaryMap={dispatchSummaryMap}
+        formatDate={formatDate}
+        supplierSendingId={supplierSendingId}
+        handleSendForSupplier={handleSendForSupplier}
+        statusToColor={statusToColor}
+        supplierStatusLabel={supplierStatusLabel}
+        handleSendRfq={handleSendRfq}
+        sending={sending}
+        loadDocuments={loadDocuments}
+        sendIncludePriced={sendIncludePriced}
+        setSendIncludePriced={setSendIncludePriced}
+        fileDispatches={fileDispatches}
+        docsLoading={docsLoading}
+        responseSuppliers={responseSuppliers}
+        responseSupplierFilter={responseSupplierFilter}
+        setResponseSupplierFilter={setResponseSupplierFilter}
+        loadResponsesAndLines={loadResponsesAndLines}
+        showArchivedResponses={showArchivedResponses}
+        setShowArchivedResponses={setShowArchivedResponses}
+        importModal={importModal}
+        setImportModal={setImportModal}
+        responseWorkspaceRows={responseWorkspaceRows}
+        responseLines={responseLines}
+        coverageRows={coverageRows}
+        selections={selections}
+        selectionLines={selectionLines}
+        shipmentGroups={shipmentGroups}
+        landedCosts={landedCosts}
+        salesQuotes={salesQuotes}
+        contracts={contracts}
+        purchaseOrders={purchaseOrders}
+        rfqStatusLabel={rfqStatusLabel}
+        handleDeleteRfq={handleDeleteRfq}
+      />
+      <SupplierCreateModal
         open={supplierCreateOpen}
         onCancel={() => setSupplierCreateOpen(false)}
-        footer={null}
-        title="Создать поставщика"
-      >
-        <Form
-          form={supplierCreateForm}
-          layout="vertical"
-          onFinish={handleCreateSupplier}
-        >
-          <Form.Item
-            label="Название"
-            name="name"
-            rules={[{ required: true, message: "Введите название поставщика" }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label="Код поставщика"
-            name="public_code"
-            rules={[{ required: true, message: "Введите код поставщика" }]}
-          >
-            <Input placeholder="Например SUP-01" />
-          </Form.Item>
-          <Form.Item>
-            <Checkbox
-              checked={autoAddCreatedSupplier}
-              onChange={(e) => setAutoAddCreatedSupplier(e.target.checked)}
-            >
-              Сразу добавить в RFQ
-            </Checkbox>
-          </Form.Item>
-          <Space>
-            <Button onClick={() => setSupplierCreateOpen(false)}>Отмена</Button>
-            <Button type="primary" htmlType="submit">
-              Создать
-            </Button>
-          </Space>
-        </Form>
-      </Modal>
-      <Modal
-        open={selectionModal.open}
-        onCancel={() => setSelectionModal((prev) => ({ ...prev, open: false }))}
-        title={`Структура для поставщика: ${selectionModal.supplier?.supplier_name || ""}`}
-        width={1000}
-        okText="Сохранить"
-        onOk={() => saveSelections(selectionNodeMapRef.current)}
-        confirmLoading={selectionModal.saving}
-      >
-        {selectionModal.loading ? (
-          <Text type="secondary">Загрузка…</Text>
-        ) : (
-          <Space direction="vertical" style={{ width: "100%" }} size={12}>
-            <Space wrap align="center">
-              <Checkbox
-                checked={selectionModal.onlyHinted}
-                disabled={!activeSupplierHints}
-                onChange={(e) =>
-                  setSelectionModal((prev) => ({ ...prev, onlyHinted: e.target.checked }))
-                }
-              >
-                Показать только где есть
-              </Checkbox>
-              <Button disabled={!activeSupplierHints} onClick={handleSelectAllHinted}>
-                Отметить всё где есть
-              </Button>
-              {!activeSupplierHints ? (
-                <Text type="secondary">Нет подсказок по поставщику</Text>
-              ) : null}
-            </Space>
-            <Space wrap size={8} align="center">
-              <Text type="secondary">Легенда:</Text>
-              <Tag>Оригинал/BOM</Tag>
-              <Tag color="orange">Подмена</Tag>
-              <Tag color="green">Роль комплекта</Tag>
-              <Tag color="blue">Есть связь</Tag>
-            </Space>
-            <Space wrap size={8} align="center">
-              <Text strong>
-                Позиции покрыты: {selectionCoverage.hintedItems}/{selectionCoverage.totalItems}
-              </Text>
-              <Text type="secondary">
-                Позиции выбраны: {selectionCoverage.selectedItems}/{selectionCoverage.totalItems}
-              </Text>
-            </Space>
-            <Space wrap size={8} align="center">
-              <Text type="secondary">
-                Детальные варианты со связями: {selectionCoverage.hinted}/{selectionCoverage.total}
-              </Text>
-              {activeSupplierHints ? (
-                <Text type="secondary">
-                  Выбрано со связями: {selectionCoverage.selectedHinted}/{selectionCoverage.hinted}
-                </Text>
-              ) : null}
-            </Space>
-            <Tree
-              checkable
-              checkStrictly
-              defaultExpandAll
-              showLine
-              checkedKeys={selectionModal.selectedKeys}
-              onCheck={(checked, info) => {
-                const next = new Set(Array.isArray(checked) ? checked : checked.checked)
-                const actionKey = info?.node?.key
-                const actionChecked = info?.checked
-                const normalized =
-                  actionKey !== undefined
-                    ? applyAltExclusion(next, actionKey, actionChecked)
-                    : next
-                setSelectionModal((prev) => {
-                  const accepted = new Set(prev.acceptedKeys || [])
-                  Array.from(accepted).forEach((key) => {
-                    if (!normalized.has(key)) accepted.delete(key)
-                  })
-                  return {
-                    ...prev,
-                    selectedKeys: Array.from(normalized),
-                    acceptedKeys: Array.from(accepted),
-                  }
-                })
-              }}
-              treeData={selectionTreeDataVisible}
-            />
-          </Space>
-        )}
-      </Modal>
+        form={supplierCreateForm}
+        onFinish={handleCreateSupplier}
+        autoAddCreatedSupplier={autoAddCreatedSupplier}
+        setAutoAddCreatedSupplier={setAutoAddCreatedSupplier}
+      />
+      <SelectionStructureModal
+        selectionModal={selectionModal}
+        setSelectionModal={setSelectionModal}
+        activeSupplierHints={activeSupplierHints}
+        selectionCoverage={selectionCoverage}
+        selectionTreeDataVisible={selectionTreeDataVisible}
+        applyAltExclusion={applyAltExclusion}
+        selectionNodeMapRef={selectionNodeMapRef}
+        handleSelectAllHinted={handleSelectAllHinted}
+        saveSelections={saveSelections}
+      />
 
-      <Modal
-        open={kitPreview.open}
-        onCancel={() =>
-          setKitPreview({
-            open: false,
-            partId: null,
-            bundles: [],
-            bundleId: null,
-            items: [],
-            loading: false,
-          })
-        }
-        title="Роли комплекта"
-        width={700}
-        footer={<Button onClick={() => setKitPreview((prev) => ({ ...prev, open: false }))}>Закрыть</Button>}
-      >
-        {kitPreview.loading ? (
-          <Text type="secondary">Загрузка…</Text>
-        ) : (
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Select
-              placeholder="Выберите комплект"
-              value={kitPreview.bundleId || undefined}
-              options={kitPreview.bundles.map((b) => ({
-                value: b.id,
-                label: b.title || `Комплект #${b.id}`,
-              }))}
-              onChange={async (value) => {
-                const items = await loadBundleItems(value)
-                setKitPreview((prev) => ({
-                  ...prev,
-                  bundleId: value,
-                  items: Array.isArray(items) ? items : [],
-                }))
-              }}
-              style={{ width: 360 }}
-            />
-            <Table
-              rowKey="id"
-              dataSource={kitPreview.items}
-              pagination={false}
-              columns={[
-                { title: "Роль", dataIndex: "role_label" },
-                { title: "Кол-во", dataIndex: "qty", width: 120 },
-              ]}
-            />
-          </Space>
-        )}
-      </Modal>
+      <KitPreviewModal
+        kitPreview={kitPreview}
+        setKitPreview={setKitPreview}
+        loadBundleItems={loadBundleItems}
+      />
 
-      <Modal
-        open={altModal.open}
-        onCancel={() =>
-          setAltModal({ open: false, loading: false, partId: null, items: [] })
-        }
-        title="Альтернативные оригиналы"
-        width={820}
-        footer={
-          <Button
-            onClick={() =>
-              setAltModal({ open: false, loading: false, partId: null, items: [] })
-            }
-          >
-            Закрыть
-          </Button>
-        }
-      >
-        {altModal.loading ? (
-          <Text type="secondary">Загрузка…</Text>
-        ) : (
-          <Table
-            rowKey={(row) => row.alt_part_id}
-            dataSource={altModal.items}
-            pagination={false}
-            size="small"
-            columns={[
-              { title: "Part #", dataIndex: "cat_number", width: 160 },
-              {
-                title: "Описание",
-                render: (_, r) => r.description_ru || r.description_en || "—",
-              },
-              { title: "Производитель", dataIndex: "manufacturer_name", width: 200 },
-              { title: "Модель", dataIndex: "model_name", width: 200 },
-            ]}
-          />
-        )}
-      </Modal>
+      <AltPartsModal altModal={altModal} setAltModal={setAltModal} />
 
-      <Modal
-        open={importModal.open}
-        title="Импорт ответов поставщика"
-        onCancel={() =>
-          setImportModal({
-            open: false,
-            supplierId: null,
-            text: "",
-            rows: [],
-            loading: false,
-            fileName: "",
-            newRevision: false,
-          })
-        }
-        footer={[
-          <Button
-            key="cancel"
-            onClick={() =>
-              setImportModal({
-                open: false,
-                supplierId: null,
-                text: "",
-                rows: [],
-                loading: false,
-                fileName: "",
-                newRevision: false,
-              })
-            }
-          >
-            Отмена
-          </Button>,
-          <Button
-            key="import"
-            type="primary"
-            loading={importModal.loading}
-            onClick={async () => {
-              if (!activeRfqId) return
-              if (!importModal.supplierId) {
-                message.warning("Выберите поставщика (фильтр выше)")
-                return
-              }
-              const rows =
-                Array.isArray(importModal.rows) && importModal.rows.length
-                  ? importModal.rows
-                  : parseImportTextRows(importModal.text)
-
-              if (!rows.length) {
-                message.warning("Не удалось распарсить данные. Формат: <строка> <tab> <цена> <tab> <валюта> [<tab> срок]")
-                return
-              }
-
-              setImportModal((prev) => ({ ...prev, loading: true }))
-              try {
-                await axios.post(`/rfqs/${activeRfqId}/responses/import`, {
-                  supplier_id: importModal.supplierId,
-                  rows,
-                  new_revision: importModal.newRevision === true,
-                })
-                message.success("Ответы импортированы")
-                await loadResponsesAndLines(activeRfqId)
-                setImportModal({
-                  open: false,
-                  supplierId: null,
-                  text: "",
-                  rows: [],
-                  loading: false,
-                  fileName: "",
-                  newRevision: false,
-                })
-              } catch (err) {
-                console.error(err)
-                message.error("Импорт не удался")
-                setImportModal((prev) => ({ ...prev, loading: false }))
-              }
-            }}
-          >
-            Импортировать
-          </Button>,
-        ]}
-      >
-        <Space direction="vertical" style={{ width: "100%" }}>
-          <Text type="secondary">
-            Вставьте данные из Excel/TSV: столбцы «Строка», «Цена», «Валюта», «Срок (дн.)», «Примечание».
-            Разделитель — табуляция или точка с запятой.
-          </Text>
-          <Checkbox
-            checked={importModal.newRevision || false}
-            onChange={(e) => setImportModal((prev) => ({ ...prev, newRevision: e.target.checked }))}
-          >
-            Создать новую ревизию ответа
-          </Checkbox>
-          <Input.TextArea
-            rows={8}
-            value={importModal.text}
-            onChange={(e) =>
-              setImportModal((prev) => ({ ...prev, text: e.target.value, rows: [] }))
-            }
-            placeholder={"1\t100\tEUR\t10\n2\t50\tUSD\t7"}
-          />
-          <Button
-            icon={<UploadOutlined />}
-            onClick={() => document.getElementById("rfq-import-file")?.click()}
-          >
-            Загрузить из Excel
-          </Button>
-          <input
-            id="rfq-import-file"
-            type="file"
-            accept=".xlsx,.xls"
-            style={{ display: "none" }}
-            onChange={async (e) => {
-              const file = e.target.files?.[0]
-              if (!file) return
-              try {
-                const data = await file.arrayBuffer()
-                const wb = XLSX.read(data, { type: "array" })
-                const ws = wb.Sheets[wb.SheetNames[0]]
-                const json = XLSX.utils.sheet_to_json(ws, { header: 1 })
-                const rowsParsed = json
-                  .map((r) => parseImportRow(r))
-                  .filter((r) => r && Number.isFinite(r.line_number) && Number.isFinite(r.price) && r.currency)
-                if (!rowsParsed.length) {
-                  message.warning("Не удалось распарсить файл: убедитесь, что заполнены колонки Строка/Цена/Валюта")
-                  return
-                }
-                const text = rowsParsed
-                  .map(
-                    (r) =>
-                      `${r.line_number}\t${r.price}\t${r.currency}\t${r.lead_time_days || ""}\t${r.note || ""}`
-                  )
-                  .join("\n")
-                setImportModal((prev) => ({
-                  ...prev,
-                  text,
-                  rows: rowsParsed,
-                  fileName: file.name,
-                }))
-                message.success("Файл прочитан, данные подставлены")
-              } catch (err) {
-                console.error(err)
-                message.error("Не удалось прочитать файл")
-              } finally {
-                e.target.value = ""
-              }
-            }}
-          />
-          {importModal.fileName ? (
-            <Text type="secondary">Файл: {importModal.fileName}</Text>
-          ) : null}
-        </Space>
-      </Modal>
+      <ImportResponsesModal
+        importModal={importModal}
+        setImportModal={setImportModal}
+        activeRfqId={activeRfqId}
+        suppliers={suppliers}
+        onImported={loadResponsesAndLines}
+      />
 
     </PageWrapper>
   )

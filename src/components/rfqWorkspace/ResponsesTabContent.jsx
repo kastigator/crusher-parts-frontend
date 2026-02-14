@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import {
   Alert,
   Button,
@@ -21,6 +21,22 @@ import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 const { Text } = Typography
+
+const OFFER_TYPE_OPTIONS = [
+  { value: "ANALOG", label: "Аналог" },
+  { value: "OEM", label: "OEM (оригинал)" },
+  { value: "UNKNOWN", label: "Не указан" },
+]
+const OFFER_TYPE_LABELS = {
+  ANALOG: "Аналог",
+  OEM: "OEM (оригинал)",
+  UNKNOWN: "Не указан",
+}
+
+const formatOfferTypeLabel = (value) => {
+  const normalized = String(value || "").trim().toUpperCase()
+  return OFFER_TYPE_LABELS[normalized] || "—"
+}
 
 const acceptedSourceSuffix = (row) => {
   const explicitSource = String(row.line_source_type || "").toUpperCase()
@@ -62,29 +78,439 @@ const getRequestedOriginalCat = (row) => {
   return row?.component_cat_number || row?.requested_original_cat_number || row?.response_original_cat_number || row?.original_cat_number || "—"
 }
 
-const getRequestedOriginalDesc = (row) => {
-  if (Number(row?.accepted_from_existing_price) === 1) {
+const getOriginalCatNumber = (row) =>
+  String(
+    row?.requested_original_cat_number ||
+      row?.response_original_cat_number ||
+      row?.original_cat_number ||
+      row?.component_cat_number ||
+      ""
+  ).trim()
+
+const getSelectionKey = (row) =>
+  String(row?.selected_selection_key || row?.selection_key || "").trim()
+
+const splitSelectionMeta = (value, keepEmpty = false) => {
+  const raw = String(value || "")
+  if (!raw) return []
+  const parts = raw.split("\n").map((part) => String(part).trim())
+  return keepEmpty ? parts : parts.filter(Boolean)
+}
+
+const inferLineTypeFromSelectionKey = (selectionKey) => {
+  const key = String(selectionKey || "").trim().toLowerCase()
+  if (!key) return null
+  if (key.startsWith("kit:")) return "KIT_ROLE"
+  if (key.startsWith("bom:")) return "BOM_COMPONENT"
+  if (key.startsWith("demand:")) return "DEMAND"
+  if (key.startsWith("alt:")) return "BOM_COMPONENT"
+  return null
+}
+
+const parseSelectionKeyMeta = (selectionKey) => {
+  const raw = String(selectionKey || "").trim()
+  if (!raw) return null
+  const parts = raw.split(":")
+  const head = String(parts[0] || "").toLowerCase()
+  const toSafeNumber = (value) => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  if (head === "alt") {
+    return {
+      raw,
+      kind: "ALT",
+      lineType: "BOM_COMPONENT",
+      rfqItemId: toSafeNumber(parts[1]),
+      basePartId: toSafeNumber(parts[2]),
+      altPartId: toSafeNumber(parts[3]),
+    }
+  }
+  if (head === "bom") {
+    return {
+      raw,
+      kind: "BOM_COMPONENT",
+      lineType: "BOM_COMPONENT",
+      rfqItemId: toSafeNumber(parts[1]),
+      basePartId: toSafeNumber(parts[2]),
+    }
+  }
+  if (head === "kit") {
+    return {
+      raw,
+      kind: "KIT_ROLE",
+      lineType: "KIT_ROLE",
+      rfqItemId: toSafeNumber(parts[1]),
+      bundleId: toSafeNumber(parts[2]),
+      roleId: toSafeNumber(parts[3]),
+    }
+  }
+  if (head === "demand") {
+    return {
+      raw,
+      kind: "DEMAND",
+      lineType: "DEMAND",
+      rfqItemId: toSafeNumber(parts[1]),
+    }
+  }
+  return null
+}
+
+const getSelectionLineType = (row) => {
+  const explicit = String(
+    row?.selected_line_type || row?.line_type || row?.selection_line_type || ""
+  )
+    .trim()
+    .toUpperCase()
+  if (explicit) return explicit
+  return inferLineTypeFromSelectionKey(getSelectionKey(row))
+}
+
+const getSelectionLineLabel = (row) =>
+  String(
+    row?.selected_line_label ||
+      row?.line_label ||
+      row?.selected_line_description ||
+      row?.line_description ||
+      ""
+  ).trim()
+
+const getRowSelectionEntries = (row) => {
+  const keys = splitSelectionMeta(row?.selected_selection_keys)
+  const types = splitSelectionMeta(row?.selected_selection_types, true)
+  const labels = splitSelectionMeta(row?.selected_selection_labels, true)
+  const descriptions = splitSelectionMeta(row?.selected_selection_descriptions, true)
+  const originalCats = splitSelectionMeta(row?.selected_selection_original_cats, true)
+  const altCats = splitSelectionMeta(row?.selected_selection_alt_cats, true)
+
+  if (keys.length) {
+    const seen = new Set()
+    return keys
+      .map((selectionKey, index) => {
+        const parsed = parseSelectionKeyMeta(selectionKey)
+        const explicitType = String(types[index] || "").trim().toUpperCase()
+        const lineType = explicitType || parsed?.lineType || ""
+        const lineLabel = String(labels[index] || "").trim()
+        const lineDescription = String(descriptions[index] || "").trim()
+        const originalCat = String(originalCats[index] || "").trim()
+        const altCat = String(altCats[index] || "").trim()
+        return {
+          selectionKey,
+          lineType,
+          lineLabel,
+          lineDescription,
+          originalCat,
+          altCat,
+          parsed,
+          isAlt:
+            parsed?.kind === "ALT" ||
+            (Number.isFinite(parsed?.altPartId) && Number(parsed?.altPartId) > 0),
+        }
+      })
+      .filter((entry) => {
+        const key = entry.selectionKey
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+  }
+
+  const selectionKey = getSelectionKey(row)
+  const parsed = parseSelectionKeyMeta(selectionKey)
+  const lineType = getSelectionLineType(row)
+  const lineLabel = getSelectionLineLabel(row)
+  const lineDescription = String(row?.selected_line_description || "").trim()
+  const originalCat = String(row?.selected_selection_original_cats || "").trim()
+  const altCat = String(row?.selected_selection_alt_cats || "").trim()
+  if (!selectionKey && !lineType && !lineLabel) return []
+  return [
+    {
+      selectionKey,
+      lineType: lineType || parsed?.lineType || "",
+      lineLabel,
+      lineDescription,
+      originalCat,
+      altCat,
+      parsed,
+      isAlt:
+        parsed?.kind === "ALT" ||
+        (Number.isFinite(parsed?.altPartId) && Number(parsed?.altPartId) > 0),
+    },
+  ]
+}
+
+const getSelectionDisplayText = (row, selectionEntry = null) => {
+  const lineType = String(selectionEntry?.lineType || getSelectionLineType(row) || "").toUpperCase()
+  const explicitLineLabel = String(selectionEntry?.lineLabel || "").trim()
+  const componentBaseCat =
+    String(selectionEntry?.originalCat || row?.component_cat_number || "").trim()
+  if (selectionEntry?.isAlt) {
+    const altCat =
+      String(
+        selectionEntry?.altCat || explicitLineLabel || row?.response_original_cat_number || ""
+      ).trim() || "без номера"
+    return componentBaseCat
+      ? `Подмена: ${altCat} (вместо ${componentBaseCat})`
+      : `Подмена: ${altCat}`
+  }
+  if (lineType === "KIT_ROLE") {
+    const roleLabel =
+      explicitLineLabel ||
+      getSelectionLineLabel(row) ||
+      row?.component_description_ru ||
+      row?.component_description_en ||
+      row?.response_original_description_ru ||
+      row?.response_original_description_en ||
+      ""
+    if (roleLabel && componentBaseCat) return `Роль: ${roleLabel} (из ${componentBaseCat})`
+    if (roleLabel) return `Роль: ${roleLabel}`
+    return "Роль комплекта"
+  }
+  if (lineType === "BOM_COMPONENT") {
+    const partLabel = componentBaseCat || getSelectionLineLabel(row) || ""
+    if (partLabel) return `Компонент: ${partLabel}`
+    return "Компонент BOM"
+  }
+  if (lineType === "DEMAND") {
+    const partLabel = getOriginalCatNumber(row) || "Без номера"
+    return `Позиция: ${partLabel}`
+  }
+  const catNumber = getOriginalCatNumber(row)
+  return catNumber || "—"
+}
+
+const getSelectionDisplaySummary = (row) => {
+  const preferred = getPreferredSelectionEntry(row)
+  return getSelectionDisplayText(row, preferred)
+}
+
+const selectionEntryRank = (entry) => {
+  if (entry?.isAlt) return 0
+  const type = String(entry?.lineType || "").toUpperCase()
+  if (type === "KIT_ROLE") return 1
+  if (type === "DEMAND") return 2
+  if (type === "BOM_COMPONENT") return 3
+  return 9
+}
+
+const getPreferredSelectionEntry = (row) => {
+  const entries = getRowSelectionEntries(row)
+  if (!entries.length) return null
+  return [...entries].sort((a, b) => selectionEntryRank(a) - selectionEntryRank(b))[0]
+}
+
+const getRowContextTypeLabel = (row, selectionEntry = null) => {
+  const entry = selectionEntry || getPreferredSelectionEntry(row)
+  if (entry?.isAlt) return "Подмена"
+  const type = String(entry?.lineType || "").toUpperCase()
+  if (type === "KIT_ROLE") return "Роль"
+  if (type === "DEMAND") return "Позиция"
+  if (type === "BOM_COMPONENT") return "Компонент"
+  return "Строка"
+}
+
+const getRowDescriptionText = (row, selectionEntry = null) => {
+  const entry = selectionEntry || getPreferredSelectionEntry(row)
+  if (entry?.isAlt) {
+    return (
+      entry.lineDescription ||
+      row?.response_original_description_ru ||
+      row?.response_original_description_en ||
+      row?.component_description_ru ||
+      row?.component_description_en ||
+      row?.requested_original_description_ru ||
+      row?.requested_original_description_en ||
+      row?.client_description ||
+      "—"
+    )
+  }
+  const type = String(entry?.lineType || "").toUpperCase()
+  if (type === "KIT_ROLE") {
+    return entry?.lineLabel || entry?.lineDescription || "Роль комплекта"
+  }
+  if (type === "BOM_COMPONENT") {
     return (
       row?.component_description_ru ||
-      row?.response_original_description_ru ||
-      row?.requested_original_description_ru ||
       row?.component_description_en ||
-      row?.response_original_description_en ||
+      entry?.lineDescription ||
+      entry?.lineLabel ||
+      row?.requested_original_description_ru ||
       row?.requested_original_description_en ||
       row?.client_description ||
       "—"
     )
   }
   return (
-    row?.component_description_ru ||
     row?.requested_original_description_ru ||
-    row?.component_description_en ||
     row?.requested_original_description_en ||
+    row?.client_description ||
     row?.response_original_description_ru ||
     row?.response_original_description_en ||
-    row?.client_description ||
     "—"
   )
+}
+
+const getOriginalFilterKey = (row) => {
+  return getOriginalFilterKeyByEntry(row, null)
+}
+
+const getOriginalFilterKeyByEntry = (row, selectionEntry) => {
+  const lineType = String(selectionEntry?.lineType || getSelectionLineType(row) || "").toUpperCase()
+  const selectionKey = String(selectionEntry?.selectionKey || getSelectionKey(row) || "").trim()
+  const explicitLineLabel = String(selectionEntry?.lineLabel || "").trim()
+  const parsed = selectionEntry?.parsed || parseSelectionKeyMeta(selectionKey)
+  const rfqItemId = Number(row?.rfq_item_id)
+  const safeItemId = Number.isFinite(rfqItemId) && rfqItemId > 0 ? rfqItemId : 0
+
+  if (selectionEntry?.isAlt || parsed?.kind === "ALT") {
+    const basePartId = Number(parsed?.basePartId || 0)
+    const altPartId = Number(parsed?.altPartId || 0)
+    if (basePartId > 0 || altPartId > 0) {
+      return `alt:${safeItemId}:${basePartId}:${altPartId}`
+    }
+    if (selectionKey) return `alt:${safeItemId}:${selectionKey}`
+  }
+
+  if (lineType === "KIT_ROLE") {
+    if (selectionKey) return `kit:${safeItemId}:${selectionKey}`
+    const bundleItemId = Number(row?.selected_bundle_item_id || row?.bundle_item_id)
+    if (Number.isFinite(bundleItemId) && bundleItemId > 0) {
+      return `kit-item:${safeItemId}:${bundleItemId}`
+    }
+    const roleLabel = explicitLineLabel || getSelectionLineLabel(row)
+    if (roleLabel) return `kit-label:${safeItemId}:${roleLabel}`
+  }
+
+  if (lineType === "DEMAND") {
+    return `demand:${safeItemId}`
+  }
+
+  if (lineType === "BOM_COMPONENT") {
+    const parsedBasePartId = Number(parsed?.basePartId || 0)
+    if (parsedBasePartId > 0) return `component:${safeItemId}:${parsedBasePartId}`
+    const componentPartId = Number(
+      row?.component_original_part_id || row?.selected_original_part_id
+    )
+    if (Number.isFinite(componentPartId) && componentPartId > 0) {
+      return `component:${safeItemId}:${componentPartId}`
+    }
+    const componentCatNumber = String(row?.component_cat_number || "").trim()
+    if (componentCatNumber) return `component-cat:${safeItemId}:${componentCatNumber}`
+  }
+
+  const catNumber = getOriginalCatNumber(row)
+  if (catNumber) return `cat:${catNumber}`
+
+  if (Number.isFinite(rfqItemId) && rfqItemId > 0) return `item:${rfqItemId}`
+
+  const lineNumber = Number(row?.rfq_line_number)
+  if (Number.isFinite(lineNumber) && lineNumber > 0) return `line:${lineNumber}`
+
+  return null
+}
+
+const getOriginalFilterLabel = (row) => getOriginalFilterLabelByEntry(row, null)
+
+const getOriginalFilterLabelByEntry = (row, selectionEntry) => {
+  const lineNumber = row?.rfq_line_number || row?.line_number || "—"
+  const lineType = String(selectionEntry?.lineType || getSelectionLineType(row) || "").toUpperCase()
+  const explicitLineLabel = String(selectionEntry?.lineLabel || "").trim()
+  const parsed = selectionEntry?.parsed || parseSelectionKeyMeta(selectionEntry?.selectionKey)
+  const originalCat =
+    String(
+      selectionEntry?.originalCat ||
+        row?.component_cat_number ||
+        row?.requested_original_cat_number ||
+        ""
+    ).trim() || "Без номера"
+  const altCat =
+    String(
+      selectionEntry?.altCat ||
+        explicitLineLabel ||
+        row?.response_original_cat_number ||
+        row?.original_cat_number ||
+        ""
+    ).trim() || "Без номера"
+  if (selectionEntry?.isAlt || parsed?.kind === "ALT") {
+    return `${lineNumber} · подмена: ${altCat} → ${originalCat}`
+  }
+  if (lineType === "KIT_ROLE") {
+    const roleLabel = explicitLineLabel || getSelectionLineLabel(row)
+    const fromText = selectionEntry?.originalCat
+      ? ` · из детали: ${selectionEntry.originalCat}`
+      : ""
+    return roleLabel
+      ? `${lineNumber} · роль: ${roleLabel}${fromText}`
+      : `${lineNumber} · роль комплекта`
+  }
+  if (lineType === "DEMAND") {
+    const catNumber = getOriginalCatNumber(row) || "Без номера"
+    const description =
+      row?.requested_original_description_ru ||
+      row?.requested_original_description_en ||
+      row?.client_description ||
+      ""
+    return description
+      ? `${lineNumber} · позиция: ${catNumber} · ${description}`
+      : `${lineNumber} · позиция: ${catNumber}`
+  }
+  if (lineType === "BOM_COMPONENT") {
+    const componentCat = originalCat || getSelectionLineLabel(row) || "Без номера"
+    const componentDescription =
+      row?.component_description_ru || row?.component_description_en || ""
+    return componentDescription
+      ? `${lineNumber} · компонент: ${componentCat} · ${componentDescription}`
+      : `${lineNumber} · компонент: ${componentCat}`
+  }
+  const catNumber = getOriginalCatNumber(row) || "Без номера"
+  const description =
+    row?.requested_original_description_ru ||
+    row?.requested_original_description_en ||
+    row?.client_description ||
+    row?.response_original_description_ru ||
+    row?.response_original_description_en ||
+    ""
+  return description
+    ? `${lineNumber} · ${catNumber} · ${description}`
+    : `${lineNumber} · ${catNumber}`
+}
+
+const getRowOriginalFilterDescriptors = (row) => {
+  const selectionEntries = getRowSelectionEntries(row)
+  const descriptors =
+    selectionEntries.length > 0
+      ? selectionEntries
+          .map((entry) => ({
+            key: getOriginalFilterKeyByEntry(row, entry),
+            label: getOriginalFilterLabelByEntry(row, entry),
+          }))
+          .filter((entry) => entry.key)
+      : [
+          {
+            key: getOriginalFilterKey(row),
+            label: getOriginalFilterLabel(row),
+          },
+        ]
+  const seen = new Set()
+  return descriptors.filter((entry) => {
+    const key = String(entry.key || "")
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+const rowMatchesOriginalFilter = (row, filterKey) => {
+  if (!filterKey) return true
+  return getRowOriginalFilterDescriptors(row).some((entry) => entry.key === filterKey)
+}
+
+const formatRfqItemLabel = (item) => {
+  const line = item?.line_number || "—"
+  const cat = item?.original_cat_number || "—"
+  const description =
+    item?.client_description || item?.original_description_ru || item?.original_description_en || ""
+  return description ? `${line} · ${cat} · ${description}` : `${line} · ${cat}`
 }
 
 export default function ResponsesTabContent({
@@ -99,10 +525,13 @@ export default function ResponsesTabContent({
   setShowArchivedResponses,
   importModal,
   setImportModal,
-  filteredResponseLines,
+  workspaceRows = [],
+  responseLines = [],
   formatDate,
 }) {
   const [viewMode, setViewMode] = useState("supplier")
+  const [onlyWaiting, setOnlyWaiting] = useState(false)
+  const [responseOriginalFilter, setResponseOriginalFilter] = useState(null)
   const [manualModalOpen, setManualModalOpen] = useState(false)
   const [manualSaving, setManualSaving] = useState(false)
   const [negotiationModal, setNegotiationModal] = useState({
@@ -113,14 +542,44 @@ export default function ResponsesTabContent({
   const [manualForm] = Form.useForm()
   const [negotiationForm] = Form.useForm()
   const [createSupplierPart, setCreateSupplierPart] = useState(false)
+  const [supplierPartSearch, setSupplierPartSearch] = useState("")
+  const [supplierPartLoading, setSupplierPartLoading] = useState(false)
+  const [supplierPartOptions, setSupplierPartOptions] = useState([])
+  const [manualSelectionLoading, setManualSelectionLoading] = useState(false)
+  const [manualSelectionOptions, setManualSelectionOptions] = useState([])
+  const [manualSupplierLock, setManualSupplierLock] = useState(null)
+  const [manualLineLock, setManualLineLock] = useState(null)
+  const manualSupplierId = Form.useWatch("supplier_id", manualForm)
+  const manualRfqItemId = Form.useWatch("rfq_item_id", manualForm)
+
+  const itemByRfqItemId = useMemo(() => {
+    const map = new Map()
+    ;(Array.isArray(items) ? items : []).forEach((it) => {
+      const rfqItemId = Number(it.id || it.rfq_item_id)
+      if (Number.isFinite(rfqItemId) && rfqItemId > 0) {
+        map.set(rfqItemId, it)
+      }
+    })
+    return map
+  }, [items])
+
+  const getRfqLineDisplay = (row) => {
+    const directLine = Number(row?.rfq_line_number || row?.line_number)
+    if (Number.isFinite(directLine) && directLine > 0) return String(directLine)
+    const rfqItemId = Number(row?.rfq_item_id)
+    if (Number.isFinite(rfqItemId) && rfqItemId > 0) {
+      const item = itemByRfqItemId.get(rfqItemId)
+      const itemLine = Number(item?.line_number)
+      if (Number.isFinite(itemLine) && itemLine > 0) return String(itemLine)
+    }
+    return "—"
+  }
 
   const lineOptions = useMemo(
     () =>
       (Array.isArray(items) ? items : []).map((it) => ({
         value: Number(it.id || it.rfq_item_id),
-        label: `${it.line_number || "?"} · ${it.original_cat_number || "-"} · ${
-          it.client_description || it.original_description_ru || it.original_description_en || ""
-        }`,
+        label: formatRfqItemLabel(it),
       })),
     [items]
   )
@@ -129,18 +588,78 @@ export default function ResponsesTabContent({
     () =>
       (Array.isArray(suppliers) ? suppliers : []).map((s) => ({
         value: Number(s.supplier_id),
-        label: s.supplier_name || `Поставщик #${s.supplier_id}`,
+        label: s.supplier_name || "Поставщик без названия",
       })),
     [suppliers]
   )
+  const rfqSupplierIdBySupplierId = useMemo(() => {
+    const map = new Map()
+    ;(Array.isArray(suppliers) ? suppliers : []).forEach((row) => {
+      const supplierId = Number(row?.supplier_id)
+      const rfqSupplierId = Number(row?.id)
+      if (Number.isFinite(supplierId) && supplierId > 0 && Number.isFinite(rfqSupplierId) && rfqSupplierId > 0) {
+        map.set(supplierId, rfqSupplierId)
+      }
+    })
+    return map
+  }, [suppliers])
+
+  const numericSupplierFilter = useMemo(() => {
+    if (responseSupplierFilter == null || responseSupplierFilter === "") return null
+    const parsed = Number(responseSupplierFilter)
+    return Number.isFinite(parsed) ? parsed : null
+  }, [responseSupplierFilter])
+
+  const originalFilterOptions = useMemo(() => {
+    const seen = new Set()
+    const options = []
+    const addOption = (row) => {
+      const descriptors = getRowOriginalFilterDescriptors(row)
+      descriptors.forEach((descriptor) => {
+        const key = String(descriptor?.key || "")
+        if (!key || seen.has(key)) return
+        seen.add(key)
+        options.push({
+          value: key,
+          label: descriptor.label,
+        })
+      })
+    }
+    ;(Array.isArray(workspaceRows) ? workspaceRows : []).forEach(addOption)
+    ;(Array.isArray(responseLines) ? responseLines : []).forEach(addOption)
+    return options.sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")))
+  }, [workspaceRows, responseLines])
+
+  const modeFilteredWorkspaceRows = useMemo(() => {
+    const rows = Array.isArray(workspaceRows) ? workspaceRows : []
+    return rows.filter((row) => {
+      if (viewMode === "supplier") {
+        if (numericSupplierFilter == null) return true
+        return Number(row.supplier_id) === numericSupplierFilter
+      }
+      return rowMatchesOriginalFilter(row, responseOriginalFilter)
+    })
+  }, [workspaceRows, viewMode, numericSupplierFilter, responseOriginalFilter])
+
+  const modeFilteredResponseLines = useMemo(() => {
+    const rows = Array.isArray(responseLines) ? responseLines : []
+    return rows.filter((row) => {
+      if (viewMode === "supplier") {
+        if (numericSupplierFilter == null) return true
+        return Number(row.supplier_id) === numericSupplierFilter
+      }
+      return rowMatchesOriginalFilter(row, responseOriginalFilter)
+    })
+  }, [responseLines, viewMode, numericSupplierFilter, responseOriginalFilter])
 
   const responseTimeline = useMemo(() => {
     const byKey = new Map()
-    filteredResponseLines.forEach((r) => {
+    modeFilteredResponseLines.forEach((r) => {
+      const scopeKey = getOriginalFilterKey(r) || getSelectionKey(r) || String(getRequestedOriginalCat(r))
       const key = [
         Number(r.supplier_id) || 0,
         Number(r.rfq_line_number) || Number(r.rfq_item_id) || 0,
-        String(getRequestedOriginalCat(r)),
+        scopeKey,
       ].join(":")
       if (!byKey.has(key)) byKey.set(key, [])
       byKey.get(key).push(r)
@@ -153,34 +672,295 @@ export default function ResponsesTabContent({
       )
     )
     return byKey
-  }, [filteredResponseLines])
+  }, [modeFilteredResponseLines])
 
   const byOriginalRows = useMemo(
     () =>
-      [...filteredResponseLines].sort((a, b) => {
-        const aOrig = String(getRequestedOriginalCat(a))
-        const bOrig = String(getRequestedOriginalCat(b))
+      [...modeFilteredWorkspaceRows]
+        .filter((row) =>
+          onlyWaiting
+            ? String(row.workspace_status || "").toUpperCase() === "WAITING_RESPONSE"
+            : true
+        )
+        .sort((a, b) => {
+        const aOrig = String(
+          a.requested_original_cat_number || a.response_original_cat_number || "-"
+        )
+        const bOrig = String(
+          b.requested_original_cat_number || b.response_original_cat_number || "-"
+        )
         if (aOrig !== bOrig) return aOrig.localeCompare(bOrig)
-        const aPrice = Number(a.price)
-        const bPrice = Number(b.price)
+        const aPrice = Number(a.latest_price)
+        const bPrice = Number(b.latest_price)
         if (Number.isFinite(aPrice) && Number.isFinite(bPrice) && aPrice !== bPrice) {
           return aPrice - bPrice
         }
         return String(a.supplier_name || "").localeCompare(String(b.supplier_name || ""))
-      }),
-    [filteredResponseLines]
+        }),
+    [modeFilteredWorkspaceRows, onlyWaiting]
   )
 
-  const openManualModal = () => {
+  const visibleWorkspaceRows = useMemo(
+    () =>
+      modeFilteredWorkspaceRows.filter((row) =>
+        onlyWaiting
+          ? String(row.workspace_status || "").toUpperCase() === "WAITING_RESPONSE"
+          : true
+      ),
+    [modeFilteredWorkspaceRows, onlyWaiting]
+  )
+
+  const counters = useMemo(() => {
+    const rows = modeFilteredWorkspaceRows
+    let waiting = 0
+    let responded = 0
+    let notSent = 0
+    rows.forEach((row) => {
+      const status = String(row.workspace_status || "").toUpperCase()
+      if (status === "WAITING_RESPONSE") waiting += 1
+      else if (status === "RESPONDED") responded += 1
+      else if (status === "NOT_SENT") notSent += 1
+    })
+    return { waiting, responded, notSent, total: rows.length }
+  }, [modeFilteredWorkspaceRows])
+
+  const openManualModal = (preset = null) => {
+    const presetSupplierId = Number(preset?.supplier_id || 0)
+    const presetRfqItemId = Number(preset?.rfq_item_id || 0)
+    const lockedItem = presetRfqItemId > 0 ? itemByRfqItemId.get(presetRfqItemId) : null
+    const lockedSupplier =
+      presetSupplierId > 0
+        ? supplierOptions.find((opt) => Number(opt.value) === presetSupplierId) ||
+          (preset?.supplier_name
+            ? { value: presetSupplierId, label: String(preset.supplier_name) }
+            : null)
+        : null
+    const fallbackLine = Number(preset?.rfq_line_number || preset?.line_number || 0)
+    const fallbackCat = String(
+      preset?.requested_original_cat_number ||
+        preset?.response_original_cat_number ||
+        preset?.original_cat_number ||
+        ""
+    ).trim()
+    const fallbackDescription = String(
+      preset?.requested_original_description_ru ||
+        preset?.requested_original_description_en ||
+        preset?.client_description ||
+        preset?.response_original_description_ru ||
+        preset?.response_original_description_en ||
+        ""
+    ).trim()
+    const fallbackLabelParts = []
+    if (fallbackLine > 0) fallbackLabelParts.push(String(fallbackLine))
+    if (fallbackCat) fallbackLabelParts.push(fallbackCat)
+    if (fallbackDescription) fallbackLabelParts.push(fallbackDescription)
+    const fallbackLabel = fallbackLabelParts.join(" · ")
+    setManualSupplierLock(lockedSupplier)
+    setManualLineLock(
+      presetRfqItemId > 0
+        ? {
+            rfqItemId: presetRfqItemId,
+            label:
+              lockedItem && Number(lockedItem?.line_number)
+                ? formatRfqItemLabel(lockedItem)
+                : fallbackLabel || "Выбранная строка",
+          }
+        : null
+    )
     manualForm.resetFields()
     setCreateSupplierPart(false)
+    setSupplierPartSearch("")
+    setSupplierPartOptions([])
+    const presetStatus = String(preset?.workspace_status || "").toUpperCase()
     manualForm.setFieldsValue({
-      supplier_id: responseSupplierFilter || undefined,
+      supplier_id:
+        presetSupplierId > 0
+          ? presetSupplierId
+          : responseSupplierFilter || undefined,
+      rfq_item_id: presetRfqItemId > 0 ? presetRfqItemId : undefined,
+      rfq_item_component_id: preset?.rfq_item_component_id
+        ? Number(preset.rfq_item_component_id)
+        : undefined,
+      bundle_id: preset?.selected_bundle_id ? Number(preset.selected_bundle_id) : undefined,
+      selection_key:
+        preset?.selected_selection_key || preset?.selection_key || undefined,
       currency: "EUR",
-      offer_type: "UNKNOWN",
-      new_revision: false,
+      offer_type: "ANALOG",
+      new_supplier_part_type: "ANALOG",
+      new_revision: presetStatus === "RESPONDED",
     })
     setManualModalOpen(true)
+  }
+
+  const closeManualModal = () => {
+    setManualModalOpen(false)
+    setManualSupplierLock(null)
+    setManualLineLock(null)
+    setCreateSupplierPart(false)
+    setManualSelectionOptions([])
+    setSupplierPartSearch("")
+    setSupplierPartOptions([])
+    manualForm.resetFields()
+  }
+
+  useEffect(() => {
+    if (!manualModalOpen) return
+    manualForm.setFieldValue("supplier_part_id", undefined)
+    setSupplierPartSearch("")
+    setSupplierPartOptions([])
+  }, [manualModalOpen, manualSupplierId, manualForm])
+
+  useEffect(() => {
+    if (!manualModalOpen) return
+    const supplierId = Number(manualSupplierId)
+    const rfqItemId = Number(manualRfqItemId)
+    const rfqSupplierId = rfqSupplierIdBySupplierId.get(supplierId)
+    if (!Number.isFinite(supplierId) || supplierId <= 0 || !Number.isFinite(rfqItemId) || rfqItemId <= 0 || !Number.isFinite(rfqSupplierId) || rfqSupplierId <= 0 || !activeRfqId) {
+      setManualSelectionOptions([])
+      manualForm.setFieldValue("selection_key", undefined)
+      return
+    }
+    let cancelled = false
+    const loadSelections = async () => {
+      setManualSelectionLoading(true)
+      try {
+        const { data } = await axios.get(
+          `/rfqs/${activeRfqId}/suppliers/${rfqSupplierId}/line-selections`
+        )
+        if (cancelled) return
+        const rows = (Array.isArray(data) ? data : []).filter(
+          (row) => Number(row?.rfq_item_id) === rfqItemId
+        )
+        const options = rows
+          .filter((row) => row?.selection_key)
+          .map((row) => {
+            const lineType = String(row?.line_type || "").toUpperCase()
+            const typeLabel =
+              lineType === "KIT_ROLE"
+                ? "Роль"
+                : lineType === "BOM_COMPONENT"
+                  ? "Компонент"
+                  : "Позиция"
+            const lineLabel = String(row?.line_label || "").trim()
+            const lineDescription = String(row?.line_description || "").trim()
+            const qty = row?.qty != null ? ` · qty ${row.qty}` : ""
+            const label = [typeLabel, lineLabel, lineDescription]
+              .filter(Boolean)
+              .join(" · ") + qty
+            return {
+              value: row.selection_key,
+              label: label || `${typeLabel} · ${row.selection_key}`,
+            }
+          })
+        setManualSelectionOptions(options)
+        if (rows.length === 1 && rows[0]?.selection_key) {
+          manualForm.setFieldValue("selection_key", rows[0].selection_key)
+        } else if (rows.length > 1) {
+          const currentSelection = manualForm.getFieldValue("selection_key")
+          if (!options.some((opt) => opt.value === currentSelection)) {
+            manualForm.setFieldValue("selection_key", undefined)
+          }
+        } else {
+          manualForm.setFieldValue("selection_key", undefined)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.error(e)
+          setManualSelectionOptions([])
+        }
+      } finally {
+        if (!cancelled) setManualSelectionLoading(false)
+      }
+    }
+    loadSelections()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeRfqId,
+    manualForm,
+    manualModalOpen,
+    manualRfqItemId,
+    manualSupplierId,
+    rfqSupplierIdBySupplierId,
+  ])
+
+  useEffect(() => {
+    if (!manualModalOpen) return
+    if (!manualSupplierId || createSupplierPart) {
+      setSupplierPartOptions([])
+      return
+    }
+    const q = String(supplierPartSearch || "").trim()
+    if (q.length < 2) {
+      setSupplierPartOptions([])
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      setSupplierPartLoading(true)
+      try {
+        const { data } = await axios.get("/supplier-parts/search-lite", {
+          params: {
+            q,
+            supplier_id: Number(manualSupplierId),
+            limit: 50,
+          },
+        })
+        if (cancelled) return
+        const list = Array.isArray(data) ? data : []
+        setSupplierPartOptions(
+          list.map((item) => ({
+            value: Number(item.id),
+            label: item.supplier_part_number
+              ? `${item.supplier_part_number} — ${
+                  item.description || ""
+                }${
+                  item.price != null
+                    ? ` · ${formatPriceWithCurrency(item.price, item.currency)}`
+                    : ""
+                }`
+              : `Без номера — ${item.description || ""}`,
+            meta: item,
+          }))
+        )
+      } catch (e) {
+        if (!cancelled) {
+          console.error(e)
+        }
+      } finally {
+        if (!cancelled) setSupplierPartLoading(false)
+      }
+    }, 250)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [manualModalOpen, manualSupplierId, supplierPartSearch, createSupplierPart])
+
+  const getWorkspaceStatusMeta = (row) => {
+    const status = String(row.workspace_status || "").toUpperCase()
+    if (status === "RESPONDED") return { label: "Ответ получен", color: "green" }
+    if (status === "WAITING_RESPONSE") return { label: "Ожидаем ответ", color: "gold" }
+    if (status === "ARCHIVED") return { label: "Архив", color: "default" }
+    return { label: "Не отправлено", color: "default" }
+  }
+
+  const toNegotiationRow = (row) => {
+    if (!row?.latest_response_line_id) return null
+    return {
+      id: row.latest_response_line_id,
+      price: row.latest_price,
+      currency: row.latest_currency,
+      offer_type: row.latest_offer_type,
+      lead_time_days: row.latest_lead_time_days,
+      moq: row.latest_moq,
+      packaging: row.latest_packaging,
+      validity_days: row.latest_validity_days,
+      payment_terms: row.latest_payment_terms,
+      note: row.latest_note,
+    }
   }
 
   const submitManualLine = async () => {
@@ -192,7 +972,7 @@ export default function ResponsesTabContent({
         rfq_item_id: Number(values.rfq_item_id),
         price: Number(values.price),
         currency: String(values.currency || "").toUpperCase(),
-        offer_type: values.offer_type || "UNKNOWN",
+        offer_type: values.offer_type || "ANALOG",
         lead_time_days: values.lead_time_days ?? null,
         moq: values.moq ?? null,
         packaging: values.packaging || null,
@@ -201,7 +981,14 @@ export default function ResponsesTabContent({
         note: values.note || null,
         change_reason: values.change_reason || null,
         new_revision: values.new_revision === true,
-        supplier_part_id: values.supplier_part_id || null,
+        supplier_part_id: values.supplier_part_id ? Number(values.supplier_part_id) : null,
+        supplier_part_number: values.supplier_part_number || null,
+        create_supplier_part: createSupplierPart === true,
+        rfq_item_component_id: values.rfq_item_component_id
+          ? Number(values.rfq_item_component_id)
+          : null,
+        bundle_id: values.bundle_id ? Number(values.bundle_id) : null,
+        selection_key: values.selection_key || null,
       }
       if (createSupplierPart) {
         payload.supplier_part = {
@@ -209,14 +996,32 @@ export default function ResponsesTabContent({
           description_ru: values.new_supplier_part_description_ru || null,
           description_en: values.new_supplier_part_description_en || null,
           part_type: values.new_supplier_part_type || payload.offer_type,
+          lead_time_days: values.lead_time_days ?? null,
+          min_order_qty: values.moq ?? null,
+          packaging: values.packaging || null,
+          weight_kg: values.new_supplier_part_weight_kg ?? null,
+          length_cm: values.new_supplier_part_length_cm ?? null,
+          width_cm: values.new_supplier_part_width_cm ?? null,
+          height_cm: values.new_supplier_part_height_cm ?? null,
+          is_overweight:
+            values.new_supplier_part_is_overweight === true
+              ? 1
+              : values.new_supplier_part_is_overweight === false
+                ? 0
+                : 0,
+          is_oversize:
+            values.new_supplier_part_is_oversize === true
+              ? 1
+              : values.new_supplier_part_is_oversize === false
+                ? 0
+                : 0,
         }
       }
 
       setManualSaving(true)
       await axios.post("/supplier-responses/manual-line", payload)
       message.success("Ответ добавлен")
-      setManualModalOpen(false)
-      manualForm.resetFields()
+      closeManualModal()
       await reloadResponses()
     } catch (e) {
       if (e?.errorFields) return
@@ -232,7 +1037,7 @@ export default function ResponsesTabContent({
     negotiationForm.setFieldsValue({
       price: row.price,
       currency: row.currency || "EUR",
-      offer_type: row.offer_type || "UNKNOWN",
+      offer_type: row.offer_type || "ANALOG",
       lead_time_days: row.lead_time_days,
       moq: row.moq,
       packaging: row.packaging,
@@ -253,7 +1058,7 @@ export default function ResponsesTabContent({
       await axios.post(`/supplier-responses/lines/${row.id}/revise`, {
         price: Number(values.price),
         currency: String(values.currency || "").toUpperCase(),
-        offer_type: values.offer_type || "UNKNOWN",
+        offer_type: values.offer_type || "ANALOG",
         lead_time_days: values.lead_time_days ?? null,
         moq: values.moq ?? null,
         packaging: values.packaging || null,
@@ -276,90 +1081,257 @@ export default function ResponsesTabContent({
   }
 
   const commonColumns = [
-    { title: "Поставщик", dataIndex: "supplier_name", width: 220 },
     {
-      title: "Источник ответа",
-      width: 160,
-      render: (_, r) => <Tag color={sourceTagColor(r)}>{formatSourceLabel(r)}</Tag>,
+      title: "Позиция",
+      width: 170,
+      fixed: "left",
+      render: (_, r) => (
+        <Space direction="vertical" size={0}>
+          <Text>{getRfqLineDisplay(r)}</Text>
+          <Text type="secondary">{getSelectionDisplaySummary(r)}</Text>
+        </Space>
+      ),
     },
-    { title: "Rev", dataIndex: "response_rev_number", width: 70 },
     {
-      title: "Строка",
-      width: 90,
-      render: (_, r) => <Text>{r.rfq_line_number || r.rfq_item_id || "—"}</Text>,
-    },
-    {
-      title: "Оригинал",
-      width: 130,
-      render: (_, r) => getRequestedOriginalCat(r),
+      title: "Поставщик",
+      dataIndex: "supplier_name",
+      width: 260,
+      ellipsis: true,
+      fixed: "left",
     },
     {
       title: "Описание",
-      render: (_, r) => getRequestedOriginalDesc(r),
+      width: 280,
+      ellipsis: true,
+      render: (_, r) => getRowDescriptionText(r),
+    },
+    {
+      title: "Отправлено",
+      width: 130,
+      render: (_, r) =>
+        r.last_request_rfq_revision_number
+          ? `Rev ${r.last_request_rfq_revision_number}`
+          : "—",
+    },
+    {
+      title: "Статус",
+      width: 150,
+      render: (_, r) => {
+        const meta = getWorkspaceStatusMeta(r)
+        return <Tag color={meta.color}>{meta.label}</Tag>
+      },
+    },
+    {
+      title: "Источник ответа",
+      width: 160,
+      render: (_, r) => {
+        if (!r.latest_response_line_id) return "—"
+        const accepted = String(r.line_status || "").toUpperCase() === "ACCEPTED_EXISTING"
+        const pseudo = {
+          accepted_from_existing_price: accepted ? 1 : 0,
+          entry_source: r.latest_entry_source,
+          line_source_type: r.line_source_type,
+          note: r.latest_note,
+        }
+        return <Tag color={sourceTagColor(pseudo)}>{formatSourceLabel(pseudo)}</Tag>
+      },
+    },
+    {
+      title: "Rev ответа",
+      dataIndex: "latest_response_rev_number",
+      width: 110,
+      render: (value) => (
+        <span style={{ whiteSpace: "nowrap" }}>
+          {value != null ? `Rev ${value}` : "—"}
+        </span>
+      ),
+    },
+    {
+      title: "Дата ответа",
+      dataIndex: "latest_response_created_at",
+      width: 120,
+      render: formatDate,
     },
     {
       title: "Цена",
       width: 130,
-      render: (_, r) => (r.price != null ? formatPriceWithCurrency(r.price, r.currency) : "—"),
+      render: (_, r) =>
+        r.latest_price != null
+          ? formatPriceWithCurrency(r.latest_price, r.latest_currency)
+          : "—",
     },
-    { title: "Тип", dataIndex: "offer_type", width: 80 },
-    { title: "Срок, дн", dataIndex: "lead_time_days", width: 90 },
-    { title: "MOQ", dataIndex: "moq", width: 90 },
-    { title: "Упаковка", dataIndex: "packaging", width: 120 },
-    { title: "PN поставщика", dataIndex: "supplier_part_number", width: 150 },
+    {
+      title: "Тип",
+      dataIndex: "latest_offer_type",
+      width: 120,
+      render: (value) => formatOfferTypeLabel(value),
+    },
+    { title: "Срок, дн", dataIndex: "latest_lead_time_days", width: 90 },
+    { title: "MOQ", dataIndex: "latest_moq", width: 90 },
+    { title: "Упаковка", dataIndex: "latest_packaging", width: 120 },
+    { title: "PN поставщика", dataIndex: "latest_supplier_part_number", width: 150 },
     {
       title: "Причина/коммент.",
       width: 220,
-      render: (_, r) => r.change_reason || r.note || "—",
+      render: (_, r) => r.latest_change_reason || r.latest_note || r.line_status_note || "—",
     },
-    { title: "Создано", dataIndex: "created_at", width: 120, render: formatDate },
     {
       title: "Действия",
-      width: 130,
+      width: 220,
       fixed: "right",
       render: (_, r) => (
-        <Button size="small" onClick={() => openNegotiationModal(r)}>
-          Переговоры
-        </Button>
+        <Space size={6}>
+          <Button
+            size="small"
+            type={String(r.workspace_status || "").toUpperCase() === "RESPONDED" ? "default" : "primary"}
+            onClick={() =>
+              openManualModal({
+                supplier_id: r.supplier_id,
+                rfq_item_id: r.rfq_item_id,
+                supplier_name: r.supplier_name,
+                rfq_line_number: r.rfq_line_number,
+                requested_original_cat_number: r.requested_original_cat_number,
+                requested_original_description_ru: r.requested_original_description_ru,
+                requested_original_description_en: r.requested_original_description_en,
+                client_description: r.client_description,
+                workspace_status: r.workspace_status,
+                rfq_item_component_id: r.selected_line_type === "BOM_COMPONENT"
+                  ? r.rfq_item_component_id
+                  : null,
+                selected_selection_key: r.selected_selection_key,
+                selected_bundle_id: r.selected_bundle_id,
+                selected_line_type: r.selected_line_type,
+              })
+            }
+          >
+            {String(r.workspace_status || "").toUpperCase() === "RESPONDED"
+              ? "Добавить ревизию"
+              : "Внести ответ"}
+          </Button>
+          <Button
+            size="small"
+            onClick={() => {
+              const base = toNegotiationRow(r)
+              if (!base) {
+                message.info("Нет строки ответа для переговорной правки")
+                return
+              }
+              openNegotiationModal(base)
+            }}
+            disabled={!r.latest_response_line_id}
+          >
+            Переговоры
+          </Button>
+        </Space>
       ),
     },
   ]
 
   const originalViewColumns = [
     {
-      title: "Оригинал",
-      width: 160,
-      render: (_, r) => getRequestedOriginalCat(r),
+      title: "Позиция",
+      width: 170,
+      fixed: "left",
+      render: (_, r) => (
+        <Space direction="vertical" size={0}>
+          <Text>{getRfqLineDisplay(r)}</Text>
+          <Text type="secondary">{getSelectionDisplaySummary(r)}</Text>
+        </Space>
+      ),
     },
     {
-      title: "Строка",
-      width: 90,
-      render: (_, r) => <Text>{r.rfq_line_number || r.rfq_item_id || "—"}</Text>,
+      title: "Поставщик",
+      dataIndex: "supplier_name",
+      width: 260,
+      ellipsis: true,
+      fixed: "left",
     },
-    { title: "Поставщик", dataIndex: "supplier_name", width: 220 },
     {
-      title: "Источник",
-      width: 160,
-      render: (_, r) => <Tag color={sourceTagColor(r)}>{formatSourceLabel(r)}</Tag>,
+      title: "Статус",
+      width: 150,
+      render: (_, r) => {
+        const meta = getWorkspaceStatusMeta(r)
+        return <Tag color={meta.color}>{meta.label}</Tag>
+      },
     },
-    { title: "Rev", dataIndex: "response_rev_number", width: 70 },
+    {
+      title: "Отправлено",
+      width: 130,
+      render: (_, r) =>
+        r.last_request_rfq_revision_number
+          ? `Rev ${r.last_request_rfq_revision_number}`
+          : "—",
+    },
+    {
+      title: "Rev ответа",
+      dataIndex: "latest_response_rev_number",
+      width: 110,
+      render: (value) => (
+        <span style={{ whiteSpace: "nowrap" }}>
+          {value != null ? `Rev ${value}` : "—"}
+        </span>
+      ),
+    },
     {
       title: "Цена",
       width: 130,
-      render: (_, r) => (r.price != null ? formatPriceWithCurrency(r.price, r.currency) : "—"),
+      render: (_, r) =>
+        r.latest_price != null
+          ? formatPriceWithCurrency(r.latest_price, r.latest_currency)
+          : "—",
     },
-    { title: "Срок, дн", dataIndex: "lead_time_days", width: 90 },
-    { title: "MOQ", dataIndex: "moq", width: 90 },
-    { title: "PN поставщика", dataIndex: "supplier_part_number", width: 150 },
-    { title: "Создано", dataIndex: "created_at", width: 120, render: formatDate },
+    { title: "Срок, дн", dataIndex: "latest_lead_time_days", width: 90 },
+    { title: "MOQ", dataIndex: "latest_moq", width: 90 },
+    { title: "PN поставщика", dataIndex: "latest_supplier_part_number", width: 150 },
+    { title: "Дата ответа", dataIndex: "latest_response_created_at", width: 120, render: formatDate },
     {
       title: "Действия",
-      width: 130,
+      width: 220,
       fixed: "right",
       render: (_, r) => (
-        <Button size="small" onClick={() => openNegotiationModal(r)}>
-          Переговоры
-        </Button>
+        <Space size={6}>
+          <Button
+            size="small"
+            type={String(r.workspace_status || "").toUpperCase() === "RESPONDED" ? "default" : "primary"}
+            onClick={() =>
+              openManualModal({
+                supplier_id: r.supplier_id,
+                rfq_item_id: r.rfq_item_id,
+                supplier_name: r.supplier_name,
+                rfq_line_number: r.rfq_line_number,
+                requested_original_cat_number: r.requested_original_cat_number,
+                requested_original_description_ru: r.requested_original_description_ru,
+                requested_original_description_en: r.requested_original_description_en,
+                client_description: r.client_description,
+                workspace_status: r.workspace_status,
+                rfq_item_component_id: r.selected_line_type === "BOM_COMPONENT"
+                  ? r.rfq_item_component_id
+                  : null,
+                selected_selection_key: r.selected_selection_key,
+                selected_bundle_id: r.selected_bundle_id,
+                selected_line_type: r.selected_line_type,
+              })
+            }
+          >
+            {String(r.workspace_status || "").toUpperCase() === "RESPONDED"
+              ? "Добавить ревизию"
+              : "Внести ответ"}
+          </Button>
+          <Button
+            size="small"
+            onClick={() => {
+              const base = toNegotiationRow(r)
+              if (!base) {
+                message.info("Нет строки ответа для переговорной правки")
+                return
+              }
+              openNegotiationModal(base)
+            }}
+            disabled={!r.latest_response_line_id}
+          >
+            Переговоры
+          </Button>
+        </Space>
       ),
     },
   ]
@@ -369,23 +1341,48 @@ export default function ResponsesTabContent({
       <Alert
         type="info"
         showIcon
-        message="Ответы поставщиков и принятые цены. Можно добавлять вручную и вести переговорные изменения по ревизиям."
+        message="Рабочая матрица по ответам: что отправлено, где ждём ответ и где уже есть цена. Можно вносить ответы вручную и вести переговорные ревизии."
       />
       <Space wrap>
-        <Select
-          allowClear
-          placeholder="Фильтр по поставщику"
-          options={responseSuppliers}
-          style={{ minWidth: 260 }}
-          value={responseSupplierFilter}
-          onChange={(v) => setResponseSupplierFilter(v || null)}
-        />
+        <Tag color="gold">Ожидают: {counters.waiting}</Tag>
+        <Tag color="green">Получено: {counters.responded}</Tag>
+        <Tag color="default">Не отправлено: {counters.notSent}</Tag>
+        <Tag>Всего строк: {counters.total}</Tag>
+      </Space>
+      <Space wrap>
+        {viewMode === "supplier" ? (
+          <Select
+            allowClear
+            placeholder="Фильтр по поставщику"
+            options={responseSuppliers}
+            style={{ minWidth: 260 }}
+            value={responseSupplierFilter}
+            onChange={(v) => setResponseSupplierFilter(v || null)}
+          />
+        ) : (
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Фильтр по оригиналу"
+            options={originalFilterOptions}
+            style={{ minWidth: 320 }}
+            value={responseOriginalFilter}
+            onChange={(v) => setResponseOriginalFilter(v || null)}
+          />
+        )}
         <Button onClick={reloadResponses}>Обновить ответы</Button>
         <Checkbox
           checked={showArchivedResponses}
           onChange={(e) => setShowArchivedResponses(e.target.checked)}
         >
           Показывать архивные
+        </Checkbox>
+        <Checkbox
+          checked={onlyWaiting}
+          onChange={(e) => setOnlyWaiting(e.target.checked)}
+        >
+          Только ожидают ответа
         </Checkbox>
         <Radio.Group
           value={viewMode}
@@ -397,7 +1394,6 @@ export default function ResponsesTabContent({
             { label: "По оригиналу", value: "original" },
           ]}
         />
-        <Button onClick={openManualModal}>Добавить вручную</Button>
         <Checkbox
           checked={importModal.newRevision || false}
           onChange={(e) =>
@@ -410,7 +1406,9 @@ export default function ResponsesTabContent({
           onClick={() =>
             setImportModal({
               open: true,
-              supplierId: responseSupplierFilter || null,
+              supplierId: viewMode === "supplier" ? responseSupplierFilter || null : null,
+              detectedSupplierId: null,
+              detectedSupplierName: "",
               text: "",
               rows: [],
               loading: false,
@@ -419,16 +1417,17 @@ export default function ResponsesTabContent({
             })
           }
         >
-          Импорт ответов (TSV)
+          Импорт ответов (Excel/TSV)
         </Button>
       </Space>
 
       <Table
-        rowKey={(row) => `${row.id}-${row.response_rev_number}-${row.rfq_item_id}`}
-        dataSource={viewMode === "supplier" ? filteredResponseLines : byOriginalRows}
+        rowKey={(row) => `${row.rfq_supplier_id}-${row.rfq_item_id}`}
+        dataSource={viewMode === "supplier" ? visibleWorkspaceRows : byOriginalRows}
         pagination={false}
         size="small"
-        scroll={{ x: 1900 }}
+        tableLayout="auto"
+        scroll={{ x: "max-content" }}
         columns={viewMode === "supplier" ? commonColumns : originalViewColumns}
       />
 
@@ -436,9 +1435,9 @@ export default function ResponsesTabContent({
         {[...responseTimeline.entries()].map(([key, list]) => (
           <div key={key} style={{ marginBottom: 12 }}>
             <Text strong>
-              {(list[0]?.supplier_name || `Поставщик #${list[0]?.supplier_id || "?"}`) +
-                ` · Строка ${list[0]?.rfq_line_number || list[0]?.rfq_item_id || "?"}` +
-                ` · ${getRequestedOriginalCat(list[0])}`}
+              {(list[0]?.supplier_name || "Поставщик без названия") +
+                ` · Строка ${getRfqLineDisplay(list[0])}` +
+                ` · ${getRowContextTypeLabel(list[0])}: ${getSelectionDisplaySummary(list[0])}`}
             </Text>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
               {list.map((r) => (
@@ -458,26 +1457,74 @@ export default function ResponsesTabContent({
       <Modal
         open={manualModalOpen}
         title="Добавить ответ вручную"
-        onCancel={() => setManualModalOpen(false)}
+        onCancel={closeManualModal}
         onOk={submitManualLine}
         okText="Сохранить"
         confirmLoading={manualSaving}
       >
         <Form layout="vertical" form={manualForm}>
-          <Form.Item
-            name="supplier_id"
-            label="Поставщик"
-            rules={[{ required: true, message: "Выберите поставщика" }]}
-          >
-            <Select options={supplierOptions} showSearch optionFilterProp="label" />
+          {manualSupplierLock ? (
+            <Form.Item
+              name="supplier_id"
+              hidden
+              rules={[{ required: true, message: "Выберите поставщика" }]}
+            >
+              <InputNumber />
+            </Form.Item>
+          ) : null}
+          {!manualSupplierLock ? (
+            <Form.Item
+              name="supplier_id"
+              label="Поставщик"
+              rules={[{ required: true, message: "Выберите поставщика" }]}
+            >
+              <Select options={supplierOptions} showSearch optionFilterProp="label" />
+            </Form.Item>
+          ) : null}
+          {manualLineLock ? (
+            <Form.Item
+              name="rfq_item_id"
+              hidden
+              rules={[{ required: true, message: "Выберите строку" }]}
+            >
+              <InputNumber />
+            </Form.Item>
+          ) : null}
+          {!manualLineLock ? (
+            <Form.Item
+              name="rfq_item_id"
+              label="Строка RFQ"
+              rules={[{ required: true, message: "Выберите строку" }]}
+            >
+              <Select options={lineOptions} showSearch optionFilterProp="label" />
+            </Form.Item>
+          ) : null}
+          {manualSelectionOptions.length > 1 ? (
+            <Form.Item
+              name="selection_key"
+              label="Компонент/роль RFQ"
+              rules={[{ required: true, message: "Выберите компонент или роль" }]}
+              extra="Для этой позиции выбрано несколько строк структуры. Укажите, к какой именно строке относится ответ."
+            >
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={manualSelectionOptions}
+                loading={manualSelectionLoading}
+              />
+            </Form.Item>
+          ) : null}
+          <Form.Item name="rfq_item_component_id" hidden>
+            <InputNumber />
           </Form.Item>
-          <Form.Item
-            name="rfq_item_id"
-            label="Строка RFQ"
-            rules={[{ required: true, message: "Выберите строку" }]}
-          >
-            <Select options={lineOptions} showSearch optionFilterProp="label" />
+          <Form.Item name="bundle_id" hidden>
+            <InputNumber />
           </Form.Item>
+          {manualSelectionOptions.length <= 1 ? (
+            <Form.Item name="selection_key" hidden>
+              <Input />
+            </Form.Item>
+          ) : null}
           <Space style={{ display: "flex" }} align="start">
             <Form.Item
               name="price"
@@ -494,14 +1541,7 @@ export default function ResponsesTabContent({
               <Input style={{ width: 90 }} />
             </Form.Item>
             <Form.Item name="offer_type" label="Тип">
-              <Select
-                style={{ width: 130 }}
-                options={[
-                  { value: "UNKNOWN", label: "UNKNOWN" },
-                  { value: "OEM", label: "OEM" },
-                  { value: "ANALOG", label: "ANALOG" },
-                ]}
-              />
+              <Select style={{ width: 160 }} options={OFFER_TYPE_OPTIONS} />
             </Form.Item>
           </Space>
           <Space style={{ display: "flex" }} align="start">
@@ -530,14 +1570,50 @@ export default function ResponsesTabContent({
           <Form.Item name="new_revision" valuePropName="checked">
             <Checkbox>Создать новую ревизию ответа</Checkbox>
           </Form.Item>
-          <Form.Item name="supplier_part_id" label="ID детали поставщика (если уже есть)">
-            <InputNumber min={1} style={{ width: "100%" }} />
-          </Form.Item>
           <Form.Item>
-            <Checkbox checked={createSupplierPart} onChange={(e) => setCreateSupplierPart(e.target.checked)}>
+            <Checkbox
+              checked={createSupplierPart}
+              onChange={(e) => {
+                const checked = e.target.checked
+                setCreateSupplierPart(checked)
+                if (checked) {
+                  manualForm.setFieldValue("supplier_part_id", undefined)
+                  setSupplierPartSearch("")
+                }
+              }}
+            >
               Создать новую деталь поставщика и привязать к оригиналу строки
             </Checkbox>
           </Form.Item>
+          {!createSupplierPart ? (
+            <Form.Item
+              name="supplier_part_id"
+              label="Деталь поставщика (если уже есть в каталоге)"
+              tooltip="Поиск по номеру и описанию. Используется рабочий номер детали поставщика, не внутренний идентификатор."
+            >
+              <Select
+                allowClear
+                showSearch
+                filterOption={false}
+                placeholder="Введите минимум 2 символа для поиска"
+                options={supplierPartOptions}
+                loading={supplierPartLoading}
+                onSearch={setSupplierPartSearch}
+                notFoundContent={
+                  supplierPartSearch?.trim()?.length >= 2
+                    ? "Ничего не найдено"
+                    : "Введите минимум 2 символа"
+                }
+                onChange={(val, option) => {
+                  if (!val || !option?.meta) return
+                  const partType = String(option.meta.part_type || "").toUpperCase()
+                  if (["OEM", "ANALOG", "UNKNOWN"].includes(partType)) {
+                    manualForm.setFieldValue("offer_type", partType)
+                  }
+                }}
+              />
+            </Form.Item>
+          ) : null}
           {createSupplierPart ? (
             <>
               <Form.Item
@@ -554,14 +1630,38 @@ export default function ResponsesTabContent({
                 <Input />
               </Form.Item>
               <Form.Item name="new_supplier_part_type" label="Тип детали">
-                <Select
-                  options={[
-                    { value: "UNKNOWN", label: "UNKNOWN" },
-                    { value: "OEM", label: "OEM" },
-                    { value: "ANALOG", label: "ANALOG" },
-                  ]}
-                />
+                <Select options={OFFER_TYPE_OPTIONS} />
               </Form.Item>
+              <Space style={{ display: "flex" }} align="start">
+                <Form.Item
+                  name="new_supplier_part_is_overweight"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Тяжелая</Checkbox>
+                </Form.Item>
+                <Form.Item
+                  name="new_supplier_part_is_oversize"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Негабарит</Checkbox>
+                </Form.Item>
+              </Space>
+              <Space style={{ display: "flex" }} align="start">
+                <Form.Item name="new_supplier_part_weight_kg" label="Вес, кг">
+                  <InputNumber min={0} step={0.01} />
+                </Form.Item>
+                <Form.Item name="new_supplier_part_length_cm" label="Длина, см">
+                  <InputNumber min={0} step={0.01} />
+                </Form.Item>
+                <Form.Item name="new_supplier_part_width_cm" label="Ширина, см">
+                  <InputNumber min={0} step={0.01} />
+                </Form.Item>
+                <Form.Item name="new_supplier_part_height_cm" label="Высота, см">
+                  <InputNumber min={0} step={0.01} />
+                </Form.Item>
+              </Space>
             </>
           ) : null}
         </Form>
@@ -598,14 +1698,7 @@ export default function ResponsesTabContent({
               <Input style={{ width: 90 }} />
             </Form.Item>
             <Form.Item name="offer_type" label="Тип">
-              <Select
-                style={{ width: 130 }}
-                options={[
-                  { value: "UNKNOWN", label: "UNKNOWN" },
-                  { value: "OEM", label: "OEM" },
-                  { value: "ANALOG", label: "ANALOG" },
-                ]}
-              />
+              <Select style={{ width: 160 }} options={OFFER_TYPE_OPTIONS} />
             </Form.Item>
           </Space>
           <Space style={{ display: "flex" }} align="start">

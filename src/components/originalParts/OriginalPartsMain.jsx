@@ -30,9 +30,8 @@ import TableToolbar from "@/components/common/TableToolbar"
 import ImportModal from "@/components/common/ImportModal"
 import OriginalPartsTable from "./OriginalPartsTable"
 import OriginalPartsRootsTree from "./OriginalPartsRootsTree"
-import OriginalPartsFiltersDrawer, {
-  countActiveFilters,
-} from "./OriginalPartsFiltersDrawer"
+import OriginalPartsFiltersDrawer from "./OriginalPartsFiltersDrawer"
+import { countActiveFilters } from "./originalPartsFiltersUtils"
 import OriginalPartCreateAdvancedDrawer from "./OriginalPartCreateAdvancedDrawer"
 import ManufacturerModelPicker from "@/components/originalParts/ManufacturerModelPicker"
 import OriginalPartGroupsManager from "@/components/originalParts/OriginalPartGroupsManager"
@@ -204,7 +203,9 @@ export default function OriginalPartsMain() {
 
     try {
       partsAbortRef.current?.abort()
-    } catch {}
+    } catch {
+      // ignore abort errors
+    }
     const controller = new AbortController()
     partsAbortRef.current = controller
 
@@ -389,7 +390,9 @@ export default function OriginalPartsMain() {
       clearTimeout(t)
       try {
         partsAbortRef.current?.abort()
-      } catch {}
+      } catch {
+        // ignore abort errors
+      }
     }
   }, [fetchParts])
 

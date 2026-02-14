@@ -64,14 +64,11 @@ export default function OriginalsPickerDrawer({
   const cancelIfRunning = () => {
     try {
       abortRef.current?.abort?.();
-    } catch {}
+    } catch {
+      // ignore abort errors
+    }
     abortRef.current = null;
   };
-
-  const excludeKey = useMemo(
-    () => (excludeIds || []).map((id) => Number(id)).sort().join(","),
-    [excludeIds],
-  )
 
   const fetchList = useCallback(async () => {
     if (!open) return;
@@ -115,7 +112,7 @@ export default function OriginalsPickerDrawer({
     } finally {
       setLoading(false);
     }
-  }, [open, manufacturer?.id, model?.id, q, onlyAssemblies, onlyParts, excludeKey]);
+  }, [open, manufacturer?.id, model?.id, q, onlyAssemblies, onlyParts, excludeIds]);
 
   // авто-загрузка при изменении фильтров/поиска
   useEffect(() => {

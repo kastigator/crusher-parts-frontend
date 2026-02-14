@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 import { Table, message, Empty } from "antd"
 import axios from "@/api/axiosInstance"
 
@@ -6,7 +6,7 @@ export default function UsedInTable({ partId }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!partId) return
     setLoading(true)
     try {
@@ -18,9 +18,9 @@ export default function UsedInTable({ partId }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [partId])
 
-  useEffect(() => { load() }, [partId])
+  useEffect(() => { load() }, [partId, load])
 
   const columns = [
     { title: "Parent Cat #", dataIndex: "parent_cat_number", width: 200 },

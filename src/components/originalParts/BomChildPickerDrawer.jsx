@@ -27,11 +27,6 @@ export default function BomChildPickerDrawer({
   const searchTimer = useRef(null)
 
   const canSearch = !!modelId && open
-  // стабильный ключ для зависимостей (массив → строка)
-  const excludeKey = useMemo(
-    () => (excludeIds || []).map(Number).sort((a, b) => a - b).join(","),
-    [excludeIds]
-  )
 
   const fetchCandidates = useCallback(async () => {
     if (!canSearch) {
@@ -88,7 +83,7 @@ export default function BomChildPickerDrawer({
       setLoading(false)
     }
     // не включаем selectedRowKeys/selectedRows/«сырые» excludeIds, чтобы не спамить запросами
-  }, [canSearch, modelId, q, onlyAssemblies, excludeKey, parentPartId])
+  }, [canSearch, modelId, q, onlyAssemblies, parentPartId, excludeIds, selectedRowKeys])
 
   // дебаунс поиска
   useEffect(() => {

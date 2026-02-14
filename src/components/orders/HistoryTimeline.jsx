@@ -112,7 +112,7 @@ export default function HistoryTimeline({ events = [] }) {
   const escapeCsv = (value) => {
     const str = value == null ? "" : String(value)
     if (str.includes("\"")) {
-      return `"${str.replace(/\"/g, "\"\"")}"`
+      return `"${str.replace(/"/g, "\"\"")}"`
     }
     if (str.includes(";") || str.includes("\n")) {
       return `"${str}"`

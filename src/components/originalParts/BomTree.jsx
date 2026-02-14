@@ -53,7 +53,7 @@ export default function BomTree({ part, manufacturerName, modelName }) {
     return () => cleanup()
   }, [load])
 
-  const updateQty = async (parentId, childId, nextQty) => {
+  const updateQty = useCallback(async (parentId, childId, nextQty) => {
     if (!parentId || !childId) return
     const qtyNum = Number(nextQty)
     if (!(qtyNum > 0)) {
@@ -71,9 +71,9 @@ export default function BomTree({ part, manufacturerName, modelName }) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось обновить количество")
     }
-  }
+  }, [load])
 
-  const removeRow = async (parentId, childId) => {
+  const removeRow = useCallback(async (parentId, childId) => {
     const { confirmed } = await confirmAction("Удалить позицию из BOM?")
     if (!confirmed) return
     try {
@@ -86,7 +86,7 @@ export default function BomTree({ part, manufacturerName, modelName }) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось удалить позицию")
     }
-  }
+  }, [load])
 
   // построение иерархии AntD Tree из плоского списка
   const { treeData, allKeys, totalCount, rowById, rootRow } = useMemo(() => {
@@ -177,7 +177,7 @@ export default function BomTree({ part, manufacturerName, modelName }) {
     const totalCount = rows.length - 1 /* без корня */
 
     return { treeData, allKeys: keys, totalCount, rowById: rowMap, rootRow }
-  }, [rows])
+  }, [rows, removeRow, updateQty])
 
   // по умолчанию разворачиваем всё при смене данных
   useEffect(() => {
@@ -185,7 +185,7 @@ export default function BomTree({ part, manufacturerName, modelName }) {
     if (rootRow?.node_id) {
       setSelectedKeys((prev) => (prev?.length ? prev : [rootRow.node_id]))
     }
-  }, [allKeys.join("|"), rootRow?.node_id]) // простая зависимость по ключам
+  }, [allKeys, rootRow?.node_id])
 
   const selectedId = Number(selectedKeys?.[0] || rootId || 0)
   const selectedRow = rowById.get(selectedId) || rootRow

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { Table, message } from "antd"
 import axios from "@/api/axiosInstance"
 
@@ -11,7 +11,7 @@ export default function BomExploded({ root }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!root?.id) return
     setLoading(true)
     try {
@@ -23,11 +23,11 @@ export default function BomExploded({ root }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [root?.id])
 
   useEffect(() => {
     load()
-  }, [root?.id])
+  }, [root?.id, load])
 
   const exploded = useMemo(() => {
     if (!Array.isArray(rows) || rows.length === 0) return []

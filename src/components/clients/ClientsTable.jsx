@@ -1,5 +1,5 @@
 // src/components/clients/ClientsTable.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Table, message } from "antd"
 
 import ActionButtons from "@/components/common/ActionButtons"
@@ -39,7 +39,7 @@ export default function ClientsTable({
     [page, pageSize, dataSource.length],
   )
 
-  const handleDelete = async (record) => {
+  const handleDelete = useCallback(async (record) => {
     const { confirmed } = await confirmAction("Удалить клиента?")
     if (!confirmed) return
     try {
@@ -48,9 +48,9 @@ export default function ClientsTable({
       console.error(e)
       message.error("Не удалось удалить клиента")
     }
-  }
+  }, [onDelete])
 
-  const columns = [
+  const columns = useMemo(() => [
     {
       title: "Компания",
       dataIndex: "company_name",
@@ -123,7 +123,7 @@ export default function ClientsTable({
         />
       ),
     },
-  ]
+  ], [handleDelete])
 
   const defaultVisible = useMemo(() => columns.map((c) => c.key), [columns])
   const effectiveVisibleKeys =
@@ -199,4 +199,3 @@ export default function ClientsTable({
     </>
   )
 }
-

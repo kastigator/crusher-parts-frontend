@@ -1,5 +1,5 @@
 // src/components/clients/BankDetailsMain.jsx
-import React, { useEffect, useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 import { Card, Row, Col, Input, Button, message } from "antd"
 import axios from "@/api/axiosInstance"
 import CurrencySelect from "@/components/inputs/CurrencySelect"
@@ -24,7 +24,7 @@ export default function BankDetailsMain({ clientId, onChanged }) {
   // ==========================
   // Load
   // ==========================
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!clientId) return
     setLoading(true)
     try {
@@ -38,7 +38,7 @@ export default function BankDetailsMain({ clientId, onChanged }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [clientId])
 
   useEffect(() => {
     if (clientId) {
@@ -47,7 +47,7 @@ export default function BankDetailsMain({ clientId, onChanged }) {
       setData([])
     }
     setNewBank(INITIAL_BANK)
-  }, [clientId])
+  }, [clientId, fetchData])
 
   // ==========================
   // Helpers

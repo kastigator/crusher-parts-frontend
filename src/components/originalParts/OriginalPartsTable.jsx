@@ -26,14 +26,14 @@ const getUomLabel = (value) => {
 export default function OriginalPartsTable({
   data = [],
   loading = false,
-  modelId = null, // сейчас не используется, но оставляем на будущее
+  modelId: _modelId = null, // сейчас не используется, но оставляем на будущее
   onReload,
   onRemove,
   onOpenDetail,
   onFlashRow, // (id:number) => void - подсветка строки после сохранения
   showAll = false, // 🔹 режим "Показать все детали"
   visibleColumnKeys = null, // array|null: управляемая видимость колонок (пер-viewMode)
-  onVisibleColumnKeysChange = null, // (nextKeys: string[]) => void
+  onVisibleColumnKeysChange: _onVisibleColumnKeysChange = null, // (nextKeys: string[]) => void
   onColumnsMeta = null, // ({ options, defaultVisible, lockedKeys }) => void
   highlightRowId = null, // number|null: подсветить/проскроллить к строке
 }) {
@@ -742,25 +742,22 @@ export default function OriginalPartsTable({
     },
   ]
 
-  const defaultVisible = useMemo(() => columnDefs.map((c) => c.key), [columnDefs])
+  const defaultVisible = columnDefs.map((c) => c.key)
   const effectiveVisibleKeys =
     Array.isArray(visibleColumnKeys) && visibleColumnKeys.length
       ? visibleColumnKeys
       : defaultVisible
 
-  const columns = useMemo(() => {
+  const columns = (() => {
     const visible = new Set(effectiveVisibleKeys)
     return columnDefs.filter((c) => c.lock || visible.has(c.key))
-  }, [columnDefs, effectiveVisibleKeys])
+  })()
 
   const columnOptions = columnDefs
     .filter((c) => c.key && !c.lock)
     .map((c) => ({ key: c.key, label: c.title }))
 
-  const lockedKeys = useMemo(
-    () => columnDefs.filter((c) => c.lock).map((c) => c.key),
-    [columnDefs]
-  )
+  const lockedKeys = columnDefs.filter((c) => c.lock).map((c) => c.key)
 
   useEffect(() => {
     onColumnsMeta?.({

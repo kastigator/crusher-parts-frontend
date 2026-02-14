@@ -38,7 +38,7 @@ export default function SupplierMetaCard({ supplier, onSaved }) {
   useEffect(() => {
     setMeta(metaFromSupplier(supplier))
     setDirty(false)
-  }, [supplierId])
+  }, [supplierId, supplier])
 
   const canSave = useMemo(() => dirty && !saving, [dirty, saving])
 
@@ -210,4 +210,3 @@ export default function SupplierMetaCard({ supplier, onSaved }) {
     </Card>
   )
 }
-

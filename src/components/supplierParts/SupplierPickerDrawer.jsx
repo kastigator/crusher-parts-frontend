@@ -17,7 +17,7 @@ import {
   message,
 } from "antd";
 import axios from "@/api/axiosInstance";
-import { getCountryLabel } from "@/components/inputs/CountrySelect";
+import { getCountryLabel } from "@/components/inputs/countryUtils";
 
 const { Search } = Input;
 
@@ -40,7 +40,9 @@ export default function SupplierPickerDrawer({
   const cancelIfRunning = () => {
     try {
       abortRef.current?.abort?.();
-    } catch {}
+    } catch {
+      // ignore abort errors
+    }
     abortRef.current = null;
   };
 

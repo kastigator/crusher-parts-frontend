@@ -153,7 +153,7 @@ export default function UsersTable({ rolesRevision = 0 }) {
     try {
       const res = await axios.post(`/users/${id}/reset-password`)
       message.success(`Новый пароль: ${res.data.newPassword}`)
-    } catch (err) {
+    } catch (_err) {
       message.error("Ошибка при сбросе пароля")
     }
   }

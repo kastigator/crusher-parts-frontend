@@ -13,7 +13,7 @@ const { Text } = Typography
 
 export default function DetailDock({
   part,
-  modelId,
+  modelId: _modelId,
   manufacturerName,
   modelName,
   onPartsChanged,          // 🔹 новый проп – обновить список деталей

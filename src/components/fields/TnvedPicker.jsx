@@ -19,7 +19,7 @@ function saveRecent(item) {
   if (!item?.id) return;
   const prev = loadRecents().filter((x) => x.id !== item.id);
   const next = [item, ...prev].slice(0, 10);
-  try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch {}
+  try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch { /* ignore storage errors */ }
 }
 
 export default function TnvedPicker({

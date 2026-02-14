@@ -152,7 +152,7 @@ export default function SalesKpiDashboard() {
         setUsers(list)
         return
       }
-    } catch (e) {
+    } catch (_e) {
       // fallback ниже
     }
 
