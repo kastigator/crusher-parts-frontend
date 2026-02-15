@@ -1,10 +1,34 @@
-const BASE_URL_RAW = import.meta.env.BASE_URL ?? "/"
+const BASE_URL_RAW = import.meta.env.BASE_URL ?? "./"
+const ICONS_BASE_URL_RAW = import.meta.env.VITE_ICONS_BASE_URL ?? ""
 const normalizeBaseUrl = (value) => {
   const raw = String(value || "").trim()
-  if (!raw || raw === "." || raw === "./") return "/"
+  if (!raw) return "/"
+  if (raw === "." || raw === "./") return "./"
   return raw.endsWith("/") ? raw : `${raw}/`
 }
-const ICONS_BASE_URL = normalizeBaseUrl(BASE_URL_RAW)
+
+const resolveRuntimeIconsBaseUrl = () => {
+  const explicit = normalizeBaseUrl(ICONS_BASE_URL_RAW)
+  if (explicit !== "/") return explicit
+
+  const normalizedBase = normalizeBaseUrl(BASE_URL_RAW)
+  if (normalizedBase !== "./") return normalizedBase
+
+  if (typeof window !== "undefined" && window.location?.host === "storage.googleapis.com") {
+    const pathname = String(window.location.pathname || "")
+    const marker = "/index.html"
+    const markerIndex = pathname.indexOf(marker)
+    if (markerIndex >= 0) {
+      const bucketPrefix = pathname.slice(0, markerIndex + 1)
+      if (bucketPrefix.startsWith("/") && bucketPrefix.endsWith("/")) return bucketPrefix
+    }
+  }
+
+  // dev/local fallback
+  return "/"
+}
+
+const ICONS_BASE_URL = resolveRuntimeIconsBaseUrl()
 
 export const buildIconPath = (name) => `icons/${name}.svg`
 
@@ -15,7 +39,10 @@ export const resolveIconUrl = (value) => {
   if (!raw.includes("/") && !raw.toLowerCase().endsWith(".svg")) {
     return `${ICONS_BASE_URL}${buildIconPath(raw)}`
   }
-  const cleaned = raw.replace(/^\/+/, "")
+  let cleaned = raw.replace(/^\/+/, "")
+  if (ICONS_BASE_URL.endsWith("/icons/") && cleaned.startsWith("icons/")) {
+    cleaned = cleaned.slice("icons/".length)
+  }
   return `${ICONS_BASE_URL}${cleaned}`
 }
 
