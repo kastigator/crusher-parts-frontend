@@ -1,5 +1,11 @@
 import React, { useEffect } from "react"
 import { Button, Checkbox, Drawer, Form, Input, InputNumber, Select, Space, Typography } from "antd"
+import {
+  SUPPLIER_DEFAULT_CURRENCY_OPTIONS,
+  SUPPLIER_DEFAULT_PAYMENT_TERMS_OPTIONS,
+  normalizeSupplierDefaultCurrency,
+  normalizeSupplierDefaultPaymentTerms,
+} from "@/constants/supplierDefaults"
 
 const { Text } = Typography
 
@@ -11,9 +17,8 @@ export default function SupplierCreateAdvancedDrawer({ open, onClose, value, onC
     form.setFieldsValue({
       vat_number: value?.vat_number || "",
       website: value?.website || "",
-      payment_terms: value?.payment_terms || "",
-      preferred_currency: value?.preferred_currency || "",
-      default_incoterms: value?.default_incoterms || "",
+      payment_terms: normalizeSupplierDefaultPaymentTerms(value?.payment_terms),
+      preferred_currency: normalizeSupplierDefaultCurrency(value?.preferred_currency),
       default_pickup_location: value?.default_pickup_location || "",
       can_oem: !!value?.can_oem,
       can_analog: value?.can_analog === undefined ? true : !!value?.can_analog,
@@ -29,9 +34,8 @@ export default function SupplierCreateAdvancedDrawer({ open, onClose, value, onC
     onChange?.({
       vat_number: v.vat_number || "",
       website: v.website || "",
-      payment_terms: v.payment_terms || "",
-      preferred_currency: v.preferred_currency || "",
-      default_incoterms: v.default_incoterms || "",
+      payment_terms: normalizeSupplierDefaultPaymentTerms(v.payment_terms || ""),
+      preferred_currency: normalizeSupplierDefaultCurrency(v.preferred_currency || ""),
       default_pickup_location: v.default_pickup_location || "",
       can_oem: !!v.can_oem,
       can_analog: !!v.can_analog,
@@ -50,7 +54,6 @@ export default function SupplierCreateAdvancedDrawer({ open, onClose, value, onC
       website: "",
       payment_terms: "",
       preferred_currency: "",
-      default_incoterms: "",
       default_pickup_location: "",
       can_oem: false,
       can_analog: true,
@@ -77,11 +80,14 @@ export default function SupplierCreateAdvancedDrawer({ open, onClose, value, onC
         </Space>
       }
     >
-      <div style={{ marginBottom: 10 }}>
-        <Text type="secondary">
-          Эти поля не обязательны при создании. Контакты/адреса/банковские реквизиты добавляются в карточке поставщика.
-        </Text>
-      </div>
+        <div style={{ marginBottom: 10 }}>
+          <Text type="secondary">
+            Эти поля не обязательны при создании. Значения будут использоваться как базовые
+            (по умолчанию) для новых RFQ. Контакты/адреса/банковские реквизиты добавляются
+            в карточке поставщика. Валюта и условия оплаты выбираются из справочника, чтобы
+            избежать дублей с разным написанием.
+          </Text>
+        </div>
 
       <Form layout="vertical" form={form}>
         <div style={{ marginTop: 6, fontWeight: 700 }}>Юридические данные</div>
@@ -93,20 +99,31 @@ export default function SupplierCreateAdvancedDrawer({ open, onClose, value, onC
         <Form.Item name="website" label="Сайт">
           <Input placeholder="https://…" allowClear />
         </Form.Item>
-        <Form.Item name="payment_terms" label="Условия оплаты">
-          <Input placeholder="например: 30% предоплата / NET30" allowClear />
+        <Form.Item name="payment_terms" label="Базовые условия оплаты (по умолчанию)">
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Выберите условие"
+            options={SUPPLIER_DEFAULT_PAYMENT_TERMS_OPTIONS}
+          />
         </Form.Item>
 
         <Space style={{ width: "100%" }} size={10} wrap>
-          <Form.Item name="preferred_currency" label="Валюта" style={{ flex: 1, minWidth: 180 }}>
-            <Input placeholder="USD" maxLength={3} allowClear />
-          </Form.Item>
-          <Form.Item name="default_incoterms" label="Инкотермс" style={{ flex: 1, minWidth: 180 }}>
-            <Input placeholder="EXW / FOB / FCA" allowClear />
+          <Form.Item
+            name="preferred_currency"
+            label="Валюта по умолчанию"
+            style={{ flex: 1, minWidth: 180 }}
+          >
+            <Select
+              allowClear
+              placeholder="Выберите валюту"
+              options={SUPPLIER_DEFAULT_CURRENCY_OPTIONS}
+            />
           </Form.Item>
           <Form.Item
             name="default_pickup_location"
-            label="Город/порт"
+            label="Город/порт отгрузки (по умолчанию)"
             style={{ flex: 2, minWidth: 260 }}
           >
             <Input placeholder="например: Shanghai" allowClear />
@@ -144,7 +161,7 @@ export default function SupplierCreateAdvancedDrawer({ open, onClose, value, onC
           </Form.Item>
           <Form.Item
             name="default_lead_time_days"
-            label="Срок поставки (база), дн"
+            label="Срок поставки базовый (ориентир), дн"
             style={{ minWidth: 220 }}
           >
             <InputNumber style={{ width: "100%" }} min={0} max={365} />
@@ -158,4 +175,3 @@ export default function SupplierCreateAdvancedDrawer({ open, onClose, value, onC
     </Drawer>
   )
 }
-

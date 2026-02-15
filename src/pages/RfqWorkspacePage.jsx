@@ -2517,7 +2517,7 @@ export default function RfqWorkspacePage() {
 
   return (
     <PageWrapper
-      title="RFQ Workspace"
+      title="Рабочее место RFQ"
       helpText="Сквозной поток по RFQ: от отправленной в закупку заявки до заказа поставщику."
     >
       <RfqWorkspaceMainContent

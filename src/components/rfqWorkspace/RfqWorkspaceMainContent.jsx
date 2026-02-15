@@ -1,5 +1,5 @@
 import React from "react"
-import { Button, Card, Input, Select, Space, Steps, Table, Tabs, Tag, Typography } from "antd"
+import { Button, Card, Input, Select, Space, Table, Tabs, Tag, Typography } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import RfqOverviewTabContent from "@/components/rfqWorkspace/RfqOverviewTabContent"
 import SuppliersTabContent from "@/components/rfqWorkspace/SuppliersTabContent"
@@ -24,10 +24,6 @@ export default function RfqWorkspaceMainContent({
   setActiveRfqId,
   activeRfqId,
   activeRfq,
-  activeStep,
-  handleStepChange,
-  flowStatus,
-  stepLabels,
   activeTabKey,
   setActiveTabKey,
   isStructureConfirmed,
@@ -189,21 +185,6 @@ export default function RfqWorkspaceMainContent({
               </Space>
             </Space>
 
-            <Steps
-              size="small"
-              current={activeStep}
-              onChange={handleStepChange}
-              items={stepLabels.map((label, index) => ({
-                title: label,
-                status:
-                  flowStatus.steps[index]
-                    ? "finish"
-                    : index === flowStatus.current
-                      ? "process"
-                      : "wait",
-              }))}
-            />
-
             <Tabs
               activeKey={activeTabKey}
               onChange={setActiveTabKey}
@@ -287,13 +268,13 @@ export default function RfqWorkspaceMainContent({
                 },
                 {
                   key: "coverage",
-                  label: "Coverage",
+                  label: "Покрытие",
                   disabled: !isStructureConfirmed,
                   children: <CoverageTabContent coverageRows={coverageRows} />,
                 },
                 {
                   key: "selection",
-                  label: "Selection",
+                  label: "Выбор",
                   disabled: !isStructureConfirmed,
                   children: (
                     <SelectionTabContent

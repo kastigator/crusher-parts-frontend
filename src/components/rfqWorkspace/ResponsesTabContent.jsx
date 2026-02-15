@@ -19,6 +19,11 @@ import {
 import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
+import IncotermsSelect from "@/components/inputs/IncotermsSelect"
+import {
+  SUPPLIER_DEFAULT_CURRENCY_OPTIONS,
+  SUPPLIER_DEFAULT_PAYMENT_TERMS_OPTIONS,
+} from "@/constants/supplierDefaults"
 
 const { Text } = Typography
 
@@ -31,6 +36,36 @@ const OFFER_TYPE_LABELS = {
   ANALOG: "Аналог",
   OEM: "OEM (оригинал)",
   UNKNOWN: "Не указан",
+}
+
+const SUPPLIER_REPLY_STATUS_OPTIONS = [
+  { value: "QUOTED", label: "Цена предоставлена" },
+  { value: "NO_STOCK", label: "Нет в наличии" },
+  { value: "DISCONTINUED", label: "Снят с производства" },
+  { value: "NEEDS_CLARIFICATION", label: "Требует уточнения" },
+  { value: "NO_RESPONSE", label: "Без ответа" },
+]
+
+const SUPPLIER_REPLY_STATUS_META = {
+  QUOTED: { label: "Цена предоставлена", color: "green", requiresPrice: true },
+  NO_STOCK: { label: "Нет в наличии", color: "orange", requiresPrice: false },
+  DISCONTINUED: { label: "Снят с производства", color: "red", requiresPrice: false },
+  NEEDS_CLARIFICATION: { label: "Требует уточнения", color: "gold", requiresPrice: false },
+  NO_RESPONSE: { label: "Без ответа", color: "default", requiresPrice: false },
+}
+
+const normalizeSupplierReplyStatus = (value) => {
+  const normalized = String(value || "").trim().toUpperCase()
+  return SUPPLIER_REPLY_STATUS_META[normalized] ? normalized : "QUOTED"
+}
+
+const supplierReplyStatusRequiresPrice = (value) =>
+  SUPPLIER_REPLY_STATUS_META[normalizeSupplierReplyStatus(value)]?.requiresPrice === true
+
+const renderSupplierReplyStatusTag = (value) => {
+  const key = normalizeSupplierReplyStatus(value)
+  const meta = SUPPLIER_REPLY_STATUS_META[key]
+  return <Tag color={meta?.color || "default"}>{meta?.label || "—"}</Tag>
 }
 
 const formatOfferTypeLabel = (value) => {
@@ -174,6 +209,61 @@ const getSelectionLineLabel = (row) =>
       row?.line_description ||
       ""
   ).trim()
+
+const toFiniteNumber = (value) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
+}
+
+const getRequestedQty = (row) => {
+  const candidates = [
+    row?.selected_qty,
+    row?.required_qty,
+    row?.requested_qty,
+    row?.qty,
+    row?.client_requested_qty,
+  ]
+  for (const value of candidates) {
+    const parsed = toFiniteNumber(value)
+    if (parsed != null && parsed > 0) return parsed
+  }
+  return null
+}
+
+const getOfferedQty = (row) => {
+  const candidates = [row?.latest_offered_qty, row?.offered_qty]
+  for (const value of candidates) {
+    const parsed = toFiniteNumber(value)
+    if (parsed != null && parsed > 0) return parsed
+  }
+  return null
+}
+
+const getResponseLineTotal = (row) => {
+  if (!row?.latest_response_line_id) return null
+  const price = toFiniteNumber(row?.latest_price)
+  const qty = getOfferedQty(row) ?? getRequestedQty(row)
+  if (price == null || qty == null) return null
+  return price * qty
+}
+
+const formatQtyWithUom = (qty, uom) => {
+  if (qty == null) return "—"
+  const qtyText = Number.isInteger(qty) ? String(qty) : String(qty)
+  const normalizedUom = String(uom || "").trim()
+  return normalizedUom ? `${qtyText} ${normalizedUom}` : qtyText
+}
+
+const formatRequestedQtyValue = (row) => {
+  const qty = getRequestedQty(row)
+  return formatQtyWithUom(qty, row?.uom)
+}
+
+const formatOfferedQtyValue = (row) => {
+  const qty = getOfferedQty(row)
+  if (qty == null) return "—"
+  return formatQtyWithUom(qty, row?.uom)
+}
 
 const getRowSelectionEntries = (row) => {
   const keys = splitSelectionMeta(row?.selected_selection_keys)
@@ -551,6 +641,9 @@ export default function ResponsesTabContent({
   const [manualLineLock, setManualLineLock] = useState(null)
   const manualSupplierId = Form.useWatch("supplier_id", manualForm)
   const manualRfqItemId = Form.useWatch("rfq_item_id", manualForm)
+  const manualReplyStatus = Form.useWatch("supplier_reply_status", manualForm)
+  const negotiationReplyStatus = Form.useWatch("supplier_reply_status", negotiationForm)
+  const manualSelectionLocked = Boolean(String(manualLineLock?.selectionKey || "").trim())
 
   const itemByRfqItemId = useMemo(() => {
     const map = new Map()
@@ -755,11 +848,27 @@ export default function ResponsesTabContent({
     if (fallbackCat) fallbackLabelParts.push(fallbackCat)
     if (fallbackDescription) fallbackLabelParts.push(fallbackDescription)
     const fallbackLabel = fallbackLabelParts.join(" · ")
+    const presetSelectionKey = String(
+      preset?.selected_selection_key || preset?.selection_key || ""
+    ).trim()
+    const defaultOfferedQty = (() => {
+      const fromPreset = toFiniteNumber(preset?.latest_offered_qty ?? preset?.offered_qty)
+      if (fromPreset != null && fromPreset > 0) return fromPreset
+      const fromLocked = toFiniteNumber(
+        lockedItem?.requested_qty ??
+          lockedItem?.selected_qty ??
+          preset?.requested_qty ??
+          preset?.selected_qty
+      )
+      if (fromLocked != null && fromLocked > 0) return fromLocked
+      return undefined
+    })()
     setManualSupplierLock(lockedSupplier)
     setManualLineLock(
       presetRfqItemId > 0
         ? {
             rfqItemId: presetRfqItemId,
+            selectionKey: presetSelectionKey || null,
             label:
               lockedItem && Number(lockedItem?.line_number)
                 ? formatRfqItemLabel(lockedItem)
@@ -786,6 +895,11 @@ export default function ResponsesTabContent({
         preset?.selected_selection_key || preset?.selection_key || undefined,
       currency: "EUR",
       offer_type: "ANALOG",
+      supplier_reply_status: normalizeSupplierReplyStatus(
+        preset?.latest_supplier_reply_status || "QUOTED"
+      ),
+      offered_qty: defaultOfferedQty,
+      incoterms: preset?.latest_incoterms || undefined,
       new_supplier_part_type: "ANALOG",
       new_revision: presetStatus === "RESPONDED",
     })
@@ -817,7 +931,9 @@ export default function ResponsesTabContent({
     const rfqSupplierId = rfqSupplierIdBySupplierId.get(supplierId)
     if (!Number.isFinite(supplierId) || supplierId <= 0 || !Number.isFinite(rfqItemId) || rfqItemId <= 0 || !Number.isFinite(rfqSupplierId) || rfqSupplierId <= 0 || !activeRfqId) {
       setManualSelectionOptions([])
-      manualForm.setFieldValue("selection_key", undefined)
+      if (!manualSelectionLocked) {
+        manualForm.setFieldValue("selection_key", undefined)
+      }
       return
     }
     let cancelled = false
@@ -853,7 +969,9 @@ export default function ResponsesTabContent({
             }
           })
         setManualSelectionOptions(options)
-        if (rows.length === 1 && rows[0]?.selection_key) {
+        if (manualSelectionLocked) {
+          manualForm.setFieldValue("selection_key", manualLineLock.selectionKey)
+        } else if (rows.length === 1 && rows[0]?.selection_key) {
           manualForm.setFieldValue("selection_key", rows[0].selection_key)
         } else if (rows.length > 1) {
           const currentSelection = manualForm.getFieldValue("selection_key")
@@ -882,6 +1000,8 @@ export default function ResponsesTabContent({
     manualModalOpen,
     manualRfqItemId,
     manualSupplierId,
+    manualSelectionLocked,
+    manualLineLock,
     rfqSupplierIdBySupplierId,
   ])
 
@@ -954,11 +1074,14 @@ export default function ResponsesTabContent({
       price: row.latest_price,
       currency: row.latest_currency,
       offer_type: row.latest_offer_type,
+      supplier_reply_status: row.latest_supplier_reply_status || "QUOTED",
+      offered_qty: row.latest_offered_qty,
       lead_time_days: row.latest_lead_time_days,
       moq: row.latest_moq,
       packaging: row.latest_packaging,
       validity_days: row.latest_validity_days,
       payment_terms: row.latest_payment_terms,
+      incoterms: row.latest_incoterms,
       note: row.latest_note,
     }
   }
@@ -966,18 +1089,30 @@ export default function ResponsesTabContent({
   const submitManualLine = async () => {
     try {
       const values = await manualForm.validateFields()
+      const supplierReplyStatus = normalizeSupplierReplyStatus(values.supplier_reply_status)
+      const requiresPrice = supplierReplyStatusRequiresPrice(supplierReplyStatus)
+      const normalizedPrice =
+        requiresPrice && values.price != null && values.price !== ""
+          ? Number(values.price)
+          : null
+      const normalizedCurrency = requiresPrice
+        ? String(values.currency || "").trim().toUpperCase() || null
+        : null
       const payload = {
         rfq_id: Number(activeRfqId),
         supplier_id: Number(values.supplier_id),
         rfq_item_id: Number(values.rfq_item_id),
-        price: Number(values.price),
-        currency: String(values.currency || "").toUpperCase(),
+        supplier_reply_status: supplierReplyStatus,
+        price: normalizedPrice,
+        currency: normalizedCurrency,
         offer_type: values.offer_type || "ANALOG",
+        offered_qty: values.offered_qty ?? null,
         lead_time_days: values.lead_time_days ?? null,
         moq: values.moq ?? null,
         packaging: values.packaging || null,
         validity_days: values.validity_days ?? null,
         payment_terms: values.payment_terms || null,
+        incoterms: values.incoterms || null,
         note: values.note || null,
         change_reason: values.change_reason || null,
         new_revision: values.new_revision === true,
@@ -1038,11 +1173,14 @@ export default function ResponsesTabContent({
       price: row.price,
       currency: row.currency || "EUR",
       offer_type: row.offer_type || "ANALOG",
+      supplier_reply_status: row.supplier_reply_status || "QUOTED",
+      offered_qty: row.offered_qty,
       lead_time_days: row.lead_time_days,
       moq: row.moq,
       packaging: row.packaging,
       validity_days: row.validity_days,
       payment_terms: row.payment_terms,
+      incoterms: row.incoterms,
       note: row.note,
       reason: "",
       new_revision: true,
@@ -1054,16 +1192,28 @@ export default function ResponsesTabContent({
     if (!row?.id) return
     try {
       const values = await negotiationForm.validateFields()
+      const supplierReplyStatus = normalizeSupplierReplyStatus(values.supplier_reply_status)
+      const requiresPrice = supplierReplyStatusRequiresPrice(supplierReplyStatus)
+      const normalizedPrice =
+        requiresPrice && values.price != null && values.price !== ""
+          ? Number(values.price)
+          : null
+      const normalizedCurrency = requiresPrice
+        ? String(values.currency || "").trim().toUpperCase() || null
+        : null
       setNegotiationModal((prev) => ({ ...prev, saving: true }))
       await axios.post(`/supplier-responses/lines/${row.id}/revise`, {
-        price: Number(values.price),
-        currency: String(values.currency || "").toUpperCase(),
+        supplier_reply_status: supplierReplyStatus,
+        price: normalizedPrice,
+        currency: normalizedCurrency,
         offer_type: values.offer_type || "ANALOG",
+        offered_qty: values.offered_qty ?? null,
         lead_time_days: values.lead_time_days ?? null,
         moq: values.moq ?? null,
         packaging: values.packaging || null,
         validity_days: values.validity_days ?? null,
         payment_terms: values.payment_terms || null,
+        incoterms: values.incoterms || null,
         note: values.note || null,
         reason: values.reason,
         new_revision: values.new_revision !== false,
@@ -1137,6 +1287,14 @@ export default function ResponsesTabContent({
       },
     },
     {
+      title: "Статус предложения",
+      width: 180,
+      render: (_, r) =>
+        r.latest_response_line_id
+          ? renderSupplierReplyStatusTag(r.latest_supplier_reply_status)
+          : "—",
+    },
+    {
       title: "Rev ответа",
       dataIndex: "latest_response_rev_number",
       width: 110,
@@ -1161,6 +1319,24 @@ export default function ResponsesTabContent({
           : "—",
     },
     {
+      title: "Запрошено",
+      width: 120,
+      render: (_, r) => formatRequestedQtyValue(r),
+    },
+    {
+      title: "Предложено",
+      width: 120,
+      render: (_, r) => formatOfferedQtyValue(r),
+    },
+    {
+      title: "Итого",
+      width: 130,
+      render: (_, r) => {
+        const total = getResponseLineTotal(r)
+        return total != null ? formatPriceWithCurrency(total, r.latest_currency) : "—"
+      },
+    },
+    {
       title: "Тип",
       dataIndex: "latest_offer_type",
       width: 120,
@@ -1169,7 +1345,20 @@ export default function ResponsesTabContent({
     { title: "Срок, дн", dataIndex: "latest_lead_time_days", width: 90 },
     { title: "MOQ", dataIndex: "latest_moq", width: 90 },
     { title: "Упаковка", dataIndex: "latest_packaging", width: 120 },
+    {
+      title: "Инкотермс",
+      dataIndex: "latest_incoterms",
+      width: 110,
+      render: (value) => value || "—",
+    },
     { title: "PN поставщика", dataIndex: "latest_supplier_part_number", width: 150 },
+    {
+      title: "Описание поставщика",
+      dataIndex: "latest_supplier_part_description",
+      width: 240,
+      ellipsis: true,
+      render: (value) => value || "—",
+    },
     {
       title: "Причина/коммент.",
       width: 220,
@@ -1273,6 +1462,14 @@ export default function ResponsesTabContent({
       ),
     },
     {
+      title: "Статус предложения",
+      width: 180,
+      render: (_, r) =>
+        r.latest_response_line_id
+          ? renderSupplierReplyStatusTag(r.latest_supplier_reply_status)
+          : "—",
+    },
+    {
       title: "Цена",
       width: 130,
       render: (_, r) =>
@@ -1280,9 +1477,40 @@ export default function ResponsesTabContent({
           ? formatPriceWithCurrency(r.latest_price, r.latest_currency)
           : "—",
     },
+    {
+      title: "Запрошено",
+      width: 120,
+      render: (_, r) => formatRequestedQtyValue(r),
+    },
+    {
+      title: "Предложено",
+      width: 120,
+      render: (_, r) => formatOfferedQtyValue(r),
+    },
+    {
+      title: "Итого",
+      width: 130,
+      render: (_, r) => {
+        const total = getResponseLineTotal(r)
+        return total != null ? formatPriceWithCurrency(total, r.latest_currency) : "—"
+      },
+    },
     { title: "Срок, дн", dataIndex: "latest_lead_time_days", width: 90 },
     { title: "MOQ", dataIndex: "latest_moq", width: 90 },
+    {
+      title: "Инкотермс",
+      dataIndex: "latest_incoterms",
+      width: 110,
+      render: (value) => value || "—",
+    },
     { title: "PN поставщика", dataIndex: "latest_supplier_part_number", width: 150 },
+    {
+      title: "Описание поставщика",
+      dataIndex: "latest_supplier_part_description",
+      width: 240,
+      ellipsis: true,
+      render: (value) => value || "—",
+    },
     { title: "Дата ответа", dataIndex: "latest_response_created_at", width: 120, render: formatDate },
     {
       title: "Действия",
@@ -1394,14 +1622,6 @@ export default function ResponsesTabContent({
             { label: "По оригиналу", value: "original" },
           ]}
         />
-        <Checkbox
-          checked={importModal.newRevision || false}
-          onChange={(e) =>
-            setImportModal((prev) => ({ ...prev, newRevision: e.target.checked }))
-          }
-        >
-          Новая ревизия при импорте
-        </Checkbox>
         <Button
           onClick={() =>
             setImportModal({
@@ -1413,7 +1633,9 @@ export default function ResponsesTabContent({
               rows: [],
               loading: false,
               fileName: "",
-              newRevision: false,
+              newRevision: importModal.newRevision === true,
+              preview: null,
+              previewKey: "",
             })
           }
         >
@@ -1422,7 +1644,11 @@ export default function ResponsesTabContent({
       </Space>
 
       <Table
-        rowKey={(row) => `${row.rfq_supplier_id}-${row.rfq_item_id}`}
+        rowKey={(row) =>
+          `${row.rfq_supplier_id}-${row.rfq_item_id}-${
+            row.selected_selection_key || row.selection_key || "no-selection"
+          }`
+        }
         dataSource={viewMode === "supplier" ? visibleWorkspaceRows : byOriginalRows}
         pagination={false}
         size="small"
@@ -1442,10 +1668,24 @@ export default function ResponsesTabContent({
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
               {list.map((r) => (
                 <Tag key={`${r.id}`} color={sourceTagColor(r)}>
-                  {formatSourceLabel(r)} · Rev {r.response_rev_number || "?"}:{" "}
-                  {r.price != null ? formatPriceWithCurrency(r.price, r.currency) : "—"} ·
-                  {r.lead_time_days ? ` ${r.lead_time_days}дн` : ""} · {formatDate(r.created_at)}
-                  {r.change_reason ? ` · ${r.change_reason}` : ""}
+                  {(() => {
+                    const statusMeta =
+                      SUPPLIER_REPLY_STATUS_META[
+                        normalizeSupplierReplyStatus(r.supplier_reply_status)
+                      ]
+                    const statusText = statusMeta?.label || "Без ответа"
+                    const valueText =
+                      r.price != null
+                        ? formatPriceWithCurrency(r.price, r.currency)
+                        : statusText
+                    return (
+                      <>
+                        {formatSourceLabel(r)} · Rev {r.response_rev_number || "?"}: {valueText} ·
+                        {r.lead_time_days ? ` ${r.lead_time_days}дн` : ""} · {formatDate(r.created_at)}
+                        {r.change_reason ? ` · ${r.change_reason}` : ""}
+                      </>
+                    )
+                  })()}
                 </Tag>
               ))}
             </div>
@@ -1499,7 +1739,7 @@ export default function ResponsesTabContent({
               <Select options={lineOptions} showSearch optionFilterProp="label" />
             </Form.Item>
           ) : null}
-          {manualSelectionOptions.length > 1 ? (
+          {manualSelectionOptions.length > 1 && !manualSelectionLocked ? (
             <Form.Item
               name="selection_key"
               label="Компонент/роль RFQ"
@@ -1520,31 +1760,73 @@ export default function ResponsesTabContent({
           <Form.Item name="bundle_id" hidden>
             <InputNumber />
           </Form.Item>
-          {manualSelectionOptions.length <= 1 ? (
+          {manualSelectionOptions.length <= 1 || manualSelectionLocked ? (
             <Form.Item name="selection_key" hidden>
               <Input />
             </Form.Item>
           ) : null}
+          <Form.Item
+            name="supplier_reply_status"
+            label="Статус ответа"
+            rules={[{ required: true, message: "Выберите статус ответа" }]}
+          >
+            <Select options={SUPPLIER_REPLY_STATUS_OPTIONS} />
+          </Form.Item>
           <Space style={{ display: "flex" }} align="start">
             <Form.Item
               name="price"
               label="Цена"
-              rules={[{ required: true, message: "Введите цену" }]}
+              rules={[
+                () => ({
+                  validator(_, value) {
+                    if (!supplierReplyStatusRequiresPrice(manualReplyStatus)) return Promise.resolve()
+                    if (value == null || value === "") {
+                      return Promise.reject(new Error("Введите цену"))
+                    }
+                    return Promise.resolve()
+                  },
+                }),
+              ]}
             >
-              <InputNumber min={0} step={0.01} />
+              <InputNumber
+                min={0}
+                step={0.01}
+                disabled={!supplierReplyStatusRequiresPrice(manualReplyStatus)}
+              />
             </Form.Item>
             <Form.Item
               name="currency"
               label="Валюта"
-              rules={[{ required: true, message: "Введите валюту" }]}
+              rules={[
+                () => ({
+                  validator(_, value) {
+                    if (!supplierReplyStatusRequiresPrice(manualReplyStatus)) return Promise.resolve()
+                    if (!String(value || "").trim()) {
+                      return Promise.reject(new Error("Введите валюту"))
+                    }
+                    return Promise.resolve()
+                  },
+                }),
+              ]}
             >
-              <Input style={{ width: 90 }} />
+              <Select
+                style={{ width: 90 }}
+                options={SUPPLIER_DEFAULT_CURRENCY_OPTIONS}
+                showSearch
+                optionFilterProp="label"
+                allowClear
+                placeholder="Валюта"
+                disabled={!supplierReplyStatusRequiresPrice(manualReplyStatus)}
+              />
             </Form.Item>
             <Form.Item name="offer_type" label="Тип">
               <Select style={{ width: 160 }} options={OFFER_TYPE_OPTIONS} />
             </Form.Item>
           </Space>
           <Space style={{ display: "flex" }} align="start">
+            <Form.Item name="offered_qty" label="Кол-во (предложено)">
+              <InputNumber min={0} step={0.001} />
+            </Form.Item>
             <Form.Item name="lead_time_days" label="Срок, дн">
               <InputNumber min={0} />
             </Form.Item>
@@ -1559,7 +1841,16 @@ export default function ResponsesTabContent({
             <Input />
           </Form.Item>
           <Form.Item name="payment_terms" label="Условия оплаты">
-            <Input />
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Выберите условия оплаты"
+              options={SUPPLIER_DEFAULT_PAYMENT_TERMS_OPTIONS}
+            />
+          </Form.Item>
+          <Form.Item name="incoterms" label="Incoterms">
+            <IncotermsSelect style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item name="note" label="Комментарий">
             <Input.TextArea rows={2} />
@@ -1682,26 +1973,72 @@ export default function ResponsesTabContent({
             style={{ marginBottom: 12 }}
             message="Будет создана новая версия ответа по выбранной строке"
           />
+          <Form.Item
+            name="supplier_reply_status"
+            label="Статус ответа"
+            rules={[{ required: true, message: "Выберите статус ответа" }]}
+          >
+            <Select options={SUPPLIER_REPLY_STATUS_OPTIONS} />
+          </Form.Item>
           <Space style={{ display: "flex" }} align="start">
             <Form.Item
               name="price"
               label="Цена"
-              rules={[{ required: true, message: "Введите цену" }]}
+              rules={[
+                () => ({
+                  validator(_, value) {
+                    if (!supplierReplyStatusRequiresPrice(negotiationReplyStatus)) {
+                      return Promise.resolve()
+                    }
+                    if (value == null || value === "") {
+                      return Promise.reject(new Error("Введите цену"))
+                    }
+                    return Promise.resolve()
+                  },
+                }),
+              ]}
             >
-              <InputNumber min={0} step={0.01} />
+              <InputNumber
+                min={0}
+                step={0.01}
+                disabled={!supplierReplyStatusRequiresPrice(negotiationReplyStatus)}
+              />
             </Form.Item>
             <Form.Item
               name="currency"
               label="Валюта"
-              rules={[{ required: true, message: "Введите валюту" }]}
+              rules={[
+                () => ({
+                  validator(_, value) {
+                    if (!supplierReplyStatusRequiresPrice(negotiationReplyStatus)) {
+                      return Promise.resolve()
+                    }
+                    if (!String(value || "").trim()) {
+                      return Promise.reject(new Error("Введите валюту"))
+                    }
+                    return Promise.resolve()
+                  },
+                }),
+              ]}
             >
-              <Input style={{ width: 90 }} />
+              <Select
+                style={{ width: 90 }}
+                options={SUPPLIER_DEFAULT_CURRENCY_OPTIONS}
+                showSearch
+                optionFilterProp="label"
+                allowClear
+                placeholder="Валюта"
+                disabled={!supplierReplyStatusRequiresPrice(negotiationReplyStatus)}
+              />
             </Form.Item>
             <Form.Item name="offer_type" label="Тип">
               <Select style={{ width: 160 }} options={OFFER_TYPE_OPTIONS} />
             </Form.Item>
           </Space>
           <Space style={{ display: "flex" }} align="start">
+            <Form.Item name="offered_qty" label="Кол-во (предложено)">
+              <InputNumber min={0} step={0.001} />
+            </Form.Item>
             <Form.Item name="lead_time_days" label="Срок, дн">
               <InputNumber min={0} />
             </Form.Item>
@@ -1716,7 +2053,16 @@ export default function ResponsesTabContent({
             <Input />
           </Form.Item>
           <Form.Item name="payment_terms" label="Условия оплаты">
-            <Input />
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Выберите условия оплаты"
+              options={SUPPLIER_DEFAULT_PAYMENT_TERMS_OPTIONS}
+            />
+          </Form.Item>
+          <Form.Item name="incoterms" label="Incoterms">
+            <IncotermsSelect style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item name="note" label="Комментарий">
             <Input.TextArea rows={2} />

@@ -2,6 +2,12 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Button, Card, Checkbox, Input, InputNumber, Select, Space, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
+import {
+  SUPPLIER_DEFAULT_CURRENCY_OPTIONS,
+  SUPPLIER_DEFAULT_PAYMENT_TERMS_OPTIONS,
+  normalizeSupplierDefaultCurrency,
+  normalizeSupplierDefaultPaymentTerms,
+} from "@/constants/supplierDefaults"
 
 const { Text } = Typography
 
@@ -15,9 +21,8 @@ const metaFromSupplier = (s) => ({
   public_code: s?.public_code || "",
   vat_number: s?.vat_number || "",
   website: s?.website || "",
-  payment_terms: s?.payment_terms || "",
-  preferred_currency: s?.preferred_currency || "",
-  default_incoterms: s?.default_incoterms || "",
+  payment_terms: normalizeSupplierDefaultPaymentTerms(s?.payment_terms),
+  preferred_currency: normalizeSupplierDefaultCurrency(s?.preferred_currency),
   default_pickup_location: s?.default_pickup_location || "",
   can_oem: !!s?.can_oem,
   can_analog: s?.can_analog === undefined ? true : !!s?.can_analog,
@@ -68,9 +73,8 @@ export default function SupplierMetaCard({ supplier, onSaved }) {
         public_code: code,
         vat_number: trimOrNull(meta.vat_number),
         website: trimOrNull(meta.website),
-        payment_terms: trimOrNull(meta.payment_terms),
-        preferred_currency: trimOrNull(meta.preferred_currency),
-        default_incoterms: trimOrNull(meta.default_incoterms),
+        payment_terms: trimOrNull(normalizeSupplierDefaultPaymentTerms(meta.payment_terms)),
+        preferred_currency: trimOrNull(normalizeSupplierDefaultCurrency(meta.preferred_currency)),
         default_pickup_location: trimOrNull(meta.default_pickup_location),
         can_oem: meta.can_oem ? 1 : 0,
         can_analog: meta.can_analog ? 1 : 0,
@@ -104,6 +108,13 @@ export default function SupplierMetaCard({ supplier, onSaved }) {
       <Space direction="vertical" style={{ width: "100%" }} size={10}>
         <div>
           <Text strong>Основные поля</Text>
+          <div>
+            <Text type="secondary">
+              Поля ниже используются как базовые значения по умолчанию для новых RFQ.
+              В шаблон RFQ и форму ответов автоматически подтягиваются валюта и условия оплаты.
+              В конкретном RFQ эти значения можно изменить.
+            </Text>
+          </div>
         </div>
 
         <Space style={{ width: "100%" }} size={10} wrap>
@@ -127,22 +138,36 @@ export default function SupplierMetaCard({ supplier, onSaved }) {
             <Input value={meta.website} onChange={(e) => setField("website", e.target.value)} allowClear />
           </div>
           <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Условия оплаты</div>
-            <Input value={meta.payment_terms} onChange={(e) => setField("payment_terms", e.target.value)} allowClear />
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>
+              Базовые условия оплаты (по умолчанию)
+            </div>
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Выберите условие"
+              options={SUPPLIER_DEFAULT_PAYMENT_TERMS_OPTIONS}
+              value={meta.payment_terms || undefined}
+              onChange={(value) => setField("payment_terms", value || "")}
+            />
           </div>
         </Space>
 
         <Space style={{ width: "100%" }} size={10} wrap>
           <div style={{ minWidth: 180 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Валюта</div>
-            <Input value={meta.preferred_currency} onChange={(e) => setField("preferred_currency", e.target.value)} allowClear />
-          </div>
-          <div style={{ minWidth: 180 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Инкотермс</div>
-            <Input value={meta.default_incoterms} onChange={(e) => setField("default_incoterms", e.target.value)} allowClear />
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Валюта по умолчанию</div>
+            <Select
+              allowClear
+              placeholder="Выберите валюту"
+              options={SUPPLIER_DEFAULT_CURRENCY_OPTIONS}
+              value={meta.preferred_currency || undefined}
+              onChange={(value) => setField("preferred_currency", value || "")}
+            />
           </div>
           <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Город/порт</div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>
+              Город/порт отгрузки (по умолчанию)
+            </div>
             <Input value={meta.default_pickup_location} onChange={(e) => setField("default_pickup_location", e.target.value)} allowClear />
           </div>
         </Space>
@@ -182,7 +207,9 @@ export default function SupplierMetaCard({ supplier, onSaved }) {
             />
           </div>
           <div style={{ minWidth: 220 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Срок поставки (база), дн</div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>
+              Срок поставки базовый (ориентир), дн
+            </div>
             <InputNumber
               style={{ width: "100%" }}
               min={0}

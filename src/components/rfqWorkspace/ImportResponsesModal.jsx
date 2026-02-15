@@ -1,5 +1,5 @@
 import React, { useMemo, useRef } from "react"
-import { Button, Checkbox, Input, Modal, Select, Space, Typography, message } from "antd"
+import { Alert, Button, Checkbox, Input, Modal, Select, Space, Typography, message } from "antd"
 import { UploadOutlined } from "@ant-design/icons"
 import * as XLSX from "xlsx"
 import axios from "@/api/axiosInstance"
@@ -17,7 +17,32 @@ const getEmptyImportModalState = () => ({
   loading: false,
   fileName: "",
   newRevision: false,
+  preview: null,
+  previewKey: "",
 })
+
+const resetImportPreview = (prev) => ({
+  ...prev,
+  preview: null,
+  previewKey: "",
+})
+
+const buildPreviewKey = (supplierId, rows, newRevision) =>
+  JSON.stringify({
+    supplierId: Number(supplierId || 0),
+    newRevision: newRevision === true,
+    rows: (Array.isArray(rows) ? rows : []).map((row) => ({
+      line_number: Number(row?.line_number || 0),
+      price: row?.price ?? null,
+      currency: String(row?.currency || "").toUpperCase(),
+      offered_qty: row?.offered_qty ?? null,
+      supplier_reply_status: String(row?.supplier_reply_status || "QUOTED").toUpperCase(),
+      supplier_part_number: String(
+        row?.supplier_part_number || row?.supplier_pn || row?.part_number || row?.pn || ""
+      ).trim(),
+      selection_key: String(row?.selection_key || "").trim(),
+    })),
+  })
 
 const normalizeSupplierName = (value) =>
   String(value || "")
@@ -101,7 +126,53 @@ export default function ImportResponsesModal({
                 : parseImportTextRows(importModal.text)
 
             if (!rows.length) {
-              message.warning("Не удалось распарсить данные. Формат: <строка> <tab> <цена> <tab> <валюта> [<tab> срок]")
+              message.warning(
+                "Не удалось распарсить данные. Формат: <строка> <tab> <цена> <tab> <валюта> ... или <строка> <tab><tab> ... <tab> <статус ответа> без цены."
+              )
+              return
+            }
+
+            const previewKey = buildPreviewKey(
+              effectiveSupplierId,
+              rows,
+              importModal.newRevision === true
+            )
+            const hasFreshPreview =
+              importModal.preview &&
+              importModal.previewKey &&
+              importModal.previewKey === previewKey
+
+            if (!hasFreshPreview) {
+              setImportModal((prev) => ({ ...prev, loading: true }))
+              try {
+                const { data } = await axios.post(`/rfqs/${activeRfqId}/responses/import`, {
+                  supplier_id: effectiveSupplierId,
+                  rows,
+                  new_revision: importModal.newRevision === true,
+                  preview: true,
+                })
+                setImportModal((prev) => ({
+                  ...prev,
+                  loading: false,
+                  preview: data || null,
+                  previewKey,
+                }))
+                const errorCount = Number(data?.summary?.errors || 0)
+                if (errorCount > 0) {
+                  message.warning(`Найдены ошибки в ${errorCount} строках. Исправьте данные и проверьте снова.`)
+                } else {
+                  message.success("Проверка прошла успешно. Теперь можно импортировать.")
+                }
+              } catch (err) {
+                console.error(err)
+                message.error(err?.response?.data?.message || "Не удалось выполнить предпросмотр импорта")
+                setImportModal((prev) => ({ ...prev, loading: false }))
+              }
+              return
+            }
+
+            if (Number(importModal.preview?.summary?.errors || 0) > 0) {
+              message.warning("Нельзя импортировать: в предпросмотре есть ошибки")
               return
             }
 
@@ -122,14 +193,19 @@ export default function ImportResponsesModal({
             }
           }}
         >
-          Импортировать
+          {importModal.preview && importModal.previewKey
+            ? "Импортировать"
+            : "Проверить и импортировать"}
         </Button>,
       ]}
     >
       <Space direction="vertical" style={{ width: "100%" }}>
         <Text type="secondary">
           Можно загрузить заполненный поставщиком RFQ Excel (тот, что система сгенерировала), либо вставить TSV вручную.
-          Обязательные поля для строки: «Строка», «Цена», «Валюта». Остальные колонки (тип, срок, MOQ, упаковка, PN, вес/габариты, тяжелая/негабарит) импортируются как дополнительные.
+          Обязательные поля для строки: «Строка» и либо («Цена» + «Валюта»), либо «Статус ответа» без цены.
+          Для сгенерированного Excel «Строка» уже предзаполнена.
+          Поле «Срок действия цены (дн.) / Validity» опционально.
+          Остальные колонки (тип, срок, MOQ, упаковка, PN, вес/габариты, инкотермс, условия оплаты) импортируются как дополнительные.
           TSV можно вставлять как без шапки, так и с шапкой колонок.
         </Text>
         <Select
@@ -142,6 +218,8 @@ export default function ImportResponsesModal({
             setImportModal((prev) => ({
               ...prev,
               supplierId: value || null,
+              preview: null,
+              previewKey: "",
             }))
           }
         />
@@ -158,7 +236,9 @@ export default function ImportResponsesModal({
         ) : null}
         <Checkbox
           checked={importModal.newRevision || false}
-          onChange={(e) => setImportModal((prev) => ({ ...prev, newRevision: e.target.checked }))}
+          onChange={(e) =>
+            setImportModal((prev) => resetImportPreview({ ...prev, newRevision: e.target.checked }))
+          }
         >
           Создать новую ревизию ответа
         </Checkbox>
@@ -166,10 +246,12 @@ export default function ImportResponsesModal({
           rows={8}
           value={importModal.text}
           onChange={(e) =>
-            setImportModal((prev) => ({ ...prev, text: e.target.value, rows: [] }))
+            setImportModal((prev) =>
+              resetImportPreview({ ...prev, text: e.target.value, rows: [] })
+            )
           }
           placeholder={
-            "Строка\tЦена\tВалюта\tСрок\tКомментарий\n1\t100\tEUR\t10\tпо телефону\n2\t50\tUSD\t7"
+            "Строка\tЦена\tВалюта\tСрок\tКомментарий\tТип\tСтатус ответа\tИнкотермс\tУсловия оплаты\n1\t100\tEUR\t10\tпо телефону\tANALOG\tQUOTED\tFCA\t100% предоплата"
           }
         />
         <Button
@@ -205,22 +287,32 @@ export default function ImportResponsesModal({
                 })
               const rowsParsed = json
                 .map((r) => parseImportRow(r))
-                .filter((r) => r && Number.isFinite(r.line_number) && Number.isFinite(r.price) && r.currency)
+                .filter((r) => r && Number.isFinite(r.line_number))
               if (!rowsParsed.length) {
-                message.warning("Не удалось распарсить файл: убедитесь, что заполнены колонки Строка/Цена/Валюта")
+                message.warning(
+                  "Не удалось распарсить файл: проверьте заполнение колонок Строка и (Цена+Валюта или Статус ответа без цены)"
+                )
                 return
               }
               const text = rowsParsed
                 .map(
                   (r) =>
-                    `${r.line_number}\t${r.price}\t${r.currency}\t${r.lead_time_days || ""}\t${r.note || ""}`
+                    [
+                      r.line_number,
+                      r.price ?? "",
+                      r.currency || "",
+                      r.lead_time_days || "",
+                      r.note || "",
+                      r.offer_type || "",
+                      r.supplier_reply_status || "",
+                      r.incoterms || "",
+                      r.payment_terms || "",
+                    ].join("\t")
                 )
                 .join("\n")
               setImportModal((prev) => ({
-                ...prev,
-                supplierId:
-                  prev.supplierId ||
-                  (detectedOption?.value ? Number(detectedOption.value) : null),
+                ...resetImportPreview(prev),
+                supplierId: prev.supplierId || (detectedOption?.value ? Number(detectedOption.value) : null),
                 detectedSupplierId: detectedOption?.value ? Number(detectedOption.value) : null,
                 detectedSupplierName,
                 text,
@@ -243,6 +335,46 @@ export default function ImportResponsesModal({
         />
         {importModal.fileName ? (
           <Text type="secondary">Файл: {importModal.fileName}</Text>
+        ) : null}
+        {importModal.preview?.summary ? (
+          <Alert
+            type={Number(importModal.preview.summary.errors || 0) > 0 ? "warning" : "success"}
+            showIcon
+            message={
+              Number(importModal.preview.summary.errors || 0) > 0
+                ? "Предпросмотр: есть ошибки"
+                : "Предпросмотр: ошибок не найдено"
+            }
+            description={
+              <div>
+                <div>
+                  Строк: {importModal.preview.summary.total || 0}, корректных:{" "}
+                  {importModal.preview.summary.valid || 0}, ошибок:{" "}
+                  {importModal.preview.summary.errors || 0}
+                </div>
+                <div>
+                  Будет создано новых деталей поставщика:{" "}
+                  {importModal.preview.summary.would_create_supplier_parts || 0}
+                </div>
+                {Array.isArray(importModal.preview.rows) &&
+                importModal.preview.rows.some((row) => row.status === "error") ? (
+                  <div style={{ marginTop: 8 }}>
+                    <b>Ошибки:</b>
+                    <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                      {importModal.preview.rows
+                        .filter((row) => row.status === "error")
+                        .slice(0, 8)
+                        .map((row) => (
+                          <li key={`preview-error-${row.row_index}`}>
+                            Строка {row.line_number || row.row_index}: {row.message}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            }
+          />
         ) : null}
       </Space>
     </Modal>

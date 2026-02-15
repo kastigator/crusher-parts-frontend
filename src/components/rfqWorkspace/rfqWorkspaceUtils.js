@@ -162,6 +162,19 @@ const parseOfferType = (value) => {
   return null
 }
 
+const parseSupplierReplyStatus = (value) => {
+  const raw = String(value || "").trim().toUpperCase()
+  if (!raw) return null
+  if (["QUOTED", "PRICE PROVIDED", "ЦЕНА ПРЕДОСТАВЛЕНА"].includes(raw)) return "QUOTED"
+  if (["NO_STOCK", "NO STOCK", "OUT OF STOCK", "НЕТ В НАЛИЧИИ"].includes(raw)) return "NO_STOCK"
+  if (["DISCONTINUED", "СНЯТ С ПРОИЗВОДСТВА"].includes(raw)) return "DISCONTINUED"
+  if (["NEEDS_CLARIFICATION", "NEEDS CLARIFICATION", "ТРЕБУЕТ УТОЧНЕНИЯ"].includes(raw)) {
+    return "NEEDS_CLARIFICATION"
+  }
+  if (["NO_RESPONSE", "NO RESPONSE", "БЕЗ ОТВЕТА"].includes(raw)) return "NO_RESPONSE"
+  return null
+}
+
 const parseBooleanFlagOrNull = (value) => {
   if (value === undefined || value === null) return null
   const raw = String(value).trim().toLowerCase()
@@ -188,13 +201,20 @@ const resolveHeaderField = (headerValue) => {
   }
   if (includes("строк") || includes("line")) return "line_number"
   if (key === "цена" || key === "price") return "price"
+  if (key === "кол во" || key === "кол-во" || key === "qty" || key === "quantity") return "offered_qty"
+  if (includes("кол") || includes("qty")) return "offered_qty"
   if (includes("валют") || key === "currency") return "currency"
   if (includes("срок") || includes("lead")) return "lead_time_days"
   if (key === "moq") return "moq"
   if (includes("упаков")) return "packaging"
   if (includes("коммент") || includes("примеч") || key === "note" || key === "comment") return "note"
   if (includes("тип") || includes("offer")) return "offer_type"
-  if (includes("valid")) return "validity_days"
+  if (includes("статус ответа") || includes("reply status") || includes("quote status")) {
+    return "supplier_reply_status"
+  }
+  if (includes("incoterm")) return "incoterms"
+  if (includes("услов") || includes("payment")) return "payment_terms"
+  if (includes("valid") || includes("срок действия")) return "validity_days"
   if (includes("pn") || includes("supplier part")) return "supplier_part_number"
   if (includes("описание поставщика") || includes("supplier description")) return "supplier_description"
   if (includes("вес") || key === "weight") return "weight_kg"
@@ -218,17 +238,24 @@ const parseImportRowByHeaderMap = (cells, headerMap) => {
   const price = parseNumberOrNull(getValue("price"))
   const currencyRaw = getValue("currency")
   const currency = currencyRaw ? String(currencyRaw).trim().toUpperCase() : null
-  if (price == null || !currency) return null
+  const supplierReplyStatus = parseSupplierReplyStatus(getValue("supplier_reply_status")) || "QUOTED"
+  const requiresPrice = supplierReplyStatus === "QUOTED"
+  if (requiresPrice && (price == null || !currency)) return null
+  if (!requiresPrice && (price != null || currency)) return null
 
   return {
     line_number: Number(lineNumber),
-    price: Number(price),
-    currency,
+    price: requiresPrice ? Number(price) : null,
+    currency: requiresPrice ? currency : null,
+    supplier_reply_status: supplierReplyStatus,
+    offered_qty: parseNumberOrNull(getValue("offered_qty")),
     lead_time_days: parseNumberOrNull(getValue("lead_time_days")),
     note: getValue("note") ? String(getValue("note")).trim() : null,
     offer_type: parseOfferType(getValue("offer_type")),
     moq: parseNumberOrNull(getValue("moq")),
     packaging: getValue("packaging") ? String(getValue("packaging")).trim() : null,
+    incoterms: getValue("incoterms") ? String(getValue("incoterms")).trim().toUpperCase() : null,
+    payment_terms: getValue("payment_terms") ? String(getValue("payment_terms")).trim() : null,
     validity_days: parseNumberOrNull(getValue("validity_days")),
     supplier_part_number: getValue("supplier_part_number")
       ? String(getValue("supplier_part_number")).trim()
@@ -249,49 +276,113 @@ export const parseImportRow = (cells) => {
   const row = Array.isArray(cells) ? cells : []
   const lineNumber = parseNumberOrNull(row[0])
   if (!lineNumber) return null
-  const hasExtendedTemplate = row.length >= 24
-  const commentCol = hasExtendedTemplate ? 23 : 21
-  const validityCol = hasExtendedTemplate ? 22 : 20
-  const moqCol = hasExtendedTemplate ? 18 : 16
-  const packagingCol = hasExtendedTemplate ? 19 : 17
-
-  const fromTemplatePrice = parseNumberOrNull(row[9])
-  const fromTemplateCurrency = row[10] ? String(row[10]).trim().toUpperCase() : null
-  if (fromTemplatePrice != null && fromTemplateCurrency) {
+  const parseByTemplateIndexes = (idx) => {
+    const templatePrice = parseNumberOrNull(row[idx.price])
+    const templateCurrency = row[idx.currency] ? String(row[idx.currency]).trim().toUpperCase() : null
+    const supplierReplyStatus = parseSupplierReplyStatus(row[idx.replyStatus]) || "QUOTED"
+    const requiresPrice = supplierReplyStatus === "QUOTED"
+    if (requiresPrice && (templatePrice == null || !templateCurrency)) return null
+    if (!requiresPrice && (templatePrice != null || templateCurrency)) return null
     return {
       line_number: Number(lineNumber),
-      price: Number(fromTemplatePrice),
-      currency: fromTemplateCurrency,
-      lead_time_days: parseNumberOrNull(row[11]),
-      note: row[commentCol] ? String(row[commentCol]).trim() : null,
-      offer_type: parseOfferType(row[8]),
-      moq: parseNumberOrNull(row[moqCol]),
-      packaging: row[packagingCol] ? String(row[packagingCol]).trim() : null,
-      validity_days: parseNumberOrNull(row[validityCol]),
-      supplier_part_number: row[6] ? String(row[6]).trim() : null,
-      supplier_description: row[7] ? String(row[7]).trim() : null,
-      weight_kg: parseNumberOrNull(row[12]),
-      length_cm: parseNumberOrNull(row[13]),
-      width_cm: parseNumberOrNull(row[14]),
-      height_cm: parseNumberOrNull(row[15]),
-      is_overweight: hasExtendedTemplate ? parseBooleanFlagOrNull(row[16]) : null,
-      is_oversize: hasExtendedTemplate ? parseBooleanFlagOrNull(row[17]) : null,
+      price: requiresPrice ? Number(templatePrice) : null,
+      currency: requiresPrice ? templateCurrency : null,
+      supplier_reply_status: supplierReplyStatus,
+      offered_qty: parseNumberOrNull(row[idx.offeredQty]),
+      lead_time_days: parseNumberOrNull(row[idx.lead]),
+      note: row[idx.comment] ? String(row[idx.comment]).trim() : null,
+      offer_type: parseOfferType(row[idx.offer]),
+      moq: parseNumberOrNull(row[idx.moq]),
+      packaging: row[idx.packaging] ? String(row[idx.packaging]).trim() : null,
+      incoterms: row[idx.incoterms] ? String(row[idx.incoterms]).trim().toUpperCase() : null,
+      payment_terms: row[idx.paymentTerms] ? String(row[idx.paymentTerms]).trim() : null,
+      validity_days: parseNumberOrNull(row[idx.validity]),
+      supplier_part_number: row[idx.supplierPartNumber]
+        ? String(row[idx.supplierPartNumber]).trim()
+        : null,
+      supplier_description: row[idx.supplierDescription]
+        ? String(row[idx.supplierDescription]).trim()
+        : null,
+      weight_kg: parseNumberOrNull(row[idx.weight]),
+      length_cm: parseNumberOrNull(row[idx.length]),
+      width_cm: parseNumberOrNull(row[idx.width]),
+      height_cm: parseNumberOrNull(row[idx.height]),
+      is_overweight: parseBooleanFlagOrNull(row[idx.isOverweight]),
+      is_oversize: parseBooleanFlagOrNull(row[idx.isOversize]),
     }
   }
 
+  // Новый шаблон (без служебной колонки "Статус")
+  const fromTemplateV2 = parseByTemplateIndexes({
+    offeredQty: 3,
+    supplierPartNumber: 5,
+    supplierDescription: 6,
+    offer: 7,
+    replyStatus: 8,
+    price: 9,
+    currency: 10,
+    lead: 11,
+    weight: 12,
+    length: 13,
+    width: 14,
+    height: 15,
+    isOverweight: 16,
+    isOversize: 17,
+    moq: 18,
+    packaging: 19,
+    incoterms: 20,
+    paymentTerms: 21,
+    validity: 22,
+    comment: 23,
+  })
+  if (fromTemplateV2) return fromTemplateV2
+
+  // Старый шаблон (со служебной колонкой "Статус")
+  const fromTemplateV1 = parseByTemplateIndexes({
+    offeredQty: 4,
+    supplierPartNumber: 6,
+    supplierDescription: 7,
+    offer: 8,
+    replyStatus: 9,
+    price: 10,
+    currency: 11,
+    lead: 12,
+    weight: 13,
+    length: 14,
+    width: 15,
+    height: 16,
+    isOverweight: 17,
+    isOversize: 18,
+    moq: 19,
+    packaging: 20,
+    incoterms: 21,
+    paymentTerms: 22,
+    validity: 23,
+    comment: 24,
+  })
+  if (fromTemplateV1) return fromTemplateV1
+
   const fallbackPrice = parseNumberOrNull(row[1])
   const fallbackCurrency = row[2] ? String(row[2]).trim().toUpperCase() : null
-  if (fallbackPrice == null || !fallbackCurrency) return null
+  const fallbackReplyStatus =
+    parseSupplierReplyStatus(row[6]) || parseSupplierReplyStatus(row[5]) || "QUOTED"
+  const fallbackRequiresPrice = fallbackReplyStatus === "QUOTED"
+  if (fallbackRequiresPrice && (fallbackPrice == null || !fallbackCurrency)) return null
+  if (!fallbackRequiresPrice && (fallbackPrice != null || fallbackCurrency)) return null
 
   return {
     line_number: Number(lineNumber),
-    price: Number(fallbackPrice),
-    currency: fallbackCurrency,
+    price: fallbackRequiresPrice ? Number(fallbackPrice) : null,
+    currency: fallbackRequiresPrice ? fallbackCurrency : null,
+    supplier_reply_status: fallbackReplyStatus,
+    offered_qty: null,
     lead_time_days: parseNumberOrNull(row[3]),
     note: row[4] ? String(row[4]).trim() : null,
-    offer_type: parseOfferType(row[5]),
+    offer_type: parseOfferType(row[5]) || parseOfferType(row[6]),
     moq: parseNumberOrNull(row[6]),
     packaging: row[7] ? String(row[7]).trim() : null,
+    incoterms: row[17] ? String(row[17]).trim().toUpperCase() : null,
+    payment_terms: row[18] ? String(row[18]).trim() : null,
     validity_days: parseNumberOrNull(row[8]),
     supplier_part_number: row[9] ? String(row[9]).trim() : null,
     supplier_description: row[10] ? String(row[10]).trim() : null,
@@ -323,13 +414,13 @@ export const parseImportTextRows = (text) =>
     })
     const hasHeader =
       Number.isFinite(headerMap.line_number) &&
-      Number.isFinite(headerMap.price) &&
-      Number.isFinite(headerMap.currency)
+      (
+        (Number.isFinite(headerMap.price) && Number.isFinite(headerMap.currency)) ||
+        Number.isFinite(headerMap.supplier_reply_status)
+      )
 
     const rows = (hasHeader ? table.slice(1) : table)
       .map((cells) => (hasHeader ? parseImportRowByHeaderMap(cells, headerMap) : parseImportRow(cells)))
-      .filter(
-        (row) => row && Number.isFinite(row.line_number) && Number.isFinite(row.price) && row.currency
-      )
+      .filter((row) => row && Number.isFinite(row.line_number))
     return rows
   }
