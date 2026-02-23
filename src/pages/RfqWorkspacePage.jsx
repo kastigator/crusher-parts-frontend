@@ -45,6 +45,12 @@ const debugLog = (...args) => {
   }
 }
 
+const splitMetaLines = (value) =>
+  String(value || "")
+    .split("\n")
+    .map((part) => String(part).trim())
+    .filter(Boolean)
+
 export default function RfqWorkspacePage() {
   const { user } = useAuth()
   const location = useLocation()
@@ -78,8 +84,14 @@ export default function RfqWorkspacePage() {
   const [coverage, setCoverage] = useState(null)
   const [selections, setSelections] = useState([])
   const [selectionLines, setSelectionLines] = useState([])
-  const [shipmentGroups, setShipmentGroups] = useState([])
-  const [landedCosts, setLandedCosts] = useState([])
+  const [economicsDashboard, setEconomicsDashboard] = useState({
+    suppliers: [],
+    lines: [],
+    scenarios: [],
+    latest_scenario_lines: [],
+    target_currency: null,
+  })
+  const [economicsRebuildLoading, setEconomicsRebuildLoading] = useState(false)
   const [salesQuotes, setSalesQuotes] = useState([])
   const [contracts, setContracts] = useState([])
   const [purchaseOrders, setPurchaseOrders] = useState([])
@@ -781,8 +793,13 @@ export default function RfqWorkspacePage() {
       setStructure(null)
       setSelections([])
       setSelectionLines([])
-      setShipmentGroups([])
-      setLandedCosts([])
+      setEconomicsDashboard({
+        suppliers: [],
+        lines: [],
+        scenarios: [],
+        latest_scenario_lines: [],
+        target_currency: null,
+      })
       setSalesQuotes([])
       setContracts([])
       setPurchaseOrders([])
@@ -820,8 +837,7 @@ export default function RfqWorkspacePage() {
         let selectionsData = []
         let dispatchSummaryData = []
         let dispatchesData = []
-        let groupsData = []
-        let landedData = []
+        let economicsData = null
         let quotesData = []
         let contractsData = []
         let poData = []
@@ -840,8 +856,7 @@ export default function RfqWorkspacePage() {
             selectionsData,
             dispatchSummaryData,
             dispatchesData,
-            groupsData,
-            landedData,
+            economicsData,
             quotesData,
             contractsData,
             poData,
@@ -862,8 +877,7 @@ export default function RfqWorkspacePage() {
             safeGet(axios.get("/selection"), []),
             safeGet(axios.get(`/rfqs/${activeRfqId}/dispatch-summary`), []),
             safeGet(axios.get(`/rfqs/${activeRfqId}/dispatches`), []),
-            safeGet(axios.get("/economics/shipment-groups"), []),
-            safeGet(axios.get("/economics/landed-costs"), []),
+            safeGet(axios.get(`/economics/rfq/${activeRfqId}/dashboard`), null),
             safeGet(axios.get("/sales-quotes"), []),
             safeGet(rfq?.client_id ? axios.get("/contracts", { params: { client_id: rfq.client_id } }) : Promise.resolve({ data: [] }), []),
             safeGet(axios.get("/purchase-orders"), []),
@@ -913,16 +927,13 @@ export default function RfqWorkspacePage() {
         const selectionList = Array.isArray(selectionsData) ? selectionsData : []
         const dispatchSummaryList = Array.isArray(dispatchSummaryData) ? dispatchSummaryData : []
         const dispatchesList = Array.isArray(dispatchesData) ? dispatchesData : []
-        const groupList = Array.isArray(groupsData) ? groupsData : []
-        const landedList = Array.isArray(landedData) ? landedData : []
+        const economicsPayload = economicsData && typeof economicsData === "object" ? economicsData : {}
         const quoteList = Array.isArray(quotesData) ? quotesData : []
         const contractList = Array.isArray(contractsData) ? contractsData : []
         const poList = Array.isArray(poData) ? poData : []
 
         const rfqResponses = responseList.filter((row) => Number(row.rfq_id) === Number(activeRfqId))
         const rfqSelections = selectionList.filter((row) => Number(row.rfq_id) === Number(activeRfqId))
-        const rfqGroups = groupList.filter((row) => Number(row.rfq_id) === Number(activeRfqId))
-        const rfqLanded = landedList.filter((row) => Number(row.rfq_id) === Number(activeRfqId))
         const rfqQuotes = rfq?.client_request_revision_id
           ? quoteList.filter((row) => Number(row.client_request_revision_id) === Number(rfq.client_request_revision_id))
           : []
@@ -990,8 +1001,16 @@ export default function RfqWorkspacePage() {
         setSelections(rfqSelections)
         setDispatchSummary(dispatchSummaryList)
         setDispatches(dispatchesList)
-        setShipmentGroups(rfqGroups)
-        setLandedCosts(rfqLanded)
+        setEconomicsDashboard({
+          suppliers: Array.isArray(economicsPayload.suppliers) ? economicsPayload.suppliers : [],
+          lines: Array.isArray(economicsPayload.lines) ? economicsPayload.lines : [],
+          scenarios: Array.isArray(economicsPayload.scenarios) ? economicsPayload.scenarios : [],
+          latest_scenario_lines: Array.isArray(economicsPayload.latest_scenario_lines)
+            ? economicsPayload.latest_scenario_lines
+            : [],
+          latest_scenario_name: economicsPayload.latest_scenario_name || null,
+          target_currency: economicsPayload.target_currency || null,
+        })
         setSalesQuotes(rfqQuotes)
         setContracts(rfqContracts)
         setPurchaseOrders(rfqPos)
@@ -1003,7 +1022,39 @@ export default function RfqWorkspacePage() {
             setSelectionLines(Array.isArray(linesResp.data) ? linesResp.data : [])
           }
         } else {
-          setSelectionLines([])
+          const econLines = Array.isArray(economicsPayload?.latest_scenario_lines)
+            ? economicsPayload.latest_scenario_lines
+            : []
+          if (econLines.length) {
+            const autoScenarioName =
+              economicsPayload?.latest_scenario_name || "Авто-сценарий экономики"
+            setSelections([
+              {
+                id: `auto-${activeRfqId}`,
+                rfq_id: activeRfqId,
+                status: "draft",
+                note: `${autoScenarioName} (предпросмотр, не сохранено во вкладке Выбор)`,
+                created_at: null,
+              },
+            ])
+            setSelectionLines(
+              econLines.map((row, index) => ({
+                id: `auto-line-${index}`,
+                rfq_line_number: row.line_number,
+                line_number: row.line_number,
+                component_cat_number: row.part_number || "—",
+                supplier_name: row.supplier_name || "Поставщик не указан",
+                supplier_part_number: row.selection_key_norm || "—",
+                offer_type: null,
+                price: row.landed_amount,
+                currency: row.landed_currency,
+                qty: null,
+                decision_note: `Из сценария: ${autoScenarioName}`,
+              }))
+            )
+          } else {
+            setSelectionLines([])
+          }
         }
       } catch (e) {
         if (!cancelled) {
@@ -1018,6 +1069,47 @@ export default function RfqWorkspacePage() {
       cancelled = true
     }
   }, [activeRfqId, rfqs, showArchivedResponses])
+
+  const loadEconomicsDashboard = async (rfqId) => {
+    if (!rfqId) return
+    try {
+      const { data } = await axios.get(`/economics/rfq/${rfqId}/dashboard`)
+      const payload = data && typeof data === "object" ? data : {}
+      setEconomicsDashboard({
+        suppliers: Array.isArray(payload.suppliers) ? payload.suppliers : [],
+        lines: Array.isArray(payload.lines) ? payload.lines : [],
+        scenarios: Array.isArray(payload.scenarios) ? payload.scenarios : [],
+        latest_scenario_lines: Array.isArray(payload.latest_scenario_lines)
+          ? payload.latest_scenario_lines
+          : [],
+        latest_scenario_name: payload.latest_scenario_name || null,
+        target_currency: payload.target_currency || null,
+      })
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось обновить экономику RFQ")
+    }
+  }
+
+  const handleRebuildEconomicsScenario = async () => {
+    if (!activeRfqId) return
+    try {
+      setEconomicsRebuildLoading(true)
+      const { data } = await axios.post(`/economics/rfq/${activeRfqId}/scenarios/auto-min-landed`)
+      const picked = Number(data?.picked_lines || 0)
+      message.success(
+        picked > 0
+          ? `Авто-сценарий пересчитан: выбрано строк ${picked}`
+          : "Авто-сценарий создан, но без выбранных строк (проверьте ответы и курсы валют)"
+      )
+      await loadEconomicsDashboard(activeRfqId)
+    } catch (e) {
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось пересчитать авто-сценарий")
+    } finally {
+      setEconomicsRebuildLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!suppliers.length) {
@@ -1621,43 +1713,97 @@ export default function RfqWorkspacePage() {
 
 
   const coverageRows = useMemo(() => {
-    if (!coverage?.items?.length) return []
     const rows = []
-    coverage.items.forEach((item) => {
-      const base = {
+
+    const addCoverageRow = (item, comp, responses = [], suppliersCount = 0) => {
+      const priced = responses.filter((r) => Number.isFinite(Number(r?.price)))
+      let best = null
+      priced.forEach((r) => {
+        if (!best || Number(r.price) < Number(best.price)) best = r
+      })
+      rows.push({
+        key: `${item.rfq_item_id}-${comp.rfq_item_component_id || comp.original_part_id || comp.cat_number || rows.length}`,
         rfq_item_id: item.rfq_item_id,
         line_number: item.line_number,
         item_description: item.description || item.client_description || "-",
         requested_qty: item.requested_qty,
         uom: item.uom || "-",
         strategy_mode: item.strategy?.mode || "-",
-      }
-      item.components.forEach((comp) => {
-        const responses = Array.isArray(comp.responses) ? comp.responses : []
-        const priced = responses.filter((r) => Number.isFinite(Number(r.price)))
-        let best = null
-        priced.forEach((r) => {
-          if (!best || Number(r.price) < Number(best.price)) {
-            best = r
-          }
-        })
-        rows.push({
-          key: `${item.rfq_item_id}-${comp.rfq_item_component_id || comp.original_part_id}`,
-          ...base,
-          component_cat_number: comp.cat_number || "-",
-          component_description: comp.description || "-",
-          required_qty: comp.required_qty ?? "-",
-          suppliers_count: comp.suppliers_count ?? 0,
-          responses_count: responses.length,
-          best_supplier: best?.supplier_name || "-",
-          best_price: best?.price ?? "-",
-          best_currency: best?.currency || "",
-          response_preview: responses.slice(0, 3).map((r) => r.supplier_name).join(", "),
+        component_cat_number: comp.cat_number || "-",
+        component_description: comp.description || "-",
+        required_qty: comp.required_qty ?? item.requested_qty ?? "-",
+        suppliers_count: suppliersCount,
+        responses_count: responses.length,
+        best_supplier: best?.supplier_name || "-",
+        best_price: best?.price ?? "-",
+        best_currency: best?.currency || "",
+        response_preview: responses.slice(0, 3).map((r) => r.supplier_name).join(", "),
+      })
+    }
+
+    if (coverage?.items?.length) {
+      coverage.items.forEach((item) => {
+        const components = Array.isArray(item.components) ? item.components : []
+        components.forEach((comp) => {
+          const responses = Array.isArray(comp.responses) ? comp.responses : []
+          addCoverageRow(item, comp, responses, Number(comp.suppliers_count || 0))
         })
       })
+      if (rows.length) return rows
+    }
+
+    const structureItems = Array.isArray(structure?.items) ? structure.items : []
+    if (!structureItems.length) return rows
+
+    const workspace = Array.isArray(responseWorkspaceRows) ? responseWorkspaceRows : []
+
+    structureItems.forEach((item) => {
+      const components = Array.isArray(item.components) && item.components.length
+        ? item.components
+        : [
+            {
+              rfq_item_component_id: null,
+              original_part_id: item.original_part_id || null,
+              cat_number: item.original_cat_number || item.client_part_number || "-",
+              description: item.description || item.client_description || "-",
+              required_qty: item.requested_qty ?? "-",
+            },
+          ]
+
+      components.forEach((comp) => {
+        const compCat = String(comp?.cat_number || "").trim()
+        const matches = workspace.filter((row) => {
+          if (Number(row?.rfq_item_id) !== Number(item.rfq_item_id)) return false
+          const rowCompId = Number(row?.rfq_item_component_id || 0)
+          const compId = Number(comp?.rfq_item_component_id || 0)
+          if (compId > 0 && rowCompId > 0) return rowCompId === compId
+          if (compCat) {
+            const cats = splitMetaLines(row?.selected_selection_original_cats)
+            if (cats.some((cat) => String(cat).trim() === compCat)) return true
+          }
+          return compId <= 0
+        })
+
+        const responses = matches
+          .filter((row) => Number(row?.latest_response_line_id || 0) > 0)
+          .map((row) => ({
+            supplier_name: row?.supplier_name || "Поставщик",
+            price: row?.latest_price,
+            currency: row?.latest_currency,
+          }))
+
+        const supplierSet = new Set(
+          matches
+            .map((row) => Number(row?.supplier_id || 0))
+            .filter((id) => Number.isFinite(id) && id > 0)
+        )
+
+        addCoverageRow(item, comp, responses, supplierSet.size)
+      })
     })
+
     return rows
-  }, [coverage])
+  }, [coverage, structure, responseWorkspaceRows])
 
   const clientFilterOptions = useMemo(() => {
     const map = new Map()
@@ -1786,7 +1932,7 @@ export default function RfqWorkspacePage() {
       suppliers.length > 0,
       responses.length > 0,
       selections.length > 0,
-      landedCosts.length > 0 || shipmentGroups.length > 0,
+      economicsDashboard.lines.length > 0 || economicsDashboard.scenarios.length > 0,
       salesQuotes.length > 0,
       contracts.length > 0,
       purchaseOrders.length > 0,
@@ -1799,8 +1945,8 @@ export default function RfqWorkspacePage() {
     suppliers.length,
     responses.length,
     selections.length,
-    landedCosts.length,
-    shipmentGroups.length,
+    economicsDashboard.lines.length,
+    economicsDashboard.scenarios.length,
     salesQuotes.length,
     contracts.length,
     purchaseOrders.length,
@@ -2586,8 +2732,9 @@ export default function RfqWorkspacePage() {
         coverageRows={coverageRows}
         selections={selections}
         selectionLines={selectionLines}
-        shipmentGroups={shipmentGroups}
-        landedCosts={landedCosts}
+        economicsDashboard={economicsDashboard}
+        economicsRebuildLoading={economicsRebuildLoading}
+        onRebuildEconomicsScenario={handleRebuildEconomicsScenario}
         salesQuotes={salesQuotes}
         contracts={contracts}
         purchaseOrders={purchaseOrders}

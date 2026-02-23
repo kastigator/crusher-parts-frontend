@@ -1,14 +1,14 @@
 // src/pages/LogisticsRoutesPage.jsx
-import TabRendererPage from "@/components/common/TabRendererPage"
+import PageWrapper from "@/components/common/PageWrapper"
 import LogisticsRoutesMain from "@/components/logisticsRoutes/LogisticsRoutesMain"
 
 export default function LogisticsRoutesPage() {
   return (
-    <TabRendererPage
-      tabKey="logistics-routes"
-      helpText="Маршруты доставки: используйте в офферах для расчета логистики и ETA."
+    <PageWrapper
+      title="Маршруты логистики (legacy)"
+      helpText="Старый каталог маршрутов. Новый блок Экономики будет использовать коридоры + шаблоны маршрутов + сценарии групп."
     >
       <LogisticsRoutesMain />
-    </TabRendererPage>
+    </PageWrapper>
   )
 }

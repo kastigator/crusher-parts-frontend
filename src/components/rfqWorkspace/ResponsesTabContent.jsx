@@ -8,6 +8,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Popover,
   Radio,
   Select,
   Space,
@@ -603,6 +604,12 @@ const formatRfqItemLabel = (item) => {
   return description ? `${line} · ${cat} · ${description}` : `${line} · ${cat}`
 }
 
+const filterColumnsByKeys = (columns, visibleKeys, requiredKeys = []) => {
+  const visibleSet = new Set(Array.isArray(visibleKeys) ? visibleKeys : [])
+  const requiredSet = new Set(requiredKeys)
+  return columns.filter((column) => requiredSet.has(column.key) || visibleSet.has(column.key))
+}
+
 export default function ResponsesTabContent({
   activeRfqId,
   suppliers,
@@ -621,6 +628,33 @@ export default function ResponsesTabContent({
 }) {
   const [viewMode, setViewMode] = useState("supplier")
   const [onlyWaiting, setOnlyWaiting] = useState(false)
+  const [visibleSupplierColumnKeys, setVisibleSupplierColumnKeys] = useState([
+    "position",
+    "supplier",
+    "description",
+    "sent",
+    "status",
+    "offer_status",
+    "price",
+    "requested",
+    "offered",
+    "total",
+    "lead_time",
+    "actions",
+  ])
+  const [visibleOriginalColumnKeys, setVisibleOriginalColumnKeys] = useState([
+    "position",
+    "supplier",
+    "status",
+    "sent",
+    "offer_status",
+    "price",
+    "requested",
+    "offered",
+    "total",
+    "lead_time",
+    "actions",
+  ])
   const [responseOriginalFilter, setResponseOriginalFilter] = useState(null)
   const [manualModalOpen, setManualModalOpen] = useState(false)
   const [manualSaving, setManualSaving] = useState(false)
@@ -1232,6 +1266,7 @@ export default function ResponsesTabContent({
 
   const commonColumns = [
     {
+      key: "position",
       title: "Позиция",
       width: 170,
       fixed: "left",
@@ -1243,6 +1278,7 @@ export default function ResponsesTabContent({
       ),
     },
     {
+      key: "supplier",
       title: "Поставщик",
       dataIndex: "supplier_name",
       width: 260,
@@ -1250,12 +1286,14 @@ export default function ResponsesTabContent({
       fixed: "left",
     },
     {
+      key: "description",
       title: "Описание",
       width: 280,
       ellipsis: true,
       render: (_, r) => getRowDescriptionText(r),
     },
     {
+      key: "sent",
       title: "Отправлено",
       width: 130,
       render: (_, r) =>
@@ -1264,6 +1302,7 @@ export default function ResponsesTabContent({
           : "—",
     },
     {
+      key: "status",
       title: "Статус",
       width: 150,
       render: (_, r) => {
@@ -1272,6 +1311,7 @@ export default function ResponsesTabContent({
       },
     },
     {
+      key: "source",
       title: "Источник ответа",
       width: 160,
       render: (_, r) => {
@@ -1287,6 +1327,7 @@ export default function ResponsesTabContent({
       },
     },
     {
+      key: "offer_status",
       title: "Статус предложения",
       width: 180,
       render: (_, r) =>
@@ -1295,6 +1336,7 @@ export default function ResponsesTabContent({
           : "—",
     },
     {
+      key: "rev_response",
       title: "Rev ответа",
       dataIndex: "latest_response_rev_number",
       width: 110,
@@ -1305,12 +1347,14 @@ export default function ResponsesTabContent({
       ),
     },
     {
+      key: "response_date",
       title: "Дата ответа",
       dataIndex: "latest_response_created_at",
       width: 120,
       render: formatDate,
     },
     {
+      key: "price",
       title: "Цена",
       width: 130,
       render: (_, r) =>
@@ -1319,16 +1363,19 @@ export default function ResponsesTabContent({
           : "—",
     },
     {
+      key: "requested",
       title: "Запрошено",
       width: 120,
       render: (_, r) => formatRequestedQtyValue(r),
     },
     {
+      key: "offered",
       title: "Предложено",
       width: 120,
       render: (_, r) => formatOfferedQtyValue(r),
     },
     {
+      key: "total",
       title: "Итого",
       width: 130,
       render: (_, r) => {
@@ -1337,22 +1384,25 @@ export default function ResponsesTabContent({
       },
     },
     {
+      key: "offer_type",
       title: "Тип",
       dataIndex: "latest_offer_type",
       width: 120,
       render: (value) => formatOfferTypeLabel(value),
     },
-    { title: "Срок, дн", dataIndex: "latest_lead_time_days", width: 90 },
-    { title: "MOQ", dataIndex: "latest_moq", width: 90 },
-    { title: "Упаковка", dataIndex: "latest_packaging", width: 120 },
+    { key: "lead_time", title: "Срок, дн", dataIndex: "latest_lead_time_days", width: 90 },
+    { key: "moq", title: "MOQ", dataIndex: "latest_moq", width: 90 },
+    { key: "packaging", title: "Упаковка", dataIndex: "latest_packaging", width: 120 },
     {
+      key: "incoterms",
       title: "Инкотермс",
       dataIndex: "latest_incoterms",
       width: 110,
       render: (value) => value || "—",
     },
-    { title: "PN поставщика", dataIndex: "latest_supplier_part_number", width: 150 },
+    { key: "supplier_part_number", title: "PN поставщика", dataIndex: "latest_supplier_part_number", width: 150 },
     {
+      key: "supplier_description",
       title: "Описание поставщика",
       dataIndex: "latest_supplier_part_description",
       width: 240,
@@ -1360,11 +1410,13 @@ export default function ResponsesTabContent({
       render: (value) => value || "—",
     },
     {
+      key: "reason",
       title: "Причина/коммент.",
       width: 220,
       render: (_, r) => r.latest_change_reason || r.latest_note || r.line_status_note || "—",
     },
     {
+      key: "actions",
       title: "Действия",
       width: 220,
       fixed: "right",
@@ -1418,6 +1470,7 @@ export default function ResponsesTabContent({
 
   const originalViewColumns = [
     {
+      key: "position",
       title: "Позиция",
       width: 170,
       fixed: "left",
@@ -1429,6 +1482,7 @@ export default function ResponsesTabContent({
       ),
     },
     {
+      key: "supplier",
       title: "Поставщик",
       dataIndex: "supplier_name",
       width: 260,
@@ -1436,6 +1490,7 @@ export default function ResponsesTabContent({
       fixed: "left",
     },
     {
+      key: "status",
       title: "Статус",
       width: 150,
       render: (_, r) => {
@@ -1444,6 +1499,7 @@ export default function ResponsesTabContent({
       },
     },
     {
+      key: "sent",
       title: "Отправлено",
       width: 130,
       render: (_, r) =>
@@ -1452,6 +1508,7 @@ export default function ResponsesTabContent({
           : "—",
     },
     {
+      key: "rev_response",
       title: "Rev ответа",
       dataIndex: "latest_response_rev_number",
       width: 110,
@@ -1462,6 +1519,7 @@ export default function ResponsesTabContent({
       ),
     },
     {
+      key: "offer_status",
       title: "Статус предложения",
       width: 180,
       render: (_, r) =>
@@ -1470,6 +1528,7 @@ export default function ResponsesTabContent({
           : "—",
     },
     {
+      key: "price",
       title: "Цена",
       width: 130,
       render: (_, r) =>
@@ -1478,16 +1537,19 @@ export default function ResponsesTabContent({
           : "—",
     },
     {
+      key: "requested",
       title: "Запрошено",
       width: 120,
       render: (_, r) => formatRequestedQtyValue(r),
     },
     {
+      key: "offered",
       title: "Предложено",
       width: 120,
       render: (_, r) => formatOfferedQtyValue(r),
     },
     {
+      key: "total",
       title: "Итого",
       width: 130,
       render: (_, r) => {
@@ -1495,24 +1557,27 @@ export default function ResponsesTabContent({
         return total != null ? formatPriceWithCurrency(total, r.latest_currency) : "—"
       },
     },
-    { title: "Срок, дн", dataIndex: "latest_lead_time_days", width: 90 },
-    { title: "MOQ", dataIndex: "latest_moq", width: 90 },
+    { key: "lead_time", title: "Срок, дн", dataIndex: "latest_lead_time_days", width: 90 },
+    { key: "moq", title: "MOQ", dataIndex: "latest_moq", width: 90 },
     {
+      key: "incoterms",
       title: "Инкотермс",
       dataIndex: "latest_incoterms",
       width: 110,
       render: (value) => value || "—",
     },
-    { title: "PN поставщика", dataIndex: "latest_supplier_part_number", width: 150 },
+    { key: "supplier_part_number", title: "PN поставщика", dataIndex: "latest_supplier_part_number", width: 150 },
     {
+      key: "supplier_description",
       title: "Описание поставщика",
       dataIndex: "latest_supplier_part_description",
       width: 240,
       ellipsis: true,
       render: (value) => value || "—",
     },
-    { title: "Дата ответа", dataIndex: "latest_response_created_at", width: 120, render: formatDate },
+    { key: "response_date", title: "Дата ответа", dataIndex: "latest_response_created_at", width: 120, render: formatDate },
     {
+      key: "actions",
       title: "Действия",
       width: 220,
       fixed: "right",
@@ -1563,6 +1628,40 @@ export default function ResponsesTabContent({
       ),
     },
   ]
+
+  const requiredSupplierColumns = ["position", "supplier", "actions"]
+  const requiredOriginalColumns = ["position", "supplier", "actions"]
+
+  const supplierColumnOptions = useMemo(
+    () =>
+      commonColumns
+        .filter((column) => !requiredSupplierColumns.includes(column.key))
+        .map((column) => ({
+          label: String(column.title || column.key),
+          value: column.key,
+        })),
+    [commonColumns]
+  )
+
+  const originalColumnOptions = useMemo(
+    () =>
+      originalViewColumns
+        .filter((column) => !requiredOriginalColumns.includes(column.key))
+        .map((column) => ({
+          label: String(column.title || column.key),
+          value: column.key,
+        })),
+    [originalViewColumns]
+  )
+
+  const visibleCommonColumns = useMemo(
+    () => filterColumnsByKeys(commonColumns, visibleSupplierColumnKeys, requiredSupplierColumns),
+    [commonColumns, visibleSupplierColumnKeys]
+  )
+  const visibleOriginalViewColumns = useMemo(
+    () => filterColumnsByKeys(originalViewColumns, visibleOriginalColumnKeys, requiredOriginalColumns),
+    [originalViewColumns, visibleOriginalColumnKeys]
+  )
 
   return (
     <Space direction="vertical" style={{ width: "100%" }}>
@@ -1622,6 +1721,76 @@ export default function ResponsesTabContent({
             { label: "По оригиналу", value: "original" },
           ]}
         />
+        <Popover
+          trigger="click"
+          placement="bottomRight"
+          content={
+            <Space
+              direction="vertical"
+              size={8}
+              style={{ width: 320, maxHeight: 420, overflowY: "auto" }}
+            >
+              <Text strong>Видимые колонки</Text>
+              <Checkbox.Group
+                options={viewMode === "supplier" ? supplierColumnOptions : originalColumnOptions}
+                value={viewMode === "supplier" ? visibleSupplierColumnKeys : visibleOriginalColumnKeys}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                }}
+                onChange={(keys) => {
+                  if (viewMode === "supplier") {
+                    setVisibleSupplierColumnKeys(keys)
+                  } else {
+                    setVisibleOriginalColumnKeys(keys)
+                  }
+                }}
+              />
+              <Space>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    if (viewMode === "supplier") {
+                      setVisibleSupplierColumnKeys([
+                        "position",
+                        "supplier",
+                        "description",
+                        "sent",
+                        "status",
+                        "offer_status",
+                        "price",
+                        "requested",
+                        "offered",
+                        "total",
+                        "lead_time",
+                        "actions",
+                      ])
+                    } else {
+                      setVisibleOriginalColumnKeys([
+                        "position",
+                        "supplier",
+                        "status",
+                        "sent",
+                        "offer_status",
+                        "price",
+                        "requested",
+                        "offered",
+                        "total",
+                        "lead_time",
+                        "actions",
+                      ])
+                    }
+                  }}
+                >
+                  Сбросить
+                </Button>
+              </Space>
+            </Space>
+          }
+        >
+          <Button>Колонки</Button>
+        </Popover>
         <Button
           onClick={() =>
             setImportModal({
@@ -1654,7 +1823,7 @@ export default function ResponsesTabContent({
         size="small"
         tableLayout="auto"
         scroll={{ x: "max-content" }}
-        columns={viewMode === "supplier" ? commonColumns : originalViewColumns}
+        columns={viewMode === "supplier" ? visibleCommonColumns : visibleOriginalViewColumns}
       />
 
       <Card size="small" title="Таймлайн по строкам (ревизии ответов)">

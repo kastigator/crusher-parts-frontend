@@ -76,8 +76,9 @@ export default function RfqWorkspaceMainContent({
   coverageRows,
   selections,
   selectionLines,
-  shipmentGroups,
-  landedCosts,
+  economicsDashboard,
+  economicsRebuildLoading,
+  onRebuildEconomicsScenario,
   salesQuotes,
   contracts,
   purchaseOrders,
@@ -270,7 +271,15 @@ export default function RfqWorkspaceMainContent({
                   key: "coverage",
                   label: "Покрытие",
                   disabled: !isStructureConfirmed,
-                  children: <CoverageTabContent coverageRows={coverageRows} />,
+                  children: (
+                    <CoverageTabContent
+                      rfqId={activeRfqIdForTabs}
+                      coverageRows={coverageRows}
+                      structure={structure}
+                      workspaceRows={responseWorkspaceRows}
+                      suppliers={suppliers}
+                    />
+                  ),
                 },
                 {
                   key: "selection",
@@ -290,8 +299,10 @@ export default function RfqWorkspaceMainContent({
                   disabled: !isStructureConfirmed,
                   children: (
                     <EconomicsTabContent
-                      shipmentGroups={shipmentGroups}
-                      landedCosts={landedCosts}
+                      rfqId={activeRfqIdForTabs}
+                      economicsDashboard={economicsDashboard}
+                      economicsRebuildLoading={economicsRebuildLoading}
+                      onRebuildEconomicsScenario={onRebuildEconomicsScenario}
                     />
                   ),
                 },

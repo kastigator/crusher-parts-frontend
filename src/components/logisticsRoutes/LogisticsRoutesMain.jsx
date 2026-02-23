@@ -216,6 +216,12 @@ export default function LogisticsRoutesMain() {
         </Popover>
       </div>
       <Alert
+        type="warning"
+        showIcon
+        message="Legacy-каталог"
+        description="Этот экран сохранен для совместимости и справочных данных. Для нового RFQ-потока будет использоваться отдельная модель: коридоры + шаблоны маршрутов + сценарии в Экономике."
+      />
+      <Alert
         type="info"
         showIcon
         message="Как задавать сложные маршруты?"

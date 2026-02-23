@@ -16,6 +16,10 @@ const CATALOG_CHILD_PATHS = new Set([
   "/original-parts",
   "/materials",
   "/tnved-codes",
+  "/tnved-origin-rules",
+  "/logistics-routes",
+  "/logistics-corridors",
+  "/country-risk-profiles",
 ])
 
 const ADMIN_PATH = "/admin"
@@ -26,7 +30,17 @@ const CATALOG_ICON_BY_PATH = {
   "/original-parts": "original-parts",
   "/materials": "materials",
   "/tnved-codes": "tnved-codes",
+  "/tnved-origin-rules": "tnved-codes",
+  "/logistics-routes": "economics",
+  "/logistics-corridors": "coverage",
+  "/country-risk-profiles": "scorecard",
 }
+const CATALOG_FALLBACK_ITEMS = [
+  { path: "/tnved-origin-rules", name: "Правила ТН ВЭД (страна)", icon: "tnved-codes" },
+  { path: "/logistics-routes", name: "Маршруты логистики (legacy)", icon: "economics" },
+  { path: "/logistics-corridors", name: "Логистические коридоры", icon: "coverage" },
+  { path: "/country-risk-profiles", name: "Риски стран", icon: "scorecard" },
+]
 
 function normalizeIconName(value) {
   if (!value) return "default"
@@ -112,6 +126,12 @@ export default function Sidebar() {
     if (catalogTabs.length) {
       const catalogRoot = catalogTabs.find((t) => t.path === CATALOG_ROOT_PATH) || null
       const catalogChildren = catalogTabs.filter((t) => t.path !== CATALOG_ROOT_PATH)
+      const existingCatalogPaths = new Set(catalogChildren.map((t) => t.path))
+      CATALOG_FALLBACK_ITEMS.forEach((fallback) => {
+        if (!existingCatalogPaths.has(fallback.path)) {
+          catalogChildren.push(fallback)
+        }
+      })
 
       const childItems = []
       catalogChildren.forEach((tab) => {

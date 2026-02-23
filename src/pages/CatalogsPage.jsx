@@ -12,6 +12,10 @@ const catalogLinks = [
   { path: "/original-parts", label: "Оригинальные детали" },
   { path: "/materials", label: "Материалы" },
   { path: "/tnved-codes", label: "Коды ТН ВЭД" },
+  { path: "/tnved-origin-rules", label: "Правила ТН ВЭД + страна происхождения" },
+  { path: "/logistics-routes", label: "Маршруты логистики (legacy)" },
+  { path: "/logistics-corridors", label: "Логистические коридоры" },
+  { path: "/country-risk-profiles", label: "Риски стран" },
 ]
 
 export default function CatalogsPage() {

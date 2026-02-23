@@ -30,6 +30,10 @@ const OriginalPartDetailPage = lazy(() => import('../pages/OriginalPartDetailPag
 const SupplierPartsPage = lazy(() => import('@/pages/SupplierPartsPage'))
 const SupplierPartDetailPage = lazy(() => import('@/pages/SupplierPartDetailPage'))
 const MaterialsPage = lazy(() => import('@/pages/MaterialsPage'))
+const LogisticsRoutesPage = lazy(() => import('@/pages/LogisticsRoutesPage'))
+const LogisticsCorridorsPage = lazy(() => import('@/pages/LogisticsCorridorsPage'))
+const CountryRiskProfilesPage = lazy(() => import('@/pages/CountryRiskProfilesPage'))
+const TnvedOriginRulesPage = lazy(() => import('@/pages/TnvedOriginRulesPage'))
 
 const AppRouter = () => (
   <Suspense fallback={<div>Загрузка...</div>}>
@@ -69,6 +73,10 @@ const AppRouter = () => (
         <Route path="supplier-parts" element={<SupplierPartsPage />} />
         <Route path="supplier-parts/:id" element={<SupplierPartDetailPage />} />
         <Route path="materials" element={<MaterialsPage />} />
+        <Route path="logistics-routes" element={<LogisticsRoutesPage />} />
+        <Route path="logistics-corridors" element={<LogisticsCorridorsPage />} />
+        <Route path="country-risk-profiles" element={<CountryRiskProfilesPage />} />
+        <Route path="tnved-origin-rules" element={<TnvedOriginRulesPage />} />
         <Route path="*" element={<div style={{ padding: 32 }}>Страница не найдена</div>} />
       </Route>
     </Routes>
