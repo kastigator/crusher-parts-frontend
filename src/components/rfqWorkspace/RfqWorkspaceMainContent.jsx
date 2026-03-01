@@ -75,10 +75,7 @@ export default function RfqWorkspaceMainContent({
   responseLines,
   coverageRows,
   selections,
-  selectionLines,
-  economicsDashboard,
-  economicsRebuildLoading,
-  onRebuildEconomicsScenario,
+  onSelectionFinalized,
   salesQuotes,
   contracts,
   purchaseOrders,
@@ -282,27 +279,23 @@ export default function RfqWorkspaceMainContent({
                   ),
                 },
                 {
+                  key: "economics",
+                  label: "Экономика",
+                  disabled: !isStructureConfirmed,
+                  children: (
+                    <EconomicsTabContent rfqId={activeRfqIdForTabs} />
+                  ),
+                },
+                {
                   key: "selection",
                   label: "Выбор",
                   disabled: !isStructureConfirmed,
                   children: (
                     <SelectionTabContent
-                      selections={selections}
-                      selectionLines={selectionLines}
-                      formatDate={formatDate}
-                    />
-                  ),
-                },
-                {
-                  key: "economics",
-                  label: "Экономика",
-                  disabled: !isStructureConfirmed,
-                  children: (
-                    <EconomicsTabContent
                       rfqId={activeRfqIdForTabs}
-                      economicsDashboard={economicsDashboard}
-                      economicsRebuildLoading={economicsRebuildLoading}
-                      onRebuildEconomicsScenario={onRebuildEconomicsScenario}
+                      selections={selections}
+                      formatDate={formatDate}
+                      onSelectionFinalized={onSelectionFinalized}
                     />
                   ),
                 },

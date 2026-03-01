@@ -1,6 +1,6 @@
 // src/components/supplierParts/OriginalsLinkTab.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react"
-import { Button, Space, Table, Tag, Typography, message, Tooltip, Popconfirm } from "antd"
+import { Button, Checkbox, Space, Table, Tag, Typography, message, Tooltip, Popconfirm } from "antd"
 import { PlusOutlined, DeleteOutlined, LinkOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import OriginalsPickerDrawer from "./OriginalsPickerDrawer"
@@ -17,6 +17,7 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [preferredDraft, setPreferredDraft] = useState({})
 
   const popupContainer = (trigger) =>
     trigger?.closest(".dock-shell") ||
@@ -33,7 +34,13 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
       const { data } = await axios.get("/supplier-part-originals", {
         params: { supplier_part_id: supplierPartId },
       })
-      setList(Array.isArray(data) ? data : [])
+      const next = Array.isArray(data) ? data : []
+      setList(next)
+      const draft = {}
+      next.forEach((row) => {
+        draft[row.original_part_id] = Number(row.is_preferred || 0) > 0
+      })
+      setPreferredDraft(draft)
     } catch (e) {
       console.error(e)
       message.error("Не удалось загрузить привязки")
@@ -110,6 +117,29 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
     }
   }
 
+  const updatePreferred = async (original_part_id) => {
+    try {
+      const is_preferred = preferredDraft[original_part_id] ? 1 : 0
+      await axios.patch("/supplier-part-originals", {
+        supplier_part_id: supplierPartId,
+        original_part_id,
+        is_preferred,
+      })
+      message.success("Признак приоритетности обновлен")
+      setList((prev) =>
+        prev.map((row) =>
+          Number(row.original_part_id) === Number(original_part_id)
+            ? { ...row, is_preferred }
+            : row
+        )
+      )
+      onChanged()
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось обновить признак приоритетности")
+    }
+  }
+
   const openOriginal = (original_part_id) => {
     const url = `/original-parts/${encodeURIComponent(original_part_id)}`
     window.open(url, "_blank")
@@ -146,6 +176,39 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
           <Tag>{r.model_name || "—"}</Tag>
         </Space>
       ),
+    },
+    {
+      title: "Приоритетный",
+      key: "is_preferred",
+      width: 230,
+      render: (_, r) => {
+        const current = Number(r.is_preferred || 0) > 0
+        const value = Boolean(preferredDraft[r.original_part_id])
+        const changed = value !== current
+        return (
+          <Space size={6}>
+            <Checkbox
+              checked={value}
+              onChange={(e) =>
+                setPreferredDraft((prev) => ({
+                  ...prev,
+                  [r.original_part_id]: e.target.checked,
+                }))
+              }
+            >
+              приоритетный поставщик
+            </Checkbox>
+            <Button
+              size="small"
+              type={changed ? "primary" : "default"}
+              disabled={!changed}
+              onClick={() => updatePreferred(r.original_part_id)}
+            >
+              Сохранить
+            </Button>
+          </Space>
+        )
+      },
     },
     {
       title: "Действия",

@@ -118,15 +118,7 @@ export default function OfferModal({
     setReadyRouteId(null)
     setReadyCalcs({})
     setReadyRouteByKey({})
-    const loadRoutes = async () => {
-      try {
-        const { data } = await axios.get("/logistics-routes")
-        setRoutes(Array.isArray(data) ? data : [])
-      } catch (_e) {
-        // ок, оставляем пустым
-      }
-    }
-    loadRoutes()
+    setRoutes([])
     if (item?.original_part_id) {
       loadSuggestions(item.original_part_id)
       loadBundles(item.original_part_id)

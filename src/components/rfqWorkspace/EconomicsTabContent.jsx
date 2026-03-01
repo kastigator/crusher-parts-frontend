@@ -1,7 +1,22 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { Alert, Button, Card, Select, Space, Table, Tag, Typography, message } from "antd"
+import {
+  Alert,
+  Button,
+  Form,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
+import GroupRoutesPanel from "./economics/GroupRoutesPanel"
+import AdhocRouteModal from "./economics/AdhocRouteModal"
+import CandidatesCard from "./economics/CandidatesCard"
+import GroupsCard from "./economics/GroupsCard"
+import ScenariosCard from "./economics/ScenariosCard"
 
 const { Text } = Typography
 
@@ -17,185 +32,244 @@ const strategyLabel = (value) => {
   if (key === "MANUAL") return "Ручной"
   return value || "—"
 }
-const selectionLabel = (value) => {
-  const raw = String(value || "").trim()
-  if (!raw) return "—"
-  const lower = raw.toLowerCase()
-  if (lower.startsWith("bom:")) return "Вариант BOM"
-  if (lower.startsWith("kit:")) return "Вариант комплекта"
-  if (lower.startsWith("role:")) return "Роль комплекта"
-  if (lower.startsWith("item:")) return "Позиция"
-  if (raw === "__NO_SELECTION__") return "Базовая позиция"
-  return raw
+
+const pricingModelLabel = (value) => {
+  const raw = String(value || "")
+  if (raw === "fixed") return "Фикс"
+  if (raw === "per_kg") return "За кг"
+  if (raw === "per_cbm") return "За м³"
+  if (raw === "per_kg_or_cbm_max") return "Макс(кг/м³)"
+  if (raw === "hybrid") return "Гибрид"
+  return raw || "—"
 }
 
-export default function EconomicsTabContent({
-  rfqId,
-  economicsDashboard,
-  economicsRebuildLoading,
-  onRebuildEconomicsScenario,
-}) {
-  const suppliers = Array.isArray(economicsDashboard?.suppliers)
-    ? economicsDashboard.suppliers
-    : []
-  const linesRaw = Array.isArray(economicsDashboard?.lines) ? economicsDashboard.lines : []
-  const scenarios = Array.isArray(economicsDashboard?.scenarios)
-    ? economicsDashboard.scenarios
-    : []
-  const latestScenarioLines = Array.isArray(economicsDashboard?.latest_scenario_lines)
-    ? economicsDashboard.latest_scenario_lines
-    : []
-  const targetCurrency = economicsDashboard?.target_currency || null
+export default function EconomicsTabContent({ rfqId }) {
+  const [coverageCandidates, setCoverageCandidates] = useState([])
+  const [candidatesLoading, setCandidatesLoading] = useState(false)
+  const [candidatesError, setCandidatesError] = useState("")
+  const [selectedCandidateId, setSelectedCandidateId] = useState(null)
+  const [consolidationGroups, setConsolidationGroups] = useState([])
+  const [groupsLoading, setGroupsLoading] = useState(false)
+  const [groupsError, setGroupsError] = useState("")
+  const [economyScenarios, setEconomyScenarios] = useState([])
+  const [scenariosLoading, setScenariosLoading] = useState(false)
+  const [scenariosError, setScenariosError] = useState("")
+  const [autoGroupLoading, setAutoGroupLoading] = useState(false)
+  const [createScenarioLoading, setCreateScenarioLoading] = useState(false)
+  const [selectedScenarioId, setSelectedScenarioId] = useState(null)
 
-  const [supplierFilter, setSupplierFilter] = useState(null)
-  const [routeFilter, setRouteFilter] = useState(null)
-  const [econ2Candidates, setEcon2Candidates] = useState([])
-  const [econ2CandidatesLoading, setEcon2CandidatesLoading] = useState(false)
-  const [econ2CandidatesError, setEcon2CandidatesError] = useState("")
-  const [selectedEcon2CandidateId, setSelectedEcon2CandidateId] = useState(null)
-  const [econ2Groups, setEcon2Groups] = useState([])
-  const [econ2GroupsLoading, setEcon2GroupsLoading] = useState(false)
-  const [econ2GroupsError, setEcon2GroupsError] = useState("")
-  const [econ2Scenarios, setEcon2Scenarios] = useState([])
-  const [econ2ScenariosLoading, setEcon2ScenariosLoading] = useState(false)
-  const [econ2ScenariosError, setEcon2ScenariosError] = useState("")
-  const [econ2AutoGroupLoading, setEcon2AutoGroupLoading] = useState(false)
-  const [econ2CreateScenarioLoading, setEcon2CreateScenarioLoading] = useState(false)
+  const [groupRoutes, setGroupRoutes] = useState([])
+  const [groupRoutesLoading, setGroupRoutesLoading] = useState(false)
+  const [groupRoutesError, setGroupRoutesError] = useState("")
+  const [recalcScenarioLoading, setRecalcScenarioLoading] = useState(false)
+  const [dutyBasis, setDutyBasis] = useState("GOODS_ONLY")
 
-  const loadEcon2Candidates = async () => {
+  const [adhocModalOpen, setAdhocModalOpen] = useState(false)
+  const [adhocTargetRow, setAdhocTargetRow] = useState(null)
+  const [adhocSaving, setAdhocSaving] = useState(false)
+  const [adhocForm] = Form.useForm()
+
+  const [corridors, setCorridors] = useState([])
+  const [routeTemplates, setRouteTemplates] = useState([])
+  const [catalogsLoading, setCatalogsLoading] = useState(false)
+  const [catalogsError, setCatalogsError] = useState("")
+
+  const loadCatalogs = async () => {
+    setCatalogsLoading(true)
+    setCatalogsError("")
+    try {
+      const [corridorsResp, templatesResp] = await Promise.all([
+        axios.get(`/economics/v2/logistics/corridors`, { params: { active: 1 } }),
+        axios.get(`/economics/v2/logistics/route-templates`, { params: { active: 1 } }),
+      ])
+      setCorridors(Array.isArray(corridorsResp?.data) ? corridorsResp.data : [])
+      setRouteTemplates(Array.isArray(templatesResp?.data) ? templatesResp.data : [])
+    } catch (e) {
+      setCorridors([])
+      setRouteTemplates([])
+      setCatalogsError(e?.response?.data?.message || "Не удалось загрузить каталоги логистики")
+    } finally {
+      setCatalogsLoading(false)
+    }
+  }
+
+  const loadCandidates = async () => {
     if (!rfqId) {
-      setEcon2Candidates([])
-      setEcon2CandidatesError("")
+      setCoverageCandidates([])
+      setCandidatesError("")
       return
     }
-    setEcon2CandidatesLoading(true)
-    setEcon2CandidatesError("")
+    setCandidatesLoading(true)
+    setCandidatesError("")
     try {
       const { data } = await axios.get(`/economics/v2/rfq/${rfqId}/candidates`)
       const rows = Array.isArray(data?.rows) ? data.rows : []
-      setEcon2Candidates(rows)
+      setCoverageCandidates(rows)
     } catch (e) {
-      setEcon2Candidates([])
-      setEcon2CandidatesError(
-        e?.response?.data?.message || "Не удалось загрузить кандидатов Экономики v2"
-      )
+      setCoverageCandidates([])
+      setCandidatesError(e?.response?.data?.message || "Не удалось загрузить кандидатов экономики")
     } finally {
-      setEcon2CandidatesLoading(false)
+      setCandidatesLoading(false)
     }
   }
 
   useEffect(() => {
-    loadEcon2Candidates()
+    loadCandidates()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rfqId])
 
   useEffect(() => {
-    if (!econ2Candidates.length) {
-      setSelectedEcon2CandidateId(null)
-      return
-    }
-    const selected = Number(selectedEcon2CandidateId || 0)
-    const exists = econ2Candidates.some((row) => Number(row?.candidate_set_id || 0) === selected)
-    if (!exists) {
-      setSelectedEcon2CandidateId(Number(econ2Candidates[0]?.candidate_set_id || 0) || null)
-    }
-  }, [econ2Candidates, selectedEcon2CandidateId])
+    loadCatalogs()
+  }, [])
 
-  const loadEcon2Groups = async (candidateSetIdOverride) => {
-    const candidateSetId = Number(candidateSetIdOverride || selectedEcon2CandidateId || 0)
-    if (!rfqId || !candidateSetId) {
-      setEcon2Groups([])
-      setEcon2GroupsError("")
+  useEffect(() => {
+    if (!coverageCandidates.length) {
+      setSelectedCandidateId(null)
       return
     }
-    setEcon2GroupsLoading(true)
-    setEcon2GroupsError("")
+    const selected = Number(selectedCandidateId || 0)
+    const exists = coverageCandidates.some((row) => Number(row?.candidate_set_id || 0) === selected)
+    if (!exists) {
+      setSelectedCandidateId(Number(coverageCandidates[0]?.candidate_set_id || 0) || null)
+    }
+  }, [coverageCandidates, selectedCandidateId])
+
+  useEffect(() => {
+    if (!economyScenarios.length) {
+      setSelectedScenarioId(null)
+      return
+    }
+    const selected = Number(selectedScenarioId || 0)
+    const exists = economyScenarios.some((row) => Number(row?.scenario_id || 0) === selected)
+    if (!exists) {
+      setSelectedScenarioId(Number(economyScenarios[0]?.scenario_id || 0) || null)
+    }
+  }, [economyScenarios, selectedScenarioId])
+
+  const loadGroups = async (candidateSetIdOverride) => {
+    const candidateSetId = Number(candidateSetIdOverride || selectedCandidateId || 0)
+    if (!rfqId || !candidateSetId) {
+      setConsolidationGroups([])
+      setGroupsError("")
+      return
+    }
+    setGroupsLoading(true)
+    setGroupsError("")
     try {
       const { data } = await axios.get(`/economics/v2/rfq/${rfqId}/shipment-groups`, {
         params: { candidate_set_id: candidateSetId },
       })
-      setEcon2Groups(Array.isArray(data?.rows) ? data.rows : [])
+      setConsolidationGroups(Array.isArray(data?.rows) ? data.rows : [])
     } catch (e) {
-      setEcon2Groups([])
-      setEcon2GroupsError(
-        e?.response?.data?.message || "Не удалось загрузить группы консолидации v2"
-      )
+      setConsolidationGroups([])
+      setGroupsError(e?.response?.data?.message || "Не удалось загрузить группы консолидации")
     } finally {
-      setEcon2GroupsLoading(false)
+      setGroupsLoading(false)
     }
   }
 
-  const loadEcon2Scenarios = async (candidateSetIdOverride) => {
-    const candidateSetId = Number(candidateSetIdOverride || selectedEcon2CandidateId || 0)
+  const loadScenarios = async (candidateSetIdOverride) => {
+    const candidateSetId = Number(candidateSetIdOverride || selectedCandidateId || 0)
     if (!rfqId || !candidateSetId) {
-      setEcon2Scenarios([])
-      setEcon2ScenariosError("")
+      setEconomyScenarios([])
+      setScenariosError("")
       return
     }
-    setEcon2ScenariosLoading(true)
-    setEcon2ScenariosError("")
+    setScenariosLoading(true)
+    setScenariosError("")
     try {
       const { data } = await axios.get(`/economics/v2/rfq/${rfqId}/scenarios`, {
         params: { candidate_set_id: candidateSetId },
       })
-      setEcon2Scenarios(Array.isArray(data?.rows) ? data.rows : [])
+      setEconomyScenarios(Array.isArray(data?.rows) ? data.rows : [])
     } catch (e) {
-      setEcon2Scenarios([])
-      setEcon2ScenariosError(
-        e?.response?.data?.message || "Не удалось загрузить сценарии Экономики v2"
-      )
+      setEconomyScenarios([])
+      setScenariosError(e?.response?.data?.message || "Не удалось загрузить сценарии экономики")
     } finally {
-      setEcon2ScenariosLoading(false)
+      setScenariosLoading(false)
     }
   }
 
   useEffect(() => {
-    if (!selectedEcon2CandidateId) {
-      setEcon2Groups([])
-      setEcon2GroupsError("")
-      setEcon2Scenarios([])
-      setEcon2ScenariosError("")
+    if (!selectedCandidateId) {
+      setConsolidationGroups([])
+      setGroupsError("")
+      setEconomyScenarios([])
+      setScenariosError("")
+      setSelectedScenarioId(null)
+      setGroupRoutes([])
+      setGroupRoutesError("")
       return
     }
-    loadEcon2Groups(selectedEcon2CandidateId)
-    loadEcon2Scenarios(selectedEcon2CandidateId)
+    loadGroups(selectedCandidateId)
+    loadScenarios(selectedCandidateId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rfqId, selectedEcon2CandidateId])
+  }, [rfqId, selectedCandidateId])
 
-  const handleEcon2AutoGroup = async () => {
-    const candidateSetId = Number(selectedEcon2CandidateId || 0)
+  const loadGroupRoutes = async (scenarioIdOverride) => {
+    const scenarioId = Number(scenarioIdOverride || selectedScenarioId || 0)
+    if (!rfqId || !scenarioId) {
+      setGroupRoutes([])
+      setGroupRoutesError("")
+      return
+    }
+    setGroupRoutesLoading(true)
+    setGroupRoutesError("")
+    try {
+      const { data } = await axios.get(`/economics/v2/rfq/${rfqId}/scenarios/${scenarioId}/group-routes`)
+      setGroupRoutes(Array.isArray(data) ? data : [])
+    } catch (e) {
+      setGroupRoutes([])
+      setGroupRoutesError(e?.response?.data?.message || "Не удалось загрузить маршруты групп для сценария")
+    } finally {
+      setGroupRoutesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!selectedScenarioId) {
+      setGroupRoutes([])
+      setGroupRoutesError("")
+      return
+    }
+    loadGroupRoutes(selectedScenarioId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rfqId, selectedScenarioId])
+
+  const handleAutoGroup = async () => {
+    const candidateSetId = Number(selectedCandidateId || 0)
     if (!rfqId || !candidateSetId) return
-    setEcon2AutoGroupLoading(true)
+    setAutoGroupLoading(true)
     try {
       const { data } = await axios.post(`/economics/v2/rfq/${rfqId}/shipment-groups/auto-from-candidate`, {
         candidate_set_id: candidateSetId,
         replace_existing: true,
       })
       message.success(data?.message || "Группы консолидации созданы")
-      await loadEcon2Groups(candidateSetId)
-      await loadEcon2Scenarios(candidateSetId)
+      await loadGroups(candidateSetId)
+      await loadScenarios(candidateSetId)
     } catch (e) {
-      message.error(e?.response?.data?.message || "Не удалось создать группы консолидации v2")
+      message.error(e?.response?.data?.message || "Не удалось создать группы консолидации")
     } finally {
-      setEcon2AutoGroupLoading(false)
+      setAutoGroupLoading(false)
     }
   }
 
-  const handleEcon2CreateScenario = async () => {
-    const candidateSetId = Number(selectedEcon2CandidateId || 0)
+  const handleCreateScenario = async () => {
+    const candidateSetId = Number(selectedCandidateId || 0)
     if (!rfqId || !candidateSetId) return
-    setEcon2CreateScenarioLoading(true)
+    setCreateScenarioLoading(true)
     try {
       const { data } = await axios.post(`/economics/v2/rfq/${rfqId}/scenarios/create-draft`, {
         candidate_set_id: candidateSetId,
         calc_currency: targetCurrency || "USD",
       })
       message.success(data?.message || "Черновой сценарий создан")
-      await loadEcon2Scenarios(candidateSetId)
+      await loadScenarios(candidateSetId)
     } catch (e) {
-      message.error(e?.response?.data?.message || "Не удалось создать сценарий Экономики v2")
+      message.error(e?.response?.data?.message || "Не удалось создать сценарий экономики")
     } finally {
-      setEcon2CreateScenarioLoading(false)
+      setCreateScenarioLoading(false)
     }
   }
 
@@ -203,59 +277,197 @@ export default function EconomicsTabContent({
     const handler = (event) => {
       const eventRfqId = Number(event?.detail?.rfqId || 0)
       if (!rfqId || !eventRfqId || Number(rfqId) !== eventRfqId) return
-      loadEcon2Candidates()
+      loadCandidates()
     }
     window.addEventListener("rfq:econ2-candidates-updated", handler)
     return () => window.removeEventListener("rfq:econ2-candidates-updated", handler)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rfqId])
 
-  const supplierOptions = useMemo(() => {
-    const seen = new Set()
-    const out = []
-    linesRaw.forEach((row) => {
-      const label = String(row?.supplier_name || "").trim()
-      if (!label || seen.has(label)) return
-      seen.add(label)
-      out.push({ label, value: label })
-    })
-    return out.sort((a, b) => a.label.localeCompare(b.label))
-  }, [linesRaw])
+  const corridorOptions = useMemo(() => {
+    const rows = Array.isArray(corridors) ? corridors : []
+    return rows
+      .map((c) => {
+        const id = Number(c?.corridor_id || c?.id || 0) || null
+        const name = c?.corridor_name || c?.name || "—"
+        const mode = c?.transport_mode ? String(c.transport_mode) : ""
+        return {
+          value: id,
+          label: `${name}${mode ? ` (${mode})` : ""}`,
+          raw: c,
+        }
+      })
+      .filter((o) => o.value)
+  }, [corridors])
 
-  const routeOptions = useMemo(() => {
-    const seen = new Set()
-    const out = []
-    linesRaw.forEach((row) => {
-      const label = String(row?.route_name || "").trim()
-      if (!label || seen.has(label)) return
-      seen.add(label)
-      out.push({ label, value: label })
-    })
-    return out.sort((a, b) => a.label.localeCompare(b.label))
-  }, [linesRaw])
+  const routeTemplateOptions = useMemo(() => {
+    const rows = Array.isArray(routeTemplates) ? routeTemplates : []
+    return rows
+      .map((t) => {
+        const id = Number(t?.route_template_id || t?.id || 0) || null
+        const name = t?.route_template_name || t?.name || "—"
+        const corridorName = t?.corridor_name || ""
+        const currency = t?.currency || ""
+        const model = t?.pricing_model || t?.pricing_model_snapshot || ""
+        const extra = [corridorName, currency, model ? pricingModelLabel(model) : ""].filter(Boolean).join(", ")
+        return {
+          value: id,
+          label: extra ? `${name} (${extra})` : name,
+          raw: t,
+        }
+      })
+      .filter((o) => o.value)
+  }, [routeTemplates])
 
-  const lines = useMemo(
-    () =>
-      linesRaw.filter((row) => {
-        if (supplierFilter && row?.supplier_name !== supplierFilter) return false
-        if (routeFilter && row?.route_name !== routeFilter) return false
-        return true
-      }),
-    [linesRaw, supplierFilter, routeFilter]
+  const selectedScenario = useMemo(() => {
+    const id = Number(selectedScenarioId || 0)
+    if (!id) return null
+    return economyScenarios.find((s) => Number(s?.scenario_id || 0) === id) || null
+  }, [economyScenarios, selectedScenarioId])
+
+  const catalogsEmpty = useMemo(
+    () => !catalogsLoading && !corridors.length && !routeTemplates.length,
+    [catalogsLoading, corridors, routeTemplates]
   )
+  const targetCurrency = selectedScenario?.calc_currency || economyScenarios?.[0]?.calc_currency || "USD"
+  const hasCandidates = coverageCandidates.length > 0
+  const hasCandidateSelected = Number(selectedCandidateId || 0) > 0
+  const hasScenarioSelected = Number(selectedScenarioId || 0) > 0
 
-  const summaryCards = useMemo(() => {
-    const withLanded = linesRaw.filter((r) => safeNum(r?.landed_amount) !== null)
-    const linesWithFxGap = linesRaw.filter((r) => Number(r?.fx_missing || 0) > 0).length
-    return {
-      totalLines: linesRaw.length,
-      pricedLines: withLanded.length,
-      fxGapLines: linesWithFxGap,
-      suppliers: new Set(linesRaw.map((r) => r?.supplier_name).filter(Boolean)).size,
+  const updateGroupRouteRow = (nextRow) => {
+    if (!nextRow || !nextRow.id) return
+    setGroupRoutes((prev) => prev.map((r) => (Number(r.id) === Number(nextRow.id) ? { ...r, ...nextRow } : r)))
+  }
+
+  const assignRouteTemplate = async (row, routeTemplateId) => {
+    const scenarioId = Number(selectedScenarioId || 0)
+    const groupId = Number(row?.shipment_group_id || 0)
+    const tplId = Number(routeTemplateId || 0)
+    if (!rfqId || !scenarioId || !groupId || !tplId) return
+    try {
+      const { data } = await axios.post(
+        `/economics/v2/rfq/${rfqId}/scenarios/${scenarioId}/groups/${groupId}/route-template`,
+        {
+          route_template_id: tplId,
+          selected_for_scenario: Number(row?.selected_for_scenario || 0) ? 1 : 0,
+        }
+      )
+      if (data?.row) updateGroupRouteRow(data.row)
+      message.success(data?.message || "Шаблон маршрута назначен")
+    } catch (e) {
+      message.error(e?.response?.data?.message || "Не удалось назначить шаблон маршрута")
     }
-  }, [linesRaw])
+  }
 
-  const econ2CandidateColumns = useMemo(
+  const openAdhocModal = (row) => {
+    setAdhocTargetRow(row || null)
+    const payload = row?.route_source_type === "adhoc" ? row?.route_payload_json : null
+    const corridorId = Number(payload?.corridor_id || row?.corridor_id || row?.corridor_id_resolved || 0) || null
+    const currency = payload?.currency || row?.currency_snapshot || "USD"
+    const pricingModel = payload?.pricing_model || row?.pricing_model_snapshot || "fixed"
+
+    adhocForm.setFieldsValue({
+      corridor_id: corridorId,
+      name: payload?.name || row?.route_name_snapshot || "",
+      pricing_model: pricingModel,
+      currency,
+      fixed_cost: payload?.fixed_cost ?? null,
+      rate_per_kg: payload?.rate_per_kg ?? null,
+      rate_per_cbm: payload?.rate_per_cbm ?? null,
+      min_cost: payload?.min_cost ?? null,
+      markup_pct: payload?.markup_pct ?? 0,
+      markup_fixed: payload?.markup_fixed ?? 0,
+      eta_min_days: payload?.eta_min_days ?? row?.corridor_eta_min_days ?? null,
+      eta_max_days: payload?.eta_max_days ?? row?.corridor_eta_max_days ?? null,
+    })
+    setAdhocModalOpen(true)
+  }
+
+  const saveAdhocRoute = async () => {
+    const scenarioId = Number(selectedScenarioId || 0)
+    const groupId = Number(adhocTargetRow?.shipment_group_id || 0)
+    if (!rfqId || !scenarioId || !groupId) return
+    let values
+    try {
+      values = await adhocForm.validateFields()
+    } catch (_e) {
+      return
+    }
+    setAdhocSaving(true)
+    try {
+      const { data } = await axios.post(
+        `/economics/v2/rfq/${rfqId}/scenarios/${scenarioId}/groups/${groupId}/route-adhoc`,
+        {
+          ...values,
+          selected_for_scenario: Number(adhocTargetRow?.selected_for_scenario || 0) ? 1 : 0,
+        }
+      )
+      if (data?.row) updateGroupRouteRow(data.row)
+      message.success(data?.message || "Ad-hoc маршрут назначен")
+      setAdhocModalOpen(false)
+      setAdhocTargetRow(null)
+    } catch (e) {
+      message.error(e?.response?.data?.message || "Не удалось назначить ad-hoc маршрут")
+    } finally {
+      setAdhocSaving(false)
+    }
+  }
+
+  const toggleGroupSelected = async (row, checked) => {
+    const scenarioId = Number(selectedScenarioId || 0)
+    const groupId = Number(row?.shipment_group_id || 0)
+    if (!rfqId || !scenarioId || !groupId) return
+
+    const selectedForScenario = checked ? 1 : 0
+    try {
+      if (String(row?.route_source_type) === "template" && row?.route_template_id) {
+        const { data } = await axios.post(
+          `/economics/v2/rfq/${rfqId}/scenarios/${scenarioId}/groups/${groupId}/route-template`,
+          { route_template_id: Number(row.route_template_id), selected_for_scenario: selectedForScenario }
+        )
+        if (data?.row) updateGroupRouteRow(data.row)
+        return
+      }
+      if (String(row?.route_source_type) === "adhoc") {
+        const payload = row?.route_payload_json || {}
+        const corridorId = Number(payload?.corridor_id || row?.corridor_id || 0) || null
+        if (!corridorId) throw new Error("corridor_missing")
+        const { data } = await axios.post(
+          `/economics/v2/rfq/${rfqId}/scenarios/${scenarioId}/groups/${groupId}/route-adhoc`,
+          { ...payload, corridor_id: corridorId, selected_for_scenario: selectedForScenario }
+        )
+        if (data?.row) updateGroupRouteRow(data.row)
+        return
+      }
+      message.warning("Сначала назначьте маршрут (шаблон или ad-hoc)")
+    } catch (e) {
+      message.error(e?.response?.data?.message || "Не удалось изменить включение группы в сценарий")
+    }
+  }
+
+  const handleRecalculateScenario = async () => {
+    const scenarioId = Number(selectedScenarioId || 0)
+    if (!rfqId || !scenarioId) return
+    setRecalcScenarioLoading(true)
+    try {
+      const { data } = await axios.post(`/economics/v2/rfq/${rfqId}/scenarios/${scenarioId}/recalculate`, {
+        duty_basis: dutyBasis,
+      })
+      message.success(data?.message || "Сценарий пересчитан")
+      if (data?.row?.scenario_id) {
+        setEconomyScenarios((prev) =>
+          prev.map((s) => (Number(s.scenario_id) === Number(data.row.scenario_id) ? { ...s, ...data.row } : s))
+        )
+      }
+      await loadGroupRoutes(scenarioId)
+    } catch (e) {
+      message.error(e?.response?.data?.message || "Не удалось пересчитать сценарий")
+    } finally {
+      setRecalcScenarioLoading(false)
+    }
+  }
+
+  const candidateColumns = useMemo(
     () => [
       { title: "Кандидат", dataIndex: "name" },
       {
@@ -315,15 +527,15 @@ export default function EconomicsTabContent({
     []
   )
 
-  const econ2SelectedCandidate = useMemo(
+  const selectedCandidate = useMemo(
     () =>
-      econ2Candidates.find(
-        (row) => Number(row?.candidate_set_id || 0) === Number(selectedEcon2CandidateId || 0)
+      coverageCandidates.find(
+        (row) => Number(row?.candidate_set_id || 0) === Number(selectedCandidateId || 0)
       ) || null,
-    [econ2Candidates, selectedEcon2CandidateId]
+    [coverageCandidates, selectedCandidateId]
   )
 
-  const econ2GroupColumns = useMemo(
+  const groupColumns = useMemo(
     () => [
       { title: "Группа", dataIndex: "name" },
       { title: "Код", dataIndex: "code", width: 80, render: (v) => v || "—" },
@@ -367,7 +579,7 @@ export default function EconomicsTabContent({
     [targetCurrency]
   )
 
-  const econ2ScenarioColumns = useMemo(
+  const scenarioColumns = useMemo(
     () => [
       { title: "Сценарий", dataIndex: "name" },
       {
@@ -434,388 +646,114 @@ export default function EconomicsTabContent({
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={12}>
-      <Card
-        size="small"
-        title="Кандидаты из Покрытия (Экономика v2)"
-        extra={
-          <Space>
-            <Button size="small" onClick={loadEcon2Candidates} loading={econ2CandidatesLoading}>
-              Обновить v2
-            </Button>
-            <Button
-              size="small"
-              type="primary"
-              disabled={!selectedEcon2CandidateId}
-              loading={econ2AutoGroupLoading}
-              onClick={handleEcon2AutoGroup}
-            >
-              Автосгруппировать
-            </Button>
-            <Button
-              size="small"
-              disabled={!selectedEcon2CandidateId}
-              loading={econ2CreateScenarioLoading}
-              onClick={handleEcon2CreateScenario}
-            >
-              Создать черновой сценарий
-            </Button>
-          </Space>
-        }
-      >
-        {econ2CandidatesError ? (
-          <Alert type="error" showIcon message={econ2CandidatesError} />
-        ) : !econ2Candidates.length ? (
-          <Alert
-            type="info"
-            showIcon
-            message="Кандидаты еще не переданы из Покрытия"
-            description="На вкладке «Покрытие» откройте режим «Комбинации», нажмите «Подсказать комбинации», затем «Передать в Экономику»."
-          />
-        ) : (
-          <Table
-            rowKey={(record) => Number(record.candidate_set_id)}
-            dataSource={econ2Candidates}
-            loading={econ2CandidatesLoading}
-            pagination={{ pageSize: 8 }}
-            rowSelection={{
-              type: "radio",
-              selectedRowKeys: selectedEcon2CandidateId ? [Number(selectedEcon2CandidateId)] : [],
-              onChange: (keys) => setSelectedEcon2CandidateId(keys?.length ? Number(keys[0]) : null),
-            }}
-            columns={econ2CandidateColumns}
-          />
-        )}
-      </Card>
+      <Alert
+        type="info"
+        showIcon
+        message="Последовательность работы: Покрытие → Экономика → Выбор"
+        description="1) В Покрытии сформируйте кандидатов и передайте их в Экономику. 2) В Экономике: выберите кандидата, сгруппируйте поставки, создайте сценарий, назначьте маршруты и пересчитайте итог. 3) Во вкладке Выбор примите финальное решение по позициям вручную."
+      />
+      <Space wrap>
+        <Tag color={hasCandidates ? "green" : "default"}>1. Кандидаты</Tag>
+        <Tag color={hasCandidateSelected ? "green" : "default"}>2. Группы</Tag>
+        <Tag color={hasCandidateSelected ? "green" : "default"}>3. Сценарии</Tag>
+        <Tag color={hasScenarioSelected ? "green" : "default"}>4. Маршруты и пересчет</Tag>
+      </Space>
 
-      <Card
-        size="small"
-        title="Группы консолидации (Экономика v2)"
-        extra={
-          <Button
-            size="small"
-            onClick={() => loadEcon2Groups()}
-            loading={econ2GroupsLoading}
-            disabled={!selectedEcon2CandidateId}
-          >
-            Обновить группы
-          </Button>
-        }
-      >
-        {!selectedEcon2CandidateId ? (
-          <Alert type="info" showIcon message="Выберите кандидата выше" />
-        ) : econ2GroupsError ? (
-          <Alert type="error" showIcon message={econ2GroupsError} />
-        ) : !econ2Groups.length ? (
-          <Alert
-            type="info"
-            showIcon
-            message="Группы консолидации еще не созданы"
-            description="Нажмите «Автосгруппировать» для выбранного кандидата."
-          />
-        ) : (
-          <Table
-            rowKey={(record) => `econ2-group:${record.shipment_group_id}`}
-            dataSource={econ2Groups}
-            loading={econ2GroupsLoading}
-            pagination={{ pageSize: 8 }}
-            columns={econ2GroupColumns}
-            summary={() =>
-              econ2SelectedCandidate ? (
-                <Table.Summary.Row>
-                  <Table.Summary.Cell index={0} colSpan={2}>
-                    <Text type="secondary">
-                      Кандидат: {econ2SelectedCandidate.name}
-                    </Text>
-                  </Table.Summary.Cell>
-                  <Table.Summary.Cell index={2} colSpan={2}>
-                    <Text type="secondary">
-                      Прогресс: {safeNum(econ2SelectedCandidate.progress_structure_pct) ?? 0}% / с ценой{" "}
-                      {safeNum(econ2SelectedCandidate.progress_priced_pct) ?? 0}%
-                    </Text>
-                  </Table.Summary.Cell>
-                  <Table.Summary.Cell index={3} colSpan={6} />
-                </Table.Summary.Row>
-              ) : null
-            }
-          />
-        )}
-      </Card>
+      <CandidatesCard
+        loadCandidates={loadCandidates}
+        candidatesLoading={candidatesLoading}
+        selectedCandidateId={selectedCandidateId}
+        autoGroupLoading={autoGroupLoading}
+        handleAutoGroup={handleAutoGroup}
+        createScenarioLoading={createScenarioLoading}
+        handleCreateScenario={handleCreateScenario}
+        candidatesError={candidatesError}
+        coverageCandidates={coverageCandidates}
+        setSelectedCandidateId={setSelectedCandidateId}
+        candidateColumns={candidateColumns}
+      />
 
-      <Card
-        size="small"
-        title="Сценарии (Экономика v2)"
-        extra={
-          <Button
-            size="small"
-            onClick={() => loadEcon2Scenarios()}
-            loading={econ2ScenariosLoading}
-            disabled={!selectedEcon2CandidateId}
-          >
-            Обновить сценарии
-          </Button>
-        }
-      >
-        {!selectedEcon2CandidateId ? (
-          <Alert type="info" showIcon message="Выберите кандидата выше" />
-        ) : econ2ScenariosError ? (
-          <Alert type="error" showIcon message={econ2ScenariosError} />
-        ) : !econ2Scenarios.length ? (
-          <Alert
-            type="info"
-            showIcon
-            message="Сценарии v2 еще не созданы"
-            description="После автогруппировки нажмите «Создать черновой сценарий»."
-          />
-        ) : (
-          <Table
-            rowKey={(record) => `econ2-scenario:${record.scenario_id}`}
-            dataSource={econ2Scenarios}
-            loading={econ2ScenariosLoading}
-            pagination={{ pageSize: 8 }}
-            columns={econ2ScenarioColumns}
-          />
-        )}
-      </Card>
-
-      <Card size="small">
-        <Space wrap align="center" style={{ justifyContent: "space-between", width: "100%" }}>
-          <Space wrap>
-            <Tag color="blue">Строк в расчете: {summaryCards.totalLines}</Tag>
-            <Tag color="green">Со стоимостью: {summaryCards.pricedLines}</Tag>
-            <Tag color={summaryCards.fxGapLines ? "orange" : "success"}>
-              Без курса: {summaryCards.fxGapLines}
-            </Tag>
-            <Tag>Поставщиков: {summaryCards.suppliers}</Tag>
-            {targetCurrency ? <Tag color="geekblue">Валюта расчета: {targetCurrency}</Tag> : null}
-          </Space>
-          <Button
-            type="primary"
-            onClick={onRebuildEconomicsScenario}
-            loading={economicsRebuildLoading}
-          >
-            Пересчитать авто-сценарий
-          </Button>
-        </Space>
-      </Card>
-
-      <Card size="small" title="Сводка по поставщикам">
-        <Table
-          rowKey={(record, idx) => `${record.supplier_name || "s"}:${record.route_name || "r"}:${idx}`}
-          dataSource={suppliers}
-          pagination={false}
-          columns={[
-            { title: "Поставщик", dataIndex: "supplier_name" },
-            { title: "Маршрут", dataIndex: "route_name", width: 180 },
-            { title: "Строк", dataIndex: "lines_count", width: 80 },
-            {
-              title: "Товар",
-              dataIndex: "goods_total",
-              width: 130,
-              render: (v, r) => formatPriceWithCurrency(v, r.calc_currency),
-            },
-            {
-              title: "Логистика",
-              dataIndex: "logistics_total",
-              width: 130,
-              render: (v, r) => formatPriceWithCurrency(v, r.calc_currency),
-            },
-            {
-              title: "Пошлина",
-              dataIndex: "duty_total",
-              width: 130,
-              render: (v, r) => formatPriceWithCurrency(v, r.calc_currency),
-            },
-            {
-              title: "Итог",
-              dataIndex: "landed_total",
-              width: 140,
-              render: (v, r) => formatPriceWithCurrency(v, r.calc_currency),
-            },
-            { title: "Срок, дн (макс)", dataIndex: "eta_days_worst", width: 130 },
-            {
-              title: "Строк без курса",
-              dataIndex: "lines_with_currency_gap",
-              width: 130,
-              render: (v) => (Number(v || 0) > 0 ? <Tag color="orange">{v}</Tag> : <Tag color="green">0</Tag>),
-            },
-          ]}
-        />
-      </Card>
-
-      <Card
-        size="small"
-        title="Варианты по строкам"
-        extra={
-          <Space wrap>
-            <Select
-              allowClear
-              style={{ width: 220 }}
-              options={supplierOptions}
-              value={supplierFilter}
-              onChange={setSupplierFilter}
-              placeholder="Фильтр по поставщику"
-              optionFilterProp="label"
-              showSearch
-            />
-            <Select
-              allowClear
-              style={{ width: 220 }}
-              options={routeOptions}
-              value={routeFilter}
-              onChange={setRouteFilter}
-              placeholder="Фильтр по маршруту"
-              optionFilterProp="label"
-              showSearch
-            />
-          </Space>
-        }
-      >
-        <Table
-          rowKey={(record, idx) => record.row_key || `line:${idx}`}
-          dataSource={lines}
-          pagination={{ pageSize: 12 }}
-          columns={[
-            { title: "Строка RFQ", dataIndex: "line_number", width: 95 },
-            { title: "Кат. номер", dataIndex: "part_number", width: 150 },
-            { title: "Описание", dataIndex: "part_description" },
-            {
-              title: "Вариант",
-              dataIndex: "selection_key_norm",
-              width: 180,
-              render: (v) => selectionLabel(v),
-            },
-            { title: "Поставщик", dataIndex: "supplier_name", width: 180 },
-            { title: "Маршрут", dataIndex: "route_name", width: 150 },
-            {
-              title: "Товар",
-              dataIndex: "goods_amount",
-              width: 130,
-              render: (v, r) => formatPriceWithCurrency(v, r.goods_currency || r.landed_currency),
-            },
-            {
-              title: "Логистика",
-              dataIndex: "logistics_amount",
-              width: 130,
-              render: (v, r) => formatPriceWithCurrency(v, r.logistics_currency || r.landed_currency),
-            },
-            {
-              title: "Пошлина",
-              dataIndex: "duty_amount",
-              width: 130,
-              render: (v, r) => formatPriceWithCurrency(v, r.landed_currency),
-            },
-            {
-              title: "Итог",
-              dataIndex: "landed_amount",
-              width: 140,
-              render: (v, r) => formatPriceWithCurrency(v, r.landed_currency),
-            },
-            { title: "Срок, дн", dataIndex: "eta_total_days", width: 95 },
-            {
-              title: "FX",
-              dataIndex: "fx_missing",
-              width: 70,
-              render: (v) => (Number(v || 0) > 0 ? <Tag color="orange">нет</Tag> : <Tag color="green">ок</Tag>),
-            },
-          ]}
-        />
-      </Card>
-
-      <Card size="small" title="Сценарии выбора">
-        {!scenarios.length ? (
-          <Alert
-            type="info"
-            showIcon
-            message="Сценарии пока не рассчитаны"
-            description="Нажмите «Пересчитать авто-сценарий», чтобы получить первый вариант выбора."
-          />
-        ) : (
-          <Table
-            rowKey={(record, idx) => record.scenario_id || `scenario:${idx}`}
-            dataSource={scenarios}
-            pagination={false}
-            columns={[
-              { title: "Название", dataIndex: "name" },
-              {
-                title: "Стратегия",
-                dataIndex: "strategy",
-                width: 220,
-                render: (v) => strategyLabel(v),
-              },
-              { title: "Выбрано строк", dataIndex: "picked_lines", width: 120 },
-              {
-                title: "Товар",
-                dataIndex: "goods_total",
-                width: 120,
-                render: (v, r) => formatPriceWithCurrency(v, r.currency_hint || targetCurrency),
-              },
-              {
-                title: "Логистика",
-                dataIndex: "logistics_total",
-                width: 120,
-                render: (v, r) => formatPriceWithCurrency(v, r.currency_hint || targetCurrency),
-              },
-              {
-                title: "Пошлина",
-                dataIndex: "duty_total",
-                width: 120,
-                render: (v, r) => formatPriceWithCurrency(v, r.currency_hint || targetCurrency),
-              },
-              {
-                title: "Итог",
-                dataIndex: "landed_total",
-                width: 130,
-                render: (v, r) => formatPriceWithCurrency(v, r.currency_hint || targetCurrency),
-              },
-              { title: "Срок, дн (макс)", dataIndex: "eta_days_worst", width: 130 },
-              {
-                title: "Ср. рейтинг",
-                dataIndex: "avg_supplier_score",
-                width: 110,
-                render: (v) => (safeNum(v) === null ? "—" : Number(v).toFixed(2)),
-              },
-            ]}
-          />
-        )}
-      </Card>
-
-      {latestScenarioLines.length ? (
-        <Card
-          size="small"
-          title={
-            <Space>
-              <span>Состав последнего сценария</span>
-              {economicsDashboard?.latest_scenario_name ? (
-                <Text type="secondary">{economicsDashboard.latest_scenario_name}</Text>
-              ) : null}
-            </Space>
+      {hasCandidateSelected ? (
+        <GroupsCard
+          loadGroups={loadGroups}
+          groupsLoading={groupsLoading}
+          groupsError={groupsError}
+          consolidationGroups={consolidationGroups}
+          groupColumns={groupColumns}
+          summary={() =>
+            selectedCandidate ? (
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0} colSpan={2}>
+                  <Text type="secondary">Кандидат: {selectedCandidate.name}</Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={2} colSpan={2}>
+                  <Text type="secondary">
+                    Прогресс: {safeNum(selectedCandidate.progress_structure_pct) ?? 0}% / с ценой{" "}
+                    {safeNum(selectedCandidate.progress_priced_pct) ?? 0}%
+                  </Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={3} colSpan={6} />
+              </Table.Summary.Row>
+            ) : null
           }
-        >
-          <Table
-            rowKey={(record, idx) => record.row_key || `picked:${idx}`}
-            dataSource={latestScenarioLines}
-            pagination={false}
-            columns={[
-              { title: "Строка RFQ", dataIndex: "line_number", width: 95 },
-              { title: "Кат. номер", dataIndex: "part_number", width: 150 },
-              { title: "Описание", dataIndex: "part_description" },
-              {
-                title: "Вариант",
-                dataIndex: "selection_key_norm",
-                width: 180,
-                render: (v) => selectionLabel(v),
-              },
-              { title: "Поставщик", dataIndex: "supplier_name", width: 180 },
-              {
-                title: "Итог",
-                dataIndex: "landed_amount",
-                width: 130,
-                render: (v, r) => formatPriceWithCurrency(v, r.landed_currency || targetCurrency),
-              },
-              { title: "Срок, дн", dataIndex: "eta_total_days", width: 95 },
-            ]}
-          />
-        </Card>
+        />
+      ) : null}
+
+      {hasCandidateSelected ? (
+        <ScenariosCard
+          loadScenarios={loadScenarios}
+          scenariosLoading={scenariosLoading}
+          scenariosError={scenariosError}
+          economyScenarios={economyScenarios}
+          scenarioColumns={scenarioColumns}
+          selectedScenarioId={selectedScenarioId}
+          setSelectedScenarioId={setSelectedScenarioId}
+        />
+      ) : null}
+
+      {hasScenarioSelected ? (
+        <GroupRoutesPanel
+          groupRoutesError={groupRoutesError}
+          groupRoutes={groupRoutes}
+          groupRoutesLoading={groupRoutesLoading}
+          loadCatalogs={loadCatalogs}
+          catalogsLoading={catalogsLoading}
+          loadGroupRoutes={loadGroupRoutes}
+          handleRecalculateScenario={handleRecalculateScenario}
+          recalcScenarioLoading={recalcScenarioLoading}
+          dutyBasis={dutyBasis}
+          setDutyBasis={setDutyBasis}
+          routeTemplateOptions={routeTemplateOptions}
+          assignRouteTemplate={assignRouteTemplate}
+          openAdhocModal={openAdhocModal}
+          toggleGroupSelected={toggleGroupSelected}
+          targetCurrency={targetCurrency}
+          catalogsEmpty={catalogsEmpty}
+          catalogsError={catalogsError}
+          safeNum={safeNum}
+          pricingModelLabel={pricingModelLabel}
+        />
+      ) : null}
+
+      <AdhocRouteModal
+        open={adhocModalOpen}
+        onCancel={() => {
+          setAdhocModalOpen(false)
+          setAdhocTargetRow(null)
+        }}
+        onOk={saveAdhocRoute}
+        confirmLoading={adhocSaving}
+        form={adhocForm}
+        corridorOptions={corridorOptions}
+        pricingModelLabel={pricingModelLabel}
+      />
+      {hasScenarioSelected ? (
+        <Alert
+          type="success"
+          showIcon
+          message="Дальше: вкладка «Выбор»"
+          description="После пересчета сценария и назначения маршрутов переходите во вкладку «Выбор» для ручной финализации по позициям."
+        />
       ) : null}
     </Space>
   )

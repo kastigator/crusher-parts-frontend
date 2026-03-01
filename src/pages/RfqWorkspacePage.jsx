@@ -83,7 +83,6 @@ export default function RfqWorkspacePage() {
   const [structure, setStructure] = useState(null)
   const [coverage, setCoverage] = useState(null)
   const [selections, setSelections] = useState([])
-  const [selectionLines, setSelectionLines] = useState([])
   const [economicsDashboard, setEconomicsDashboard] = useState({
     suppliers: [],
     lines: [],
@@ -91,7 +90,6 @@ export default function RfqWorkspacePage() {
     latest_scenario_lines: [],
     target_currency: null,
   })
-  const [economicsRebuildLoading, setEconomicsRebuildLoading] = useState(false)
   const [salesQuotes, setSalesQuotes] = useState([])
   const [contracts, setContracts] = useState([])
   const [purchaseOrders, setPurchaseOrders] = useState([])
@@ -168,9 +166,12 @@ export default function RfqWorkspacePage() {
   const sortHints = useCallback(
     (hints) =>
       (Array.isArray(hints) ? [...hints] : []).sort((a, b) => {
+        const pa = Number(a?.is_preferred || 0) > 0 ? 1 : 0
+        const pb = Number(b?.is_preferred || 0) > 0 ? 1 : 0
         const oa = hintTypeOrder.current[String(a?.part_type || "UNKNOWN")] ?? 99
         const ob = hintTypeOrder.current[String(b?.part_type || "UNKNOWN")] ?? 99
         return (
+          pb - pa ||
           oa - ob ||
           String(a?.supplier_part_number || "").localeCompare(
             String(b?.supplier_part_number || "")
@@ -322,11 +323,19 @@ export default function RfqWorkspacePage() {
                 {h.description_ru || h.description_en}
               </div>
             ) : null}
-            <div style={{ color: "#4b5563", fontSize: 12 }}>
-              Цена:{" "}
-              {h?.latest_price != null
-                ? formatPriceWithCurrency(h.latest_price, h.latest_currency)
-                : "не задана"}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+              <Tag
+                color={Number(h?.latest_price) > 0 ? "green" : "default"}
+                style={{ marginInlineEnd: 0 }}
+              >
+                {Number(h?.latest_price) > 0 ? "С ценой" : "Без цены"}
+              </Tag>
+              <div style={{ color: "#4b5563", fontSize: 12 }}>
+                Цена:{" "}
+                {h?.latest_price != null
+                  ? formatPriceWithCurrency(h.latest_price, h.latest_currency)
+                  : "не задана"}
+              </div>
             </div>
             <div style={{ color: "#6b7280", fontSize: 12 }}>
               Источник: {buildPriceSourceText(h) || "—"}
@@ -340,9 +349,9 @@ export default function RfqWorkspacePage() {
   }, [sortHints])
 
   const renderHintsBadge = useCallback((hints) => {
-    const list = sortHints(hints).filter(isHintPriced)
+    const list = sortHints(hints)
     if (!list.length) return null
-    const pricedCount = list.length
+    const pricedCount = list.filter(isHintPriced).length
     const preview = list.slice(0, 2)
     const more = Math.max(0, list.length - preview.length)
     const tooltip = buildHintsTooltip(list)
@@ -350,14 +359,23 @@ export default function RfqWorkspacePage() {
       <Tooltip title={tooltip} placement="left">
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
           <Tag color={pricedCount > 0 ? "blue" : "default"} style={{ marginInlineEnd: 0 }}>
-            {pricedCount > 0 ? `Варианты с ценой: ${pricedCount}` : `Варианты без цены: ${list.length}`}
+            {pricedCount > 0
+              ? `Связей: ${list.length} · с ценой: ${pricedCount}`
+              : `Связей: ${list.length} · без цены`}
           </Tag>
           {preview.map((h, idx) => {
             const choice = buildHintPriceChoices([h])[0] || null
             const source = choice ? buildPriceSourceText(choice) : buildPriceSourceText(h)
-            const price = choice
-              ? formatPriceWithCurrency(choice.price, choice.currency)
-              : formatPriceWithCurrency(h.latest_price, h.latest_currency)
+            const hasPrice = Boolean(
+              choice ||
+                (h?.latest_price != null &&
+                  String(h?.latest_currency || "").trim().length > 0)
+            )
+            const price = hasPrice
+              ? choice
+                ? formatPriceWithCurrency(choice.price, choice.currency)
+                : formatPriceWithCurrency(h.latest_price, h.latest_currency)
+              : "не задана"
             const date = formatHintDate(choice?.date || h?.latest_price_date)
             return (
               <div
@@ -375,9 +393,16 @@ export default function RfqWorkspacePage() {
                   <Text strong style={{ fontSize: 12 }}>
                     Вариант {idx + 1}: {h?.supplier_part_number || "Без номера"}
                   </Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {h?.part_type || "UNKNOWN"}
-                  </Text>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {h?.part_type || "UNKNOWN"}
+                    </Text>
+                    {Number(h?.is_preferred || 0) > 0 ? (
+                      <Tag color="gold" style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: "16px" }}>
+                        Приоритетный
+                      </Tag>
+                    ) : null}
+                  </div>
                 </div>
                 {h?.description_ru || h?.description_en ? (
                   <Text type="secondary" style={{ fontSize: 12, display: "block" }}>
@@ -385,6 +410,12 @@ export default function RfqWorkspacePage() {
                   </Text>
                 ) : null}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 2, alignItems: "center" }}>
+                  <Tag
+                    color={hasPrice ? "green" : "default"}
+                    style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: "16px" }}
+                  >
+                    {hasPrice ? "С ценой" : "Без цены"}
+                  </Tag>
                   <Text style={{ fontSize: 12, fontWeight: 600 }}>
                     Цена: {price}
                   </Text>
@@ -410,6 +441,70 @@ export default function RfqWorkspacePage() {
     )
   }, [sortHints, buildHintsTooltip, isHintPriced, buildHintPriceChoices])
 
+  const renderHintLinksInline = useCallback((hints) => {
+    const list = sortHints(hints)
+    if (!list.length) return null
+
+    const uniq = []
+    const seen = new Set()
+    list.forEach((hint, idx) => {
+      const baseKey =
+        hint?.supplier_part_id != null
+          ? `id:${hint.supplier_part_id}`
+          : `num:${String(hint?.supplier_part_number || "").trim().toUpperCase()}`
+      const key = baseKey === "num:" ? `idx:${idx}` : baseKey
+      if (seen.has(key)) return
+      seen.add(key)
+      uniq.push({
+        key,
+        number: hint?.supplier_part_number || "",
+        description: hint?.description_ru || hint?.description_en || "",
+        priced: isHintPriced(hint),
+        isPreferred: Number(hint?.is_preferred || 0) > 0,
+      })
+    })
+
+    const shown = uniq.slice(0, 3)
+    const extra = Math.max(0, uniq.length - shown.length)
+    const popoverContent = (
+      <Space direction="vertical" size={6} style={{ maxWidth: 520 }}>
+        {uniq.map((item) => (
+          <Space key={item.key} size={6} wrap>
+            <Text style={{ fontSize: 12 }}>
+              {item.number || item.description || "без номера"}
+            </Text>
+            <Tag color={item.priced ? "green" : "default"} style={{ marginInlineEnd: 0 }}>
+              {item.priced ? "с ценой" : "без цены"}
+            </Tag>
+            {item.isPreferred ? (
+              <Tag color="gold" style={{ marginInlineEnd: 0 }}>
+                Приоритетный
+              </Tag>
+            ) : null}
+          </Space>
+        ))}
+      </Space>
+    )
+
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "flex-end" }}>
+        {shown.map((item) => (
+          <Tag key={item.key} color={item.priced ? "green" : "default"} style={{ marginInlineEnd: 0 }}>
+            {item.number || item.description || "без номера"}
+            {item.isPreferred ? " · приоритетный" : ""}
+          </Tag>
+        ))}
+        {extra > 0 ? (
+          <Popover title="Связанные детали поставщика" content={popoverContent} trigger="hover">
+            <Tag color="blue" style={{ marginInlineEnd: 0, cursor: "pointer" }}>
+              +{extra}
+            </Tag>
+          </Popover>
+        ) : null}
+      </div>
+    )
+  }, [sortHints, isHintPriced])
+
   const hasHintsForSelectionKey = useCallback((key) => {
     if (!activeSupplierHints) return false
     const meta = selectionNodeMapRef.current.get(String(key))
@@ -417,15 +512,15 @@ export default function RfqWorkspacePage() {
     if (type === "DEMAND" || type === "BOM_COMPONENT") {
       const effectivePartId = meta?.alt_original_part_id || meta?.original_part_id
       if (!effectivePartId) return false
-      return buildHintPriceChoices(getOriginalHints(effectivePartId)).length > 0
+      return getOriginalHints(effectivePartId).length > 0
     }
     if (type === "KIT_ROLE") {
       const id = meta?.bundle_item_id
       if (!id) return false
-      return buildHintPriceChoices(getBundleItemHints(id)).length > 0
+      return getBundleItemHints(id).length > 0
     }
     return false
-  }, [activeSupplierHints, getOriginalHints, getBundleItemHints, buildHintPriceChoices])
+  }, [activeSupplierHints, getOriginalHints, getBundleItemHints])
 
   const applyAltExclusion = useCallback(
     (prevKeys, actionKey, actionChecked) =>
@@ -792,7 +887,6 @@ export default function RfqWorkspacePage() {
       setResponseWorkspaceRows([])
       setStructure(null)
       setSelections([])
-      setSelectionLines([])
       setEconomicsDashboard({
         suppliers: [],
         lines: [],
@@ -1015,47 +1109,6 @@ export default function RfqWorkspacePage() {
         setContracts(rfqContracts)
         setPurchaseOrders(rfqPos)
 
-        if (rfqSelections.length) {
-          const latestSelection = rfqSelections[0]
-          const linesResp = await axios.get(`/selection/${latestSelection.id}/lines`)
-          if (!cancelled) {
-            setSelectionLines(Array.isArray(linesResp.data) ? linesResp.data : [])
-          }
-        } else {
-          const econLines = Array.isArray(economicsPayload?.latest_scenario_lines)
-            ? economicsPayload.latest_scenario_lines
-            : []
-          if (econLines.length) {
-            const autoScenarioName =
-              economicsPayload?.latest_scenario_name || "Авто-сценарий экономики"
-            setSelections([
-              {
-                id: `auto-${activeRfqId}`,
-                rfq_id: activeRfqId,
-                status: "draft",
-                note: `${autoScenarioName} (предпросмотр, не сохранено во вкладке Выбор)`,
-                created_at: null,
-              },
-            ])
-            setSelectionLines(
-              econLines.map((row, index) => ({
-                id: `auto-line-${index}`,
-                rfq_line_number: row.line_number,
-                line_number: row.line_number,
-                component_cat_number: row.part_number || "—",
-                supplier_name: row.supplier_name || "Поставщик не указан",
-                supplier_part_number: row.selection_key_norm || "—",
-                offer_type: null,
-                price: row.landed_amount,
-                currency: row.landed_currency,
-                qty: null,
-                decision_note: `Из сценария: ${autoScenarioName}`,
-              }))
-            )
-          } else {
-            setSelectionLines([])
-          }
-        }
       } catch (e) {
         if (!cancelled) {
           // логируем URL и тело ответа, чтобы быстро найти 400
@@ -1070,46 +1123,35 @@ export default function RfqWorkspacePage() {
     }
   }, [activeRfqId, rfqs, showArchivedResponses])
 
-  const loadEconomicsDashboard = async (rfqId) => {
+  const loadSelectionSnapshot = useCallback(async (rfqId, opts = {}) => {
+    const { silent = false } = opts
     if (!rfqId) return
     try {
-      const { data } = await axios.get(`/economics/rfq/${rfqId}/dashboard`)
-      const payload = data && typeof data === "object" ? data : {}
-      setEconomicsDashboard({
-        suppliers: Array.isArray(payload.suppliers) ? payload.suppliers : [],
-        lines: Array.isArray(payload.lines) ? payload.lines : [],
-        scenarios: Array.isArray(payload.scenarios) ? payload.scenarios : [],
-        latest_scenario_lines: Array.isArray(payload.latest_scenario_lines)
-          ? payload.latest_scenario_lines
-          : [],
-        latest_scenario_name: payload.latest_scenario_name || null,
-        target_currency: payload.target_currency || null,
-      })
+      const { data } = await axios.get("/selection")
+      const selectionList = Array.isArray(data) ? data : []
+      const rfqSelections = selectionList.filter((row) => Number(row.rfq_id) === Number(rfqId))
+      setSelections(rfqSelections)
     } catch (e) {
       console.error(e)
-      message.error("Не удалось обновить экономику RFQ")
+      if (!silent) {
+        message.error("Не удалось обновить вкладку Выбор")
+      }
     }
-  }
+  }, [])
 
-  const handleRebuildEconomicsScenario = async () => {
+  useEffect(() => {
     if (!activeRfqId) return
-    try {
-      setEconomicsRebuildLoading(true)
-      const { data } = await axios.post(`/economics/rfq/${activeRfqId}/scenarios/auto-min-landed`)
-      const picked = Number(data?.picked_lines || 0)
-      message.success(
-        picked > 0
-          ? `Авто-сценарий пересчитан: выбрано строк ${picked}`
-          : "Авто-сценарий создан, но без выбранных строк (проверьте ответы и курсы валют)"
-      )
-      await loadEconomicsDashboard(activeRfqId)
-    } catch (e) {
-      console.error(e)
-      message.error(e?.response?.data?.message || "Не удалось пересчитать авто-сценарий")
-    } finally {
-      setEconomicsRebuildLoading(false)
+    if (activeTabKey !== "selection") return
+
+    const refreshTabData = async () => {
+      await loadSelectionSnapshot(activeRfqId, { silent: true })
     }
-  }
+    refreshTabData()
+  }, [
+    activeRfqId,
+    activeTabKey,
+    loadSelectionSnapshot,
+  ])
 
   useEffect(() => {
     if (!suppliers.length) {
@@ -2000,11 +2042,13 @@ export default function RfqWorkspacePage() {
       const acceptedChecked = nodeKey ? acceptedSet.has(nodeKey) : false
       const isSelected = nodeKey ? selectedSet.has(nodeKey) : false
       const priceChoices = buildHintPriceChoices(hints)
+      const hasOnlyUnpricedLinks = hints.length > 0 && priceChoices.length === 0
       const selectedPriceKey = nodeKey ? acceptedPriceByKey[nodeKey] : null
       const selectedPrice =
         (selectedPriceKey
           ? priceChoices.find((choice) => choice.key === selectedPriceKey)
           : null) || priceChoices[0] || null
+      const hintLinksInline = renderHintLinksInline(hints)
 
       const handleAcceptToggle = (checked) => {
         if (checked) {
@@ -2080,6 +2124,12 @@ export default function RfqWorkspacePage() {
             />
           ) : null}
           {hintsBadge ? <div>{hintsBadge}</div> : null}
+          {hintLinksInline ? <div>{hintLinksInline}</div> : null}
+          {hasOnlyUnpricedLinks ? (
+            <Tag color="default" style={{ marginInlineEnd: 0 }}>
+              Связь есть, без цены
+            </Tag>
+          ) : null}
           {kitSelect || roleSelect || altCount > 0 ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               {kitSelect}
@@ -2557,6 +2607,7 @@ export default function RfqWorkspacePage() {
     getOriginalHints,
     lineStatusSaving,
     renderHintsBadge,
+    renderHintLinksInline,
     clearKitRoleSelectionForContext,
     selectKitRoleQuick,
   ])
@@ -2731,10 +2782,7 @@ export default function RfqWorkspacePage() {
         responseLines={responseLines}
         coverageRows={coverageRows}
         selections={selections}
-        selectionLines={selectionLines}
-        economicsDashboard={economicsDashboard}
-        economicsRebuildLoading={economicsRebuildLoading}
-        onRebuildEconomicsScenario={handleRebuildEconomicsScenario}
+        onSelectionFinalized={() => loadSelectionSnapshot(activeRfqId, { silent: true })}
         salesQuotes={salesQuotes}
         contracts={contracts}
         purchaseOrders={purchaseOrders}

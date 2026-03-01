@@ -9,6 +9,11 @@ import { buildIconPath, resolveIconUrl } from "@/constants/sidebarIcons"
 const { Sider } = Layout
 
 const CATALOG_ROOT_PATH = "/catalogs"
+const HIDDEN_LEGACY_PATHS = new Set([
+  "/tnved-origin-rules",
+  "/logistics-routes",
+  "/country-risk-profiles",
+])
 const CATALOG_CHILD_PATHS = new Set([
   "/clients",
   "/suppliers",
@@ -16,10 +21,7 @@ const CATALOG_CHILD_PATHS = new Set([
   "/original-parts",
   "/materials",
   "/tnved-codes",
-  "/tnved-origin-rules",
-  "/logistics-routes",
   "/logistics-corridors",
-  "/country-risk-profiles",
 ])
 
 const ADMIN_PATH = "/admin"
@@ -30,16 +32,10 @@ const CATALOG_ICON_BY_PATH = {
   "/original-parts": "original-parts",
   "/materials": "materials",
   "/tnved-codes": "tnved-codes",
-  "/tnved-origin-rules": "tnved-codes",
-  "/logistics-routes": "economics",
   "/logistics-corridors": "coverage",
-  "/country-risk-profiles": "scorecard",
 }
 const CATALOG_FALLBACK_ITEMS = [
-  { path: "/tnved-origin-rules", name: "Правила ТН ВЭД (страна)", icon: "tnved-codes" },
-  { path: "/logistics-routes", name: "Маршруты логистики (legacy)", icon: "economics" },
   { path: "/logistics-corridors", name: "Логистические коридоры", icon: "coverage" },
-  { path: "/country-risk-profiles", name: "Риски стран", icon: "scorecard" },
 ]
 
 function normalizeIconName(value) {
@@ -89,6 +85,7 @@ export default function Sidebar() {
   const { menuItems, parentByKey } = useMemo(() => {
     const sorted = (tabs || [])
       .slice()
+      .filter((tab) => tab?.path && !HIDDEN_LEGACY_PATHS.has(tab.path))
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
 
     const otherTabs = []

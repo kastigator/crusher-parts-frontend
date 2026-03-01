@@ -523,6 +523,7 @@ export default function CoverageTabContent({
   workspaceRows,
   suppliers,
 }) {
+  const [scopeMode, setScopeMode] = useState("item")
   const [selectedRfqItemId, setSelectedRfqItemId] = useState(null)
   const [mode, setMode] = useState("matrix")
   const [supplierVisibilityFilter, setSupplierVisibilityFilter] = useState("all")
@@ -596,6 +597,116 @@ export default function CoverageTabContent({
       String(a.supplier_name || "").localeCompare(String(b.supplier_name || ""))
     )
   }, [suppliers, workspace])
+
+  const coverageModelAllItems = useMemo(() => {
+    if (!structureItems.length) return null
+    const allRows = []
+    const rowsBySupplierElement = new Map()
+
+    structureItems.forEach((item) => {
+      const itemId = Number(item?.rfq_item_id || 0)
+      if (!itemId) return
+      const workspaceRowsForCurrentItem = workspace.filter((row) => Number(row?.rfq_item_id) === itemId)
+      const elements = buildCoverageElementsForItem(item, workspaceRowsForCurrentItem)
+      const itemRowsBySupplierElement = new Map()
+
+      workspaceRowsForCurrentItem.forEach((row) => {
+        const sid = Number(row?.supplier_id || 0)
+        if (!sid) return
+        const eKey = mapWorkspaceRowToElementKey(row, item)
+        if (!eKey) return
+        const itemMapKey = `${sid}:${eKey}`
+        if (!itemRowsBySupplierElement.has(itemMapKey)) itemRowsBySupplierElement.set(itemMapKey, [])
+        itemRowsBySupplierElement.get(itemMapKey).push(row)
+      })
+
+      elements.forEach((el, idx) => {
+        const supplierCells = {}
+
+        supplierCatalog.forEach((supplier) => {
+          const sid = Number(supplier.supplier_id)
+          const key = `${sid}:${el.key}`
+          const matchedRows = itemRowsBySupplierElement.get(key) || []
+          const cell = chooseBestCellStatus(matchedRows, { oemRequired: !!el.is_oem_required })
+          supplierCells[sid] = {
+            ...cell,
+            supplier,
+            element: el,
+          }
+          const globalKey = `${itemId}:${key}`
+          if (!rowsBySupplierElement.has(globalKey)) rowsBySupplierElement.set(globalKey, [])
+          matchedRows.forEach((r) => rowsBySupplierElement.get(globalKey).push(r))
+        })
+
+        allRows.push({
+          key: `${itemId}:${el.key}`,
+          local_key: el.key,
+          rfq_item_id: itemId,
+          line_number: item?.line_number || "?",
+          item_label: item?.original_cat_number || item?.client_part_number || "—",
+          item_description: item?.description || "",
+          order: idx,
+          path_group: el.path_group,
+          line_type: el.line_type,
+          label: el.label,
+          description: el.description,
+          original_part_id: el.original_part_id,
+          bundle_item_id: el.bundle_item_id,
+          required_qty: el.required_qty,
+          uom: el.uom,
+          is_oem_required: !!el.is_oem_required,
+          supplierCells,
+        })
+      })
+    })
+
+    const supplierSummary = supplierCatalog.map((supplier) => {
+      const sid = Number(supplier.supplier_id)
+      const cellList = allRows.map((row) => row.supplierCells?.[sid]).filter(Boolean)
+      const respondedAny = cellList.some((c) =>
+        ["Q-", "Q+", "Q+P", "Q+OEM", "Q!"].includes(String(c?.code || ""))
+      )
+      const requested = cellList.filter((c) => Array.isArray(c?.rows) && c.rows.length > 0).length
+      const closedCount = cellList.filter((c) => CLOSED_STATUSES.has(String(c?.code || ""))).length
+      const pricedCount = cellList.filter((c) => PRICED_STATUSES.has(String(c?.code || ""))).length
+      const oemRequiredCells = allRows.filter((r) => r.is_oem_required)
+      const oemCovered = oemRequiredCells.filter(
+        (r) => String(r.supplierCells?.[sid]?.code || "") === "Q+OEM"
+      ).length
+      return {
+        supplier_id: sid,
+        supplier_name: supplier.supplier_name,
+        supplier_country: supplier.supplier_country || null,
+        responded_any: respondedAny,
+        requested_elements: requested,
+        closed_required: closedCount,
+        priced_required: pricedCount,
+        coverage_goal_pct: allRows.length ? Math.round((closedCount / allRows.length) * 100) : 0,
+        coverage_priced_pct: allRows.length ? Math.round((pricedCount / allRows.length) * 100) : 0,
+        oem_required_total: oemRequiredCells.length,
+        oem_covered: oemCovered,
+      }
+    })
+
+    return {
+      item: null,
+      matrixRows: allRows.sort((a, b) => {
+        if (Number(a.line_number) !== Number(b.line_number)) return Number(a.line_number) - Number(b.line_number)
+        if (a.path_group !== b.path_group) return a.path_group === "WHOLE" ? -1 : 1
+        return safeNum(a.order) - safeNum(b.order)
+      }),
+      suppliers: supplierCatalog,
+      rowsBySupplierElement,
+      wholeElements: allRows.filter((r) => r.path_group === "WHOLE"),
+      structureElements: allRows.filter((r) => r.path_group === "STRUCTURE"),
+      requiredElements: allRows,
+      coverageSlots: [],
+      coverageWholeSlot: null,
+      totalRequired: allRows.length,
+      oemRequiredTotal: allRows.filter((r) => r.is_oem_required).length,
+      supplierSummary,
+    }
+  }, [structureItems, workspace, supplierCatalog])
 
   const coverageModel = useMemo(() => {
     if (!activeItem) return null
@@ -831,11 +942,13 @@ export default function CoverageTabContent({
     }
   }, [activeItem, workspaceRowsForItem, supplierCatalog])
 
+  const effectiveCoverageModel = scopeMode === "rfq" ? coverageModelAllItems : coverageModel
+
   const visibleSuppliers = useMemo(() => {
-    const list = coverageModel?.suppliers || []
+    const list = effectiveCoverageModel?.suppliers || []
     if (supplierVisibilityFilter === "responded") {
       return list.filter((supplier) =>
-        (coverageModel?.matrixRows || []).some((row) => {
+        (effectiveCoverageModel?.matrixRows || []).some((row) => {
           const code = row.supplierCells?.[supplier.supplier_id]?.code
           return code && code !== "NQ" && code !== "NS" && code !== "Q?"
         })
@@ -843,17 +956,17 @@ export default function CoverageTabContent({
     }
     if (supplierVisibilityFilter === "active") {
       return list.filter((supplier) =>
-        (coverageModel?.matrixRows || []).some((row) => {
+        (effectiveCoverageModel?.matrixRows || []).some((row) => {
           const code = row.supplierCells?.[supplier.supplier_id]?.code
           return code && code !== "NQ"
         })
       )
     }
     return list
-  }, [coverageModel, supplierVisibilityFilter])
+  }, [effectiveCoverageModel, supplierVisibilityFilter])
 
   const matrixDisplayRows = useMemo(() => {
-    const rows = coverageModel?.matrixRows || []
+    const rows = effectiveCoverageModel?.matrixRows || []
     if (!showOnlyGaps) return rows
     return rows.filter((row) =>
       visibleSuppliers.some((supplier) => {
@@ -861,10 +974,10 @@ export default function CoverageTabContent({
         return !PRICED_STATUSES.has(code)
       })
     )
-  }, [coverageModel, visibleSuppliers, showOnlyGaps])
+  }, [effectiveCoverageModel, visibleSuppliers, showOnlyGaps])
 
   const kpis = useMemo(() => {
-    if (!coverageModel) {
+    if (!effectiveCoverageModel) {
       return {
         suppliersInRfq: 0,
         respondedSuppliers: 0,
@@ -874,7 +987,7 @@ export default function CoverageTabContent({
         oemCoveredText: "—",
       }
     }
-    const summary = coverageModel.supplierSummary
+    const summary = effectiveCoverageModel.supplierSummary
     const respondedSuppliers = summary.filter(
       (s) => s.responded_any
     ).length
@@ -884,19 +997,22 @@ export default function CoverageTabContent({
       0
     )
     const oemCovered =
-      coverageModel.oemRequiredTotal === 0
+      effectiveCoverageModel.oemRequiredTotal === 0
         ? "—"
-        : `${summary.reduce((m, s) => Math.max(m, s.oem_covered), 0)}/${coverageModel.oemRequiredTotal}`
-    const fullComboCoverage = comboRows.filter((row) => safeNum(row.structure_coverage_pct) >= 100).length
+        : `${summary.reduce((m, s) => Math.max(m, s.oem_covered), 0)}/${effectiveCoverageModel.oemRequiredTotal}`
+    const fullComboCoverage =
+      scopeMode === "rfq"
+        ? 0
+        : comboRows.filter((row) => safeNum(row.structure_coverage_pct) >= 100).length
     return {
-      suppliersInRfq: coverageModel.suppliers.length,
+      suppliersInRfq: effectiveCoverageModel.suppliers.length,
       respondedSuppliers,
       singleSupplierFullCoverage,
       fullComboCoverage,
       bestPricedCoveragePct,
       oemCoveredText: oemCovered,
     }
-  }, [coverageModel, comboRows])
+  }, [effectiveCoverageModel, comboRows, scopeMode])
 
   const buildCombinationSuggestions = () => {
     if (!coverageModel) {
@@ -1029,8 +1145,6 @@ export default function CoverageTabContent({
         }
       })
 
-      const closedRequired = slotEvaluations.filter((e) => e.closed).length
-      const pricedRequired = slotEvaluations.filter((e) => e.priced).length
       const oemRequired = coverageSlots.filter((s) => s.is_oem_required).length
       const oemOk = slotEvaluations.filter((e, idx) => coverageSlots[idx]?.is_oem_required && e.oemOk).length
 
@@ -1149,23 +1263,46 @@ export default function CoverageTabContent({
   }
 
   const supplierSummaryRows = useMemo(() => {
-    if (!coverageModel) return []
-    return [...coverageModel.supplierSummary].sort(
+    if (!effectiveCoverageModel) return []
+    return [...effectiveCoverageModel.supplierSummary].sort(
       (a, b) =>
         safeNum(b.coverage_goal_pct) - safeNum(a.coverage_goal_pct) ||
         safeNum(b.coverage_priced_pct) - safeNum(a.coverage_priced_pct) ||
         String(a.supplier_name || "").localeCompare(String(b.supplier_name || ""))
     )
-  }, [coverageModel])
+  }, [effectiveCoverageModel])
 
   const matrixColumns = useMemo(() => {
     const base = [
+      ...(scopeMode === "rfq"
+        ? [
+            {
+              title: "Позиция RFQ",
+              dataIndex: "line_number",
+              key: "rfq_item",
+              width: 250,
+              fixed: "left",
+              render: (_, row) => (
+                <Space direction="vertical" size={0}>
+                  <Text strong>
+                    {row.line_number} · {row.item_label || "—"}
+                  </Text>
+                  {row.item_description ? (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {row.item_description}
+                    </Text>
+                  ) : null}
+                </Space>
+              ),
+            },
+          ]
+        : []),
       {
         title: "Элемент покрытия",
         dataIndex: "label",
         key: "label",
         width: 240,
-        fixed: "left",
+        fixed: scopeMode === "rfq" ? undefined : "left",
         render: (_, row) => (
           <Space direction="vertical" size={0}>
             <Space wrap size={6}>
@@ -1244,7 +1381,7 @@ export default function CoverageTabContent({
     }))
 
     return [...base, ...supplierCols]
-  }, [visibleSuppliers])
+  }, [visibleSuppliers, scopeMode])
 
   const matrixTableRows = useMemo(
     () =>
@@ -1264,32 +1401,61 @@ export default function CoverageTabContent({
           <Space wrap align="center" style={{ width: "100%", justifyContent: "space-between" }}>
             <Space wrap>
               <Select
-                style={{ minWidth: 420 }}
-                value={activeItemId ?? undefined}
-                options={itemOptions}
+                style={{ width: 220 }}
+                value={scopeMode}
                 onChange={(value) => {
-                  setSelectedRfqItemId(value)
+                  setScopeMode(value)
+                  if (value === "rfq") setMode("matrix")
                   setSelectedCell(null)
                   setComboRows([])
                 }}
-                placeholder="Позиция клиента"
+                options={[
+                  { value: "item", label: "Позиция RFQ" },
+                  { value: "rfq", label: "Весь RFQ (матрица)" },
+                ]}
               />
+              {scopeMode === "item" ? (
+                <Select
+                  style={{ minWidth: 420 }}
+                  value={activeItemId ?? undefined}
+                  options={itemOptions}
+                  onChange={(value) => {
+                    setSelectedRfqItemId(value)
+                    setSelectedCell(null)
+                    setComboRows([])
+                  }}
+                  placeholder="Позиция клиента"
+                />
+              ) : null}
               <Select
                 style={{ width: 220 }}
                 value={mode}
                 onChange={setMode}
-                options={[
-                  { value: "matrix", label: "Матрица покрытия" },
-                  { value: "suppliers", label: "Сводка поставщиков" },
-                  { value: "combos", label: "Комбинации" },
-                ]}
+                options={
+                  scopeMode === "rfq"
+                    ? [
+                        { value: "matrix", label: "Матрица покрытия" },
+                        { value: "suppliers", label: "Сводка поставщиков" },
+                      ]
+                    : [
+                        { value: "matrix", label: "Матрица покрытия" },
+                        { value: "suppliers", label: "Сводка поставщиков" },
+                        { value: "combos", label: "Комбинации" },
+                      ]
+                }
               />
             </Space>
             <Space wrap>
-              <Tag color="blue">
-                Стратегия: {activeItem?.strategy?.mode || "—"}
-              </Tag>
-              {Number(activeItem?.strategy?.allow_kit) === 1 ? <Tag color="green">Kit разрешен</Tag> : null}
+              {scopeMode === "item" ? (
+                <>
+                  <Tag color="blue">
+                    Стратегия: {activeItem?.strategy?.mode || "—"}
+                  </Tag>
+                  {Number(activeItem?.strategy?.allow_kit) === 1 ? <Tag color="green">Kit разрешен</Tag> : null}
+                </>
+              ) : (
+                <Tag color="blue">Сводно по всему RFQ</Tag>
+              )}
             </Space>
           </Space>
 
@@ -1297,7 +1463,7 @@ export default function CoverageTabContent({
             <Tag color="blue">Поставщиков в RFQ: {kpis.suppliersInRfq}</Tag>
             <Tag color="cyan">Ответили: {kpis.respondedSuppliers}</Tag>
             <Tag color="green">Полное покрытие (1): {kpis.singleSupplierFullCoverage}</Tag>
-            <Tag color="purple">Полное покрытие (комбо): {kpis.fullComboCoverage}</Tag>
+            {scopeMode === "item" ? <Tag color="purple">Полное покрытие (комбо): {kpis.fullComboCoverage}</Tag> : null}
             <Tag color="gold">Лучший прогресс с ценой: {kpis.bestPricedCoveragePct}%</Tag>
             <Tag color="orange">OEM критичные: {kpis.oemCoveredText}</Tag>
           </Space>
@@ -1335,7 +1501,9 @@ export default function CoverageTabContent({
                 scroll={{ x: "max-content" }}
               />
 
-              {Array.isArray(coverageModel?.coverageSlots) && coverageModel.coverageSlots.length ? (
+              {scopeMode === "item" &&
+              Array.isArray(coverageModel?.coverageSlots) &&
+              coverageModel.coverageSlots.length ? (
                 <Card size="small" title="Слоты покрытия (варианты закрытия)">
                   <Space direction="vertical" size={8} style={{ width: "100%" }}>
                     {coverageModel.coverageSlots.map((slot) => (
@@ -1495,7 +1663,7 @@ export default function CoverageTabContent({
             />
           ) : null}
 
-          {mode === "combos" ? (
+          {mode === "combos" && scopeMode === "item" ? (
             <Space direction="vertical" style={{ width: "100%" }} size={12}>
               <Space wrap>
                 <Button type="primary" onClick={buildCombinationSuggestions}>
