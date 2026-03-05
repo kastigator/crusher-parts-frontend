@@ -64,7 +64,7 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
 
     const payload = {
       client_id: clientId,
-      formatted_address: newAddress.formatted_address.trim(),
+      formatted_address: String(newAddress.formatted_address ?? "").trim(),
       place_id: newAddress.place_id || null,
       lat: newAddress.lat ?? null,
       lng: newAddress.lng ?? null,

@@ -606,62 +606,63 @@ export default function OriginalPartsMain() {
       const isReuse = !!reuseSourceRow
       const defaultMaterialId =
         isReuse || !values.default_material_id ? null : Number(values.default_material_id)
-      const buildPayload = (targetModelId) => ({
-        equipment_model_id: targetModelId,
-        cat_number: catNumberRaw,
-        description_ru: isReuse
-          ? reuseSourceRow.description_ru || null
-          : values.description_ru || null,
-        description_en: isReuse
-          ? reuseSourceRow.description_en || null
-          : values.description_en || null,
-        tech_description:
-          isReuse
-            ? reuseSourceRow.tech_description || null
-            : values.tech_description?.trim() === ""
+      const buildPayload = (targetModelId) => {
+        const techDescription = String(values.tech_description ?? "").trim()
+        return {
+          equipment_model_id: targetModelId,
+          cat_number: catNumberRaw,
+          description_ru: isReuse
+            ? reuseSourceRow.description_ru || null
+            : values.description_ru || null,
+          description_en: isReuse
+            ? reuseSourceRow.description_en || null
+            : values.description_en || null,
+          tech_description:
+            isReuse
+              ? reuseSourceRow.tech_description || null
+              : techDescription || null,
+          // If a default material is selected, treat logistics values as a per-material spec.
+          // Base columns are left empty to avoid conflicting sources of truth.
+          weight_kg: isReuse
+            ? reuseSourceRow.weight_kg ?? null
+            : defaultMaterialId
             ? null
-            : values.tech_description.trim(),
-        // If a default material is selected, treat logistics values as a per-material spec.
-        // Base columns are left empty to avoid conflicting sources of truth.
-        weight_kg: isReuse
-          ? reuseSourceRow.weight_kg ?? null
-          : defaultMaterialId
-          ? null
-          : values.weight_kg ?? null,
-        uom: isReuse ? reuseSourceRow.uom || "pcs" : values.uom || "pcs",
-        tnved_code_id: isReuse ? reuseSourceRow.tnved_code_id ?? null : values.tnved?.id ?? null,
-        group_id: isReuse ? reuseSourceRow.group_id ?? null : values.group_id ?? null,
-        length_cm: isReuse
-          ? reuseSourceRow.length_cm ?? null
-          : defaultMaterialId
-          ? null
-          : values.length_cm ?? null,
-        width_cm: isReuse
-          ? reuseSourceRow.width_cm ?? null
-          : defaultMaterialId
-          ? null
-          : values.width_cm ?? null,
-        height_cm: isReuse
-          ? reuseSourceRow.height_cm ?? null
-          : defaultMaterialId
-          ? null
-          : values.height_cm ?? null,
-        is_overweight: isReuse
-          ? reuseSourceRow.is_overweight ? 1 : 0
-          : values.is_overweight
-          ? 1
-          : 0,
-        is_oversize: isReuse
-          ? reuseSourceRow.is_oversize ? 1 : 0
-          : values.is_oversize
-          ? 1
-          : 0,
-        has_drawing: isReuse
-          ? reuseSourceRow.has_drawing ? 1 : 0
-          : values.has_drawing
-          ? 1
-          : 0,
-      })
+            : values.weight_kg ?? null,
+          uom: isReuse ? reuseSourceRow.uom || "pcs" : values.uom || "pcs",
+          tnved_code_id: isReuse ? reuseSourceRow.tnved_code_id ?? null : values.tnved?.id ?? null,
+          group_id: isReuse ? reuseSourceRow.group_id ?? null : values.group_id ?? null,
+          length_cm: isReuse
+            ? reuseSourceRow.length_cm ?? null
+            : defaultMaterialId
+            ? null
+            : values.length_cm ?? null,
+          width_cm: isReuse
+            ? reuseSourceRow.width_cm ?? null
+            : defaultMaterialId
+            ? null
+            : values.width_cm ?? null,
+          height_cm: isReuse
+            ? reuseSourceRow.height_cm ?? null
+            : defaultMaterialId
+            ? null
+            : values.height_cm ?? null,
+          is_overweight: isReuse
+            ? reuseSourceRow.is_overweight ? 1 : 0
+            : values.is_overweight
+            ? 1
+            : 0,
+          is_oversize: isReuse
+            ? reuseSourceRow.is_oversize ? 1 : 0
+            : values.is_oversize
+            ? 1
+            : 0,
+          has_drawing: isReuse
+            ? reuseSourceRow.has_drawing ? 1 : 0
+            : values.has_drawing
+            ? 1
+            : 0,
+        }
+      }
 
       let firstCreated = null
       for (const targetModelId of targetModelIds) {

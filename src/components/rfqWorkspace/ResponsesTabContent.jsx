@@ -1632,35 +1632,29 @@ export default function ResponsesTabContent({
   const requiredSupplierColumns = ["position", "supplier", "actions"]
   const requiredOriginalColumns = ["position", "supplier", "actions"]
 
-  const supplierColumnOptions = useMemo(
-    () =>
-      commonColumns
-        .filter((column) => !requiredSupplierColumns.includes(column.key))
-        .map((column) => ({
-          label: String(column.title || column.key),
-          value: column.key,
-        })),
-    [commonColumns]
-  )
+  const supplierColumnOptions = commonColumns
+    .filter((column) => !requiredSupplierColumns.includes(column.key))
+    .map((column) => ({
+      label: String(column.title || column.key),
+      value: column.key,
+    }))
 
-  const originalColumnOptions = useMemo(
-    () =>
-      originalViewColumns
-        .filter((column) => !requiredOriginalColumns.includes(column.key))
-        .map((column) => ({
-          label: String(column.title || column.key),
-          value: column.key,
-        })),
-    [originalViewColumns]
-  )
+  const originalColumnOptions = originalViewColumns
+    .filter((column) => !requiredOriginalColumns.includes(column.key))
+    .map((column) => ({
+      label: String(column.title || column.key),
+      value: column.key,
+    }))
 
-  const visibleCommonColumns = useMemo(
-    () => filterColumnsByKeys(commonColumns, visibleSupplierColumnKeys, requiredSupplierColumns),
-    [commonColumns, visibleSupplierColumnKeys]
+  const visibleCommonColumns = filterColumnsByKeys(
+    commonColumns,
+    visibleSupplierColumnKeys,
+    requiredSupplierColumns
   )
-  const visibleOriginalViewColumns = useMemo(
-    () => filterColumnsByKeys(originalViewColumns, visibleOriginalColumnKeys, requiredOriginalColumns),
-    [originalViewColumns, visibleOriginalColumnKeys]
+  const visibleOriginalViewColumns = filterColumnsByKeys(
+    originalViewColumns,
+    visibleOriginalColumnKeys,
+    requiredOriginalColumns
   )
 
   return (

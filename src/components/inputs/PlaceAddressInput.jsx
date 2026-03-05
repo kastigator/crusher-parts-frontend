@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import { Input, Button, Space, message, AutoComplete, Segmented } from "antd"
 
 const GEO_LANG_STORAGE_KEY = "address_geocoder_lang_v1"
@@ -29,8 +29,11 @@ export default function PlaceAddressInput({
   const onChangeRef = useRef(onChange)
   const geoLangRef = useRef(DEFAULT_GEO_LANG)
 
-  const getAddressComponent = (components, kind) =>
-    (components || []).find((c) => c.kind === kind)?.name || ""
+  const getAddressComponent = useCallback(
+    (components, kind) =>
+      (components || []).find((c) => c.kind === kind)?.name || "",
+    []
+  )
 
   const emitManualAddress = (addressLine) => {
     const prev = valueRef.current || {}
@@ -51,7 +54,7 @@ export default function PlaceAddressInput({
     })
   }
 
-  const normalizeGeoObject = (geoObject, fallbackAddressLine = "") => {
+  const normalizeGeoObject = useCallback((geoObject, fallbackAddressLine = "") => {
     if (!geoObject) return null
     const meta = geoObject.properties?.get?.("metaDataProperty.GeocoderMetaData") || {}
     const coords = geoObject.geometry?.getCoordinates?.() || []
@@ -81,9 +84,9 @@ export default function PlaceAddressInput({
         entrance: getAddressComponent(components, "entrance"),
       },
     }
-  }
+  }, [getAddressComponent])
 
-  const geocodeByHttp = async ({ queryValue, coords = null, lang = "ru_RU" }) => {
+  const geocodeByHttp = useCallback(async ({ queryValue, coords = null, lang = "ru_RU" }) => {
     const apiKey = import.meta.env.VITE_YANDEX_MAPS_API_KEY
     if (!apiKey) return []
 
@@ -136,7 +139,7 @@ export default function PlaceAddressInput({
         }
       })
       .filter(Boolean)
-  }
+  }, [getAddressComponent])
 
   useEffect(() => {
     valueRef.current = value
@@ -159,7 +162,7 @@ export default function PlaceAddressInput({
     setQuery("")
     setOptions([])
     setOpen(false)
-  }, [resetTrigger])
+  }, [resetTrigger, geocodeByHttp, normalizeGeoObject])
 
   useEffect(() => {
     if (!mapRef.current) return
@@ -247,7 +250,7 @@ export default function PlaceAddressInput({
       placemarkRef.current = null
       if (mapNode) mapNode.innerHTML = ""
     }
-  }, [resetTrigger])
+  }, [resetTrigger, geocodeByHttp, normalizeGeoObject])
 
   const handleSearch = () => {
     const ymaps = window.ymaps

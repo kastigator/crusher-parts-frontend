@@ -21,7 +21,7 @@ export default function OriginalPartsTable({
   onRemove,
   onOpenDetail,
   onEditRecord,
-  onFlashRow, // (id:number) => void - подсветка строки после сохранения
+  onFlashRow: _onFlashRow, // (id:number) => void - подсветка строки после сохранения
   showAll = false, // 🔹 режим "Показать все детали"
   visibleColumnKeys = null, // array|null: управляемая видимость колонок (пер-viewMode)
   onVisibleColumnKeysChange: _onVisibleColumnKeysChange = null, // (nextKeys: string[]) => void
@@ -32,32 +32,9 @@ export default function OriginalPartsTable({
 }) {
   const [historyId, setHistoryId] = useState(null)
 
-  // 🔹 справочник групп (для редактирования)
-  const [groups, setGroups] = useState([])
-  const [groupsLoading, setGroupsLoading] = useState(false)
-
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const tableWrapRef = useRef(null)
-
-  /* -----------------------------------------------------------
-     Группы
-  ----------------------------------------------------------- */
-  useEffect(() => {
-    const loadGroups = async () => {
-      setGroupsLoading(true)
-      try {
-        const { data } = await axios.get("/original-part-groups")
-        setGroups(Array.isArray(data) ? data : [])
-      } catch (e) {
-        console.error("Не удалось загрузить группы деталей", e)
-        message.error("Не удалось загрузить группы деталей")
-      } finally {
-        setGroupsLoading(false)
-      }
-    }
-    loadGroups()
-  }, [])
 
   const scrollHints = useTableScrollHints(tableWrapRef, [
     data,

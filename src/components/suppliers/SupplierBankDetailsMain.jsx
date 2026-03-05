@@ -321,7 +321,10 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
           size="small"
           style={{ marginTop: 8 }}
           onClick={handleAdd}
-          disabled={!newBank.bank_name.trim() || !newBank.account_number.trim()}
+          disabled={
+            !String(newBank.bank_name ?? "").trim() ||
+            !String(newBank.account_number ?? "").trim()
+          }
         >
           Добавить реквизиты
         </Button>

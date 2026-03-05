@@ -235,7 +235,7 @@ export default function ClientContactsMain({ clientId, onChanged }) {
               type="primary"
               size="small"
               onClick={handleAdd}
-              disabled={!newContact.name.trim()}
+              disabled={!String(newContact.name ?? "").trim()}
             >
               Добавить контакт
             </Button>

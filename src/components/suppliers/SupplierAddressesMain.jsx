@@ -80,7 +80,7 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
 
     const payload = {
       supplier_id: supplierId,
-      formatted_address: newAddress.formatted_address.trim(),
+      formatted_address: String(newAddress.formatted_address ?? "").trim(),
       place_id: newAddress.place_id || null,
       lat: newAddress.lat ?? null,
       lng: newAddress.lng ?? null,

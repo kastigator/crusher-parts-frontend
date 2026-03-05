@@ -32,6 +32,6 @@ export const countActiveFilters = (filters) => {
   ;["reliability_min", "reliability_max", "lead_time_min", "lead_time_max"].forEach((k) => {
     if (f[k] != null) n++
   })
-  if (f.country_q.trim()) n++
+  if (String(f.country_q ?? "").trim()) n++
   return n
 }

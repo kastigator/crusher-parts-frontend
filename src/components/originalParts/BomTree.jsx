@@ -188,7 +188,7 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
     const totalCount = rows.length - 1 /* без корня */
 
     return { treeData, allKeys: keys, totalCount, rowById: rowMap, rootRow }
-  }, [rows, removeRow, updateQty])
+  }, [rows, removeRow, updateQty, onOpenPart])
 
   // по умолчанию разворачиваем всё при смене данных
   useEffect(() => {
