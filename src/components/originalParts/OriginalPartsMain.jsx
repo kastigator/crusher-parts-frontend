@@ -82,6 +82,10 @@ export default function OriginalPartsMain() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [addForm] = Form.useForm()
+  const [manufacturerModels, setManufacturerModels] = useState([])
+  const [manufacturerModelsLoading, setManufacturerModelsLoading] = useState(false)
+  const [creatingModelInline, setCreatingModelInline] = useState(false)
+  const [newModelName, setNewModelName] = useState("")
   const [editOpen, setEditOpen] = useState(false)
   const [editForm] = Form.useForm()
   const [editingRow, setEditingRow] = useState(null)
@@ -229,6 +233,26 @@ export default function OriginalPartsMain() {
       setMaterialsLoading(false)
     }
   }, [])
+
+  const fetchManufacturerModels = useCallback(async () => {
+    if (!manufacturer?.id) {
+      setManufacturerModels([])
+      return
+    }
+    setManufacturerModelsLoading(true)
+    try {
+      const { data } = await axios.get("/equipment-models", {
+        params: { manufacturer_id: manufacturer.id },
+      })
+      setManufacturerModels(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error("Не удалось загрузить модели производителя", e)
+      message.error("Не удалось загрузить модели производителя")
+      setManufacturerModels([])
+    } finally {
+      setManufacturerModelsLoading(false)
+    }
+  }, [manufacturer?.id])
 
   /* ---------------------- загрузка деталей --------------------- */
   const fetchParts = useCallback(async () => {
@@ -472,7 +496,23 @@ export default function OriginalPartsMain() {
         message.warning("Укажите каталожный номер")
         return
       }
+      const selectedModelIdsRaw = Array.isArray(values.application_model_ids)
+        ? values.application_model_ids
+        : []
+      const selectedModelIds = Array.from(
+        new Set(
+          selectedModelIdsRaw
+            .map((v) => Number(v))
+            .filter((v) => Number.isFinite(v) && v > 0)
+        )
+      )
+      if (!selectedModelIds.length) {
+        message.warning("Выберите хотя бы одну модель применения")
+        return
+      }
+
       let reuseSourceRow = null
+      let targetModelIds = selectedModelIds
 
       // Reuse guard: if same part number already exists for this manufacturer
       // in another model, ask explicit confirmation before creating application.
@@ -487,11 +527,17 @@ export default function OriginalPartsMain() {
           (r) => normalizePartNumber(r?.cat_number) === normalizePartNumber(catNumberRaw)
         )
 
-        const sameModelRow = sameNumberRows.find(
-          (r) => Number(r?.equipment_model_id) === Number(model.id)
+        const sameModelRows = sameNumberRows.filter((r) =>
+          selectedModelIds.includes(Number(r?.equipment_model_id))
         )
-        if (sameModelRow) {
-          message.error("Дубликат Part number для этой модели")
+        const existingModelIdsSet = new Set(
+          sameModelRows.map((r) => Number(r?.equipment_model_id)).filter(Boolean)
+        )
+        const missingModelIds = selectedModelIds.filter((id) => !existingModelIdsSet.has(id))
+        targetModelIds = missingModelIds
+
+        if (!targetModelIds.length) {
+          message.error("Такой Part number уже есть во всех выбранных моделях")
           return
         }
 
@@ -523,8 +569,20 @@ export default function OriginalPartsMain() {
                   </div>
                   <div>{modelNames.join(", ") || "—"}</div>
                   <div>
-                    Добавить как применение к модели <b>{model.model_name}</b>?
+                    Добавить применение для выбранных моделей?
                   </div>
+                  {sameModelRows.length ? (
+                    <div>
+                      Уже есть в выбранных моделях:{" "}
+                      {Array.from(
+                        new Set(
+                          sameModelRows
+                            .map((r) => String(r?.model_name || "").trim())
+                            .filter(Boolean)
+                        )
+                      ).join(", ")}
+                    </div>
+                  ) : null}
                   {hasDescriptionMismatch ? (
                     <div style={{ color: "#b54708" }}>
                       Внимание: введенное описание отличается от существующего.
@@ -548,9 +606,8 @@ export default function OriginalPartsMain() {
       const isReuse = !!reuseSourceRow
       const defaultMaterialId =
         isReuse || !values.default_material_id ? null : Number(values.default_material_id)
-
-      const payload = {
-        equipment_model_id: model.id,
+      const buildPayload = (targetModelId) => ({
+        equipment_model_id: targetModelId,
         cat_number: catNumberRaw,
         description_ru: isReuse
           ? reuseSourceRow.description_ru || null
@@ -604,14 +661,20 @@ export default function OriginalPartsMain() {
           : values.has_drawing
           ? 1
           : 0,
+      })
+
+      let firstCreated = null
+      for (const targetModelId of targetModelIds) {
+        const { data } = await axios.post("/original-parts", buildPayload(targetModelId))
+        if (!firstCreated) firstCreated = data
       }
-      const { data } = await axios.post("/original-parts", payload)
+      const createdPart = firstCreated
 
       // Optional: set default material right after creating the part (and save spec values to that material).
-      if (defaultMaterialId) {
+      if (defaultMaterialId && createdPart?.id) {
         try {
           await axios.post("/original-part-materials", {
-            original_part_id: data.id,
+            original_part_id: createdPart.id,
             material_id: defaultMaterialId,
             is_default: 1,
             note: values.default_material_note?.trim()
@@ -627,7 +690,7 @@ export default function OriginalPartsMain() {
 
           if (anySpec) {
             await axios.put("/original-part-material-specs", {
-              original_part_id: data.id,
+              original_part_id: createdPart.id,
               material_id: defaultMaterialId,
               weight_kg: values.weight_kg ?? null,
               length_cm: values.length_cm ?? null,
@@ -643,9 +706,13 @@ export default function OriginalPartsMain() {
         }
       }
 
-      message.success(`Деталь ${data.cat_number} создана`)
-      flashRow(data.id)
-      setTreeFocusId(data.id)
+      message.success(
+        `Деталь ${createdPart?.cat_number || catNumberRaw} сохранена, моделей применения: ${
+          targetModelIds.length
+        }`
+      )
+      flashRow(createdPart?.id)
+      setTreeFocusId(createdPart?.id || null)
       // Потоковый ввод: очищаем только основные поля,
       // оставляя группу/ед.изм. как "следующее по умолчанию".
       addForm.setFieldsValue({
@@ -910,6 +977,59 @@ export default function OriginalPartsMain() {
       clearTimeout(t)
     }
   }, [createOpen, createCatNumber, manufacturer?.id, model?.id])
+
+  useEffect(() => {
+    if (!createOpen) return
+    fetchManufacturerModels()
+  }, [createOpen, fetchManufacturerModels])
+
+  useEffect(() => {
+    if (!createOpen) return
+    const currentId = Number(model?.id || 0)
+    if (!currentId) return
+    const existing = addForm.getFieldValue("application_model_ids")
+    if (Array.isArray(existing) && existing.length) {
+      if (!existing.includes(currentId)) {
+        addForm.setFieldValue("application_model_ids", [...existing, currentId])
+      }
+      return
+    }
+    addForm.setFieldValue("application_model_ids", [currentId])
+  }, [createOpen, model?.id, addForm])
+
+  const createModelInline = async () => {
+    if (!manufacturer?.id) {
+      message.warning("Сначала выберите производителя")
+      return
+    }
+    const name = String(newModelName || "").trim()
+    if (!name) {
+      message.warning("Введите название модели")
+      return
+    }
+    setCreatingModelInline(true)
+    try {
+      const { data } = await axios.post("/equipment-models", {
+        manufacturer_id: manufacturer.id,
+        model_name: name,
+      })
+      await fetchManufacturerModels()
+      if (data?.id) {
+        const current = addForm.getFieldValue("application_model_ids")
+        const base = Array.isArray(current) ? current : []
+        if (!base.includes(data.id)) {
+          addForm.setFieldValue("application_model_ids", [...base, data.id])
+        }
+      }
+      setNewModelName("")
+      message.success("Модель добавлена")
+    } catch (e) {
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось создать модель")
+    } finally {
+      setCreatingModelInline(false)
+    }
+  }
 
   // В режиме showAll "корневые узлы" / "вне структуры" неоднозначны — падаем в "Все".
   useEffect(() => {
@@ -1279,8 +1399,55 @@ export default function OriginalPartsMain() {
               createSubmitModeRef.current = "create_close"
             }}
             disabled={!model}
-            initialValues={{ uom: "pcs" }}
+            initialValues={{ uom: "pcs", application_model_ids: model?.id ? [model.id] : [] }}
           >
+            <Card size="small" bodyStyle={{ padding: 12 }} style={{ marginBottom: 12 }}>
+              <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                <Text strong>Модели применения</Text>
+                <Form.Item
+                  name="application_model_ids"
+                  style={{ marginBottom: 0 }}
+                  rules={[
+                    {
+                      validator: (_, value) =>
+                        Array.isArray(value) && value.length > 0
+                          ? Promise.resolve()
+                          : Promise.reject(new Error("Выберите хотя бы одну модель")),
+                    },
+                  ]}
+                >
+                  <Checkbox.Group style={{ width: "100%" }}>
+                    <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                      {manufacturerModels.map((m) => (
+                        <Checkbox key={m.id} value={m.id}>
+                          {m.model_name || `Модель #${m.id}`}
+                          {Number(m.id) === Number(model?.id || 0) ? " (текущая)" : ""}
+                        </Checkbox>
+                      ))}
+                    </Space>
+                  </Checkbox.Group>
+                </Form.Item>
+                {!manufacturerModelsLoading && !manufacturerModels.length ? (
+                  <Text type="secondary">У выбранного производителя пока нет моделей.</Text>
+                ) : null}
+                <Space.Compact style={{ width: "100%" }}>
+                  <Input
+                    value={newModelName}
+                    onChange={(e) => setNewModelName(e.target.value)}
+                    placeholder="Новая модель"
+                    onPressEnter={createModelInline}
+                    disabled={creatingModelInline || !manufacturer?.id}
+                  />
+                  <Button
+                    onClick={createModelInline}
+                    loading={creatingModelInline}
+                    disabled={!manufacturer?.id}
+                  >
+                    + Добавить модель
+                  </Button>
+                </Space.Compact>
+              </Space>
+            </Card>
             <Form.Item
               name="cat_number"
               label="Кат. номер"
