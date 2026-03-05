@@ -6,7 +6,6 @@ import { TeamOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import TabRendererPage from "@/components/common/TabRendererPage"
 import SupplierPartDock from "@/components/supplierParts/SupplierPartDock"
-import SupplierPartMetaCard from "@/components/supplierParts/SupplierPartMetaCard"
 
 const { Text } = Typography
 
@@ -122,10 +121,7 @@ export default function SupplierPartDetailPage() {
             <Empty description="Деталь не найдена" />
           </Card>
         ) : (
-          <>
-            <SupplierPartMetaCard part={part} onSaved={load} />
-            <SupplierPartDock part={part} onChanged={load} noTopMargin />
-          </>
+          <SupplierPartDock part={part} onChanged={load} noTopMargin />
         )}
       </Space>
     </TabRendererPage>

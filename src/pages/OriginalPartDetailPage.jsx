@@ -1,11 +1,12 @@
 // src/pages/OriginalPartDetailPage.jsx
 import React, { useEffect, useState } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
-import { Button, Card, Empty, Space, Typography, message } from "antd"
+import { Button, Card, Empty, Modal, Space, Tag, Typography, message } from "antd"
+import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import TabRendererPage from "@/components/common/TabRendererPage"
 import DetailDock from "@/components/originalParts/DetailDock"
-import TnvedPicker from "@/components/fields/TnvedPicker"
+import confirmAction from "@/utils/confirmAction"
 
 const { Text } = Typography
 
@@ -17,9 +18,27 @@ export default function OriginalPartDetailPage() {
 
   const [loading, setLoading] = useState(false)
   const [part, setPart] = useState(null)
-  const [meta, setMeta] = useState({ tech_description: "", tnved: null })
-  const [metaDirty, setMetaDirty] = useState(false)
-  const [metaSaving, setMetaSaving] = useState(false)
+
+  const goBackToList = () => {
+    const from = location.state?.from || "/original-parts"
+    const listState = location.state?.listState
+    if (listState) {
+      navigate(from, { state: { restore: listState } })
+    } else {
+      navigate(from)
+    }
+  }
+
+  const openPartCardFromBom = (nextPartId) => {
+    const idNum = Number(nextPartId)
+    if (!Number.isFinite(idNum) || idNum <= 0) return
+    navigate(`/original-parts/${idNum}`, {
+      state: {
+        from: location.pathname,
+        listState: location.state?.listState,
+      },
+    })
+  }
 
   const load = async () => {
     if (!partId) return
@@ -27,18 +46,6 @@ export default function OriginalPartDetailPage() {
     try {
       const { data } = await axios.get(`/original-parts/${partId}/full`)
       setPart(data || null)
-      const tnvedObj = data?.tnved_code_id
-        ? {
-            id: data.tnved_code_id,
-            code: data.tnved_code || "",
-            description: data.tnved_description || "",
-          }
-        : null
-      setMeta({
-        tech_description: data?.tech_description || "",
-        tnved: tnvedObj,
-      })
-      setMetaDirty(false)
     } catch (e) {
       console.error(e)
       message.error("Не удалось загрузить деталь")
@@ -53,61 +60,87 @@ export default function OriginalPartDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partId])
 
-  const saveMeta = async () => {
+  const handleDeleteCurrentModel = async () => {
     if (!part?.id) return
-    setMetaSaving(true)
+    const { confirmed } = await confirmAction(
+      `Удалить деталь ${part.cat_number || ""} только из текущей модели?`
+    )
+    if (!confirmed) return
     try {
-      const payload = {
-        tech_description:
-          meta.tech_description?.trim() === ""
-            ? null
-            : meta.tech_description.trim(),
-        tnved_code_id: meta.tnved?.id ?? null,
-      }
-      await axios.put(`/original-parts/${part.id}`, payload)
-      message.success("Изменения сохранены")
-      setMetaDirty(false)
-      await load()
+      await axios.delete(`/original-parts/${part.id}`)
+      message.success("Удалено из текущей модели")
+      goBackToList()
     } catch (e) {
       console.error(e)
-      message.error(e?.response?.data?.message || "Не удалось сохранить изменения")
-    } finally {
-      setMetaSaving(false)
+      message.error(e?.response?.data?.message || "Не удалось удалить деталь")
     }
   }
 
-  const resetMeta = () => {
-    if (!part) return
-    const tnvedObj = part?.tnved_code_id
-      ? {
-          id: part.tnved_code_id,
-          code: part.tnved_code || "",
-          description: part.tnved_description || "",
-        }
-      : null
-    setMeta({
-      tech_description: part.tech_description || "",
-      tnved: tnvedObj,
+  const handleDeleteEverywhere = async () => {
+    if (!part?.id) return
+    const modelNames = Array.isArray(part?.application_models)
+      ? part.application_models.map((m) => m?.model_name).filter(Boolean)
+      : []
+    const confirmed = await new Promise((resolve) => {
+      Modal.confirm({
+        title: `Удалить ${part.cat_number || "деталь"} полностью?`,
+        okText: "Удалить полностью",
+        cancelText: "Отмена",
+        okButtonProps: { danger: true },
+        content: (
+          <Space direction="vertical" size={8}>
+            <div>Деталь будет удалена из всех моделей производителя.</div>
+            <div style={{ fontWeight: 600 }}>Модели, из которых удалится:</div>
+            <Space wrap>
+              {modelNames.length ? (
+                modelNames.map((name) => <Tag key={name}>{name}</Tag>)
+              ) : (
+                <Tag>{part?.model_name || "—"}</Tag>
+              )}
+            </Space>
+          </Space>
+        ),
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      })
     })
-    setMetaDirty(false)
+    if (!confirmed) return
+    try {
+      const { data } = await axios.post(`/original-parts/${part.id}/delete-all`)
+      const cnt = Number(data?.deleted_count || 0)
+      message.success(
+        cnt > 0
+          ? `Полное удаление выполнено (моделей: ${cnt})`
+          : "Полное удаление выполнено"
+      )
+      goBackToList()
+    } catch (e) {
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось удалить деталь полностью")
+    }
   }
 
   return (
     <TabRendererPage tabKey="original_parts">
       <Space direction="vertical" style={{ width: "100%" }} size={12}>
         <Space>
-          <Button
-            onClick={() => {
-              const from = location.state?.from || "/original-parts"
-              const listState = location.state?.listState
-              if (listState) {
-                navigate(from, { state: { restore: listState } })
-              } else {
-                navigate(from)
-              }
-            }}
-          >
+          <Button onClick={goBackToList}>
             Назад к списку
+          </Button>
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            onClick={handleDeleteCurrentModel}
+          >
+            Удалить из модели
+          </Button>
+          <Button
+            danger
+            type="primary"
+            icon={<DeleteOutlined />}
+            onClick={handleDeleteEverywhere}
+          >
+            Удалить полностью
           </Button>
           {part?.cat_number ? (
             <Text type="secondary">Деталь: {part.cat_number}</Text>
@@ -125,59 +158,23 @@ export default function OriginalPartDetailPage() {
         ) : (
           <>
             <Card size="small" bodyStyle={{ padding: 12 }}>
-              <Space direction="vertical" style={{ width: "100%" }} size={10}>
-                <div>
-                  <b>Тех. описание</b>
-                  <textarea
-                    style={{
-                      width: "100%",
-                      marginTop: 6,
-                      minHeight: 60,
-                      resize: "vertical",
-                      borderRadius: 6,
-                      border: "1px solid #d9d9d9",
-                      padding: 8,
-                      fontFamily: "inherit",
-                      fontSize: 13,
-                    }}
-                    value={meta.tech_description}
-                    onChange={(e) => {
-                      setMeta((prev) => ({
-                        ...prev,
-                        tech_description: e.target.value,
-                      }))
-                      setMetaDirty(true)
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <b>ТН ВЭД</b>
-                  <div style={{ marginTop: 6 }}>
-                    <TnvedPicker
-                      allowClear
-                      style={{ width: "100%" }}
-                      value={meta.tnved || null}
-                      onChange={(val) => {
-                        setMeta((prev) => ({ ...prev, tnved: val || null }))
-                        setMetaDirty(true)
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <Space>
-                  <Button
-                    type="primary"
-                    onClick={saveMeta}
-                    disabled={!metaDirty}
-                    loading={metaSaving}
-                  >
-                    Сохранить
-                  </Button>
-                  <Button onClick={resetMeta} disabled={!metaDirty || metaSaving}>
-                    Сбросить
-                  </Button>
+              <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                <b>Модели применения</b>
+                <Space wrap>
+                  {(Array.isArray(part?.application_models) &&
+                  part.application_models.length > 0
+                    ? part.application_models
+                    : [
+                        {
+                          equipment_model_id: part?.equipment_model_id || null,
+                          model_name: part?.model_name || "—",
+                        },
+                      ]
+                  ).map((m) => (
+                    <Tag key={`${m.equipment_model_id || "x"}:${m.model_name || ""}`} color="blue">
+                      {m.model_name || "—"}
+                    </Tag>
+                  ))}
                 </Space>
               </Space>
             </Card>
@@ -187,6 +184,7 @@ export default function OriginalPartDetailPage() {
               modelId={part?.equipment_model_id || null}
               manufacturerName={part?.manufacturer_name}
               modelName={part?.model_name}
+              onOpenPart={openPartCardFromBom}
               onPartsChanged={load}
             />
           </>

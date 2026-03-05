@@ -1,7 +1,7 @@
 // src/components/tnved/TnvedCodesTable.jsx
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Descriptions, Drawer, Input, InputNumber, Table, Typography, message } from "antd"
+import { Descriptions, Drawer, Input, InputNumber, Typography, message } from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
 import confirmAction from "@/utils/confirmAction"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
@@ -10,6 +10,8 @@ import createTablePagination from "@/utils/tablePagination"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import { mergeConflictDraft } from "@/utils/versionConflict"
 import useTableScrollHints from "@/utils/useTableScrollHints"
+import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
+import { getOrderedKeys } from "@/utils/columnOrder"
 
 const { TextArea } = Input
 const { Text } = Typography
@@ -18,6 +20,8 @@ export default function TnvedCodesTable({
   data,
   loading,
   visibleColumnKeys,
+  columnOrderKeys,
+  onColumnOrderKeysChange,
   onColumnsMeta,
   onUpdate,
   onDelete,
@@ -123,6 +127,15 @@ export default function TnvedCodesTable({
         : columnsMeta.defaultVisible
     return new Set(base || [])
   }, [visibleColumnKeys, columnsMeta.defaultVisible])
+
+  const defaultOrder = useMemo(
+    () => ["code", "description", "duty_rate", "notes", "actions"],
+    [],
+  )
+  const effectiveOrderKeys = useMemo(
+    () => getOrderedKeys(columnOrderKeys, defaultOrder),
+    [columnOrderKeys, defaultOrder],
+  )
 
   const columns = [
     {
@@ -246,6 +259,15 @@ export default function TnvedCodesTable({
     return visibleKeys.has(String(c.key))
   })
 
+  const orderedColumns = useMemo(() => {
+    const idx = new Map(effectiveOrderKeys.map((k, i) => [k, i]))
+    return [...filteredColumns].sort((a, b) => {
+      const ai = idx.has(a.key) ? idx.get(a.key) : Number.MAX_SAFE_INTEGER
+      const bi = idx.has(b.key) ? idx.get(b.key) : Number.MAX_SAFE_INTEGER
+      return ai - bi
+    })
+  }, [filteredColumns, effectiveOrderKeys])
+
   const pagination = useMemo(
     () =>
       createTablePagination({
@@ -266,10 +288,21 @@ export default function TnvedCodesTable({
           scrollHints.right ? " scroll-right" : ""
         }`}
       >
-        <Table
+        <DraggableColumnsTable
           className="op-table"
           dataSource={data}
-          columns={filteredColumns}
+          columns={orderedColumns}
+          nonDraggableKeys={columnsMeta.lockedKeys}
+          onColumnOrderChange={({ activeKey, overKey }) => {
+            if (typeof onColumnOrderKeysChange !== "function") return
+            const nextFull = [...effectiveOrderKeys]
+            const from = nextFull.indexOf(activeKey)
+            const to = nextFull.indexOf(overKey)
+            if (from < 0 || to < 0 || from === to) return
+            const [item] = nextFull.splice(from, 1)
+            nextFull.splice(to, 0, item)
+            onColumnOrderKeysChange(nextFull)
+          }}
           rowKey="id"
           loading={loading}
           pagination={pagination}

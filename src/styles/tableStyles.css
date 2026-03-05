@@ -52,6 +52,14 @@
   padding: 8px 12px;
 }
 
+.op-table .op-table-dnd-th {
+  cursor: grab;
+}
+
+.op-table .op-table-dnd-th:active {
+  cursor: grabbing;
+}
+
 /* ---------------------------------------------------------
    Тело таблицы
    --------------------------------------------------------- */

@@ -13,7 +13,7 @@ const { Text } = Typography
  * c полями: node_id, parent_part_id, edge_qty, cat_number,
  *           description_ru, description_en, level, path, mult_qty
  */
-export default function BomTree({ part, manufacturerName, modelName }) {
+export default function BomTree({ part, manufacturerName, modelName, onOpenPart }) {
   const rootId = part?.id || null
   const modelId = part?.equipment_model_id || null
   const [rows, setRows] = useState([])
@@ -111,7 +111,18 @@ export default function BomTree({ part, manufacturerName, modelName }) {
         title: (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <Space size={8} wrap>
-              <Text strong>{r.cat_number || "—"}</Text>
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0, height: "auto", fontWeight: 700 }}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onOpenPart?.(r.node_id)
+                }}
+              >
+                {r.cat_number || "—"}
+              </Button>
               {desc ? <Text type="secondary">— {desc}</Text> : null}
               {r.level > 0 && qty > 0 ? <Text type="secondary">× {qty}</Text> : null}
             </Space>

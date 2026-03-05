@@ -4,17 +4,22 @@ import axios from "@/api/axiosInstance"
 
 const { Text } = Typography
 
-const OpenLink = ({ id, onOpenDetail }) => (
+const PartNumberLink = ({ id, value, onOpenDetail }) => (
   <Text
-    type="secondary"
-    style={{ cursor: "pointer", whiteSpace: "nowrap" }}
+    strong
+    style={{
+      color: "#1677ff",
+      cursor: "pointer",
+      textDecoration: "underline",
+      textUnderlineOffset: 2,
+    }}
     onClick={(e) => {
       e.preventDefault()
       e.stopPropagation()
       onOpenDetail?.(id)
     }}
   >
-    Открыть
+    {value || "—"}
   </Text>
 )
 
@@ -39,13 +44,12 @@ const buildBomChildren = (rows, onOpenDetail) => {
     const qty = fmtQty(r.edge_qty)
     const desc = r.description_ru || r.description_en || ""
     const title = (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <Space size={8} wrap>
-          <Text strong>{r.cat_number || "—"}</Text>
+          <PartNumberLink id={id} value={r.cat_number} onOpenDetail={onOpenDetail} />
           {desc ? <Text type="secondary">— {desc}</Text> : null}
           {r.parent_part_id != null && qty ? <Text type="secondary">× {qty}</Text> : null}
         </Space>
-        <OpenLink id={id} onOpenDetail={onOpenDetail} />
       </div>
     )
     nodeMap.set(id, { key: id, title, children: [] })
@@ -146,7 +150,6 @@ export default function OriginalPartsRootsTree({
           {model?.model_name || "Модель"}
         </Text>
         <Text type="secondary">— корневые узлы: {roots.length}</Text>
-        <Text type="secondary">• «Открыть» → карточка детали</Text>
       </Space>
     )
 
@@ -155,12 +158,11 @@ export default function OriginalPartsRootsTree({
       return {
         key: Number(r.id),
         title: (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <Space size={8} wrap>
-              <Text strong>{r.cat_number || "—"}</Text>
+              <PartNumberLink id={Number(r.id)} value={r.cat_number} onOpenDetail={onOpenDetail} />
               {desc ? <Text type="secondary">— {desc}</Text> : null}
             </Space>
-            <OpenLink id={Number(r.id)} onOpenDetail={onOpenDetail} />
           </div>
         ),
         isLeaf: false,
@@ -213,9 +215,9 @@ export default function OriginalPartsRootsTree({
   }, [focusId, model?.id, rootsKey, treeData])
 
   const loadData = async (node) => {
-    const key = node?.key
-    const id = typeof key === "number" ? key : null
-    if (!id) return
+    const rawKey = node?.key
+    const id = Number(rawKey)
+    if (!Number.isFinite(id) || id <= 0) return
     if (loadedIds.has(id)) return
 
     try {

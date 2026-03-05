@@ -1,13 +1,9 @@
 // src/components/suppliers/SupplierMetaCard.jsx
-import React, { useEffect, useMemo, useState } from "react"
-import { Button, Card, Checkbox, Input, InputNumber, Select, Space, Typography, message } from "antd"
+import React, { useMemo, useState } from "react"
+import { Button, Card, Descriptions, Form, Space, Tag, Typography, message } from "antd"
+import { EditOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
-import {
-  SUPPLIER_DEFAULT_CURRENCY_OPTIONS,
-  SUPPLIER_DEFAULT_PAYMENT_TERMS_OPTIONS,
-  normalizeSupplierDefaultCurrency,
-  normalizeSupplierDefaultPaymentTerms,
-} from "@/constants/supplierDefaults"
+import SupplierUpsertDrawer from "./SupplierUpsertDrawer"
 
 const { Text } = Typography
 
@@ -16,224 +12,190 @@ const trimOrNull = (v) => {
   return s === "" ? null : s
 }
 
-const metaFromSupplier = (s) => ({
-  name: s?.name || "",
-  public_code: s?.public_code || "",
-  vat_number: s?.vat_number || "",
-  website: s?.website || "",
-  payment_terms: normalizeSupplierDefaultPaymentTerms(s?.payment_terms),
-  preferred_currency: normalizeSupplierDefaultCurrency(s?.preferred_currency),
-  default_pickup_location: s?.default_pickup_location || "",
-  can_oem: !!s?.can_oem,
-  can_analog: s?.can_analog === undefined ? true : !!s?.can_analog,
-  reliability_rating: s?.reliability_rating ?? null,
-  risk_level: s?.risk_level || "",
-  default_lead_time_days: s?.default_lead_time_days ?? null,
-  notes: s?.notes || "",
-  version: s?.version,
+const riskLabel = (v) => {
+  if (v === "low") return "низкий"
+  if (v === "medium") return "средний"
+  if (v === "high") return "высокий"
+  return "—"
+}
+
+const formInitialValues = (record = null) => ({
+  name: record?.name || "",
+  public_code: record?.public_code || "",
+  vat_number: record?.vat_number || "",
+  website: record?.website || "",
+  payment_terms: record?.payment_terms || "",
+  preferred_currency: record?.preferred_currency || "",
+  default_pickup_location: record?.default_pickup_location || "",
+  can_oem: !!record?.can_oem,
+  can_analog: record?.can_analog === undefined ? true : !!record?.can_analog,
+  reliability_rating:
+    record?.reliability_rating === undefined || record?.reliability_rating === null
+      ? null
+      : Number(record.reliability_rating),
+  risk_level: record?.risk_level || "",
+  default_lead_time_days:
+    record?.default_lead_time_days === undefined || record?.default_lead_time_days === null
+      ? null
+      : Number(record.default_lead_time_days),
+  notes: record?.notes || "",
+})
+
+const buildPayload = (values) => ({
+  name: String(values.name || "").trim(),
+  public_code: String(values.public_code || "").trim(),
+  vat_number: trimOrNull(values.vat_number),
+  website: trimOrNull(values.website),
+  payment_terms: trimOrNull(values.payment_terms),
+  preferred_currency: trimOrNull(values.preferred_currency),
+  default_pickup_location: trimOrNull(values.default_pickup_location),
+  can_oem: values.can_oem ? 1 : 0,
+  can_analog: values.can_analog === false ? 0 : 1,
+  reliability_rating: values.reliability_rating ?? null,
+  risk_level: trimOrNull(values.risk_level),
+  default_lead_time_days: values.default_lead_time_days ?? null,
+  notes: trimOrNull(values.notes),
 })
 
 export default function SupplierMetaCard({ supplier, onSaved }) {
   const supplierId = Number(supplier?.id)
+  const [editForm] = Form.useForm()
+  const [editOpen, setEditOpen] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
 
-  const [meta, setMeta] = useState(() => metaFromSupplier(supplier))
-  const [dirty, setDirty] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const summaryItems = useMemo(
+    () => [
+      {
+        key: "company",
+        label: "Название",
+        children: supplier?.name || "—",
+      },
+      {
+        key: "code",
+        label: "Код",
+        children: supplier?.public_code || "—",
+      },
+      {
+        key: "vat",
+        label: "VAT",
+        children: supplier?.vat_number || "—",
+      },
+      {
+        key: "website",
+        label: "Сайт",
+        children: supplier?.website || "—",
+      },
+      {
+        key: "payment",
+        label: "Условия оплаты (по умолчанию)",
+        children: supplier?.payment_terms || "—",
+      },
+      {
+        key: "currency",
+        label: "Валюта (по умолчанию)",
+        children: supplier?.preferred_currency || "—",
+      },
+      {
+        key: "pickup",
+        label: "Город/порт отгрузки",
+        children: supplier?.default_pickup_location || "—",
+      },
+      {
+        key: "reliability",
+        label: "Рейтинг надежности",
+        children:
+          supplier?.reliability_rating === undefined || supplier?.reliability_rating === null
+            ? "—"
+            : Number(supplier.reliability_rating),
+      },
+      {
+        key: "risk",
+        label: "Риск",
+        children: riskLabel(supplier?.risk_level),
+      },
+      {
+        key: "lead",
+        label: "Срок поставки базовый, дн",
+        children:
+          supplier?.default_lead_time_days === undefined || supplier?.default_lead_time_days === null
+            ? "—"
+            : Number(supplier.default_lead_time_days),
+      },
+      {
+        key: "notes",
+        label: "Заметки",
+        children: supplier?.notes || "—",
+      },
+    ],
+    [supplier]
+  )
 
-  useEffect(() => {
-    setMeta(metaFromSupplier(supplier))
-    setDirty(false)
-  }, [supplierId, supplier])
-
-  const canSave = useMemo(() => dirty && !saving, [dirty, saving])
-
-  const setField = (key, value) => {
-    setMeta((prev) => ({ ...prev, [key]: value }))
-    setDirty(true)
+  const openEdit = () => {
+    editForm.setFieldsValue(formInitialValues(supplier))
+    setEditOpen(true)
   }
 
-  const reset = () => {
-    setMeta(metaFromSupplier(supplier))
-    setDirty(false)
-  }
-
-  const save = async () => {
+  const saveEdit = async () => {
     if (!supplierId) return
-
-    const name = meta.name?.trim()
-    const code = meta.public_code?.trim()
-    if (!name) return message.error("Название поставщика обязательно")
-    if (!code) return message.error("Код поставщика обязателен")
-
-    setSaving(true)
     try {
+      const values = await editForm.validateFields()
       const payload = {
-        version: meta.version,
-        name: name,
-        public_code: code,
-        vat_number: trimOrNull(meta.vat_number),
-        website: trimOrNull(meta.website),
-        payment_terms: trimOrNull(normalizeSupplierDefaultPaymentTerms(meta.payment_terms)),
-        preferred_currency: trimOrNull(normalizeSupplierDefaultCurrency(meta.preferred_currency)),
-        default_pickup_location: trimOrNull(meta.default_pickup_location),
-        can_oem: meta.can_oem ? 1 : 0,
-        can_analog: meta.can_analog ? 1 : 0,
-        reliability_rating: meta.reliability_rating ?? null,
-        risk_level: trimOrNull(meta.risk_level),
-        default_lead_time_days: meta.default_lead_time_days ?? null,
-        notes: trimOrNull(meta.notes),
+        ...buildPayload(values),
+        version: Number(supplier?.version),
       }
-
+      setSavingEdit(true)
       await axios.put(`/suppliers/${supplierId}`, payload)
-      message.success("Изменения сохранены")
-      setDirty(false)
+      message.success("Поставщик обновлен")
+      setEditOpen(false)
       await onSaved?.()
     } catch (e) {
+      if (e?.errorFields) return
       console.error(e)
-      if (e?.response?.status === 409) {
-        message.error("Конфликт версии. Обнови страницу и попробуй ещё раз.")
-        await onSaved?.()
-        return
-      }
-      message.error(e?.response?.data?.message || "Не удалось сохранить изменения")
+      message.error(e?.response?.data?.message || "Не удалось сохранить поставщика")
     } finally {
-      setSaving(false)
+      setSavingEdit(false)
     }
   }
 
   if (!supplierId) return null
 
   return (
-    <Card size="small" bodyStyle={{ padding: 12 }}>
-      <Space direction="vertical" style={{ width: "100%" }} size={10}>
-        <div>
-          <Text strong>Основные поля</Text>
-          <div>
-            <Text type="secondary">
-              Поля ниже используются как базовые значения по умолчанию для новых RFQ.
-              В шаблон RFQ и форму ответов автоматически подтягиваются валюта и условия оплаты.
-              В конкретном RFQ эти значения можно изменить.
-            </Text>
-          </div>
-        </div>
-
-        <Space style={{ width: "100%" }} size={10} wrap>
-          <div style={{ flex: 2, minWidth: 260 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Название *</div>
-            <Input value={meta.name} onChange={(e) => setField("name", e.target.value)} allowClear />
-          </div>
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Код *</div>
-            <Input value={meta.public_code} onChange={(e) => setField("public_code", e.target.value)} allowClear />
-          </div>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>VAT</div>
-            <Input value={meta.vat_number} onChange={(e) => setField("vat_number", e.target.value)} allowClear />
-          </div>
-        </Space>
-
-        <Space style={{ width: "100%" }} size={10} wrap>
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Сайт</div>
-            <Input value={meta.website} onChange={(e) => setField("website", e.target.value)} allowClear />
-          </div>
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>
-              Базовые условия оплаты (по умолчанию)
-            </div>
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder="Выберите условие"
-              options={SUPPLIER_DEFAULT_PAYMENT_TERMS_OPTIONS}
-              value={meta.payment_terms || undefined}
-              onChange={(value) => setField("payment_terms", value || "")}
-            />
-          </div>
-        </Space>
-
-        <Space style={{ width: "100%" }} size={10} wrap>
-          <div style={{ minWidth: 180 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Валюта по умолчанию</div>
-            <Select
-              allowClear
-              placeholder="Выберите валюту"
-              options={SUPPLIER_DEFAULT_CURRENCY_OPTIONS}
-              value={meta.preferred_currency || undefined}
-              onChange={(value) => setField("preferred_currency", value || "")}
-            />
-          </div>
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>
-              Город/порт отгрузки (по умолчанию)
-            </div>
-            <Input value={meta.default_pickup_location} onChange={(e) => setField("default_pickup_location", e.target.value)} allowClear />
-          </div>
-        </Space>
-
-        <Space wrap size={10}>
-          <Checkbox checked={meta.can_oem} onChange={(e) => setField("can_oem", e.target.checked)}>
-            Может OEM
-          </Checkbox>
-          <Checkbox checked={meta.can_analog} onChange={(e) => setField("can_analog", e.target.checked)}>
-            Может аналоги
-          </Checkbox>
-        </Space>
-
-        <Space style={{ width: "100%" }} size={10} wrap>
-          <div style={{ minWidth: 220 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Рейтинг надёжности</div>
-            <InputNumber
-              style={{ width: "100%" }}
-              min={0}
-              max={10}
-              value={meta.reliability_rating}
-              onChange={(v) => setField("reliability_rating", v)}
-            />
-          </div>
-          <div style={{ minWidth: 220 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Риск</div>
-            <Select
-              allowClear
-              style={{ width: "100%" }}
-              value={meta.risk_level || undefined}
-              onChange={(v) => setField("risk_level", v || "")}
-              options={[
-                { value: "low", label: "низкий" },
-                { value: "medium", label: "средний" },
-                { value: "high", label: "высокий" },
-              ]}
-            />
-          </div>
-          <div style={{ minWidth: 220 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>
-              Срок поставки базовый (ориентир), дн
-            </div>
-            <InputNumber
-              style={{ width: "100%" }}
-              min={0}
-              max={365}
-              value={meta.default_lead_time_days}
-              onChange={(v) => setField("default_lead_time_days", v)}
-            />
-          </div>
-        </Space>
-
-        <div>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Заметки</div>
-          <Input.TextArea value={meta.notes} onChange={(e) => setField("notes", e.target.value)} rows={3} />
-        </div>
-
-        <Space>
-          <Button type="primary" onClick={save} disabled={!canSave} loading={saving}>
-            Сохранить
+    <>
+      <Card
+        size="small"
+        bodyStyle={{ padding: 12 }}
+        extra={
+          <Button type="primary" icon={<EditOutlined />} onClick={openEdit}>
+            Редактировать поставщика
           </Button>
-          <Button onClick={reset} disabled={!dirty || saving}>
-            Сбросить
-          </Button>
+        }
+      >
+        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+          <Text type="secondary">
+            Основные данные поставщика вынесены в единое боковое окно создания/редактирования.
+          </Text>
+
+          <Space size={8} wrap>
+            <Tag color={supplier?.can_oem ? "blue" : "default"}>
+              OEM: {supplier?.can_oem ? "да" : "нет"}
+            </Tag>
+            <Tag color={supplier?.can_analog ? "green" : "default"}>
+              Аналоги: {supplier?.can_analog ? "да" : "нет"}
+            </Tag>
+          </Space>
+
+          <Descriptions size="small" column={2} items={summaryItems} />
         </Space>
-      </Space>
-    </Card>
+      </Card>
+
+      <SupplierUpsertDrawer
+        open={editOpen}
+        title="Редактировать поставщика"
+        form={editForm}
+        saving={savingEdit}
+        onClose={() => setEditOpen(false)}
+        onSubmit={saveEdit}
+      />
+    </>
   )
 }

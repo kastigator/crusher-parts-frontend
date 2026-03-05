@@ -6,7 +6,7 @@ export default function SupplierPartsPage() {
   return (
     <TabRendererPage
       tabKey="supplier_parts"
-      helpText="Клик по строке — открыть карточку детали. Редактирование выполняется в карточке."
+      helpText="Двойной клик по строке — открыть карточку детали. Редактирование — через кнопку карандаша."
     >
       <SupplierPartsMain />
     </TabRendererPage>

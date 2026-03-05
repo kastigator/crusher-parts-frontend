@@ -15,6 +15,7 @@ const MaterialDetailsDrawer = lazy(() => import("./MaterialDetailsDrawer"))
 const { Text } = Typography
 
 export default function MaterialsMain() {
+  const MATERIALS_ORDER_KEY = "materials_column_order_v1"
   const [categories, setCategories] = useState([])
   const [materials, setMaterials] = useState([])
   const [loading, setLoading] = useState(false)
@@ -26,6 +27,7 @@ export default function MaterialsMain() {
   const [importOpen, setImportOpen] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [formData, setFormData] = useState(null)
+  const [columnOrder, setColumnOrder] = useState([])
 
   const [cursor, setCursor] = useState({ limit: 200, offset: 0 })
   const [page, setPage] = useState(1)
@@ -72,6 +74,24 @@ export default function MaterialsMain() {
   useEffect(() => {
     loadCategories()
   }, [loadCategories])
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(MATERIALS_ORDER_KEY)
+      const parsed = raw ? JSON.parse(raw) : null
+      setColumnOrder(Array.isArray(parsed) ? parsed : [])
+    } catch {
+      setColumnOrder([])
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MATERIALS_ORDER_KEY, JSON.stringify(columnOrder || []))
+    } catch {
+      // ignore storage errors
+    }
+  }, [columnOrder])
 
   useEffect(() => {
     loadMaterials({ offset: 0 })
@@ -254,6 +274,8 @@ export default function MaterialsMain() {
               onEdit={handleEdit}
               onDelete={handleDelete}
               pagination={pagination}
+              columnOrderKeys={columnOrder}
+              onColumnOrderKeysChange={(next) => setColumnOrder(Array.isArray(next) ? next : [])}
             />
             {materials.length === 0 && !loading && (
               <>

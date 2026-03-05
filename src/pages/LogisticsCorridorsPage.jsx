@@ -10,13 +10,14 @@ import {
   Select,
   Space,
   Switch,
-  Table,
   Tag,
   message,
 } from "antd"
 import axios from "@/api/axiosInstance"
 import PageWrapper from "@/components/common/PageWrapper"
 import CountrySelect from "@/components/inputs/CountrySelect"
+import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
+import { getOrderedKeys } from "@/utils/columnOrder"
 
 const TRANSPORT_OPTIONS = [
   { value: "SEA", label: "Море" },
@@ -39,12 +40,32 @@ const RISK_COLOR = {
 }
 
 export default function LogisticsCorridorsPage() {
+  const LOGISTICS_ORDER_KEY = "logistics_corridors_column_order_v1"
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [columnOrder, setColumnOrder] = useState([])
   const [form] = Form.useForm()
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOGISTICS_ORDER_KEY)
+      const parsed = raw ? JSON.parse(raw) : null
+      setColumnOrder(Array.isArray(parsed) ? parsed : [])
+    } catch {
+      setColumnOrder([])
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LOGISTICS_ORDER_KEY, JSON.stringify(columnOrder || []))
+    } catch {
+      // ignore storage errors
+    }
+  }, [columnOrder])
 
   const fetchRows = async () => {
     setLoading(true)
@@ -165,12 +186,13 @@ export default function LogisticsCorridorsPage() {
           </Space>
         </Card>
 
-        <Table
+        <DraggableColumnsTable
           rowKey="id"
           loading={loading}
           dataSource={rows}
           pagination={{ pageSize: 20 }}
-          columns={[
+          columns={(() => {
+            const defs = [
             { title: "Название", dataIndex: "name", width: 240 },
             { title: "Откуда", dataIndex: "origin_country", width: 110, render: (v) => v || "—" },
             { title: "Куда", dataIndex: "destination_country", width: 110, render: (v) => v || "—" },
@@ -201,6 +223,7 @@ export default function LogisticsCorridorsPage() {
             { title: "Примечание", dataIndex: "notes", ellipsis: true },
             {
               title: "Действия",
+              key: "actions",
               width: 150,
               render: (_, record) => (
                 <Space size={8}>
@@ -220,7 +243,28 @@ export default function LogisticsCorridorsPage() {
                 </Space>
               ),
             },
-          ]}
+            ].map((c) => ({ ...c, key: c.key || c.dataIndex }))
+            const orderedKeys = getOrderedKeys(columnOrder, defs.map((c) => c.key))
+            const idx = new Map(orderedKeys.map((k, i) => [k, i]))
+            return [...defs].sort((a, b) => {
+              const ai = idx.has(a.key) ? idx.get(a.key) : Number.MAX_SAFE_INTEGER
+              const bi = idx.has(b.key) ? idx.get(b.key) : Number.MAX_SAFE_INTEGER
+              return ai - bi
+            })
+          })()}
+          nonDraggableKeys={["actions"]}
+          onColumnOrderChange={({ activeKey, overKey }) => {
+            const nextFull = getOrderedKeys(
+              columnOrder,
+              ["name", "origin_country", "destination_country", "transport_mode", "risk_level", "eta_min_days", "eta_max_days", "is_active", "notes", "actions"],
+            )
+            const from = nextFull.indexOf(activeKey)
+            const to = nextFull.indexOf(overKey)
+            if (from < 0 || to < 0 || from === to) return
+            const [item] = nextFull.splice(from, 1)
+            nextFull.splice(to, 0, item)
+            setColumnOrder(nextFull)
+          }}
         />
 
         <Modal

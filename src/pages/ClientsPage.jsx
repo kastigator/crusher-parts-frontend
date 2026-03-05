@@ -19,7 +19,7 @@ export default function ClientsPage() {
   return (
     <TabRendererPage
       tabKey="clients"
-      helpText="Клик по строке — открыть карточку клиента. Редактирование выполняется в карточке."
+      helpText="Двойной клик по строке — открыть карточку клиента. Редактирование выполняется через кнопку карандаша."
     >
       <ClientsMain />
     </TabRendererPage>

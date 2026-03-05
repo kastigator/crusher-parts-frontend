@@ -17,12 +17,18 @@ import {
   Select,
   Segmented,
   Popover,
+  Modal,
+  Drawer,
+  Typography,
+  Alert,
+  Divider,
 } from "antd"
 import {
   ApartmentOutlined,
   FilterOutlined,
   ReloadOutlined,
   SettingOutlined,
+  PlusOutlined,
 } from "@ant-design/icons"
 import { useLocation, useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
@@ -32,9 +38,9 @@ import OriginalPartsTable from "./OriginalPartsTable"
 import OriginalPartsRootsTree from "./OriginalPartsRootsTree"
 import OriginalPartsFiltersDrawer from "./OriginalPartsFiltersDrawer"
 import { countActiveFilters } from "./originalPartsFiltersUtils"
-import OriginalPartCreateAdvancedDrawer from "./OriginalPartCreateAdvancedDrawer"
 import ManufacturerModelPicker from "@/components/originalParts/ManufacturerModelPicker"
 import OriginalPartGroupsManager from "@/components/originalParts/OriginalPartGroupsManager"
+import TnvedPicker from "@/components/fields/TnvedPicker"
 
 const TEMPLATE_URL =
   "https://storage.googleapis.com/shared-parts-bucket/templates/original_parts_template.xlsx"
@@ -44,6 +50,13 @@ const UOM_OPTIONS = [
   { value: "kg", label: "кг" },
   { value: "set", label: "компл." },
 ]
+const { Text } = Typography
+
+const normalizePartNumber = (v) =>
+  String(v || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s\-.]/g, "")
 
 export default function OriginalPartsMain() {
   const location = useLocation()
@@ -67,8 +80,22 @@ export default function OriginalPartsMain() {
 
   const [importOpen, setImportOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const [addForm] = Form.useForm()
+  const [editOpen, setEditOpen] = useState(false)
+  const [editForm] = Form.useForm()
+  const [editingRow, setEditingRow] = useState(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editApplicationModels, setEditApplicationModels] = useState([])
+  const [editApplicationModelsLoading, setEditApplicationModelsLoading] = useState(false)
+  const createCatInputRef = useRef(null)
+  const createSubmitModeRef = useRef("create_close")
+  const createCatNumber = Form.useWatch("cat_number", addForm)
+  const [reusePreview, setReusePreview] = useState({
+    loading: false,
+    existsInCurrentModel: false,
+    modelNames: [],
+  })
 
   const navigate = useNavigate()
 
@@ -83,22 +110,12 @@ export default function OriginalPartsMain() {
   const [columnsMeta, setColumnsMeta] = useState({ options: [], defaultVisible: [], lockedKeys: [] })
   const [columnsPopoverOpen, setColumnsPopoverOpen] = useState(false)
 
-  const [advancedValues, setAdvancedValues] = useState({
-    tech_description: "",
-    tnved: null,
-    default_material_id: null,
-    default_material_note: "",
-    weight_kg: null,
-    length_cm: null,
-    width_cm: null,
-    height_cm: null,
-    has_drawing: false,
-    is_overweight: false,
-    is_oversize: false,
-  })
+  const [materialOptions, setMaterialOptions] = useState([])
+  const [materialsLoading, setMaterialsLoading] = useState(false)
 
   // per-view column visibility (synced via backend to support multiple devices)
   const [columnsByView, setColumnsByView] = useState({})
+  const [columnOrderByView, setColumnOrderByView] = useState({})
   const columnsLoadStartedRef = useRef(false)
   const columnsHydratedRef = useRef(false)
   const columnsSaveTimerRef = useRef(null)
@@ -126,6 +143,9 @@ export default function OriginalPartsMain() {
     if (restore.showAll !== undefined) setShowAll(!!restore.showAll)
     if (restore.filters !== undefined) setFilters(restore.filters || {})
     if (restore.columnsByView !== undefined) setColumnsByView(restore.columnsByView || {})
+    if (restore.columnOrderByView !== undefined) {
+      setColumnOrderByView(restore.columnOrderByView || {})
+    }
     if (restore.viewMode) {
       setViewMode(String(restore.viewMode))
     } else if (restore.onlyAssemblies) {
@@ -189,6 +209,26 @@ export default function OriginalPartsMain() {
   useEffect(() => {
     loadGroups()
   }, [loadGroups])
+
+  const fetchMaterials = useCallback(async (q = "") => {
+    setMaterialsLoading(true)
+    try {
+      const { data } = await axios.get("/materials", {
+        params: { q, limit: 50 },
+      })
+      setMaterialOptions(
+        (data || []).map((m) => ({
+          value: m.id,
+          label: m.name,
+          standard: m.standard,
+        }))
+      )
+    } catch (e) {
+      console.error("Не удалось загрузить справочник материалов", e)
+    } finally {
+      setMaterialsLoading(false)
+    }
+  }, [])
 
   /* ---------------------- загрузка деталей --------------------- */
   const fetchParts = useCallback(async () => {
@@ -274,6 +314,7 @@ export default function OriginalPartsMain() {
 
   const columnsViewKey = `${showAll ? "showAll" : "model"}:${viewMode}`
   const currentVisibleKeys = columnsByView?.[columnsViewKey] || null
+  const currentOrderKeys = columnOrderByView?.[columnsViewKey] || null
 
   const ensureDefaultColumnsForView = useCallback(
     (viewKey, meta) => {
@@ -351,12 +392,28 @@ export default function OriginalPartsMain() {
     columnsLoadStartedRef.current = true
     const run = async () => {
       try {
-        const { data } = await axios.get("/user-ui-settings", {
-          params: { scope: "original_parts", key: "columns_v1" },
-        })
-        const v = data?.value_json
-        const cfg = v?.configs && typeof v.configs === "object" ? v.configs : v
-        if (cfg && typeof cfg === "object") setColumnsByView(cfg)
+        const [columnsRes, orderRes] = await Promise.all([
+          axios.get("/user-ui-settings", {
+            params: { scope: "original_parts", key: "columns_v1" },
+          }),
+          axios.get("/user-ui-settings", {
+            params: { scope: "original_parts", key: "column_order_v1" },
+          }),
+        ])
+
+        const columnsValue = columnsRes?.data?.value_json
+        const columnsCfg =
+          columnsValue?.configs && typeof columnsValue.configs === "object"
+            ? columnsValue.configs
+            : columnsValue
+        if (columnsCfg && typeof columnsCfg === "object") setColumnsByView(columnsCfg)
+
+        const orderValue = orderRes?.data?.value_json
+        const orderCfg =
+          orderValue?.configs && typeof orderValue.configs === "object"
+            ? orderValue.configs
+            : orderValue
+        if (orderCfg && typeof orderCfg === "object") setColumnOrderByView(orderCfg)
       } catch (e) {
         console.warn("Failed to load UI settings (columns)", e?.message || e)
       } finally {
@@ -372,17 +429,24 @@ export default function OriginalPartsMain() {
     clearTimeout(columnsSaveTimerRef.current)
     columnsSaveTimerRef.current = setTimeout(async () => {
       try {
-        await axios.put("/user-ui-settings", {
-          scope: "original_parts",
-          key: "columns_v1",
-          value_json: { version: 1, configs: columnsByView },
-        })
+        await Promise.all([
+          axios.put("/user-ui-settings", {
+            scope: "original_parts",
+            key: "columns_v1",
+            value_json: { version: 1, configs: columnsByView },
+          }),
+          axios.put("/user-ui-settings", {
+            scope: "original_parts",
+            key: "column_order_v1",
+            value_json: { version: 1, configs: columnOrderByView },
+          }),
+        ])
       } catch (e) {
         console.warn("Failed to save UI settings (columns)", e?.message || e)
       }
     }, 500)
     return () => clearTimeout(columnsSaveTimerRef.current)
-  }, [columnsByView])
+  }, [columnsByView, columnOrderByView])
 
   useEffect(() => {
     const t = setTimeout(fetchParts, 300)
@@ -403,31 +467,143 @@ export default function OriginalPartsMain() {
       return
     }
     try {
-      const defaultMaterialId = advancedValues.default_material_id
-        ? Number(advancedValues.default_material_id)
-        : null
+      const catNumberRaw = String(values.cat_number || "").trim()
+      if (!catNumberRaw) {
+        message.warning("Укажите каталожный номер")
+        return
+      }
+      let reuseSourceRow = null
+
+      // Reuse guard: if same part number already exists for this manufacturer
+      // in another model, ask explicit confirmation before creating application.
+      if (manufacturer?.id) {
+        const { data: existingRows } = await axios.get("/original-parts", {
+          params: {
+            manufacturer_id: manufacturer.id,
+            q: catNumberRaw,
+          },
+        })
+        const sameNumberRows = (Array.isArray(existingRows) ? existingRows : []).filter(
+          (r) => normalizePartNumber(r?.cat_number) === normalizePartNumber(catNumberRaw)
+        )
+
+        const sameModelRow = sameNumberRows.find(
+          (r) => Number(r?.equipment_model_id) === Number(model.id)
+        )
+        if (sameModelRow) {
+          message.error("Дубликат Part number для этой модели")
+          return
+        }
+
+        if (sameNumberRows.length > 0) {
+          const modelNames = Array.from(
+            new Set(
+              sameNumberRows
+                .map((r) => String(r?.model_name || "").trim())
+                .filter(Boolean)
+            )
+          )
+          const sample = sameNumberRows[0] || {}
+
+          const enteredRu = String(values.description_ru || "").trim()
+          const enteredEn = String(values.description_en || "").trim()
+          const existingRu = String(sample.description_ru || "").trim()
+          const existingEn = String(sample.description_en || "").trim()
+          const hasDescriptionMismatch =
+            (!!enteredRu && !!existingRu && enteredRu !== existingRu) ||
+            (!!enteredEn && !!existingEn && enteredEn !== existingEn)
+
+          const confirmed = await new Promise((resolve) => {
+            Modal.confirm({
+              title: `Номер ${catNumberRaw} уже существует`,
+              content: (
+                <Space direction="vertical" size={6}>
+                  <div>
+                    Деталь уже есть у производителя <b>{manufacturer.name}</b> в моделях:
+                  </div>
+                  <div>{modelNames.join(", ") || "—"}</div>
+                  <div>
+                    Добавить как применение к модели <b>{model.model_name}</b>?
+                  </div>
+                  {hasDescriptionMismatch ? (
+                    <div style={{ color: "#b54708" }}>
+                      Внимание: введенное описание отличается от существующего.
+                      Будет использовано существующее описание.
+                    </div>
+                  ) : null}
+                </Space>
+              ),
+              okText: "Переиспользовать",
+              cancelText: "Отмена",
+              onOk: () => resolve(true),
+              onCancel: () => resolve(false),
+            })
+          })
+
+          if (!confirmed) return
+          reuseSourceRow = sample
+        }
+      }
+
+      const isReuse = !!reuseSourceRow
+      const defaultMaterialId =
+        isReuse || !values.default_material_id ? null : Number(values.default_material_id)
 
       const payload = {
         equipment_model_id: model.id,
-        cat_number: values.cat_number,
-        description_ru: values.description_ru || null,
-        description_en: values.description_en || null,
+        cat_number: catNumberRaw,
+        description_ru: isReuse
+          ? reuseSourceRow.description_ru || null
+          : values.description_ru || null,
+        description_en: isReuse
+          ? reuseSourceRow.description_en || null
+          : values.description_en || null,
         tech_description:
-          advancedValues.tech_description?.trim() === ""
+          isReuse
+            ? reuseSourceRow.tech_description || null
+            : values.tech_description?.trim() === ""
             ? null
-            : advancedValues.tech_description.trim(),
+            : values.tech_description.trim(),
         // If a default material is selected, treat logistics values as a per-material spec.
         // Base columns are left empty to avoid conflicting sources of truth.
-        weight_kg: defaultMaterialId ? null : advancedValues.weight_kg ?? null,
-        uom: values.uom || "pcs",
-        tnved_code_id: advancedValues.tnved?.id ?? null,
-        group_id: values.group_id ?? null,
-        length_cm: defaultMaterialId ? null : advancedValues.length_cm ?? null,
-        width_cm: defaultMaterialId ? null : advancedValues.width_cm ?? null,
-        height_cm: defaultMaterialId ? null : advancedValues.height_cm ?? null,
-        is_overweight: advancedValues.is_overweight ? 1 : 0,
-        is_oversize: advancedValues.is_oversize ? 1 : 0,
-        has_drawing: advancedValues.has_drawing ? 1 : 0,
+        weight_kg: isReuse
+          ? reuseSourceRow.weight_kg ?? null
+          : defaultMaterialId
+          ? null
+          : values.weight_kg ?? null,
+        uom: isReuse ? reuseSourceRow.uom || "pcs" : values.uom || "pcs",
+        tnved_code_id: isReuse ? reuseSourceRow.tnved_code_id ?? null : values.tnved?.id ?? null,
+        group_id: isReuse ? reuseSourceRow.group_id ?? null : values.group_id ?? null,
+        length_cm: isReuse
+          ? reuseSourceRow.length_cm ?? null
+          : defaultMaterialId
+          ? null
+          : values.length_cm ?? null,
+        width_cm: isReuse
+          ? reuseSourceRow.width_cm ?? null
+          : defaultMaterialId
+          ? null
+          : values.width_cm ?? null,
+        height_cm: isReuse
+          ? reuseSourceRow.height_cm ?? null
+          : defaultMaterialId
+          ? null
+          : values.height_cm ?? null,
+        is_overweight: isReuse
+          ? reuseSourceRow.is_overweight ? 1 : 0
+          : values.is_overweight
+          ? 1
+          : 0,
+        is_oversize: isReuse
+          ? reuseSourceRow.is_oversize ? 1 : 0
+          : values.is_oversize
+          ? 1
+          : 0,
+        has_drawing: isReuse
+          ? reuseSourceRow.has_drawing ? 1 : 0
+          : values.has_drawing
+          ? 1
+          : 0,
       }
       const { data } = await axios.post("/original-parts", payload)
 
@@ -438,25 +614,25 @@ export default function OriginalPartsMain() {
             original_part_id: data.id,
             material_id: defaultMaterialId,
             is_default: 1,
-            note: advancedValues.default_material_note?.trim()
-              ? advancedValues.default_material_note.trim()
+            note: values.default_material_note?.trim()
+              ? values.default_material_note.trim()
               : null,
           })
 
           const anySpec =
-            advancedValues.weight_kg != null ||
-            advancedValues.length_cm != null ||
-            advancedValues.width_cm != null ||
-            advancedValues.height_cm != null
+            values.weight_kg != null ||
+            values.length_cm != null ||
+            values.width_cm != null ||
+            values.height_cm != null
 
           if (anySpec) {
             await axios.put("/original-part-material-specs", {
               original_part_id: data.id,
               material_id: defaultMaterialId,
-              weight_kg: advancedValues.weight_kg ?? null,
-              length_cm: advancedValues.length_cm ?? null,
-              width_cm: advancedValues.width_cm ?? null,
-              height_cm: advancedValues.height_cm ?? null,
+              weight_kg: values.weight_kg ?? null,
+              length_cm: values.length_cm ?? null,
+              width_cm: values.width_cm ?? null,
+              height_cm: values.height_cm ?? null,
             })
           }
         } catch (e) {
@@ -476,12 +652,9 @@ export default function OriginalPartsMain() {
         cat_number: "",
         description_ru: "",
         description_en: "",
-      })
-      // Advanced: keep TN VED + default material as "sticky" helpers for bulk entry,
-      // but clear free-text/logistics and flags for the next record.
-      setAdvancedValues((prev) => ({
-        ...(prev || {}),
         tech_description: "",
+        tnved: null,
+        default_material_id: null,
         default_material_note: "",
         weight_kg: null,
         length_cm: null,
@@ -490,8 +663,9 @@ export default function OriginalPartsMain() {
         has_drawing: false,
         is_overweight: false,
         is_oversize: false,
-      }))
+      })
       fetchParts()
+      return true
     } catch (e) {
       if (e?.response?.status === 409)
         message.error("Дубликат Part number для этой модели")
@@ -500,6 +674,161 @@ export default function OriginalPartsMain() {
         console.error(e)
         message.error("Не удалось создать деталь")
       }
+      return false
+    }
+  }
+
+  const openPartDetail = useCallback(
+    (partId) => {
+      if (!partId) return
+      navigate(`/original-parts/${partId}`, {
+        state: {
+          from: `${location.pathname}${location.search || ""}`,
+          listState: {
+            manufacturer,
+            model,
+            search,
+            showAll,
+            viewMode,
+            filters,
+            columnsByView,
+            columnOrderByView,
+          },
+        },
+      })
+    },
+    [
+      navigate,
+      location.pathname,
+      location.search,
+      manufacturer,
+      model,
+      search,
+      showAll,
+      viewMode,
+      filters,
+      columnsByView,
+      columnOrderByView,
+    ]
+  )
+
+  const openEditDrawer = (record) => {
+    if (!record?.id) return
+    const tnvedObj = record.tnved_code_id
+      ? {
+          id: record.tnved_code_id,
+          code: record.tnved_code_text || record.tnved_code || "",
+          description: record.tnved_description || "",
+        }
+      : null
+    setEditingRow(record)
+    setEditApplicationModelsLoading(true)
+    setEditApplicationModels([])
+    editForm.setFieldsValue({
+      cat_number: record.cat_number || "",
+      description_ru: record.description_ru || "",
+      description_en: record.description_en || "",
+      tech_description: record.tech_description || "",
+      uom: record.uom ? String(record.uom).toLowerCase() : "pcs",
+      group_id:
+        record.group_id === undefined || record.group_id === null
+          ? null
+          : Number(record.group_id),
+      tnved: tnvedObj,
+      weight_kg:
+        record.weight_kg === undefined || record.weight_kg === null
+          ? null
+          : Number(record.weight_kg),
+      length_cm:
+        record.length_cm === undefined || record.length_cm === null
+          ? null
+          : Number(record.length_cm),
+      width_cm:
+        record.width_cm === undefined || record.width_cm === null
+          ? null
+          : Number(record.width_cm),
+      height_cm:
+        record.height_cm === undefined || record.height_cm === null
+          ? null
+          : Number(record.height_cm),
+      has_drawing: !!record.has_drawing,
+      is_overweight: !!record.is_overweight,
+      is_oversize: !!record.is_oversize,
+    })
+    setEditOpen(true)
+    ;(async () => {
+      try {
+        const { data } = await axios.get(`/original-parts/${record.id}/full`)
+        const apps = Array.isArray(data?.application_models) ? data.application_models : []
+        if (apps.length > 0) {
+          setEditApplicationModels(apps)
+        } else {
+          setEditApplicationModels([
+            {
+              equipment_model_id: data?.equipment_model_id ?? record?.equipment_model_id ?? null,
+              model_name: data?.model_name || record?.model_name || "—",
+            },
+          ])
+        }
+      } catch {
+        setEditApplicationModels([
+          {
+            equipment_model_id: record?.equipment_model_id ?? null,
+            model_name: record?.model_name || "—",
+          },
+        ])
+      } finally {
+        setEditApplicationModelsLoading(false)
+      }
+    })()
+  }
+
+  const submitEditPart = async (values) => {
+    if (!editingRow?.id) return
+    const toNum = (v) =>
+      v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v)
+
+    const payload = {
+      cat_number: String(values.cat_number || "").trim() || null,
+      description_ru: values.description_ru?.trim() ? values.description_ru.trim() : null,
+      description_en: values.description_en?.trim() ? values.description_en.trim() : null,
+      tech_description: values.tech_description?.trim() ? values.tech_description.trim() : null,
+      uom: values.uom || "pcs",
+      group_id:
+        values.group_id === undefined || values.group_id === null || values.group_id === ""
+          ? null
+          : Number(values.group_id),
+      tnved_code_id: values.tnved?.id ?? null,
+      weight_kg: toNum(values.weight_kg),
+      length_cm: toNum(values.length_cm),
+      width_cm: toNum(values.width_cm),
+      height_cm: toNum(values.height_cm),
+      has_drawing: values.has_drawing ? 1 : 0,
+      is_overweight: values.is_overweight ? 1 : 0,
+      is_oversize: values.is_oversize ? 1 : 0,
+    }
+
+    if (!payload.cat_number) {
+      message.warning("Укажите каталожный номер")
+      return
+    }
+
+    setSavingEdit(true)
+    try {
+      await axios.put(`/original-parts/${editingRow.id}`, payload)
+      message.success("Изменения сохранены")
+      flashRow(editingRow.id)
+      setEditOpen(false)
+      setEditingRow(null)
+      fetchParts()
+    } catch (e) {
+      if (e?.response?.data?.message) message.error(e.response.data.message)
+      else {
+        console.error(e)
+        message.error("Не удалось сохранить изменения")
+      }
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -511,24 +840,76 @@ export default function OriginalPartsMain() {
     setViewMode("roots")
     setFilters({})
     // columnsByView are per-user prefs: do not clear on selection reset
-    setAdvancedValues({
-      tech_description: "",
-      tnved: null,
-      default_material_id: null,
-      default_material_note: "",
-      weight_kg: null,
-      length_cm: null,
-      width_cm: null,
-      height_cm: null,
-      has_drawing: false,
-      is_overweight: false,
-      is_oversize: false,
-    })
   }
 
   useEffect(() => {
     // no-op for list-only view
   }, [model?.id])
+
+  useEffect(() => {
+    if (!createOpen) return
+    const t = setTimeout(() => createCatInputRef.current?.focus?.(), 80)
+    return () => clearTimeout(t)
+  }, [createOpen])
+
+  useEffect(() => {
+    if (!createOpen) return
+    fetchMaterials("")
+  }, [createOpen, fetchMaterials])
+
+  useEffect(() => {
+    if (!createOpen || !manufacturer?.id) {
+      setReusePreview({ loading: false, existsInCurrentModel: false, modelNames: [] })
+      return
+    }
+    const cat = String(createCatNumber || "").trim()
+    if (!cat) {
+      setReusePreview({ loading: false, existsInCurrentModel: false, modelNames: [] })
+      return
+    }
+
+    let ignore = false
+    const run = async () => {
+      setReusePreview((prev) => ({ ...prev, loading: true }))
+      try {
+        const { data } = await axios.get("/original-parts", {
+          params: {
+            manufacturer_id: manufacturer.id,
+            q: cat,
+          },
+        })
+        if (ignore) return
+        const sameNumberRows = (Array.isArray(data) ? data : []).filter(
+          (r) => normalizePartNumber(r?.cat_number) === normalizePartNumber(cat)
+        )
+        const existsInCurrentModel = sameNumberRows.some(
+          (r) => Number(r?.equipment_model_id) === Number(model?.id || 0)
+        )
+        const modelNames = Array.from(
+          new Set(
+            sameNumberRows
+              .map((r) => String(r?.model_name || "").trim())
+              .filter(Boolean)
+          )
+        )
+        setReusePreview({
+          loading: false,
+          existsInCurrentModel,
+          modelNames,
+        })
+      } catch {
+        if (!ignore) {
+          setReusePreview({ loading: false, existsInCurrentModel: false, modelNames: [] })
+        }
+      }
+    }
+
+    const t = setTimeout(run, 250)
+    return () => {
+      ignore = true
+      clearTimeout(t)
+    }
+  }, [createOpen, createCatNumber, manufacturer?.id, model?.id])
 
   // В режиме showAll "корневые узлы" / "вне структуры" неоднозначны — падаем в "Все".
   useEffect(() => {
@@ -597,6 +978,24 @@ export default function OriginalPartsMain() {
           >
             По всем моделям
           </Checkbox>
+
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                if (!model?.id) {
+                  message.warning("Сначала выберите производителя и модель")
+                  return
+                }
+                if (!addForm.getFieldValue("uom")) {
+                  addForm.setFieldsValue({ uom: "pcs" })
+                }
+                setCreateOpen(true)
+              }}
+              disabled={!model}
+            >
+              Создать позицию
+            </Button>
 
             <Button
               onClick={() => {
@@ -733,73 +1132,6 @@ export default function OriginalPartsMain() {
           />
         </div>
 
-        {/* Форма добавления детали — по-прежнему только для выбранной модели */}
-        <Form
-          form={addForm}
-          layout="inline"
-          onFinish={submitAddPart}
-          disabled={!model}
-          initialValues={{ uom: "pcs" }}
-          className="table-section"
-          style={{
-            marginTop: 8,
-            marginBottom: 8,
-            flexWrap: "wrap",
-            rowGap: 8,
-            columnGap: 12,
-          }}
-        >
-          <Form.Item
-            name="cat_number"
-            label="Кат. номер"
-            rules={[{ required: true, message: "Укажите каталожный номер" }]}
-          >
-            <Input placeholder="например, 711-22-12340" allowClear />
-          </Form.Item>
-          <Form.Item name="description_ru" label="RU">
-            <Input placeholder="Описание (RU)" allowClear />
-          </Form.Item>
-          <Form.Item name="description_en" label="EN">
-            <Input placeholder="Description (EN)" allowClear />
-          </Form.Item>
-          <Form.Item name="uom" label="Ед. изм.">
-            <Select style={{ width: 120 }} options={UOM_OPTIONS} />
-          </Form.Item>
-
-          <Form.Item label="Группа">
-            <Space.Compact>
-              <Form.Item name="group_id" noStyle>
-                <Select
-                  style={{ width: 220 }}
-                  placeholder="Не выбрано"
-                  loading={groupsLoading}
-                  allowClear
-                  options={groups.map((g) => ({
-                    value: g.id,
-                    label: g.name,
-                  }))}
-                />
-              </Form.Item>
-              <Button
-                icon={<SettingOutlined />}
-                onClick={() => setGroupManagerOpen(true)}
-                title="Управление группами"
-              >
-                Группы
-              </Button>
-            </Space.Compact>
-          </Form.Item>
-
-          <Form.Item>
-            <Space>
-              <Button onClick={() => setAdvancedOpen(true)}>Расширенно</Button>
-              <Button type="primary" htmlType="submit">
-                Добавить
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
-
         <div
           ref={contentAnimRef}
           className="parts-table-wrap"
@@ -826,6 +1158,7 @@ export default function OriginalPartsMain() {
                         viewMode,
                         filters,
                         columnsByView,
+                        columnOrderByView,
                         treeFocusId: partId,
                       },
                     },
@@ -841,30 +1174,25 @@ export default function OriginalPartsMain() {
                 highlightRowId={highlightRowId}
                 onFlashRow={flashRow}
                 visibleColumnKeys={currentVisibleKeys}
+                columnOrderKeys={currentOrderKeys}
                 onVisibleColumnKeysChange={(next) => {
                   setColumnsByView((prev) => ({
                     ...(prev || {}),
                     [columnsViewKey]: Array.isArray(next) ? next : [],
                   }))
                 }}
+                onColumnOrderKeysChange={(next) => {
+                  setColumnOrderByView((prev) => ({
+                    ...(prev || {}),
+                    [columnsViewKey]: Array.isArray(next) ? next : [],
+                  }))
+                }}
                 onColumnsMeta={(meta) => setColumnsMeta(meta || { options: [], defaultVisible: [], lockedKeys: [] })}
                 onReload={fetchParts}
+                onEditRecord={openEditDrawer}
                 onOpenDetail={(record) => {
                   if (!record?.id) return
-                  navigate(`/original-parts/${record.id}`, {
-                    state: {
-                      from: `${location.pathname}${location.search || ""}`,
-                      listState: {
-                        manufacturer,
-                        model,
-                        search,
-                        showAll,
-                        viewMode,
-                        filters,
-                        columnsByView,
-                      },
-                    },
-                  })
+                  openPartDetail(record.id)
                 }}
                 onRemove={(id) => {
                   setRows((prev) => prev.filter((r) => r.id !== id))
@@ -894,6 +1222,416 @@ export default function OriginalPartsMain() {
         }}
       />
 
+      <Drawer
+        open={createOpen}
+        onClose={() => {
+          createSubmitModeRef.current = "create_close"
+          setCreateOpen(false)
+        }}
+        width={560}
+        destroyOnClose={false}
+        title="Создать позицию"
+        extra={
+          <Space>
+            <Button onClick={() => setCreateOpen(false)}>Отмена</Button>
+            <Button
+              type="primary"
+              onClick={() => {
+                createSubmitModeRef.current = "create_close"
+                addForm.submit()
+              }}
+              disabled={!model}
+              loading={reusePreview.loading}
+            >
+              Создать
+            </Button>
+            <Button
+              onClick={() => {
+                createSubmitModeRef.current = "create_more"
+                addForm.submit()
+              }}
+              disabled={!model}
+            >
+              Создать еще
+            </Button>
+          </Space>
+        }
+      >
+        <Space direction="vertical" style={{ width: "100%" }} size={10}>
+          <Text type="secondary">
+            Производитель: <b>{manufacturer?.name || "—"}</b> · Модель: <b>{model?.model_name || "—"}</b>
+          </Text>
+          <Form
+            form={addForm}
+            layout="vertical"
+            onFinish={async (values) => {
+              const ok = await submitAddPart(values)
+              if (!ok) {
+                createSubmitModeRef.current = "create_close"
+                return
+              }
+              if (createSubmitModeRef.current === "create_more") {
+                createSubmitModeRef.current = "create_close"
+                setTimeout(() => createCatInputRef.current?.focus?.(), 50)
+                return
+              }
+              setCreateOpen(false)
+              createSubmitModeRef.current = "create_close"
+            }}
+            disabled={!model}
+            initialValues={{ uom: "pcs" }}
+          >
+            <Form.Item
+              name="cat_number"
+              label="Кат. номер"
+              rules={[{ required: true, message: "Укажите каталожный номер" }]}
+            >
+              <Input
+                ref={createCatInputRef}
+                placeholder="например, 711-22-12340"
+                allowClear
+              />
+            </Form.Item>
+            {String(createCatNumber || "").trim() ? (
+              reusePreview.existsInCurrentModel ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message="Такой номер уже есть в текущей модели"
+                  description="Создание будет отклонено. Выберите другой номер или откройте существующую позицию."
+                />
+              ) : reusePreview.modelNames.length ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message="Найдено совпадение по каталожному номеру"
+                  description={`Уже используется в моделях: ${reusePreview.modelNames.join(", ")}. При создании будет предложено переиспользование.`}
+                />
+              ) : null
+            ) : null}
+            <Form.Item name="description_ru" label="Описание (RU)">
+              <Input placeholder="Описание (RU)" allowClear />
+            </Form.Item>
+            <Form.Item name="description_en" label="Description (EN)">
+              <Input placeholder="Description (EN)" allowClear />
+            </Form.Item>
+            <Form.Item name="tech_description" label="Тех. описание">
+              <Input.TextArea
+                placeholder="Коротко о детали: назначение, особенности, требования..."
+                autoSize={{ minRows: 3, maxRows: 8 }}
+              />
+            </Form.Item>
+
+            <Space style={{ width: "100%" }} size={12} align="start" wrap>
+              <Form.Item name="uom" label="Ед. изм." style={{ minWidth: 140 }}>
+                <Select style={{ width: 140 }} options={UOM_OPTIONS} />
+              </Form.Item>
+              <Form.Item label="Группа" style={{ minWidth: 280, flex: 1 }}>
+                <Space.Compact style={{ width: "100%" }}>
+                  <Form.Item name="group_id" noStyle>
+                    <Select
+                      style={{ width: "100%" }}
+                      placeholder="Не выбрано"
+                      loading={groupsLoading}
+                      allowClear
+                      options={groups.map((g) => ({
+                        value: g.id,
+                        label: g.name,
+                      }))}
+                    />
+                  </Form.Item>
+                  <Button
+                    icon={<SettingOutlined />}
+                    onClick={() => setGroupManagerOpen(true)}
+                    title="Управление группами"
+                  >
+                    Группы
+                  </Button>
+                </Space.Compact>
+              </Form.Item>
+            </Space>
+
+            <Divider style={{ margin: "8px 0 12px" }} />
+            <Text strong>Классификация</Text>
+            <Form.Item name="tnved" label="ТН ВЭД" style={{ marginTop: 8 }}>
+              <TnvedPicker allowClear style={{ width: "100%" }} />
+            </Form.Item>
+
+            <Divider style={{ margin: "6px 0 12px" }} />
+            <Text strong>Материал по умолчанию</Text>
+            <Text type="secondary" style={{ display: "block", marginTop: 4 }}>
+              Если выбрать материал, вес и габариты ниже сохранятся как его спецификация.
+            </Text>
+            <Form.Item name="default_material_id" label="Материал" style={{ marginTop: 8 }}>
+              <Select
+                showSearch
+                allowClear
+                placeholder="Поиск по названию/коду/стандарту"
+                filterOption={false}
+                loading={materialsLoading}
+                onSearch={(q) => fetchMaterials(q)}
+                onFocus={() => fetchMaterials("")}
+                options={materialOptions.map((o) => ({
+                  value: o.value,
+                  label: `${o.label}${o.standard ? " · " + o.standard : ""}`,
+                }))}
+                dropdownRender={(menu) => (
+                  <>
+                    {menu}
+                    <Divider style={{ margin: "8px 0" }} />
+                    <div style={{ padding: "0 8px 8px", color: "#6b7280" }}>
+                      Нет нужного материала? Добавьте его в каталоге «Материалы».
+                    </div>
+                  </>
+                )}
+              />
+            </Form.Item>
+            <Form.Item name="default_material_note" label="Комментарий к материалу">
+              <Input placeholder="например: вариант/примечание" allowClear />
+            </Form.Item>
+
+            <Divider style={{ margin: "6px 0 12px" }} />
+            <Text strong>Логистика</Text>
+            <Form.Item name="weight_kg" label="Вес, кг" style={{ marginTop: 8 }}>
+              <InputNumber style={{ width: "100%" }} min={0} step={0.01} />
+            </Form.Item>
+            <Space style={{ width: "100%" }} size={10}>
+              <Form.Item name="length_cm" label="Длина, см" style={{ flex: 1 }}>
+                <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+              </Form.Item>
+              <Form.Item name="width_cm" label="Ширина, см" style={{ flex: 1 }}>
+                <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+              </Form.Item>
+              <Form.Item name="height_cm" label="Высота, см" style={{ flex: 1 }}>
+                <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+              </Form.Item>
+            </Space>
+
+            <Divider style={{ margin: "6px 0 12px" }} />
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Признаки</div>
+            <div
+              style={{
+                border: "1px solid #f0f0f0",
+                borderRadius: 8,
+                padding: "10px 12px",
+                background: "#fafafa",
+              }}
+            >
+              <Space size={20} wrap>
+                <Form.Item
+                  name="has_drawing"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Есть КД</Checkbox>
+                </Form.Item>
+                <Form.Item
+                  name="is_overweight"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Тяжелая</Checkbox>
+                </Form.Item>
+                <Form.Item
+                  name="is_oversize"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Негабарит</Checkbox>
+                </Form.Item>
+              </Space>
+            </div>
+          </Form>
+        </Space>
+      </Drawer>
+
+      <Drawer
+        open={editOpen}
+        onClose={() => {
+          if (savingEdit) return
+          setEditOpen(false)
+          setEditingRow(null)
+        }}
+        width={560}
+        destroyOnClose={false}
+        title="Редактировать позицию"
+        extra={
+          <Space>
+            <Button onClick={() => setEditOpen(false)} disabled={savingEdit}>
+              Отмена
+            </Button>
+            <Button
+              type="primary"
+              loading={savingEdit}
+              onClick={() => editForm.submit()}
+            >
+              Сохранить
+            </Button>
+          </Space>
+        }
+      >
+        <Space direction="vertical" style={{ width: "100%" }} size={10}>
+          <Text type="secondary">
+            Производитель: <b>{editingRow?.manufacturer_name || manufacturer?.name || "—"}</b> ·
+            Модель: <b>{editingRow?.model_name || model?.model_name || "—"}</b>
+          </Text>
+          <Card size="small" bodyStyle={{ padding: 12 }}>
+            <Space direction="vertical" style={{ width: "100%" }} size={8}>
+              <Space style={{ width: "100%", justifyContent: "space-between" }}>
+                <Text strong>Модели применения</Text>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    if (!editingRow?.id) return
+                    setEditOpen(false)
+                    openPartDetail(editingRow.id)
+                  }}
+                >
+                  Открыть карточку
+                </Button>
+              </Space>
+              {editApplicationModelsLoading ? (
+                <Text type="secondary">Загрузка...</Text>
+              ) : (
+                <Space wrap>
+                  {(editApplicationModels.length
+                    ? editApplicationModels
+                    : [
+                        {
+                          equipment_model_id: editingRow?.equipment_model_id ?? null,
+                          model_name: editingRow?.model_name || "—",
+                        },
+                      ]
+                  ).map((m) => (
+                    <Tag
+                      key={`${m.equipment_model_id || "x"}:${m.model_name || ""}`}
+                      color="blue"
+                    >
+                      {m.model_name || "—"}
+                    </Tag>
+                  ))}
+                </Space>
+              )}
+            </Space>
+          </Card>
+          <Form
+            form={editForm}
+            layout="vertical"
+            onFinish={submitEditPart}
+            initialValues={{ uom: "pcs" }}
+          >
+            <Form.Item
+              name="cat_number"
+              label="Кат. номер"
+              rules={[{ required: true, message: "Укажите каталожный номер" }]}
+            >
+              <Input placeholder="например, 711-22-12340" allowClear />
+            </Form.Item>
+            <Form.Item name="description_ru" label="Описание (RU)">
+              <Input placeholder="Описание (RU)" allowClear />
+            </Form.Item>
+            <Form.Item name="description_en" label="Description (EN)">
+              <Input placeholder="Description (EN)" allowClear />
+            </Form.Item>
+            <Form.Item name="tech_description" label="Тех. описание">
+              <Input.TextArea
+                placeholder="Коротко о детали: назначение, особенности, требования..."
+                autoSize={{ minRows: 3, maxRows: 8 }}
+              />
+            </Form.Item>
+
+            <Space style={{ width: "100%" }} size={12} align="start" wrap>
+              <Form.Item name="uom" label="Ед. изм." style={{ minWidth: 140 }}>
+                <Select style={{ width: 140 }} options={UOM_OPTIONS} />
+              </Form.Item>
+              <Form.Item label="Группа" style={{ minWidth: 280, flex: 1 }}>
+                <Space.Compact style={{ width: "100%" }}>
+                  <Form.Item name="group_id" noStyle>
+                    <Select
+                      style={{ width: "100%" }}
+                      placeholder="Не выбрано"
+                      loading={groupsLoading}
+                      allowClear
+                      options={groups.map((g) => ({
+                        value: g.id,
+                        label: g.name,
+                      }))}
+                    />
+                  </Form.Item>
+                  <Button
+                    icon={<SettingOutlined />}
+                    onClick={() => setGroupManagerOpen(true)}
+                    title="Управление группами"
+                  >
+                    Группы
+                  </Button>
+                </Space.Compact>
+              </Form.Item>
+            </Space>
+
+            <Divider style={{ margin: "8px 0 12px" }} />
+            <Text strong>Классификация</Text>
+            <Form.Item name="tnved" label="ТН ВЭД" style={{ marginTop: 8 }}>
+              <TnvedPicker allowClear style={{ width: "100%" }} />
+            </Form.Item>
+
+            <Divider style={{ margin: "6px 0 12px" }} />
+            <Text strong>Логистика</Text>
+            <Form.Item name="weight_kg" label="Вес, кг" style={{ marginTop: 8 }}>
+              <InputNumber style={{ width: "100%" }} min={0} step={0.01} />
+            </Form.Item>
+            <Space style={{ width: "100%" }} size={10}>
+              <Form.Item name="length_cm" label="Длина, см" style={{ flex: 1 }}>
+                <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+              </Form.Item>
+              <Form.Item name="width_cm" label="Ширина, см" style={{ flex: 1 }}>
+                <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+              </Form.Item>
+              <Form.Item name="height_cm" label="Высота, см" style={{ flex: 1 }}>
+                <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+              </Form.Item>
+            </Space>
+
+            <Divider style={{ margin: "6px 0 12px" }} />
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Признаки</div>
+            <div
+              style={{
+                border: "1px solid #f0f0f0",
+                borderRadius: 8,
+                padding: "10px 12px",
+                background: "#fafafa",
+              }}
+            >
+              <Space size={20} wrap>
+                <Form.Item
+                  name="has_drawing"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Есть КД</Checkbox>
+                </Form.Item>
+                <Form.Item
+                  name="is_overweight"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Тяжелая</Checkbox>
+                </Form.Item>
+                <Form.Item
+                  name="is_oversize"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Негабарит</Checkbox>
+                </Form.Item>
+              </Space>
+            </div>
+          </Form>
+        </Space>
+      </Drawer>
+
       <ManufacturerModelPicker
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
@@ -905,19 +1643,6 @@ export default function OriginalPartsMain() {
           setShowAll(false)
           setViewMode("roots")
           setFilters({})
-          setAdvancedValues({
-            tech_description: "",
-            tnved: null,
-            default_material_id: null,
-            default_material_note: "",
-            weight_kg: null,
-            length_cm: null,
-            width_cm: null,
-            height_cm: null,
-            has_drawing: false,
-            is_overweight: false,
-            is_oversize: false,
-          })
         }}
       />
 
@@ -935,13 +1660,6 @@ export default function OriginalPartsMain() {
         onClose={() => setFiltersOpen(false)}
         value={filters}
         onApply={(next) => setFilters(next || {})}
-      />
-
-      <OriginalPartCreateAdvancedDrawer
-        open={advancedOpen}
-        onClose={() => setAdvancedOpen(false)}
-        value={advancedValues}
-        onChange={(next) => setAdvancedValues(next || {})}
       />
     </Space>
   )

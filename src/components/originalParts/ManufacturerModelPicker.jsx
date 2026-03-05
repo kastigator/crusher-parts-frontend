@@ -11,6 +11,7 @@ export default function ManufacturerModelPicker({
   onPick,                        // (manufacturer, model) => void
   initialManufacturerId = null,
   initialModelId = null,
+  allowManufacturerOnly = false,
 }) {
   // data
   const [manufacturers, setManufacturers] = useState([]);
@@ -146,7 +147,8 @@ export default function ManufacturerModelPicker({
   const handlePick = () => {
     const mf = manufacturers.find(m => m.id === mfId) || null;
     const md = models.find(m => m.id === mdId) || null;
-    if (!mf || !md) { message.warning("Выберите производителя и модель"); return; }
+    if (!mf) { message.warning("Выберите производителя"); return; }
+    if (!allowManufacturerOnly && !md) { message.warning("Выберите модель"); return; }
     onPick?.(mf, md);
     onClose?.();
   };
@@ -158,7 +160,7 @@ export default function ManufacturerModelPicker({
       width={800}
       title="Производители и модели"
       destroyOnClose
-      extra={<Button type="primary" onClick={handlePick} disabled={!mfId || !mdId}>Выбрать</Button>}
+      extra={<Button type="primary" onClick={handlePick} disabled={!mfId || (!allowManufacturerOnly && !mdId)}>Выбрать</Button>}
     >
       <Row gutter={16}>
         <Col span={10}>

@@ -36,6 +36,7 @@ export default function TnvedCodesMain() {
   })
   const [columnsPopoverOpen, setColumnsPopoverOpen] = useState(false)
   const [columnsByView, setColumnsByView] = useState({})
+  const [columnOrderByView, setColumnOrderByView] = useState({})
   const columnsLoadStartedRef = useRef(false)
   const columnsHydratedRef = useRef(false)
   const columnsSaveTimerRef = useRef(null)
@@ -92,12 +93,27 @@ export default function TnvedCodesMain() {
     columnsLoadStartedRef.current = true
     const run = async () => {
       try {
-        const { data } = await axios.get("/user-ui-settings", {
-          params: { scope: "tnved_codes", key: "columns_v1" },
-        })
-        const v = data?.value_json
-        const cfg = v?.configs && typeof v.configs === "object" ? v.configs : v
-        if (cfg && typeof cfg === "object") setColumnsByView(cfg)
+        const [columnsRes, orderRes] = await Promise.all([
+          axios.get("/user-ui-settings", {
+            params: { scope: "tnved_codes", key: "columns_v1" },
+          }),
+          axios.get("/user-ui-settings", {
+            params: { scope: "tnved_codes", key: "column_order_v1" },
+          }),
+        ])
+        const columnsValue = columnsRes?.data?.value_json
+        const columnsCfg =
+          columnsValue?.configs && typeof columnsValue.configs === "object"
+            ? columnsValue.configs
+            : columnsValue
+        if (columnsCfg && typeof columnsCfg === "object") setColumnsByView(columnsCfg)
+
+        const orderValue = orderRes?.data?.value_json
+        const orderCfg =
+          orderValue?.configs && typeof orderValue.configs === "object"
+            ? orderValue.configs
+            : orderValue
+        if (orderCfg && typeof orderCfg === "object") setColumnOrderByView(orderCfg)
       } catch (e) {
         console.warn("Failed to load UI settings (columns)", e?.message || e)
       } finally {
@@ -113,17 +129,24 @@ export default function TnvedCodesMain() {
     clearTimeout(columnsSaveTimerRef.current)
     columnsSaveTimerRef.current = setTimeout(async () => {
       try {
-        await axios.put("/user-ui-settings", {
-          scope: "tnved_codes",
-          key: "columns_v1",
-          value_json: { version: 1, configs: columnsByView },
-        })
+        await Promise.all([
+          axios.put("/user-ui-settings", {
+            scope: "tnved_codes",
+            key: "columns_v1",
+            value_json: { version: 1, configs: columnsByView },
+          }),
+          axios.put("/user-ui-settings", {
+            scope: "tnved_codes",
+            key: "column_order_v1",
+            value_json: { version: 1, configs: columnOrderByView },
+          }),
+        ])
       } catch (e) {
         console.warn("Failed to save UI settings (columns)", e?.message || e)
       }
     }, 500)
     return () => clearTimeout(columnsSaveTimerRef.current)
-  }, [columnsByView])
+  }, [columnsByView, columnOrderByView])
 
   // ---------- поллинг по ETag ----------
   useEffect(() => {
@@ -263,6 +286,7 @@ export default function TnvedCodesMain() {
 
   const columnsViewKey = "main"
   const currentVisibleKeys = columnsByView?.[columnsViewKey] || null
+  const currentOrderKeys = columnOrderByView?.[columnsViewKey] || null
 
   return (
     <Space
@@ -468,6 +492,13 @@ export default function TnvedCodesMain() {
           data={filteredData}
           loading={loading}
           visibleColumnKeys={currentVisibleKeys}
+          columnOrderKeys={currentOrderKeys}
+          onColumnOrderKeysChange={(next) =>
+            setColumnOrderByView((prev) => ({
+              ...(prev || {}),
+              [columnsViewKey]: Array.isArray(next) ? next : [],
+            }))
+          }
           onColumnsMeta={(meta) =>
             setColumnsMeta(meta || { options: [], defaultVisible: [], lockedKeys: [] })
           }

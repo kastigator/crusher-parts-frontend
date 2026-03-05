@@ -9,7 +9,6 @@ import {
   Badge,
   Tooltip,
   message,
-  Input,
   Form,
   Checkbox,
   Popover,
@@ -20,6 +19,7 @@ import {
   ImportOutlined,
   ReloadOutlined,
   FilterOutlined,
+  PlusOutlined,
 } from "@ant-design/icons"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import TableToolbar from "@/components/common/TableToolbar"
@@ -28,14 +28,13 @@ import SupplierPartsTable from "./SupplierPartsTable"
 import ImportModal from "@/components/common/ImportModal"
 import axios from "@/api/axiosInstance"
 import { getCountryLabel } from "@/components/inputs/countryUtils"
-import SupplierPartCreateAdvancedDrawer from "./SupplierPartCreateAdvancedDrawer"
 import SupplierPartsFiltersDrawer from "./SupplierPartsFiltersDrawer"
 import { countActiveFilters } from "./supplierPartsFiltersUtils"
 import SupplierPriceListsDrawer from "./SupplierPriceListsDrawer"
+import SupplierPartUpsertDrawer from "./SupplierPartUpsertDrawer"
 
 const SUPPLIER_TEMPLATE_URL =
   "https://storage.googleapis.com/shared-parts-bucket/templates/supplier_parts_template.xlsx"
-
 export default function SupplierPartsMain() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -47,9 +46,16 @@ export default function SupplierPartsMain() {
   const [importOpen, setImportOpen] = useState(false)
   const [priceListsOpen, setPriceListsOpen] = useState(false)
 
-  const [form] = Form.useForm()
-  const [adding, setAdding] = useState(false)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [createForm] = Form.useForm()
+  const [editForm] = Form.useForm()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editingRow, setEditingRow] = useState(null)
+  const [savingCreate, setSavingCreate] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const createSubmitModeRef = useRef("create_close")
+  const [materialOptions, setMaterialOptions] = useState([])
+  const [materialsLoading, setMaterialsLoading] = useState(false)
   const [highlightRowId, setHighlightRowId] = useState(null)
   const highlightTimerRef = useRef(null)
 
@@ -66,6 +72,7 @@ export default function SupplierPartsMain() {
   const [columnsPopoverOpen, setColumnsPopoverOpen] = useState(false)
 
   const [columnsByView, setColumnsByView] = useState({})
+  const [columnOrderByView, setColumnOrderByView] = useState({})
   const columnsLoadStartedRef = useRef(false)
   const columnsHydratedRef = useRef(false)
   const columnsSaveTimerRef = useRef(null)
@@ -74,22 +81,6 @@ export default function SupplierPartsMain() {
   const focusId = params.get("focus")
   const supplierIdParam = params.get("supplierId")
   const allParam = params.get("all")
-
-  const [advancedValues, setAdvancedValues] = useState({
-    comment: "",
-    lead_time_days: null,
-    min_order_qty: null,
-    packaging: "",
-    weight_kg: null,
-    length_cm: null,
-    width_cm: null,
-    height_cm: null,
-    is_oem: false,
-    is_overweight: false,
-    is_oversize: false,
-    default_material_id: null,
-    default_material_note: "",
-  })
 
   // Restore list state when returning from the detail page
   const restoreAppliedRef = useRef(false)
@@ -104,6 +95,9 @@ export default function SupplierPartsMain() {
     if (restore.showAll !== undefined) setShowAll(!!restore.showAll)
     if (restore.filters !== undefined) setFilters(restore.filters || {})
     if (restore.columnsByView !== undefined) setColumnsByView(restore.columnsByView || {})
+    if (restore.columnOrderByView !== undefined) {
+      setColumnOrderByView(restore.columnOrderByView || {})
+    }
     setVersion((v) => v + 1)
   }, [location.state])
 
@@ -122,6 +116,7 @@ export default function SupplierPartsMain() {
 
   const columnsViewKey = showAll ? "showAll" : "supplier"
   const currentVisibleKeys = columnsByView?.[columnsViewKey] || null
+  const currentOrderKeys = columnOrderByView?.[columnsViewKey] || null
   const quickPartType = filters?.part_type || "all"
   const quickLinksMode = filters?.originals_mode || "any"
   const listDisabled = !supplier && !showAll
@@ -166,12 +161,27 @@ export default function SupplierPartsMain() {
     columnsLoadStartedRef.current = true
     const run = async () => {
       try {
-        const { data } = await axios.get("/user-ui-settings", {
-          params: { scope: "supplier_parts", key: "columns_v1" },
-        })
-        const v = data?.value_json
-        const cfg = v?.configs && typeof v.configs === "object" ? v.configs : v
-        if (cfg && typeof cfg === "object") setColumnsByView(cfg)
+        const [columnsRes, orderRes] = await Promise.all([
+          axios.get("/user-ui-settings", {
+            params: { scope: "supplier_parts", key: "columns_v1" },
+          }),
+          axios.get("/user-ui-settings", {
+            params: { scope: "supplier_parts", key: "column_order_v1" },
+          }),
+        ])
+        const columnsValue = columnsRes?.data?.value_json
+        const columnsCfg =
+          columnsValue?.configs && typeof columnsValue.configs === "object"
+            ? columnsValue.configs
+            : columnsValue
+        if (columnsCfg && typeof columnsCfg === "object") setColumnsByView(columnsCfg)
+
+        const orderValue = orderRes?.data?.value_json
+        const orderCfg =
+          orderValue?.configs && typeof orderValue.configs === "object"
+            ? orderValue.configs
+            : orderValue
+        if (orderCfg && typeof orderCfg === "object") setColumnOrderByView(orderCfg)
       } catch (e) {
         console.warn("Failed to load UI settings (columns)", e?.message || e)
       } finally {
@@ -187,17 +197,24 @@ export default function SupplierPartsMain() {
     clearTimeout(columnsSaveTimerRef.current)
     columnsSaveTimerRef.current = setTimeout(async () => {
       try {
-        await axios.put("/user-ui-settings", {
-          scope: "supplier_parts",
-          key: "columns_v1",
-          value_json: { version: 1, configs: columnsByView },
-        })
+        await Promise.all([
+          axios.put("/user-ui-settings", {
+            scope: "supplier_parts",
+            key: "columns_v1",
+            value_json: { version: 1, configs: columnsByView },
+          }),
+          axios.put("/user-ui-settings", {
+            scope: "supplier_parts",
+            key: "column_order_v1",
+            value_json: { version: 1, configs: columnOrderByView },
+          }),
+        ])
       } catch (e) {
         console.warn("Failed to save UI settings (columns)", e?.message || e)
       }
     }, 500)
     return () => clearTimeout(columnsSaveTimerRef.current)
-  }, [columnsByView])
+  }, [columnsByView, columnOrderByView])
 
   const flashRow = useCallback((id) => {
     const n = Number(id)
@@ -249,75 +266,211 @@ export default function SupplierPartsMain() {
     setImportOpen(true)
   }
 
-  const handleAdd = async () => {
+  const fetchMaterials = useCallback(async (q = "") => {
+    setMaterialsLoading(true)
+    try {
+      const { data } = await axios.get("/materials", {
+        params: { q, limit: 50 },
+      })
+      setMaterialOptions(
+        (data || []).map((m) => ({
+          value: m.id,
+          label: `${m.name}${m.standard ? ` · ${m.standard}` : ""}`,
+        }))
+      )
+    } catch (e) {
+      console.error("Не удалось загрузить справочник материалов", e)
+    } finally {
+      setMaterialsLoading(false)
+    }
+  }, [])
+
+  const openCreateDrawer = () => {
     if (!supplier?.id) {
       message.warning("Сначала выберите поставщика")
       return
     }
+    createForm.setFieldsValue({
+      supplier_part_number: "",
+      description_ru: "",
+      description_en: "",
+      comment: "",
+      uom: "pcs",
+      lead_time_days: null,
+      min_order_qty: null,
+      packaging: "",
+      weight_kg: null,
+      length_cm: null,
+      width_cm: null,
+      height_cm: null,
+      is_oem: false,
+      is_overweight: false,
+      is_oversize: false,
+      default_material_id: null,
+      default_material_note: "",
+    })
+    setCreateOpen(true)
+    fetchMaterials("")
+  }
+
+  const openEditDrawer = (row) => {
+    if (!row?.id) return
+    setEditingRow(row)
+    editForm.setFieldsValue({
+      supplier_part_number: row.supplier_part_number || "",
+      description_ru: row.description_ru || "",
+      description_en: row.description_en || "",
+      comment: row.comment || "",
+      uom: row.uom ? String(row.uom).toLowerCase() : "pcs",
+      lead_time_days:
+        row.lead_time_days === undefined || row.lead_time_days === null
+          ? null
+          : Number(row.lead_time_days),
+      min_order_qty:
+        row.min_order_qty === undefined || row.min_order_qty === null
+          ? null
+          : Number(row.min_order_qty),
+      packaging: row.packaging || "",
+      weight_kg:
+        row.weight_kg === undefined || row.weight_kg === null ? null : Number(row.weight_kg),
+      length_cm:
+        row.length_cm === undefined || row.length_cm === null ? null : Number(row.length_cm),
+      width_cm:
+        row.width_cm === undefined || row.width_cm === null ? null : Number(row.width_cm),
+      height_cm:
+        row.height_cm === undefined || row.height_cm === null ? null : Number(row.height_cm),
+      is_oem: String(row.part_type || "").toUpperCase() === "OEM",
+      is_overweight: !!row.is_overweight,
+      is_oversize: !!row.is_oversize,
+      default_material_id: null,
+      default_material_note: "",
+    })
+    setEditOpen(true)
+    fetchMaterials("")
+  }
+
+  const buildPayload = (values) => ({
+    supplier_part_number: String(values.supplier_part_number || "").trim(),
+    description_ru: String(values.description_ru || "").trim() || null,
+    description_en: String(values.description_en || "").trim() || null,
+    comment: String(values.comment || "").trim() || null,
+    uom: values.uom || "pcs",
+    lead_time_days: values.lead_time_days ?? null,
+    min_order_qty: values.min_order_qty ?? null,
+    packaging: String(values.packaging || "").trim() || null,
+    weight_kg: values.weight_kg ?? null,
+    length_cm: values.length_cm ?? null,
+    width_cm: values.width_cm ?? null,
+    height_cm: values.height_cm ?? null,
+    is_overweight: values.is_overweight ? 1 : 0,
+    is_oversize: values.is_oversize ? 1 : 0,
+    part_type: values.is_oem ? "OEM" : "ANALOG",
+  })
+
+  const checkDuplicateSupplierPartNumber = useCallback(
+    async (supplierId, supplierPartNumber, excludeId = null) => {
+      const sid = Number(supplierId)
+      const partNumber = String(supplierPartNumber || "").trim()
+      if (!sid || !partNumber) return false
+      const { data } = await axios.get("/supplier-parts/validate-number", {
+        params: {
+          supplier_id: sid,
+          supplier_part_number: partNumber,
+          ...(excludeId ? { exclude_id: Number(excludeId) } : {}),
+        },
+      })
+      return !!data?.exists
+    },
+    []
+  )
+
+  const createPartNumberRules = useMemo(
+    () => [
+      { required: true, message: "Введите номер детали" },
+      {
+        validator: async (_, value) => {
+          const partNumber = String(value || "").trim()
+          if (!partNumber || !supplier?.id) return
+          const exists = await checkDuplicateSupplierPartNumber(supplier.id, partNumber)
+          if (exists) {
+            throw new Error("Такой номер уже существует у выбранного поставщика")
+          }
+        },
+      },
+    ],
+    [supplier?.id, checkDuplicateSupplierPartNumber]
+  )
+
+  const editPartNumberRules = useMemo(
+    () => [
+      { required: true, message: "Введите номер детали" },
+      {
+        validator: async (_, value) => {
+          const partNumber = String(value || "").trim()
+          if (!partNumber || !supplier?.id) return
+          const exists = await checkDuplicateSupplierPartNumber(
+            supplier.id,
+            partNumber,
+            editingRow?.id || null
+          )
+          if (exists) {
+            throw new Error("Такой номер уже существует у выбранного поставщика")
+          }
+        },
+      },
+    ],
+    [supplier?.id, editingRow?.id, checkDuplicateSupplierPartNumber]
+  )
+
+  const upsertDefaultMaterial = async (partId, values) => {
+    const materialId = values.default_material_id ? Number(values.default_material_id) : null
+    if (!materialId) return
+    await axios.post("/supplier-part-materials", {
+      supplier_part_id: partId,
+      material_id: materialId,
+      is_default: 1,
+      note: String(values.default_material_note || "").trim() || null,
+    })
+  }
+
+  const submitCreate = async () => {
     try {
-      const v = await form.validateFields()
-      setAdding(true)
+      const values = await createForm.validateFields()
+      const isDuplicate = await checkDuplicateSupplierPartNumber(
+        supplier.id,
+        values.supplier_part_number
+      )
+      if (isDuplicate) {
+        message.error("Такой номер уже существует у выбранного поставщика")
+        return
+      }
+      setSavingCreate(true)
       const payload = {
         supplier_id: supplier.id,
-        supplier_part_number: v.supplier_part_number,
-        description_ru: v.description_ru || null,
-        description_en: v.description_en || null,
-        comment: advancedValues.comment?.trim() ? advancedValues.comment.trim() : null,
-        lead_time_days: advancedValues.lead_time_days ?? null,
-        min_order_qty: advancedValues.min_order_qty ?? null,
-        packaging: advancedValues.packaging?.trim() ? advancedValues.packaging.trim() : null,
-        weight_kg: advancedValues.weight_kg ?? null,
-        length_cm: advancedValues.length_cm ?? null,
-        width_cm: advancedValues.width_cm ?? null,
-        height_cm: advancedValues.height_cm ?? null,
-        is_overweight: advancedValues.is_overweight ? 1 : 0,
-        is_oversize: advancedValues.is_oversize ? 1 : 0,
-        part_type: advancedValues.is_oem ? "OEM" : "ANALOG",
+        ...buildPayload(values),
       }
-
       const { data } = await axios.post("/supplier-parts", payload)
-
-      const defaultMaterialId = advancedValues.default_material_id
-        ? Number(advancedValues.default_material_id)
-        : null
-      if (defaultMaterialId) {
-        try {
-          await axios.post("/supplier-part-materials", {
-            supplier_part_id: data.id,
-            material_id: defaultMaterialId,
-            is_default: 1,
-            note: advancedValues.default_material_note?.trim()
-              ? advancedValues.default_material_note.trim()
-              : null,
-          })
-        } catch (e) {
-          console.warn("Failed to add default material during create", e?.message || e)
-          message.warning(
-            "Деталь создана, но материал не добавился (можно добавить в карточке → Материалы)."
-          )
-        }
-      }
-
+      await upsertDefaultMaterial(data.id, values)
       message.success("Деталь поставщика добавлена")
       flashRow(data.id)
-      // потоковый ввод: очищаем только основные поля, оставляя "липкими" поставщика и расширенные подсказки
-      form.setFieldsValue({
-        supplier_part_number: "",
-        description_ru: "",
-        description_en: "",
-      })
-      setAdvancedValues((prev) => ({
-        ...(prev || {}),
-        comment: "",
-        default_material_note: "",
-        weight_kg: null,
-        length_cm: null,
-        width_cm: null,
-        height_cm: null,
-        is_overweight: false,
-        is_oversize: false,
-      }))
       setVersion((x) => x + 1)
+      if (createSubmitModeRef.current === "create_next") {
+        createForm.setFieldsValue({
+          supplier_part_number: "",
+          description_ru: "",
+          description_en: "",
+          comment: "",
+          default_material_note: "",
+          weight_kg: null,
+          length_cm: null,
+          width_cm: null,
+          height_cm: null,
+          is_overweight: false,
+          is_oversize: false,
+        })
+      } else {
+        setCreateOpen(false)
+      }
     } catch (e) {
       if (e?.response?.data?.message) message.error(e.response.data.message)
       else if (!e?.errorFields) {
@@ -325,7 +478,38 @@ export default function SupplierPartsMain() {
         message.error("Не удалось создать деталь")
       }
     } finally {
-      setAdding(false)
+      setSavingCreate(false)
+    }
+  }
+
+  const submitEdit = async () => {
+    if (!editingRow?.id) return
+    try {
+      const values = await editForm.validateFields()
+      const isDuplicate = await checkDuplicateSupplierPartNumber(
+        supplier.id,
+        values.supplier_part_number,
+        editingRow.id
+      )
+      if (isDuplicate) {
+        message.error("Такой номер уже существует у выбранного поставщика")
+        return
+      }
+      setSavingEdit(true)
+      await axios.put(`/supplier-parts/${editingRow.id}`, buildPayload(values))
+      await upsertDefaultMaterial(editingRow.id, values)
+      message.success("Изменения сохранены")
+      setEditOpen(false)
+      setEditingRow(null)
+      setVersion((x) => x + 1)
+    } catch (e) {
+      if (e?.response?.data?.message) message.error(e.response.data.message)
+      else if (!e?.errorFields) {
+        console.error(e)
+        message.error("Не удалось сохранить изменения")
+      }
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -405,6 +589,15 @@ export default function SupplierPartsMain() {
               disabled={!supplier}
             >
               Прайс-листы
+            </Button>
+
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={openCreateDrawer}
+              disabled={!supplier}
+            >
+              Создать позицию
             </Button>
 
             <Button
@@ -547,50 +740,6 @@ export default function SupplierPartsMain() {
           />
         </div>
 
-        <div className="table-section">
-          <Form
-            form={form}
-            layout="inline"
-            disabled={!supplier}
-            style={{ flexWrap: "wrap", rowGap: 8, columnGap: 12 }}
-          >
-            <Form.Item
-              name="supplier_part_number"
-              label="№ у поставщика"
-              rules={[{ required: true, message: "Введите номер" }]}
-            >
-              <Input placeholder="например, P-12345" style={{ width: 240 }} allowClear />
-            </Form.Item>
-
-            <Form.Item name="description_ru" label="RU">
-              <Input
-                placeholder="Описание (RU)"
-                style={{ minWidth: 220 }}
-                allowClear
-              />
-            </Form.Item>
-
-            <Form.Item name="description_en" label="EN">
-              <Input
-                placeholder="Description (EN)"
-                style={{ minWidth: 220 }}
-                allowClear
-              />
-            </Form.Item>
-
-            <Form.Item>
-              <Space>
-                <Button onClick={() => setAdvancedOpen(true)} disabled={!supplier}>
-                  Расширенно
-                </Button>
-                <Button type="primary" onClick={handleAdd} loading={adding} disabled={!supplier}>
-                  Добавить
-                </Button>
-              </Space>
-            </Form.Item>
-          </Form>
-        </div>
-
         <SupplierPartsTable
           supplierId={showAll ? null : supplier?.id || null}
           search={search}
@@ -601,9 +750,17 @@ export default function SupplierPartsMain() {
           highlightRowId={highlightRowId}
           onFlashRow={flashRow}
           visibleColumnKeys={currentVisibleKeys}
+          columnOrderKeys={currentOrderKeys}
+          onColumnOrderKeysChange={(next) =>
+            setColumnOrderByView((prev) => ({
+              ...(prev || {}),
+              [columnsViewKey]: Array.isArray(next) ? next : [],
+            }))
+          }
           onColumnsMeta={(meta) =>
             setColumnsMeta(meta || { options: [], defaultVisible: [], lockedKeys: [] })
           }
+          onEditRecord={openEditDrawer}
           onOpenDetail={(record) => {
             if (!record?.id) return
             const qs = new URLSearchParams()
@@ -621,6 +778,7 @@ export default function SupplierPartsMain() {
                     showAll,
                     filters,
                     columnsByView,
+                    columnOrderByView,
                   },
                 },
               }
@@ -654,12 +812,44 @@ export default function SupplierPartsMain() {
           message.success("Импорт выполнен")
         }}
       />
+      <SupplierPartUpsertDrawer
+        open={createOpen}
+        title="Создать позицию"
+        form={createForm}
+        saving={savingCreate}
+        onClose={() => setCreateOpen(false)}
+        onSubmit={() => {
+          createSubmitModeRef.current = "create_close"
+          submitCreate()
+        }}
+        onSubmitAndCreate={() => {
+          createSubmitModeRef.current = "create_next"
+          submitCreate()
+        }}
+        supplierLabel={supplier?.company || supplier?.name || "—"}
+        supplierPartNumberRules={createPartNumberRules}
+        materialOptions={materialOptions}
+        materialsLoading={materialsLoading}
+        onSearchMaterials={fetchMaterials}
+        onFocusMaterials={() => fetchMaterials("")}
+      />
 
-      <SupplierPartCreateAdvancedDrawer
-        open={advancedOpen}
-        onClose={() => setAdvancedOpen(false)}
-        value={advancedValues}
-        onChange={(next) => setAdvancedValues(next || {})}
+      <SupplierPartUpsertDrawer
+        open={editOpen}
+        title="Редактировать позицию"
+        form={editForm}
+        saving={savingEdit}
+        onClose={() => {
+          if (savingEdit) return
+          setEditOpen(false)
+          setEditingRow(null)
+        }}
+        onSubmit={submitEdit}
+        supplierPartNumberRules={editPartNumberRules}
+        materialOptions={materialOptions}
+        materialsLoading={materialsLoading}
+        onSearchMaterials={fetchMaterials}
+        onFocusMaterials={() => fetchMaterials("")}
       />
 
       <SupplierPartsFiltersDrawer

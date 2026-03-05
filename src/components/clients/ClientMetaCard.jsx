@@ -1,7 +1,9 @@
 // src/components/clients/ClientMetaCard.jsx
-import React, { useEffect, useMemo, useState } from "react"
-import { Button, Card, Input, Space, Typography, message } from "antd"
+import React, { useMemo, useState } from "react"
+import { EditOutlined } from "@ant-design/icons"
+import { Button, Card, Descriptions, Form, Space, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
+import ClientUpsertDrawer from "./ClientUpsertDrawer"
 
 const { Text } = Typography
 
@@ -10,150 +12,104 @@ const trimOrNull = (v) => {
   return s === "" ? null : s
 }
 
-const metaFromClient = (c) => ({
-  company_name: c?.company_name || "",
-  contact_person: c?.contact_person || "",
-  phone: c?.phone || "",
-  email: c?.email || "",
-  registration_number: c?.registration_number || "",
-  tax_id: c?.tax_id || "",
-  website: c?.website || "",
-  notes: c?.notes || "",
-  version: c?.version,
+const formInitialValues = (record = null) => ({
+  company_name: record?.company_name || "",
+  contact_person: record?.contact_person || "",
+  phone: record?.phone || "",
+  email: record?.email || "",
+  registration_number: record?.registration_number || "",
+  tax_id: record?.tax_id || "",
+  website: record?.website || "",
+  notes: record?.notes || "",
+})
+
+const buildPayload = (values) => ({
+  company_name: String(values.company_name || "").trim(),
+  contact_person: trimOrNull(values.contact_person),
+  phone: trimOrNull(values.phone),
+  email: trimOrNull(values.email),
+  registration_number: trimOrNull(values.registration_number),
+  tax_id: trimOrNull(values.tax_id),
+  website: trimOrNull(values.website),
+  notes: trimOrNull(values.notes),
 })
 
 export default function ClientMetaCard({ client, onSaved }) {
   const clientId = Number(client?.id)
+  const [editForm] = Form.useForm()
+  const [editOpen, setEditOpen] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
 
-  const [meta, setMeta] = useState(() => metaFromClient(client))
-  const [dirty, setDirty] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const summaryItems = useMemo(
+    () => [
+      { key: "company", label: "Компания", children: client?.company_name || "—" },
+      { key: "contact", label: "Контакт", children: client?.contact_person || "—" },
+      { key: "phone", label: "Телефон", children: client?.phone || "—" },
+      { key: "email", label: "E-mail", children: client?.email || "—" },
+      { key: "reg", label: "Регистрационный номер", children: client?.registration_number || "—" },
+      { key: "tax", label: "ИНН / Tax ID", children: client?.tax_id || "—" },
+      { key: "site", label: "Сайт", children: client?.website || "—" },
+      { key: "notes", label: "Примечание", children: client?.notes || "—" },
+    ],
+    [client]
+  )
 
-  useEffect(() => {
-    setMeta(metaFromClient(client))
-    setDirty(false)
-  }, [clientId, client])
-
-  const canSave = useMemo(() => dirty && !saving, [dirty, saving])
-
-  const setField = (key, value) => {
-    setMeta((prev) => ({ ...(prev || {}), [key]: value }))
-    setDirty(true)
+  const openEdit = () => {
+    editForm.setFieldsValue(formInitialValues(client))
+    setEditOpen(true)
   }
 
-  const reset = () => {
-    setMeta(metaFromClient(client))
-    setDirty(false)
-  }
-
-  const save = async () => {
+  const saveEdit = async () => {
     if (!clientId) return
-    const name = meta.company_name?.trim()
-    if (!name) return message.error("Название компании обязательно")
-
-    setSaving(true)
     try {
+      const values = await editForm.validateFields()
       const payload = {
-        version: meta.version,
-        company_name: name,
-        contact_person: trimOrNull(meta.contact_person),
-        phone: trimOrNull(meta.phone),
-        email: trimOrNull(meta.email),
-        registration_number: trimOrNull(meta.registration_number),
-        tax_id: trimOrNull(meta.tax_id),
-        website: trimOrNull(meta.website),
-        notes: trimOrNull(meta.notes),
+        ...buildPayload(values),
+        version: Number(client?.version),
       }
-
+      setSavingEdit(true)
       await axios.put(`/clients/${clientId}`, payload)
-      message.success("Изменения сохранены")
-      setDirty(false)
+      message.success("Клиент обновлен")
+      setEditOpen(false)
       await onSaved?.()
     } catch (e) {
+      if (e?.errorFields) return
       console.error(e)
-      if (e?.response?.status === 409) {
-        message.error("Конфликт версии. Обнови данные и попробуй ещё раз.")
-        await onSaved?.()
-        return
-      }
-      message.error(e?.response?.data?.message || "Не удалось сохранить изменения")
+      message.error(e?.response?.data?.message || "Не удалось сохранить клиента")
     } finally {
-      setSaving(false)
+      setSavingEdit(false)
     }
   }
 
   if (!clientId) return null
 
   return (
-    <Card size="small" bodyStyle={{ padding: 12 }}>
-      <Space direction="vertical" style={{ width: "100%" }} size={10}>
-        <div>
-          <Text strong>Основные поля</Text>
-        </div>
-
-        <Space style={{ width: "100%" }} size={10} wrap>
-          <div style={{ flex: 2, minWidth: 320 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Компания *</div>
-            <Input
-              value={meta.company_name}
-              onChange={(e) => setField("company_name", e.target.value)}
-              allowClear
-            />
-          </div>
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Контактное лицо</div>
-            <Input
-              value={meta.contact_person}
-              onChange={(e) => setField("contact_person", e.target.value)}
-              allowClear
-            />
-          </div>
-        </Space>
-
-        <Space style={{ width: "100%" }} size={10} wrap>
-          <div style={{ minWidth: 220 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Телефон</div>
-            <Input value={meta.phone} onChange={(e) => setField("phone", e.target.value)} allowClear />
-          </div>
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>E-mail</div>
-            <Input value={meta.email} onChange={(e) => setField("email", e.target.value)} allowClear />
-          </div>
-          <div style={{ flex: 1, minWidth: 240 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Сайт</div>
-            <Input value={meta.website} onChange={(e) => setField("website", e.target.value)} allowClear />
-          </div>
-        </Space>
-
-        <Space style={{ width: "100%" }} size={10} wrap>
-          <div style={{ minWidth: 260 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Рег. номер</div>
-            <Input
-              value={meta.registration_number}
-              onChange={(e) => setField("registration_number", e.target.value)}
-              allowClear
-            />
-          </div>
-          <div style={{ minWidth: 260 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>ИНН / Tax ID</div>
-            <Input value={meta.tax_id} onChange={(e) => setField("tax_id", e.target.value)} allowClear />
-          </div>
-        </Space>
-
-        <div>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Заметки</div>
-          <Input.TextArea value={meta.notes} onChange={(e) => setField("notes", e.target.value)} rows={3} />
-        </div>
-
-        <Space>
-          <Button type="primary" onClick={save} disabled={!canSave} loading={saving}>
-            Сохранить
+    <>
+      <Card
+        size="small"
+        bodyStyle={{ padding: 12 }}
+        extra={
+          <Button type="primary" icon={<EditOutlined />} onClick={openEdit}>
+            Редактировать клиента
           </Button>
-          <Button onClick={reset} disabled={!dirty || saving}>
-            Сбросить
-          </Button>
+        }
+      >
+        <Space direction="vertical" style={{ width: "100%" }} size={10}>
+          <Text type="secondary">
+            Основные данные клиента вынесены в единое боковое окно создания/редактирования.
+          </Text>
+          <Descriptions size="small" column={2} items={summaryItems} />
         </Space>
-      </Space>
-    </Card>
+      </Card>
+
+      <ClientUpsertDrawer
+        open={editOpen}
+        title="Редактировать клиента"
+        form={editForm}
+        saving={savingEdit}
+        onClose={() => setEditOpen(false)}
+        onSubmit={saveEdit}
+      />
+    </>
   )
 }

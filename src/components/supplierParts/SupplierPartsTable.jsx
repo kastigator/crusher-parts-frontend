@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Table, Empty, message, Tag, Tooltip } from "antd"
+import { Empty, message, Tag, Tooltip } from "antd"
 import axios from "@/api/axiosInstance"
 
 import ValueDisplay from "@/components/common/ValueDisplay"
 import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
+import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
+import { getOrderedKeys } from "@/utils/columnOrder"
 import confirmAction from "@/utils/confirmAction"
 import useTableScrollHints from "@/utils/useTableScrollHints"
 import { formatPrice } from "@/utils/priceFormat"
@@ -95,11 +97,14 @@ export default function SupplierPartsTable({
   onReload,
   showAll = false,
   onOpenDetail,
+  onEditRecord,
   highlightRowId = null,
   onFlashRow: _onFlashRow,
   visibleColumnKeys = null,
   onVisibleColumnKeysChange: _onVisibleColumnKeysChange = null,
   onColumnsMeta = null,
+  columnOrderKeys = null,
+  onColumnOrderKeysChange = null,
 }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -249,6 +254,12 @@ export default function SupplierPartsTable({
   const renderBoolTag = (v) => (
     <Tag color={v ? "green" : "default"}>{v ? "да" : "нет"}</Tag>
   )
+  const renderUomTag = (raw) => {
+    const uom = String(raw || "").toLowerCase()
+    if (uom === "kg") return <Tag>кг</Tag>
+    if (uom === "set") return <Tag>компл.</Tag>
+    return <Tag>шт</Tag>
+  }
 
   const renderPriceSource = useCallback((raw) => {
     const s = String(raw || "").trim().toUpperCase()
@@ -366,6 +377,14 @@ export default function SupplierPartsTable({
       dataIndex: "part_type",
       width: 110,
       render: (_, record) => renderOemCell(record),
+    })
+
+    cols.push({
+      key: "uom",
+      title: "Ед. изм.",
+      dataIndex: "uom",
+      width: 100,
+      render: (value) => renderUomTag(value),
     })
 
     cols.push({
@@ -500,6 +519,7 @@ export default function SupplierPartsTable({
       render: (_, row) => {
         return (
           <ActionButtons
+            onEdit={() => onEditRecord?.(row)}
             onHistory={() => setHistoryForId(row.id)}
             onDelete={() => handleDelete(row.id)}
             size="small"
@@ -509,18 +529,32 @@ export default function SupplierPartsTable({
     })
 
     return cols
-  }, [showAll, handleDelete, renderPriceSourceDetails])
+  }, [showAll, handleDelete, onEditRecord, renderPriceSourceDetails])
 
   const defaultVisible = useMemo(() => columnDefs.map((c) => c.key), [columnDefs])
+  const defaultOrder = defaultVisible
   const effectiveVisibleKeys =
     Array.isArray(visibleColumnKeys) && visibleColumnKeys.length
       ? visibleColumnKeys
       : defaultVisible
+  const effectiveOrderKeys = useMemo(
+    () => getOrderedKeys(columnOrderKeys, defaultOrder),
+    [columnOrderKeys, defaultOrder]
+  )
+
+  const orderedColumnDefs = useMemo(() => {
+    const idx = new Map(effectiveOrderKeys.map((k, i) => [k, i]))
+    return [...columnDefs].sort((a, b) => {
+      const ai = idx.has(a.key) ? idx.get(a.key) : Number.MAX_SAFE_INTEGER
+      const bi = idx.has(b.key) ? idx.get(b.key) : Number.MAX_SAFE_INTEGER
+      return ai - bi
+    })
+  }, [columnDefs, effectiveOrderKeys])
 
   const columns = useMemo(() => {
     const visible = new Set(effectiveVisibleKeys)
-    return columnDefs.filter((c) => c.lock || visible.has(c.key))
-  }, [columnDefs, effectiveVisibleKeys])
+    return orderedColumnDefs.filter((c) => c.lock || visible.has(c.key))
+  }, [orderedColumnDefs, effectiveVisibleKeys])
 
   const columnOptions = useMemo(
     () =>
@@ -581,18 +615,29 @@ export default function SupplierPartsTable({
           scrollHints.right ? " scroll-right" : ""
         }`}
       >
-        <Table
+        <DraggableColumnsTable
           rowKey="id"
           className="op-table parts-table"
           dataSource={rows}
           columns={columns}
+          nonDraggableKeys={lockedKeys}
+          onColumnOrderChange={({ activeKey, overKey }) => {
+            if (typeof onColumnOrderKeysChange !== "function") return
+            const nextFull = [...effectiveOrderKeys]
+            const from = nextFull.indexOf(activeKey)
+            const to = nextFull.indexOf(overKey)
+            if (from < 0 || to < 0 || from === to) return
+            const [item] = nextFull.splice(from, 1)
+            nextFull.splice(to, 0, item)
+            onColumnOrderKeysChange(nextFull)
+          }}
           loading={loading}
           pagination={pagination}
           size="middle"
           tableLayout="fixed"
           scroll={{ x: true }}
           onRow={(record) => ({
-            onClick: (e) => {
+            onDoubleClick: (e) => {
               if (!onOpenDetail) return
               const target = e?.target
               if (

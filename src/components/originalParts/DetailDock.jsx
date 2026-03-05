@@ -16,6 +16,7 @@ export default function DetailDock({
   modelId: _modelId,
   manufacturerName,
   modelName,
+  onOpenPart,
   onPartsChanged,          // 🔹 новый проп – обновить список деталей
 }) {
   const partId = part?.id || null
@@ -64,6 +65,7 @@ export default function DetailDock({
                 part={part}
                 manufacturerName={manufacturerName}
                 modelName={modelName}
+                onOpenPart={onOpenPart}
               />
             ),
           },

@@ -8,15 +8,20 @@ import ValueDisplay from "@/components/common/ValueDisplay"
 import confirmAction from "@/utils/confirmAction"
 import createTablePagination from "@/utils/tablePagination"
 import useTableScrollHints from "@/utils/useTableScrollHints"
+import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
+import { getOrderedKeys } from "@/utils/columnOrder"
 
 export default function ClientsTable({
   data = [],
   loading,
   onDelete,
+  onEditRecord,
   onOpenDetail,
   highlightRowId = null,
   visibleColumnKeys = null,
   onColumnsMeta = null,
+  columnOrderKeys = null,
+  onColumnOrderKeysChange = null,
 }) {
   const [logsClientId, setLogsClientId] = useState(null)
   const wrapRef = useRef(null)
@@ -117,22 +122,37 @@ export default function ClientsTable({
       render: (_, record) => (
         <ActionButtons
           size="small"
+          onEdit={() => onEditRecord?.(record)}
           onHistory={() => setLogsClientId(record.id)}
           onDelete={() => handleDelete(record)}
           confirmDelete={false}
         />
       ),
     },
-  ], [handleDelete])
+  ], [handleDelete, onEditRecord])
 
   const defaultVisible = useMemo(() => columns.map((c) => c.key), [columns])
+  const defaultOrder = defaultVisible
   const effectiveVisibleKeys =
     Array.isArray(visibleColumnKeys) && visibleColumnKeys.length ? visibleColumnKeys : defaultVisible
+  const effectiveOrderKeys = useMemo(
+    () => getOrderedKeys(columnOrderKeys, defaultOrder),
+    [columnOrderKeys, defaultOrder],
+  )
+
+  const orderedColumns = useMemo(() => {
+    const idx = new Map(effectiveOrderKeys.map((k, i) => [k, i]))
+    return [...columns].sort((a, b) => {
+      const ai = idx.has(a.key) ? idx.get(a.key) : Number.MAX_SAFE_INTEGER
+      const bi = idx.has(b.key) ? idx.get(b.key) : Number.MAX_SAFE_INTEGER
+      return ai - bi
+    })
+  }, [columns, effectiveOrderKeys])
 
   const visibleColumns = useMemo(() => {
     const visible = new Set(effectiveVisibleKeys)
-    return columns.filter((c) => c.lock || visible.has(c.key))
-  }, [columns, effectiveVisibleKeys])
+    return orderedColumns.filter((c) => c.lock || visible.has(c.key))
+  }, [orderedColumns, effectiveVisibleKeys])
 
   const columnOptions = useMemo(
     () => columns.filter((c) => c.key && !c.lock).map((c) => ({ key: c.key, label: c.title })),
@@ -158,13 +178,24 @@ export default function ClientsTable({
           scrollHints.right ? " scroll-right" : ""
         }`}
       >
-        <Table
+        <DraggableColumnsTable
           className="op-table"
           size="small"
           bordered
           rowKey="id"
           loading={loading}
           columns={visibleColumns}
+          nonDraggableKeys={lockedKeys}
+          onColumnOrderChange={({ activeKey, overKey }) => {
+            if (typeof onColumnOrderKeysChange !== "function") return
+            const nextFull = [...effectiveOrderKeys]
+            const from = nextFull.indexOf(activeKey)
+            const to = nextFull.indexOf(overKey)
+            if (from < 0 || to < 0 || from === to) return
+            const [item] = nextFull.splice(from, 1)
+            nextFull.splice(to, 0, item)
+            onColumnOrderKeysChange(nextFull)
+          }}
           dataSource={dataSource}
           tableLayout="fixed"
           pagination={pagination}
@@ -173,7 +204,7 @@ export default function ClientsTable({
             Number(record?.id) === Number(highlightRowId) ? "op-row-flash" : ""
           }
           onRow={(record) => ({
-            onClick: (e) => {
+            onDoubleClick: (e) => {
               if (!onOpenDetail) return
               const target = e?.target
               if (

@@ -19,7 +19,7 @@ export default function SuppliersPage() {
   return (
     <TabRendererPage
       tabKey="suppliers"
-      helpText="Клик по строке — открыть карточку поставщика. Редактирование выполняется в карточке."
+      helpText="Двойной клик по строке — открыть карточку поставщика. Редактирование выполняется через кнопку карандаша."
     >
       <SuppliersMain />
     </TabRendererPage>

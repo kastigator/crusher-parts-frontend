@@ -6,13 +6,12 @@ import {
   Card,
   Checkbox,
   Form,
-  Input,
   Popover,
   Segmented,
   Space,
   message,
 } from "antd"
-import { DeleteOutlined, FilterOutlined, UploadOutlined } from "@ant-design/icons"
+import { DeleteOutlined, FilterOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons"
 import { useLocation, useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 import TableToolbar from "@/components/common/TableToolbar"
@@ -21,7 +20,7 @@ import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import SuppliersTable from "./SuppliersTable"
 import SuppliersFiltersDrawer from "./SuppliersFiltersDrawer"
 import { countActiveFilters } from "./suppliersFiltersUtils"
-import SupplierCreateAdvancedDrawer from "./SupplierCreateAdvancedDrawer"
+import SupplierUpsertDrawer from "./SupplierUpsertDrawer"
 
 const SUPPLIERS_TEMPLATE_URL =
   "https://storage.googleapis.com/shared-parts-bucket/templates/suppliers_template.xlsx"
@@ -45,22 +44,14 @@ export default function SuppliersMain() {
   const [importOpen, setImportOpen] = useState(false)
   const [showDeleted, setShowDeleted] = useState(false)
 
-  const [addForm] = Form.useForm()
+  const [createForm] = Form.useForm()
+  const [editForm] = Form.useForm()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [adding, setAdding] = useState(false)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [advancedValues, setAdvancedValues] = useState({
-    vat_number: "",
-    website: "",
-    payment_terms: "",
-    preferred_currency: "",
-    default_pickup_location: "",
-    can_oem: false,
-    can_analog: true,
-    reliability_rating: null,
-    risk_level: "",
-    default_lead_time_days: null,
-    notes: "",
-  })
+  const [savingEdit, setSavingEdit] = useState(false)
+  const createSubmitModeRef = useRef("create_close")
+  const [editingRow, setEditingRow] = useState(null)
 
   const [highlightRowId, setHighlightRowId] = useState(null)
   const highlightTimerRef = useRef(null)
@@ -73,6 +64,7 @@ export default function SuppliersMain() {
   })
   const [columnsPopoverOpen, setColumnsPopoverOpen] = useState(false)
   const [columnsByView, setColumnsByView] = useState({})
+  const [columnOrderByView, setColumnOrderByView] = useState({})
   const columnsLoadStartedRef = useRef(false)
   const columnsHydratedRef = useRef(false)
   const columnsSaveTimerRef = useRef(null)
@@ -90,6 +82,9 @@ export default function SuppliersMain() {
     if (restore.search !== undefined) setSearch(restore.search || "")
     if (restore.filters !== undefined) setFilters(restore.filters || {})
     if (restore.columnsByView !== undefined) setColumnsByView(restore.columnsByView || {})
+    if (restore.columnOrderByView !== undefined) {
+      setColumnOrderByView(restore.columnOrderByView || {})
+    }
   }, [location.state])
 
   const flashRow = useCallback((id) => {
@@ -104,6 +99,7 @@ export default function SuppliersMain() {
 
   const columnsViewKey = "main"
   const currentVisibleKeys = columnsByView?.[columnsViewKey] || null
+  const currentOrderKeys = columnOrderByView?.[columnsViewKey] || null
 
   const ensureDefaultColumns = useCallback(
     (meta) => {
@@ -142,12 +138,28 @@ export default function SuppliersMain() {
     columnsLoadStartedRef.current = true
     const run = async () => {
       try {
-        const { data } = await axios.get("/user-ui-settings", {
-          params: { scope: "suppliers", key: "columns_v1" },
-        })
-        const v = data?.value_json
-        const cfg = v?.configs && typeof v.configs === "object" ? v.configs : v
-        if (cfg && typeof cfg === "object") setColumnsByView(cfg)
+        const [columnsRes, orderRes] = await Promise.all([
+          axios.get("/user-ui-settings", {
+            params: { scope: "suppliers", key: "columns_v1" },
+          }),
+          axios.get("/user-ui-settings", {
+            params: { scope: "suppliers", key: "column_order_v1" },
+          }),
+        ])
+
+        const columnsValue = columnsRes?.data?.value_json
+        const columnsCfg =
+          columnsValue?.configs && typeof columnsValue.configs === "object"
+            ? columnsValue.configs
+            : columnsValue
+        if (columnsCfg && typeof columnsCfg === "object") setColumnsByView(columnsCfg)
+
+        const orderValue = orderRes?.data?.value_json
+        const orderCfg =
+          orderValue?.configs && typeof orderValue.configs === "object"
+            ? orderValue.configs
+            : orderValue
+        if (orderCfg && typeof orderCfg === "object") setColumnOrderByView(orderCfg)
       } catch (e) {
         console.warn("Failed to load UI settings (columns)", e?.message || e)
       } finally {
@@ -163,17 +175,24 @@ export default function SuppliersMain() {
     clearTimeout(columnsSaveTimerRef.current)
     columnsSaveTimerRef.current = setTimeout(async () => {
       try {
-        await axios.put("/user-ui-settings", {
-          scope: "suppliers",
-          key: "columns_v1",
-          value_json: { version: 1, configs: columnsByView },
-        })
+        await Promise.all([
+          axios.put("/user-ui-settings", {
+            scope: "suppliers",
+            key: "columns_v1",
+            value_json: { version: 1, configs: columnsByView },
+          }),
+          axios.put("/user-ui-settings", {
+            scope: "suppliers",
+            key: "column_order_v1",
+            value_json: { version: 1, configs: columnOrderByView },
+          }),
+        ])
       } catch (e) {
         console.warn("Failed to save UI settings (columns)", e?.message || e)
       }
     }, 500)
     return () => clearTimeout(columnsSaveTimerRef.current)
-  }, [columnsByView])
+  }, [columnsByView, columnOrderByView])
 
   const fetchSuppliers = useCallback(async () => {
     try {
@@ -226,49 +245,109 @@ export default function SuppliersMain() {
     return () => clearTimeout(t)
   }, [fetchSuppliers])
 
+  const formInitialValues = useCallback(
+    (record = null) => ({
+      name: record?.name || "",
+      public_code: record?.public_code || "",
+      vat_number: record?.vat_number || "",
+      website: record?.website || "",
+      payment_terms: record?.payment_terms || "",
+      preferred_currency: record?.preferred_currency || "",
+      default_pickup_location: record?.default_pickup_location || "",
+      can_oem: !!record?.can_oem,
+      can_analog: record?.can_analog === undefined ? true : !!record?.can_analog,
+      reliability_rating:
+        record?.reliability_rating === undefined || record?.reliability_rating === null
+          ? null
+          : Number(record.reliability_rating),
+      risk_level: record?.risk_level || "",
+      default_lead_time_days:
+        record?.default_lead_time_days === undefined || record?.default_lead_time_days === null
+          ? null
+          : Number(record.default_lead_time_days),
+      notes: record?.notes || "",
+    }),
+    []
+  )
+
+  const openCreateDrawer = () => {
+    createForm.setFieldsValue(formInitialValues())
+    setCreateOpen(true)
+  }
+
+  const openEditDrawer = (row) => {
+    if (!row?.id) return
+    setEditingRow(row)
+    editForm.setFieldsValue(formInitialValues(row))
+    setEditOpen(true)
+  }
+
+  const buildPayload = (values) => ({
+    name: String(values.name || "").trim(),
+    public_code: String(values.public_code || "").trim(),
+    vat_number: trimOrNull(values.vat_number),
+    website: trimOrNull(values.website),
+    payment_terms: trimOrNull(values.payment_terms),
+    preferred_currency: trimOrNull(values.preferred_currency),
+    default_pickup_location: trimOrNull(values.default_pickup_location),
+    can_oem: values.can_oem ? 1 : 0,
+    can_analog: values.can_analog === false ? 0 : 1,
+    reliability_rating: values.reliability_rating ?? null,
+    risk_level: trimOrNull(values.risk_level),
+    default_lead_time_days: values.default_lead_time_days ?? null,
+    notes: trimOrNull(values.notes),
+  })
+
   const handleCreate = async () => {
     try {
-      const v = await addForm.validateFields()
-      const name = v.name?.trim()
-      const publicCode = v.public_code?.trim()
+      const values = await createForm.validateFields()
+      const name = values.name?.trim()
+      const publicCode = values.public_code?.trim()
       if (!name) return message.error("Название поставщика обязательно")
       if (!publicCode) return message.error("Код поставщика обязателен")
 
       setAdding(true)
-      const payload = {
-        name,
-        public_code: publicCode,
-        vat_number: trimOrNull(advancedValues.vat_number),
-        website: trimOrNull(advancedValues.website),
-        payment_terms: trimOrNull(advancedValues.payment_terms),
-        preferred_currency: trimOrNull(advancedValues.preferred_currency),
-        default_pickup_location: trimOrNull(advancedValues.default_pickup_location),
-        can_oem: advancedValues.can_oem ? 1 : 0,
-        can_analog: advancedValues.can_analog === false ? 0 : 1,
-        reliability_rating: advancedValues.reliability_rating ?? null,
-        risk_level: trimOrNull(advancedValues.risk_level),
-        default_lead_time_days: advancedValues.default_lead_time_days ?? null,
-        notes: trimOrNull(advancedValues.notes),
-      }
+      const payload = buildPayload(values)
 
       const { data: created } = await axios.post("/suppliers", payload)
       message.success("Поставщик создан")
       flashRow(created.id)
-      addForm.setFieldsValue({ name: "", public_code: "" })
-      // Reset only the "rare" fields; keep common prefs sticky
-      setAdvancedValues((prev) => ({
-        ...(prev || {}),
-        vat_number: "",
-        website: "",
-        notes: "",
-      }))
       await fetchSuppliers()
+      if (createSubmitModeRef.current === "create_next") {
+        createForm.setFieldsValue(formInitialValues())
+      } else {
+        setCreateOpen(false)
+      }
     } catch (e) {
       if (e?.errorFields) return
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось создать поставщика")
     } finally {
       setAdding(false)
+    }
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingRow?.id) return
+    try {
+      const values = await editForm.validateFields()
+      const payload = {
+        ...buildPayload(values),
+        version: Number(editingRow.version),
+      }
+      setSavingEdit(true)
+      const { data: updated } = await axios.put(`/suppliers/${editingRow.id}`, payload)
+      message.success("Поставщик обновлен")
+      flashRow(updated.id || editingRow.id)
+      setEditOpen(false)
+      setEditingRow(null)
+      await fetchSuppliers()
+    } catch (e) {
+      if (e?.errorFields) return
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось сохранить поставщика")
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -294,6 +373,9 @@ export default function SuppliersMain() {
         {/* Row A: service actions (consistent placement across catalogs) */}
         <div className="table-section" style={{ display: "flex", justifyContent: "flex-end" }}>
           <Space size={12} wrap>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
+              Создать поставщика
+            </Button>
             <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>
               Импорт
             </Button>
@@ -426,51 +508,30 @@ export default function SuppliersMain() {
           }
         />
 
-        <div className="table-section">
-          <Form form={addForm} layout="inline" style={{ flexWrap: "wrap", rowGap: 8, columnGap: 12 }}>
-            <Form.Item
-              name="name"
-              label="Название"
-              rules={[{ required: true, message: "Введите название" }]}
-            >
-              <Input placeholder="Название поставщика" style={{ minWidth: 260 }} allowClear />
-            </Form.Item>
-
-            <Form.Item
-              name="public_code"
-              label="Код"
-              rules={[{ required: true, message: "Введите код" }]}
-            >
-              <Input placeholder="S001" style={{ width: 140 }} allowClear />
-            </Form.Item>
-
-            <Form.Item>
-              <Space>
-                <Button onClick={() => setAdvancedOpen(true)}>Расширенно</Button>
-                <Button type="primary" onClick={handleCreate} loading={adding}>
-                  Добавить
-                </Button>
-              </Space>
-            </Form.Item>
-          </Form>
-        </div>
-
         <div className="parts-table-wrap table-section">
           <SuppliersTable
             data={rows}
             loading={loading}
             highlightRowId={highlightRowId}
             visibleColumnKeys={currentVisibleKeys}
+            columnOrderKeys={currentOrderKeys}
             onColumnsMeta={(meta) =>
               setColumnsMeta(meta || { options: [], defaultVisible: [], lockedKeys: [] })
             }
+            onColumnOrderKeysChange={(next) =>
+              setColumnOrderByView((prev) => ({
+                ...(prev || {}),
+                [columnsViewKey]: Array.isArray(next) ? next : [],
+              }))
+            }
+            onEditRecord={openEditDrawer}
             onDelete={handleDelete}
             onOpenDetail={(record) => {
               if (!record?.id) return
               navigate(`/suppliers/${record.id}`, {
                 state: {
                   from: `${location.pathname}${location.search || ""}`,
-                  listState: { search, filters, columnsByView },
+                  listState: { search, filters, columnsByView, columnOrderByView },
                 },
               })
             }}
@@ -490,11 +551,32 @@ export default function SuppliersMain() {
         <FullHistoryDialog onlyDeleted entityType="suppliers" onClose={() => setShowDeleted(false)} />
       )}
 
-      <SupplierCreateAdvancedDrawer
-        open={advancedOpen}
-        onClose={() => setAdvancedOpen(false)}
-        value={advancedValues}
-        onChange={(next) => setAdvancedValues(next || {})}
+      <SupplierUpsertDrawer
+        open={createOpen}
+        title="Создать поставщика"
+        form={createForm}
+        saving={adding}
+        onClose={() => setCreateOpen(false)}
+        onSubmit={() => {
+          createSubmitModeRef.current = "create_close"
+          handleCreate()
+        }}
+        onSubmitAndCreate={() => {
+          createSubmitModeRef.current = "create_next"
+          handleCreate()
+        }}
+      />
+
+      <SupplierUpsertDrawer
+        open={editOpen}
+        title="Редактировать поставщика"
+        form={editForm}
+        saving={savingEdit}
+        onClose={() => {
+          setEditOpen(false)
+          setEditingRow(null)
+        }}
+        onSubmit={handleSaveEdit}
       />
 
       <SuppliersFiltersDrawer

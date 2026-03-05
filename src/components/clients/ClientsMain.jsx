@@ -1,7 +1,7 @@
 // src/components/clients/ClientsMain.jsx
 import React, { useCallback, useEffect, useRef, useState } from "react"
-import { Badge, Button, Card, Checkbox, Form, Input, Popover, Space, message } from "antd"
-import { DeleteOutlined, FilterOutlined } from "@ant-design/icons"
+import { Badge, Button, Card, Checkbox, Form, Popover, Space, message } from "antd"
+import { DeleteOutlined, FilterOutlined, PlusOutlined } from "@ant-design/icons"
 import { useLocation, useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 
@@ -10,6 +10,7 @@ import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import ClientsTable from "./ClientsTable"
 import ClientsFiltersDrawer from "./ClientsFiltersDrawer"
 import { countActiveFilters } from "./clientsFiltersUtils"
+import ClientUpsertDrawer from "./ClientUpsertDrawer"
 
 const trimOrNull = (v) => {
   const s = (v ?? "").toString().trim()
@@ -28,8 +29,14 @@ export default function ClientsMain() {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [showDeleted, setShowDeleted] = useState(false)
 
-  const [addForm] = Form.useForm()
+  const [createForm] = Form.useForm()
+  const [editForm] = Form.useForm()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const createSubmitModeRef = useRef("create_close")
+  const [editingRow, setEditingRow] = useState(null)
 
   const [highlightRowId, setHighlightRowId] = useState(null)
   const highlightTimerRef = useRef(null)
@@ -41,6 +48,7 @@ export default function ClientsMain() {
   })
   const [columnsPopoverOpen, setColumnsPopoverOpen] = useState(false)
   const [columnsByView, setColumnsByView] = useState({})
+  const [columnOrderByView, setColumnOrderByView] = useState({})
   const columnsLoadStartedRef = useRef(false)
   const columnsHydratedRef = useRef(false)
   const columnsSaveTimerRef = useRef(null)
@@ -55,6 +63,9 @@ export default function ClientsMain() {
     if (restore.search !== undefined) setSearch(restore.search || "")
     if (restore.filters !== undefined) setFilters(restore.filters || {})
     if (restore.columnsByView !== undefined) setColumnsByView(restore.columnsByView || {})
+    if (restore.columnOrderByView !== undefined) {
+      setColumnOrderByView(restore.columnOrderByView || {})
+    }
   }, [location.state])
 
   const flashRow = useCallback((id) => {
@@ -69,6 +80,7 @@ export default function ClientsMain() {
 
   const columnsViewKey = "main"
   const currentVisibleKeys = columnsByView?.[columnsViewKey] || null
+  const currentOrderKeys = columnOrderByView?.[columnsViewKey] || null
 
   const ensureDefaultColumns = useCallback(
     (meta) => {
@@ -95,12 +107,28 @@ export default function ClientsMain() {
     columnsLoadStartedRef.current = true
     const run = async () => {
       try {
-        const { data } = await axios.get("/user-ui-settings", {
-          params: { scope: "clients", key: "columns_v1" },
-        })
-        const v = data?.value_json
-        const cfg = v?.configs && typeof v.configs === "object" ? v.configs : v
-        if (cfg && typeof cfg === "object") setColumnsByView(cfg)
+        const [columnsRes, orderRes] = await Promise.all([
+          axios.get("/user-ui-settings", {
+            params: { scope: "clients", key: "columns_v1" },
+          }),
+          axios.get("/user-ui-settings", {
+            params: { scope: "clients", key: "column_order_v1" },
+          }),
+        ])
+
+        const columnsValue = columnsRes?.data?.value_json
+        const columnsCfg =
+          columnsValue?.configs && typeof columnsValue.configs === "object"
+            ? columnsValue.configs
+            : columnsValue
+        if (columnsCfg && typeof columnsCfg === "object") setColumnsByView(columnsCfg)
+
+        const orderValue = orderRes?.data?.value_json
+        const orderCfg =
+          orderValue?.configs && typeof orderValue.configs === "object"
+            ? orderValue.configs
+            : orderValue
+        if (orderCfg && typeof orderCfg === "object") setColumnOrderByView(orderCfg)
       } catch (e) {
         console.warn("Failed to load UI settings (columns)", e?.message || e)
       } finally {
@@ -116,17 +144,24 @@ export default function ClientsMain() {
     clearTimeout(columnsSaveTimerRef.current)
     columnsSaveTimerRef.current = setTimeout(async () => {
       try {
-        await axios.put("/user-ui-settings", {
-          scope: "clients",
-          key: "columns_v1",
-          value_json: { version: 1, configs: columnsByView },
-        })
+        await Promise.all([
+          axios.put("/user-ui-settings", {
+            scope: "clients",
+            key: "columns_v1",
+            value_json: { version: 1, configs: columnsByView },
+          }),
+          axios.put("/user-ui-settings", {
+            scope: "clients",
+            key: "column_order_v1",
+            value_json: { version: 1, configs: columnOrderByView },
+          }),
+        ])
       } catch (e) {
         console.warn("Failed to save UI settings (columns)", e?.message || e)
       }
     }, 500)
     return () => clearTimeout(columnsSaveTimerRef.current)
-  }, [columnsByView])
+  }, [columnsByView, columnOrderByView])
 
   const fetchClients = useCallback(async () => {
     setLoading(true)
@@ -154,35 +189,91 @@ export default function ClientsMain() {
     return () => clearTimeout(t)
   }, [fetchClients])
 
+  const formInitialValues = useCallback(
+    (record = null) => ({
+      company_name: record?.company_name || "",
+      contact_person: record?.contact_person || "",
+      phone: record?.phone || "",
+      email: record?.email || "",
+      registration_number: record?.registration_number || "",
+      tax_id: record?.tax_id || "",
+      website: record?.website || "",
+      notes: record?.notes || "",
+    }),
+    []
+  )
+
+  const openCreateDrawer = () => {
+    createForm.setFieldsValue(formInitialValues())
+    setCreateOpen(true)
+  }
+
+  const openEditDrawer = (row) => {
+    if (!row?.id) return
+    setEditingRow(row)
+    editForm.setFieldsValue(formInitialValues(row))
+    setEditOpen(true)
+  }
+
+  const buildPayload = (values) => ({
+    company_name: String(values.company_name || "").trim(),
+    contact_person: trimOrNull(values.contact_person),
+    phone: trimOrNull(values.phone),
+    email: trimOrNull(values.email),
+    registration_number: trimOrNull(values.registration_number),
+    tax_id: trimOrNull(values.tax_id),
+    website: trimOrNull(values.website),
+    notes: trimOrNull(values.notes),
+  })
+
   const handleCreate = async () => {
     try {
-      const v = await addForm.validateFields()
-      const name = v.company_name?.trim()
+      const values = await createForm.validateFields()
+      const name = values.company_name?.trim()
       if (!name) return message.error("Название компании обязательно")
 
       setAdding(true)
-      const payload = {
-        company_name: name,
-        contact_person: trimOrNull(v.contact_person),
-        phone: trimOrNull(v.phone),
-        email: trimOrNull(v.email),
-        registration_number: trimOrNull(v.registration_number),
-        tax_id: trimOrNull(v.tax_id),
-        website: trimOrNull(v.website),
-        notes: trimOrNull(v.notes),
-      }
+      const payload = buildPayload(values)
 
       const { data: created } = await axios.post("/clients", payload)
       message.success("Клиент создан")
       flashRow(created?.id)
-      addForm.resetFields()
       await fetchClients()
+      if (createSubmitModeRef.current === "create_next") {
+        createForm.setFieldsValue(formInitialValues())
+      } else {
+        setCreateOpen(false)
+      }
     } catch (e) {
       if (e?.errorFields) return
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось создать клиента")
     } finally {
       setAdding(false)
+    }
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingRow?.id) return
+    try {
+      const values = await editForm.validateFields()
+      const payload = {
+        ...buildPayload(values),
+        version: Number(editingRow.version),
+      }
+      setSavingEdit(true)
+      const { data: updated } = await axios.put(`/clients/${editingRow.id}`, payload)
+      message.success("Клиент обновлен")
+      flashRow(updated?.id || editingRow.id)
+      setEditOpen(false)
+      setEditingRow(null)
+      await fetchClients()
+    } catch (e) {
+      if (e?.errorFields) return
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось сохранить клиента")
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -210,6 +301,9 @@ export default function ClientsMain() {
         {/* Row A: service actions */}
         <div className="table-section" style={{ display: "flex", justifyContent: "flex-end" }}>
           <Space size={12} wrap>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
+              Создать клиента
+            </Button>
             <Button danger icon={<DeleteOutlined />} onClick={() => setShowDeleted(true)}>
               Удалённые
             </Button>
@@ -290,57 +384,30 @@ export default function ClientsMain() {
           }
         />
 
-        {/* Row C: create inline */}
-        <div className="table-section">
-          <Form
-            form={addForm}
-            layout="inline"
-            style={{ flexWrap: "wrap", rowGap: 8, columnGap: 12 }}
-          >
-            <Form.Item
-              name="company_name"
-              label="Компания"
-              rules={[{ required: true, message: "Введите название" }]}
-            >
-              <Input placeholder="Название" style={{ minWidth: 260 }} allowClear />
-            </Form.Item>
-
-            <Form.Item name="contact_person" label="Контакт">
-              <Input placeholder="ФИО" style={{ minWidth: 220 }} allowClear />
-            </Form.Item>
-
-            <Form.Item name="phone" label="Телефон">
-              <Input placeholder="+7…" style={{ width: 180 }} allowClear />
-            </Form.Item>
-
-            <Form.Item name="email" label="E-mail">
-              <Input placeholder="example@mail.com" style={{ minWidth: 240 }} allowClear />
-            </Form.Item>
-
-            <Form.Item>
-              <Button type="primary" onClick={handleCreate} loading={adding}>
-                Добавить
-              </Button>
-            </Form.Item>
-          </Form>
-        </div>
-
         <div className="parts-table-wrap table-section">
           <ClientsTable
             data={rows}
             loading={loading}
             highlightRowId={highlightRowId}
             visibleColumnKeys={currentVisibleKeys}
+            columnOrderKeys={currentOrderKeys}
             onColumnsMeta={(meta) =>
               setColumnsMeta(meta || { options: [], defaultVisible: [], lockedKeys: [] })
             }
+            onColumnOrderKeysChange={(next) =>
+              setColumnOrderByView((prev) => ({
+                ...(prev || {}),
+                [columnsViewKey]: Array.isArray(next) ? next : [],
+              }))
+            }
+            onEditRecord={openEditDrawer}
             onDelete={handleDelete}
             onOpenDetail={(record) => {
               if (!record?.id) return
               navigate(`/clients/${record.id}`, {
                 state: {
                   from: `${location.pathname}${location.search || ""}`,
-                  listState: { search, filters, columnsByView },
+                  listState: { search, filters, columnsByView, columnOrderByView },
                 },
               })
             }}
@@ -355,6 +422,34 @@ export default function ClientsMain() {
           onClose={() => setShowDeleted(false)}
         />
       )}
+
+      <ClientUpsertDrawer
+        open={createOpen}
+        title="Создать клиента"
+        form={createForm}
+        saving={adding}
+        onClose={() => setCreateOpen(false)}
+        onSubmit={() => {
+          createSubmitModeRef.current = "create_close"
+          handleCreate()
+        }}
+        onSubmitAndCreate={() => {
+          createSubmitModeRef.current = "create_next"
+          handleCreate()
+        }}
+      />
+
+      <ClientUpsertDrawer
+        open={editOpen}
+        title="Редактировать клиента"
+        form={editForm}
+        saving={savingEdit}
+        onClose={() => {
+          setEditOpen(false)
+          setEditingRow(null)
+        }}
+        onSubmit={handleSaveEdit}
+      />
 
       <ClientsFiltersDrawer
         open={filtersOpen}
