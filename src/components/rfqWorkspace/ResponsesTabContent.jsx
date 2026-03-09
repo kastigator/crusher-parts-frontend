@@ -20,7 +20,10 @@ import {
 import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
+import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
 import IncotermsSelect from "@/components/inputs/IncotermsSelect"
+import { formatIncotermsWithPlace } from "./rfqWorkspaceUtils"
+import { formatQtyWithUomLabel } from "./rfqDisplayUtils"
 import {
   SUPPLIER_DEFAULT_CURRENCY_OPTIONS,
   SUPPLIER_DEFAULT_PAYMENT_TERMS_OPTIONS,
@@ -249,10 +252,7 @@ const getResponseLineTotal = (row) => {
 }
 
 const formatQtyWithUom = (qty, uom) => {
-  if (qty == null) return "—"
-  const qtyText = Number.isInteger(qty) ? String(qty) : String(qty)
-  const normalizedUom = String(uom || "").trim()
-  return normalizedUom ? `${qtyText} ${normalizedUom}` : qtyText
+  return formatQtyWithUomLabel(qty, uom)
 }
 
 const formatRequestedQtyValue = (row) => {
@@ -934,6 +934,7 @@ export default function ResponsesTabContent({
       ),
       offered_qty: defaultOfferedQty,
       incoterms: preset?.latest_incoterms || undefined,
+      incoterms_place: preset?.latest_incoterms_place || undefined,
       new_supplier_part_type: "ANALOG",
       new_revision: presetStatus === "RESPONDED",
     })
@@ -1116,6 +1117,7 @@ export default function ResponsesTabContent({
       validity_days: row.latest_validity_days,
       payment_terms: row.latest_payment_terms,
       incoterms: row.latest_incoterms,
+      incoterms_place: row.latest_incoterms_place,
       note: row.latest_note,
     }
   }
@@ -1147,6 +1149,7 @@ export default function ResponsesTabContent({
         validity_days: values.validity_days ?? null,
         payment_terms: values.payment_terms || null,
         incoterms: values.incoterms || null,
+        incoterms_place: values.incoterms_place || null,
         note: values.note || null,
         change_reason: values.change_reason || null,
         new_revision: values.new_revision === true,
@@ -1215,6 +1218,7 @@ export default function ResponsesTabContent({
       validity_days: row.validity_days,
       payment_terms: row.payment_terms,
       incoterms: row.incoterms,
+      incoterms_place: row.incoterms_place,
       note: row.note,
       reason: "",
       new_revision: true,
@@ -1248,6 +1252,7 @@ export default function ResponsesTabContent({
         validity_days: values.validity_days ?? null,
         payment_terms: values.payment_terms || null,
         incoterms: values.incoterms || null,
+        incoterms_place: values.incoterms_place || null,
         note: values.note || null,
         reason: values.reason,
         new_revision: values.new_revision !== false,
@@ -1396,9 +1401,8 @@ export default function ResponsesTabContent({
     {
       key: "incoterms",
       title: "Инкотермс",
-      dataIndex: "latest_incoterms",
-      width: 110,
-      render: (value) => value || "—",
+      width: 180,
+      render: (_, r) => formatIncotermsWithPlace(r.latest_incoterms, r.latest_incoterms_place),
     },
     { key: "supplier_part_number", title: "PN поставщика", dataIndex: "latest_supplier_part_number", width: 150 },
     {
@@ -1562,9 +1566,8 @@ export default function ResponsesTabContent({
     {
       key: "incoterms",
       title: "Инкотермс",
-      dataIndex: "latest_incoterms",
-      width: 110,
-      render: (value) => value || "—",
+      width: 180,
+      render: (_, r) => formatIncotermsWithPlace(r.latest_incoterms, r.latest_incoterms_place),
     },
     { key: "supplier_part_number", title: "PN поставщика", dataIndex: "latest_supplier_part_number", width: 150 },
     {
@@ -1657,6 +1660,14 @@ export default function ResponsesTabContent({
     requiredOriginalColumns
   )
 
+  const handleSupplierColumnOrderChange = ({ orderedVisibleKeys }) => {
+    setVisibleSupplierColumnKeys(orderedVisibleKeys)
+  }
+
+  const handleOriginalColumnOrderChange = ({ orderedVisibleKeys }) => {
+    setVisibleOriginalColumnKeys(orderedVisibleKeys)
+  }
+
   return (
     <Space direction="vertical" style={{ width: "100%" }}>
       <Alert
@@ -1725,6 +1736,9 @@ export default function ResponsesTabContent({
               style={{ width: 320, maxHeight: 420, overflowY: "auto" }}
             >
               <Text strong>Видимые колонки</Text>
+              <Text type="secondary">
+                Скрывайте лишние поля чекбоксами и перетаскивайте заголовки таблицы мышью, чтобы менять порядок колонок.
+              </Text>
               <Checkbox.Group
                 options={viewMode === "supplier" ? supplierColumnOptions : originalColumnOptions}
                 value={viewMode === "supplier" ? visibleSupplierColumnKeys : visibleOriginalColumnKeys}
@@ -1806,7 +1820,8 @@ export default function ResponsesTabContent({
         </Button>
       </Space>
 
-      <Table
+      <DraggableColumnsTable
+        className="op-table"
         rowKey={(row) =>
           `${row.rfq_supplier_id}-${row.rfq_item_id}-${
             row.selected_selection_key || row.selection_key || "no-selection"
@@ -1818,6 +1833,10 @@ export default function ResponsesTabContent({
         tableLayout="auto"
         scroll={{ x: "max-content" }}
         columns={viewMode === "supplier" ? visibleCommonColumns : visibleOriginalViewColumns}
+        nonDraggableKeys={viewMode === "supplier" ? requiredSupplierColumns : requiredOriginalColumns}
+        onColumnOrderChange={
+          viewMode === "supplier" ? handleSupplierColumnOrderChange : handleOriginalColumnOrderChange
+        }
       />
 
       <Card size="small" title="Таймлайн по строкам (ревизии ответов)">
@@ -2014,6 +2033,9 @@ export default function ResponsesTabContent({
           </Form.Item>
           <Form.Item name="incoterms" label="Incoterms">
             <IncotermsSelect style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="incoterms_place" label="Пункт Incoterms">
+            <Input placeholder="Например: Shanghai Port" />
           </Form.Item>
           <Form.Item name="note" label="Комментарий">
             <Input.TextArea rows={2} />
@@ -2226,6 +2248,9 @@ export default function ResponsesTabContent({
           </Form.Item>
           <Form.Item name="incoterms" label="Incoterms">
             <IncotermsSelect style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="incoterms_place" label="Пункт Incoterms">
+            <Input placeholder="Например: Shanghai Port" />
           </Form.Item>
           <Form.Item name="note" label="Комментарий">
             <Input.TextArea rows={2} />

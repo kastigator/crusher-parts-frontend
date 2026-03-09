@@ -1,17 +1,29 @@
-import React, { useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import {
   Button,
   Card,
+  Drawer,
   Empty,
+  Form,
   message,
+  Modal,
   Select,
   Space,
   Table,
   Tag,
+  Input,
+  InputNumber,
   Tooltip,
   Typography,
 } from "antd"
 import axios from "@/api/axiosInstance"
+import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
+import {
+  COVERAGE_KIND_LABELS,
+  COVERAGE_LINE_ROLE_LABELS,
+  formatQtyWithUomLabel,
+  formatUomLabel,
+} from "./rfqDisplayUtils"
 
 const { Text } = Typography
 
@@ -43,6 +55,45 @@ const PRICED_STATUSES = new Set(["Q+P", "Q+OEM"])
 const safeNum = (v, fallback = 0) => {
   const n = Number(v)
   return Number.isFinite(n) ? n : fallback
+}
+
+const COVERAGE_HELP_SECTIONS = [
+  {
+    title: "Зачем нужна вкладка",
+    body:
+      "Покрытие показывает, как каждая строка RFQ может быть исполнена: узлом целиком, по составу BOM или смешанно от нескольких поставщиков. Здесь вы не выбираете победителя по всему заказу, а собираете допустимые варианты по каждой строке.",
+  },
+  {
+    title: "Как читать матрицу",
+    body:
+      "Строки матрицы — это элементы покрытия. Для сборки это может быть либо узел целиком, либо обязательные компоненты состава. Ячейка поставщика показывает, закрывает ли он этот элемент и есть ли цена.",
+  },
+  {
+    title: "Что делает «Сохранить покрытие RFQ»",
+    body:
+      "Кнопка сохраняет библиотеку вариантов исполнения по строкам RFQ. Например, для одной строки могут существовать вариант «Поставщик A — узел целиком» и вариант «Поставщик B — по составу». Эти варианты потом используются на вкладке Сценарии.",
+  },
+  {
+    title: "Что такое «Комбинации по позиции»",
+    body:
+      "Этот режим комбинирует поставщиков только внутри одной выбранной строки RFQ. Например, две детали сборки от одного поставщика и две от другого. Комбинации между разными строками всего заказа делаются уже в Сценариях.",
+  },
+  {
+    title: "Когда нужен ручной вариант",
+    body:
+      "Ручной вариант нужен, когда автоматическая логика не описывает ваш кейс: временное решение, ручная разбивка по ролям, особые договорённости или ещё неформализованный ответ поставщика.",
+  },
+  {
+    title: "Когда переходить в Сценарии",
+    body:
+      "Когда на этой вкладке вы видите корректные варианты исполнения по строкам и сохранили покрытие RFQ. В Сценариях вы уже собираете полный план исполнения всего заказа из этих вариантов.",
+  },
+]
+
+const STRATEGY_MODE_LABELS = {
+  SINGLE: "Одна позиция",
+  BOM: "По составу",
+  MIXED: "Гибко",
 }
 
 const uniqBy = (arr, keyFn) => {
@@ -149,34 +200,54 @@ const flattenBomNodes = (nodes, collector = [], pathPrefix = "") => {
   return collector
 }
 
-const buildCoverageElementsForItem = (item, workspaceRowsForItem) => {
-  const enabledOptions = Array.isArray(item?.options)
-    ? item.options.filter((opt) => opt?.enabled)
+const getCoverageOptionState = (item, workspaceRowsForItem) => {
+  const availableOptions = Array.isArray(item?.options)
+    ? item.options.filter((opt) => opt?.available)
     : []
+  const observedLineTypes = new Set(
+    (workspaceRowsForItem || [])
+      .map((row) => String(row?.selected_line_type || "").toUpperCase())
+      .filter(Boolean)
+  )
+
+  const wholeOption = availableOptions.find((opt) => String(opt?.type || "").toUpperCase() === "WHOLE") || null
+  const bomOption = availableOptions.find((opt) => String(opt?.type || "").toUpperCase() === "BOM") || null
+  const kitOption = availableOptions.find((opt) => String(opt?.type || "").toUpperCase() === "KIT") || null
+
+  return {
+    wholeOption,
+    bomOption,
+    kitOption,
+    allowWhole: !!wholeOption || observedLineTypes.has("DEMAND"),
+    allowBom: !!bomOption || observedLineTypes.has("BOM_COMPONENT"),
+    allowKit: !!kitOption || observedLineTypes.has("KIT_ROLE"),
+  }
+}
+
+const buildCoverageElementsForItem = (item, workspaceRowsForItem) => {
+  const { allowWhole, allowBom } = getCoverageOptionState(item, workspaceRowsForItem)
 
   const elements = []
   const bomElements = []
 
-  enabledOptions.forEach((opt) => {
-    const type = String(opt?.type || "").toUpperCase()
-    if (type === "WHOLE") {
-      elements.push({
-        key: `WHOLE:${item.rfq_item_id}`,
-        path_group: "WHOLE",
-        line_type: "DEMAND",
-        label: item.original_cat_number || item.client_part_number || "Позиция клиента",
-        description: "Узел целиком",
-        original_part_id: Number(item.original_part_id || 0) || null,
-        bundle_item_id: null,
-        required_qty: item.requested_qty ?? null,
-        uom: item.uom || null,
-        is_oem_required: Number(item.oem_only || 0) === 1,
-      })
-    }
-    if (type === "BOM") {
-      flattenBomNodes(opt.children || [], bomElements)
-    }
-  })
+  if (allowWhole) {
+    elements.push({
+      key: `WHOLE:${item.rfq_item_id}`,
+      path_group: "WHOLE",
+      line_type: "DEMAND",
+      label: item.original_cat_number || item.client_part_number || "Позиция клиента",
+      description: "Узел целиком",
+      original_part_id: Number(item.original_part_id || 0) || null,
+      bundle_item_id: null,
+      required_qty: item.requested_qty ?? null,
+      uom: item.uom || null,
+      is_oem_required: Number(item.oem_only || 0) === 1,
+    })
+  }
+  if (allowBom) {
+    const bomOption = (item?.options || []).find((opt) => String(opt?.type || "").toUpperCase() === "BOM")
+    flattenBomNodes(bomOption?.children || [], bomElements)
+  }
 
   const kitRows = (workspaceRowsForItem || []).filter(
     (r) => String(r?.selected_line_type || "").toUpperCase() === "KIT_ROLE"
@@ -334,11 +405,7 @@ const dedupeCoverageVariants = (variants) => {
 }
 
 const buildCoverageSlotsForItem = (item, workspaceRowsForItem) => {
-  const enabledOptions = Array.isArray(item?.options)
-    ? item.options.filter((opt) => opt?.enabled)
-    : []
-  const bomOption = enabledOptions.find((opt) => String(opt?.type || "").toUpperCase() === "BOM")
-  const hasWhole = enabledOptions.some((opt) => String(opt?.type || "").toUpperCase() === "WHOLE")
+  const { bomOption, allowWhole, allowBom } = getCoverageOptionState(item, workspaceRowsForItem)
   const kitRows = (workspaceRowsForItem || []).filter(
     (r) => String(r?.selected_line_type || "").toUpperCase() === "KIT_ROLE"
   )
@@ -455,7 +522,7 @@ const buildCoverageSlotsForItem = (item, workspaceRowsForItem) => {
     return dedupeCoverageVariants(variants)
   }
 
-  const structureSlots = Array.isArray(bomOption?.children)
+  const structureSlots = allowBom && Array.isArray(bomOption?.children)
     ? bomOption.children.map((node, idx) => ({
         key: `SLOT:${Number(node?.original_part_id || 0) || idx + 1}`,
         label: node?.cat_number || `Слот ${idx + 1}`,
@@ -469,7 +536,7 @@ const buildCoverageSlotsForItem = (item, workspaceRowsForItem) => {
 
   const validStructureSlots = structureSlots.filter((slot) => Array.isArray(slot.variants) && slot.variants.length)
 
-  const wholeSlot = hasWhole
+  const wholeSlot = allowWhole
     ? {
         key: `WHOLE_SLOT:${item?.rfq_item_id}`,
         label: item?.original_cat_number || item?.client_part_number || "Позиция клиента",
@@ -517,6 +584,37 @@ const computeComboScore = ({ structureCoveragePct, pricedCoveragePct, oemOk, sup
 
 const comboKey = (ids) => ids.slice().sort((a, b) => a - b).join("+")
 
+const aggregateSlotEvaluations = (slotEvaluations = []) => {
+  const totals = slotEvaluations.reduce(
+    (acc, evaluation) => {
+      acc.atomCount += safeNum(evaluation?.bestVariant?.atomCount, 0)
+      acc.closedCount += safeNum(evaluation?.bestVariant?.closedCount, 0)
+      acc.pricedCount += safeNum(evaluation?.bestVariant?.pricedCount, 0)
+      return acc
+    },
+    { atomCount: 0, closedCount: 0, pricedCount: 0 }
+  )
+
+  return {
+    atomCount: totals.atomCount,
+    closedCount: totals.closedCount,
+    pricedCount: totals.pricedCount,
+    progressPct: totals.atomCount ? Math.round((totals.closedCount / totals.atomCount) * 100) : 0,
+    pricedProgressPct: totals.atomCount ? Math.round((totals.pricedCount / totals.atomCount) * 100) : 0,
+  }
+}
+
+const deriveCoverageMetrics = ({ slotEvaluations = [], wholeEvaluation = null } = {}) => {
+  const aggregated = aggregateSlotEvaluations(slotEvaluations)
+  return {
+    atomCount: aggregated.atomCount,
+    closedCount: aggregated.closedCount,
+    pricedCount: aggregated.pricedCount,
+    structureCoveragePct: wholeEvaluation?.closed ? 100 : aggregated.progressPct,
+    pricedCoveragePct: wholeEvaluation?.priced ? 100 : aggregated.pricedProgressPct,
+  }
+}
+
 export default function CoverageTabContent({
   rfqId,
   structure,
@@ -530,7 +628,15 @@ export default function CoverageTabContent({
   const [showOnlyGaps, setShowOnlyGaps] = useState(false)
   const [selectedCell, setSelectedCell] = useState(null)
   const [comboRows, setComboRows] = useState([])
-  const [importingToEconomics, setImportingToEconomics] = useState(false)
+  const [savingCoverage, setSavingCoverage] = useState(false)
+  const [manualModalOpen, setManualModalOpen] = useState(false)
+  const [manualSaving, setManualSaving] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [manualForm] = Form.useForm()
+  const [savingComboKey, setSavingComboKey] = useState(null)
+  const [matrixColumnKeys, setMatrixColumnKeys] = useState([])
+  const [supplierSummaryColumnKeys, setSupplierSummaryColumnKeys] = useState([])
+  const [comboColumnKeys, setComboColumnKeys] = useState([])
 
   const structureItems = useMemo(
     () => (Array.isArray(structure?.items) ? structure.items : []),
@@ -602,6 +708,7 @@ export default function CoverageTabContent({
     if (!structureItems.length) return null
     const allRows = []
     const rowsBySupplierElement = new Map()
+    const supplierItemTotals = new Map()
 
     structureItems.forEach((item) => {
       const itemId = Number(item?.rfq_item_id || 0)
@@ -658,6 +765,99 @@ export default function CoverageTabContent({
           supplierCells,
         })
       })
+
+      const slotPack = buildCoverageSlotsForItem(item, workspaceRowsForCurrentItem)
+      const requiredSlots = slotPack.structureSlots.length
+        ? slotPack.structureSlots
+        : slotPack.wholeSlot
+          ? [slotPack.wholeSlot]
+          : []
+
+      const evaluateVariantForSupplier = (variant, supplierId, { oemRequired = false } = {}) => {
+        const atomStates = (variant?.atoms || []).map((atom) => {
+          const rowsForAtom = itemRowsBySupplierElement.get(`${supplierId}:${atom.key}`) || []
+          const candidate = chooseBestCellStatus(rowsForAtom, { oemRequired })
+          return {
+            ...candidate,
+            atom,
+          }
+        })
+        const atomCount = atomStates.length
+        const closedCount = atomStates.filter((a) => CLOSED_STATUSES.has(a.code)).length
+        const pricedCount = atomStates.filter((a) => PRICED_STATUSES.has(a.code)).length
+        const oemAtomCount = atomStates.filter((a) => a.code === "Q+OEM").length
+        return {
+          atomCount,
+          closedCount,
+          pricedCount,
+          progressPct: atomCount ? Math.round((closedCount / atomCount) * 100) : 0,
+          pricedProgressPct: atomCount ? Math.round((pricedCount / atomCount) * 100) : 0,
+          allClosed: atomCount > 0 && closedCount === atomCount,
+          allPriced: atomCount > 0 && pricedCount === atomCount,
+          oemOk: !oemRequired || (atomCount > 0 && oemAtomCount === atomCount),
+        }
+      }
+
+      const evaluateSlotForSupplier = (slot, supplierId) => {
+        const variantEvaluations = (slot?.variants || []).map((variant) =>
+          evaluateVariantForSupplier(variant, supplierId, { oemRequired: !!slot?.is_oem_required })
+        )
+        const best = [...variantEvaluations].sort((a, b) => {
+          if (Number(b.allPriced) !== Number(a.allPriced)) return Number(b.allPriced) - Number(a.allPriced)
+          if (Number(b.allClosed) !== Number(a.allClosed)) return Number(b.allClosed) - Number(a.allClosed)
+          if (b.progressPct !== a.progressPct) return b.progressPct - a.progressPct
+          if (b.pricedProgressPct !== a.pricedProgressPct) return b.pricedProgressPct - a.pricedProgressPct
+          return 0
+        })[0] || null
+        return {
+          closed: !!best?.allClosed,
+          priced: !!best?.allPriced,
+          oemOk: !!best?.oemOk,
+          progressPct: safeNum(best?.progressPct),
+          pricedProgressPct: safeNum(best?.pricedProgressPct),
+          bestVariant: best,
+        }
+      }
+
+      supplierCatalog.forEach((supplier) => {
+        const sid = Number(supplier.supplier_id)
+        const itemCells = elements.map((el) => {
+          const matchedRows = itemRowsBySupplierElement.get(`${sid}:${el.key}`) || []
+          return chooseBestCellStatus(matchedRows, { oemRequired: !!el.is_oem_required })
+        })
+        const requestedForItem = itemCells.some((cell) => Array.isArray(cell?.rows) && cell.rows.length > 0)
+
+        const slotEvaluations = requiredSlots.map((slot) => evaluateSlotForSupplier(slot, sid))
+        const wholeEvaluation = slotPack.wholeSlot ? evaluateSlotForSupplier(slotPack.wholeSlot, sid) : null
+        const { structureCoveragePct, pricedCoveragePct } = deriveCoverageMetrics({
+          slotEvaluations,
+          wholeEvaluation,
+        })
+
+        const current = supplierItemTotals.get(sid) || {
+          requested_items: 0,
+          closed_items: 0,
+          priced_items: 0,
+          coverage_goal_sum: 0,
+          coverage_priced_sum: 0,
+          oem_required_total: 0,
+          oem_covered: 0,
+        }
+
+        current.requested_items += requestedForItem ? 1 : 0
+        current.closed_items += structureCoveragePct >= 100 ? 1 : 0
+        current.priced_items += pricedCoveragePct >= 100 ? 1 : 0
+        current.coverage_goal_sum += structureCoveragePct
+        current.coverage_priced_sum += pricedCoveragePct
+        if (requiredSlots.some((slot) => slot.is_oem_required)) {
+          current.oem_required_total += 1
+          const oemOk = requiredSlots.every((slot, idx) =>
+            !slot.is_oem_required || slotEvaluations[idx]?.oemOk
+          )
+          if (oemOk) current.oem_covered += 1
+        }
+        supplierItemTotals.set(sid, current)
+      })
     })
 
     const supplierSummary = supplierCatalog.map((supplier) => {
@@ -666,25 +866,31 @@ export default function CoverageTabContent({
       const respondedAny = cellList.some((c) =>
         ["Q-", "Q+", "Q+P", "Q+OEM", "Q!"].includes(String(c?.code || ""))
       )
-      const requested = cellList.filter((c) => Array.isArray(c?.rows) && c.rows.length > 0).length
-      const closedCount = cellList.filter((c) => CLOSED_STATUSES.has(String(c?.code || ""))).length
-      const pricedCount = cellList.filter((c) => PRICED_STATUSES.has(String(c?.code || ""))).length
-      const oemRequiredCells = allRows.filter((r) => r.is_oem_required)
-      const oemCovered = oemRequiredCells.filter(
-        (r) => String(r.supplierCells?.[sid]?.code || "") === "Q+OEM"
-      ).length
+      const totals = supplierItemTotals.get(sid) || {
+        requested_items: 0,
+        closed_items: 0,
+        priced_items: 0,
+        coverage_goal_sum: 0,
+        coverage_priced_sum: 0,
+        oem_required_total: 0,
+        oem_covered: 0,
+      }
       return {
         supplier_id: sid,
         supplier_name: supplier.supplier_name,
         supplier_country: supplier.supplier_country || null,
         responded_any: respondedAny,
-        requested_elements: requested,
-        closed_required: closedCount,
-        priced_required: pricedCount,
-        coverage_goal_pct: allRows.length ? Math.round((closedCount / allRows.length) * 100) : 0,
-        coverage_priced_pct: allRows.length ? Math.round((pricedCount / allRows.length) * 100) : 0,
-        oem_required_total: oemRequiredCells.length,
-        oem_covered: oemCovered,
+        requested_elements: totals.requested_items,
+        closed_required: totals.closed_items,
+        priced_required: totals.priced_items,
+        coverage_goal_pct: structureItems.length
+          ? Math.round(totals.coverage_goal_sum / structureItems.length)
+          : 0,
+        coverage_priced_pct: structureItems.length
+          ? Math.round(totals.coverage_priced_sum / structureItems.length)
+          : 0,
+        oem_required_total: totals.oem_required_total,
+        oem_covered: totals.oem_covered,
       }
     })
 
@@ -896,18 +1102,15 @@ export default function CoverageTabContent({
       const pricedRequired = slotEvals.filter((e) => e.priced).length
       const wholeClosed = wholeElements.some((row) => CLOSED_STATUSES.has(row.supplierCells[sid]?.code))
       const wholePriced = wholeElements.some((row) => PRICED_STATUSES.has(row.supplierCells[sid]?.code))
-      const structureCoveragePct = totalRequired
-        ? Math.round(
-            slotEvals.reduce((sum, e) => sum + safeNum(e.progressPct), 0) / Math.max(totalRequired, 1)
-          )
-        : 0
-      const structurePricedPct = totalRequired
-        ? Math.round(
-            slotEvals.reduce((sum, e) => sum + safeNum(e.pricedProgressPct), 0) / Math.max(totalRequired, 1)
-          )
-        : 0
+      const { structureCoveragePct, pricedCoveragePct } = deriveCoverageMetrics({
+        slotEvaluations: slotEvals,
+        wholeEvaluation: {
+          closed: wholeClosed,
+          priced: wholePriced,
+        },
+      })
       const coverageGoalPct = wholeClosed ? 100 : structureCoveragePct
-      const pricedGoalPct = wholePriced ? 100 : structurePricedPct
+      const pricedGoalPct = wholePriced ? 100 : pricedCoveragePct
       const oemCovered = slotEvals.filter((e, idx) => requiredSlots[idx]?.is_oem_required && e.oemOk).length
       return {
         supplier_id: sid,
@@ -1019,7 +1222,7 @@ export default function CoverageTabContent({
       setComboRows([])
       return
     }
-    const { suppliers: supplierList, coverageSlots = [], wholeElements } = coverageModel
+    const { suppliers: supplierList, coverageSlots = [], wholeElements, coverageWholeSlot } = coverageModel
     const activeSuppliers = supplierList.filter((supplier) =>
       coverageModel.matrixRows.some((row) => row.supplierCells?.[supplier.supplier_id]?.code !== "NQ")
     )
@@ -1044,9 +1247,8 @@ export default function CoverageTabContent({
     const result = combos.map((supplierIds) => {
       const suppliersMap = new Map(coverageModel.suppliers.map((s) => [s.supplier_id, s]))
       const comboSuppliers = supplierIds.map((id) => suppliersMap.get(id)).filter(Boolean)
-      const assignmentPreview = []
 
-      const slotEvaluations = coverageSlots.map((slot) => {
+      const evaluateSlotForCombo = (slot) => {
         const variantEvaluations = (slot?.variants || []).map((variant) => {
           const atomStates = (variant?.atoms || []).map((atom) => {
             let bestCell = null
@@ -1123,16 +1325,47 @@ export default function CoverageTabContent({
           .map((sid) => suppliersMap.get(sid)?.supplier_name)
           .filter(Boolean))]
 
-        assignmentPreview.push({
-          element_key: slot.key,
-          element_label: slot.label,
-          chosen_supplier_id: null,
-          chosen_supplier_name: chosenSupplierNames.length ? chosenSupplierNames.join(" + ") : null,
-          status,
-          variant_label: bestVariant?.variant_label || null,
-          progress_pct: variantEvaluations.reduce((m, v) => Math.max(m, safeNum(v.progressPct)), 0),
-          priced_progress_pct: variantEvaluations.reduce((m, v) => Math.max(m, safeNum(v.pricedProgressPct)), 0),
-        })
+        const persistedLines = (bestVariant?.atomStates || [])
+          .filter((state) => state?.row && state?.supplier_id)
+          .map((state, index) => {
+            const latest = state.row
+            const atom = state.atom || {}
+            const qty =
+              safeNum(atom?.required_qty, null) ??
+              safeNum(atom?.qty_per_parent, null) ??
+              safeNum(activeItem?.requested_qty, 1) ??
+              1
+            const unitPrice = Number.isFinite(Number(latest?.latest_price)) ? Number(latest.latest_price) : null
+            return {
+              rfq_response_line_id: Number(latest?.latest_response_line_id || 0) || null,
+              supplier_id: Number(state.supplier_id || 0) || null,
+              original_part_id:
+                Number(
+                  atom?.original_part_id ||
+                    latest?.selected_original_part_id ||
+                    latest?.selected_alt_original_part_id ||
+                    0
+                ) || null,
+              line_code: `${slot?.key || "SLOT"}:${atom?.key || index + 1}:${state.supplier_id}`,
+              line_role:
+                atom?.line_type === "DEMAND"
+                  ? "WHOLE"
+                  : atom?.line_type === "KIT_ROLE"
+                    ? "KIT_ROLE"
+                    : "COMPONENT",
+              line_status: PRICED_STATUSES.has(String(state.code || "")) ? "SELECTED" : "CANDIDATE",
+              qty,
+              uom: atom?.uom || activeItem?.uom || null,
+              unit_price: unitPrice,
+              goods_amount: unitPrice === null ? null : unitPrice * qty,
+              goods_currency: latest?.latest_currency || null,
+              lead_time_days: latest?.latest_lead_time_days ?? null,
+              has_price: PRICED_STATUSES.has(String(state.code || "")) ? 1 : 0,
+              is_oem_offer: String(latest?.latest_offer_type || "").toUpperCase() === "OEM" ? 1 : 0,
+              origin_country: latest?.origin_country || null,
+              note: latest?.selected_line_label || atom?.label || null,
+            }
+          })
 
         return {
           slot,
@@ -1142,32 +1375,25 @@ export default function CoverageTabContent({
           oemOk: !slot?.is_oem_required || anyPriced,
           progressPct: variantEvaluations.reduce((m, v) => Math.max(m, safeNum(v.progressPct)), 0),
           pricedProgressPct: variantEvaluations.reduce((m, v) => Math.max(m, safeNum(v.pricedProgressPct)), 0),
+          bestVariant,
+          chosenSupplierNames,
+          persistedLines,
         }
-      })
+      }
+
+      const slotEvaluations = coverageSlots.map((slot) => evaluateSlotForCombo(slot))
 
       const oemRequired = coverageSlots.filter((s) => s.is_oem_required).length
       const oemOk = slotEvaluations.filter((e, idx) => coverageSlots[idx]?.is_oem_required && e.oemOk).length
 
-      const wholeClosed = wholeElements.some((el) =>
-        supplierIds.some((sid) => CLOSED_STATUSES.has(el.supplierCells?.[sid]?.code))
-      )
-      const wholePriced = wholeElements.some((el) =>
-        supplierIds.some((sid) => PRICED_STATUSES.has(el.supplierCells?.[sid]?.code))
-      )
+      const wholeEvaluation = coverageWholeSlot ? evaluateSlotForCombo(coverageWholeSlot) : null
+      const wholeClosed = !!wholeEvaluation?.closed
+      const wholePriced = !!wholeEvaluation?.priced
 
       const totalRequired = coverageSlots.length || (wholeElements.length ? 1 : 0)
-      const progressFromSlots = coverageSlots.length
-        ? Math.round(
-            slotEvaluations.reduce((sum, e) => sum + safeNum(e.progressPct), 0) /
-              Math.max(coverageSlots.length, 1)
-          )
-        : 0
-      const pricedProgressFromSlots = coverageSlots.length
-        ? Math.round(
-            slotEvaluations.reduce((sum, e) => sum + safeNum(e.pricedProgressPct), 0) /
-              Math.max(coverageSlots.length, 1)
-          )
-        : 0
+      const slotMetrics = aggregateSlotEvaluations(slotEvaluations)
+      const progressFromSlots = slotMetrics.progressPct
+      const pricedProgressFromSlots = slotMetrics.pricedProgressPct
       const structureCoveragePct = totalRequired
         ? wholeClosed
           ? 100
@@ -1179,6 +1405,45 @@ export default function CoverageTabContent({
           : pricedProgressFromSlots
         : 0
       const oemOkBool = oemRequired === 0 ? true : oemOk === oemRequired
+      const useWholePath =
+        !!wholeEvaluation &&
+        (
+          safeNum(wholeEvaluation.pricedProgressPct) > pricedProgressFromSlots ||
+          (
+            safeNum(wholeEvaluation.pricedProgressPct) === pricedProgressFromSlots &&
+            safeNum(wholeEvaluation.progressPct) >= progressFromSlots
+          )
+        )
+
+      const assignmentPreview = useWholePath
+        ? [
+            {
+              element_key: coverageWholeSlot?.key,
+              element_label: coverageWholeSlot?.label,
+              chosen_supplier_id: null,
+              chosen_supplier_name: wholeEvaluation?.chosenSupplierNames?.length
+                ? wholeEvaluation.chosenSupplierNames.join(" + ")
+                : null,
+              status: wholeEvaluation?.status || "NQ",
+              variant_label: wholeEvaluation?.bestVariant?.variant_label || null,
+              progress_pct: safeNum(wholeEvaluation?.progressPct),
+              priced_progress_pct: safeNum(wholeEvaluation?.pricedProgressPct),
+              persisted_lines: wholeEvaluation?.persistedLines || [],
+            },
+          ]
+        : slotEvaluations.map((evaluation) => ({
+            element_key: evaluation.slot?.key,
+            element_label: evaluation.slot?.label,
+            chosen_supplier_id: null,
+            chosen_supplier_name: evaluation.chosenSupplierNames?.length
+              ? evaluation.chosenSupplierNames.join(" + ")
+              : null,
+            status: evaluation.status,
+            variant_label: evaluation.bestVariant?.variant_label || null,
+            progress_pct: safeNum(evaluation.progressPct),
+            priced_progress_pct: safeNum(evaluation.pricedProgressPct),
+            persisted_lines: evaluation.persistedLines || [],
+          }))
 
       const countries = comboSuppliers.map((s) => s?.supplier_country).filter(Boolean)
       const consolidationHint = normalizePotentialConsolidation(countries)
@@ -1209,6 +1474,54 @@ export default function CoverageTabContent({
         score,
         status,
         assignment_preview: assignmentPreview,
+        persist_option: {
+          rfq_item_id: Number(activeItem?.rfq_item_id || 0) || null,
+          option_code: `COMBO_${comboKey(supplierIds)}`,
+          option_kind: "MIXED",
+          coverage_status:
+            structureCoveragePct >= 100 && pricedCoveragePct >= 100
+              ? "FULL"
+              : structureCoveragePct > 0
+                ? "PARTIAL"
+                : "BLOCKED",
+          completeness_pct: structureCoveragePct,
+          priced_pct: pricedCoveragePct,
+          is_oem_ok: oemOkBool ? 1 : 0,
+          goods_total: assignmentPreview
+            .flatMap((row) => row.persisted_lines || [])
+            .reduce((sum, line) => sum + safeNum(line.goods_amount, 0), 0) || null,
+          goods_currency:
+            (() => {
+              const currencies = [
+                ...new Set(
+                  assignmentPreview
+                    .flatMap((row) => row.persisted_lines || [])
+                    .map((line) => line.goods_currency)
+                    .filter(Boolean)
+                ),
+              ]
+              return currencies.length === 1 ? currencies[0] : null
+            })(),
+          supplier_count: comboSuppliers.length,
+          lead_time_min_days:
+            (() => {
+              const vals = assignmentPreview
+                .flatMap((row) => row.persisted_lines || [])
+                .map((line) => safeNum(line.lead_time_days, null))
+                .filter((value) => value !== null)
+              return vals.length ? Math.min(...vals) : null
+            })(),
+          lead_time_max_days:
+            (() => {
+              const vals = assignmentPreview
+                .flatMap((row) => row.persisted_lines || [])
+                .map((line) => safeNum(line.lead_time_days, null))
+                .filter((value) => value !== null)
+              return vals.length ? Math.max(...vals) : null
+            })(),
+          note: `Комбинированный вариант: ${comboSuppliers.map((s) => s?.supplier_name || `#${s?.supplier_id}`).join(" + ")}`,
+          lines: assignmentPreview.flatMap((row) => row.persisted_lines || []),
+        },
       }
     })
 
@@ -1223,42 +1536,320 @@ export default function CoverageTabContent({
     setComboRows(result.slice(0, 20))
   }
 
-  const transferCombosToEconomics = async () => {
+  const saveComboOption = async (comboRow) => {
+    const option = comboRow?.persist_option
+    if (!rfqId || !option?.rfq_item_id || !Array.isArray(option?.lines) || !option.lines.length) {
+      message.warning("Комбинация пока не готова для сохранения")
+      return
+    }
+    setSavingComboKey(comboRow.key)
+    try {
+      const { data } = await axios.post(`/coverage/rfq/${rfqId}/options`, { option })
+      message.success(data?.message || "Комбинированный вариант сохранён")
+    } catch (e) {
+      message.error(e?.response?.data?.message || "Не удалось сохранить комбинированный вариант")
+    } finally {
+      setSavingComboKey(null)
+    }
+  }
+
+  const buildPersistedCoverageOptions = () => {
+    if (!coverageModelAllItems) return []
+    const options = []
+    const rowsByItem = new Map()
+    coverageModelAllItems.matrixRows.forEach((row) => {
+      const itemId = Number(row?.rfq_item_id || 0)
+      if (!itemId) return
+      const list = rowsByItem.get(itemId) || []
+      list.push(row)
+      rowsByItem.set(itemId, list)
+    })
+
+    structureItems.forEach((item) => {
+      const itemId = Number(item?.rfq_item_id || 0)
+      const itemRows = rowsByItem.get(itemId) || []
+      if (!itemRows.length) return
+
+      coverageModelAllItems.suppliers.forEach((supplier) => {
+        const supplierId = Number(supplier?.supplier_id || 0)
+        if (!supplierId) return
+
+        const lines = []
+        let closedCount = 0
+        let pricedCount = 0
+        let oemRequired = 0
+        let oemCovered = 0
+        let goodsTotal = 0
+        const currencies = new Set()
+        const leadTimes = []
+
+        itemRows.forEach((row) => {
+          const cell = row?.supplierCells?.[supplierId]
+          const latest = cell?.row || null
+          if (!cell || !latest || !Array.isArray(cell.rows) || !cell.rows.length) return
+
+          if (CLOSED_STATUSES.has(String(cell.code || ""))) closedCount += 1
+          if (PRICED_STATUSES.has(String(cell.code || ""))) pricedCount += 1
+          if (row?.is_oem_required) {
+            oemRequired += 1
+            if (String(cell.code || "") === "Q+OEM") oemCovered += 1
+          }
+
+          const qty = safeNum(row?.required_qty, safeNum(latest?.latest_offered_qty, 1)) || 1
+          const unitPrice = Number.isFinite(Number(latest?.latest_price)) ? Number(latest.latest_price) : null
+          const goodsAmount = unitPrice === null ? null : unitPrice * qty
+          if (goodsAmount !== null) goodsTotal += goodsAmount
+          if (latest?.latest_currency) currencies.add(String(latest.latest_currency))
+          if (latest?.latest_lead_time_days != null) leadTimes.push(safeNum(latest.latest_lead_time_days, 0))
+
+          lines.push({
+            rfq_response_line_id: Number(latest?.latest_response_line_id || 0) || null,
+            supplier_id: supplierId,
+            original_part_id:
+              Number(latest?.selected_original_part_id || latest?.selected_alt_original_part_id || 0) || null,
+            line_code: `${row?.local_key || row?.key}:${supplierId}`,
+            line_role:
+              row?.line_type === "DEMAND"
+                ? "WHOLE"
+                : row?.line_type === "KIT_ROLE"
+                  ? "KIT_ROLE"
+                  : "COMPONENT",
+            line_status: PRICED_STATUSES.has(String(cell.code || "")) ? "SELECTED" : "CANDIDATE",
+            qty,
+            uom: row?.uom || item?.uom || null,
+            unit_price: unitPrice,
+            goods_amount: goodsAmount,
+            goods_currency: latest?.latest_currency || null,
+            lead_time_days: latest?.latest_lead_time_days ?? null,
+            has_price: PRICED_STATUSES.has(String(cell.code || "")) ? 1 : 0,
+            is_oem_offer: String(latest?.latest_offer_type || "").toUpperCase() === "OEM" ? 1 : 0,
+            origin_country: latest?.origin_country || null,
+            note: latest?.selected_line_label || null,
+          })
+        })
+
+        if (!lines.length) return
+        const workspaceRowsForCurrentItem = workspace.filter((row) => Number(row?.rfq_item_id) === itemId)
+        const slotPack = buildCoverageSlotsForItem(item, workspaceRowsForCurrentItem)
+        const requiredSlots = slotPack.structureSlots.length
+          ? slotPack.structureSlots
+          : slotPack.wholeSlot
+            ? [slotPack.wholeSlot]
+            : []
+        const itemRowsBySupplierElement = new Map()
+
+        workspaceRowsForCurrentItem.forEach((row) => {
+          const sid = Number(row?.supplier_id || 0)
+          if (!sid) return
+          const eKey = mapWorkspaceRowToElementKey(row, item)
+          if (!eKey) return
+          const itemMapKey = `${sid}:${eKey}`
+          if (!itemRowsBySupplierElement.has(itemMapKey)) itemRowsBySupplierElement.set(itemMapKey, [])
+          itemRowsBySupplierElement.get(itemMapKey).push(row)
+        })
+
+        const evaluatePersistedVariant = (variant, { oemRequired = false } = {}) => {
+          const atomStates = (variant?.atoms || []).map((atom) => {
+            const atomRows = itemRowsBySupplierElement.get(`${supplierId}:${atom.key}`) || []
+            const candidate = chooseBestCellStatus(atomRows, { oemRequired })
+            return {
+              ...candidate,
+              atom,
+            }
+          })
+          const atomCount = atomStates.length
+          const closedAtoms = atomStates.filter((a) => CLOSED_STATUSES.has(a.code)).length
+          const pricedAtoms = atomStates.filter((a) => PRICED_STATUSES.has(a.code)).length
+          const oemAtoms = atomStates.filter((a) => a.code === "Q+OEM").length
+          return {
+            atomCount,
+            closedCount: closedAtoms,
+            pricedCount: pricedAtoms,
+            allClosed: atomCount > 0 && closedAtoms === atomCount,
+            allPriced: atomCount > 0 && pricedAtoms === atomCount,
+            oemOk: !oemRequired || (atomCount > 0 && oemAtoms === atomCount),
+            progressPct: atomCount ? Math.round((closedAtoms / atomCount) * 100) : 0,
+            pricedProgressPct: atomCount ? Math.round((pricedAtoms / atomCount) * 100) : 0,
+          }
+        }
+
+        const evaluatePersistedSlot = (slot) => {
+          const best = [...((slot?.variants || []).map((variant) =>
+            evaluatePersistedVariant(variant, { oemRequired: !!slot?.is_oem_required })
+          ))].sort((a, b) => {
+            if (Number(b.allPriced) !== Number(a.allPriced)) return Number(b.allPriced) - Number(a.allPriced)
+            if (Number(b.allClosed) !== Number(a.allClosed)) return Number(b.allClosed) - Number(a.allClosed)
+            if (b.progressPct !== a.progressPct) return b.progressPct - a.progressPct
+            if (b.pricedProgressPct !== a.pricedProgressPct) return b.pricedProgressPct - a.pricedProgressPct
+            if (b.pricedCount !== a.pricedCount) return b.pricedCount - a.pricedCount
+            if (b.closedCount !== a.closedCount) return b.closedCount - a.closedCount
+            return a.atomCount - b.atomCount
+          })[0] || null
+
+          return {
+            closed: !!best?.allClosed,
+            priced: !!best?.allPriced,
+            oemOk: !!best?.oemOk,
+            bestVariant: best,
+          }
+        }
+
+        const slotEvaluations = requiredSlots.map((slot) => evaluatePersistedSlot(slot))
+        const wholeEvaluation = slotPack.wholeSlot ? evaluatePersistedSlot(slotPack.wholeSlot) : null
+        const { structureCoveragePct: completenessPct, pricedCoveragePct: pricedPct } = deriveCoverageMetrics({
+          slotEvaluations,
+          wholeEvaluation,
+        })
+        const isOemOk = oemRequired === 0 ? true : oemCovered === oemRequired
+        let coverageStatus = "PARTIAL"
+        if (completenessPct >= 100 && pricedPct >= 100) coverageStatus = "FULL"
+        else if (lines.length === 0) coverageStatus = "BLOCKED"
+
+        options.push({
+          rfq_item_id: itemId,
+          option_code: `SUPPLIER_${supplierId}`,
+          option_kind: lines.every((line) => line.line_role === "WHOLE")
+            ? "WHOLE"
+            : lines.some((line) => line.line_role === "KIT_ROLE")
+              ? "KIT"
+              : "BOM",
+          coverage_status: coverageStatus,
+          completeness_pct: completenessPct,
+          priced_pct: pricedPct,
+          is_oem_ok: isOemOk ? 1 : 0,
+          goods_total: goodsTotal || null,
+          goods_currency: currencies.size === 1 ? [...currencies][0] : null,
+          supplier_count: 1,
+          lead_time_min_days: leadTimes.length ? Math.min(...leadTimes) : null,
+          lead_time_max_days: leadTimes.length ? Math.max(...leadTimes) : null,
+          note: `Вариант по поставщику ${supplier?.supplier_name || supplierId}`,
+          lines,
+        })
+      })
+    })
+
+    return options
+  }
+
+  const saveCoverageOptions = async () => {
     if (!rfqId) {
       message.error("RFQ не выбран")
       return
     }
-    if (!activeItemId) {
-      message.error("Позиция RFQ не выбрана")
-      return
-    }
-    if (!comboRows.length) {
-      message.warning("Нет комбинаций для передачи")
+    const options = buildPersistedCoverageOptions()
+    if (!options.length) {
+      message.warning("Нет вариантов покрытия для сохранения")
       return
     }
 
-    setImportingToEconomics(true)
+    setSavingCoverage(true)
     try {
-      const { data } = await axios.post(`/economics/v2/rfq/${rfqId}/candidates/import-from-coverage`, {
-        rfq_item_id: Number(activeItemId),
-        combos: comboRows,
+      const { data } = await axios.post(`/coverage/rfq/${rfqId}/options/replace`, {
+        options,
       })
-      try {
-        window.dispatchEvent(
-          new CustomEvent("rfq:econ2-candidates-updated", {
-            detail: { rfqId: Number(rfqId), rfqItemId: Number(activeItemId) },
-          })
-        )
-      } catch (_e) {
-        // no-op
-      }
-      message.success(
-        data?.message || `Передано в Экономику: ${Number(data?.imported_count || comboRows.length)}`
-      )
+      message.success(data?.message || `Сохранено вариантов покрытия: ${Number(data?.inserted_count || options.length)}`)
     } catch (e) {
-      message.error(e?.response?.data?.message || "Ошибка при передаче в Экономику")
+      message.error(e?.response?.data?.message || "Ошибка сохранения покрытия")
     } finally {
-      setImportingToEconomics(false)
+      setSavingCoverage(false)
+    }
+  }
+
+  const openManualModal = () => {
+    manualForm.setFieldsValue({
+      rfq_item_id: activeItemId || undefined,
+      option_code: "",
+      option_kind: "MANUAL",
+      goods_currency: "USD",
+      lines: [
+        {
+          supplier_id: undefined,
+          line_role: "MANUAL",
+          qty: activeItem?.requested_qty || 1,
+          uom: formatUomLabel(activeItem?.uom) || "шт",
+          unit_price: null,
+          goods_currency: "USD",
+          lead_time_days: null,
+          note: "",
+        },
+      ],
+    })
+    setManualModalOpen(true)
+  }
+
+  const handleCreateManualOption = async () => {
+    let values
+    try {
+      values = await manualForm.validateFields()
+    } catch (_e) {
+      return
+    }
+
+    const lines = Array.isArray(values?.lines) ? values.lines : []
+    if (!lines.length) {
+      message.warning("Добавьте хотя бы одну строку в ручной вариант")
+      return
+    }
+
+    const normalizedLines = lines
+      .map((line, index) => {
+        const qty = safeNum(line?.qty, 0)
+        const unitPrice = line?.unit_price === null || line?.unit_price === undefined ? null : safeNum(line?.unit_price, 0)
+        return {
+          supplier_id: Number(line?.supplier_id || 0) || null,
+          line_code: line?.line_code || `MANUAL-${index + 1}`,
+          line_role: line?.line_role || "MANUAL",
+          qty,
+          uom: formatUomLabel(line?.uom || activeItem?.uom) || "шт",
+          unit_price: unitPrice,
+          goods_amount: unitPrice === null ? null : qty * unitPrice,
+          goods_currency: line?.goods_currency || values?.goods_currency || "USD",
+          lead_time_days: line?.lead_time_days ?? null,
+          has_price: unitPrice === null ? 0 : 1,
+          is_oem_offer: Number(line?.is_oem_offer) ? 1 : 0,
+          origin_country: line?.origin_country || null,
+          note: line?.note || null,
+        }
+      })
+      .filter((line) => line.supplier_id)
+
+    if (!normalizedLines.length) {
+      message.warning("У каждой ручной строки должен быть выбран поставщик")
+      return
+    }
+
+    const lineCount = normalizedLines.length
+    const pricedCount = normalizedLines.filter((line) => Number(line.has_price) === 1).length
+    const goodsTotal = normalizedLines.reduce((sum, line) => sum + (safeNum(line.goods_amount, 0) || 0), 0)
+    const leadTimes = normalizedLines
+      .map((line) => safeNum(line.lead_time_days, null))
+      .filter((value) => value !== null)
+    const option = {
+      rfq_item_id: Number(values.rfq_item_id),
+      option_code: values.option_code || `MANUAL-${Date.now()}`,
+      option_kind: values.option_kind || "MANUAL",
+      coverage_status: pricedCount === lineCount ? "FULL" : "PARTIAL",
+      completeness_pct: 100,
+      priced_pct: lineCount ? Math.round((pricedCount / lineCount) * 100) : 0,
+      is_oem_ok: normalizedLines.some((line) => Number(line.is_oem_offer) === 1) ? 1 : 0,
+      goods_total: goodsTotal || null,
+      goods_currency: values.goods_currency || "USD",
+      supplier_count: new Set(normalizedLines.map((line) => line.supplier_id)).size,
+      lead_time_min_days: leadTimes.length ? Math.min(...leadTimes) : null,
+      lead_time_max_days: leadTimes.length ? Math.max(...leadTimes) : null,
+      note: values.note || "Ручной вариант покрытия",
+      lines: normalizedLines,
+    }
+
+    setManualSaving(true)
+    try {
+      const { data } = await axios.post(`/coverage/rfq/${rfqId}/options`, { option })
+      message.success(data?.message || "Ручной вариант покрытия создан")
+      setManualModalOpen(false)
+    } catch (e) {
+      message.error(e?.response?.data?.message || "Не удалось создать ручной вариант покрытия")
+    } finally {
+      setManualSaving(false)
     }
   }
 
@@ -1309,7 +1900,7 @@ export default function CoverageTabContent({
               <Text strong>{row.label || "—"}</Text>
               {row.path_group === "WHOLE" ? <Tag>Узел целиком</Tag> : <Tag color="blue">Состав</Tag>}
               {row.line_type === "KIT_ROLE" ? <Tag color="green">Роль</Tag> : null}
-              {row.is_oem_required ? <Tag color="gold">OEM only</Tag> : null}
+              {row.is_oem_required ? <Tag color="gold">Только OEM</Tag> : null}
             </Space>
             {row.description && row.description !== row.label ? (
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -1320,11 +1911,11 @@ export default function CoverageTabContent({
         ),
       },
       {
-        title: "Qty",
+        title: "Кол-во",
         dataIndex: "required_qty",
         key: "required_qty",
         width: 90,
-        render: (value, row) => (value != null ? `${value}${row.uom ? ` ${row.uom}` : ""}` : "—"),
+        render: (value, row) => formatQtyWithUomLabel(value, row.uom),
       },
     ]
 
@@ -1383,6 +1974,210 @@ export default function CoverageTabContent({
     return [...base, ...supplierCols]
   }, [visibleSuppliers, scopeMode])
 
+  const supplierSummaryColumns = useMemo(
+    () => [
+      { title: "Поставщик", dataIndex: "supplier_name", key: "supplier_name", width: 240 },
+      {
+        title: "Страна",
+        dataIndex: "supplier_country",
+        key: "supplier_country",
+        width: 100,
+        render: (v) => v || "—",
+      },
+      { title: "Запрошено эл.", dataIndex: "requested_elements", key: "requested_elements", width: 130 },
+      {
+        title: "Закрыто (полностью)",
+        dataIndex: "closed_required",
+        key: "closed_required",
+        width: 150,
+      },
+      {
+        title: "С ценой (полностью)",
+        dataIndex: "priced_required",
+        key: "priced_required",
+        width: 160,
+      },
+      {
+        title: "Прогресс покрытия, %",
+        dataIndex: "coverage_goal_pct",
+        key: "coverage_goal_pct",
+        width: 140,
+        render: (v) => <Tag color={safeNum(v) >= 100 ? "green" : "blue"}>{safeNum(v)}%</Tag>,
+      },
+      {
+        title: "Прогресс с ценой, %",
+        dataIndex: "coverage_priced_pct",
+        key: "coverage_priced_pct",
+        width: 150,
+        render: (v) => `${safeNum(v)}%`,
+      },
+      {
+        title: "OEM-критичные",
+        key: "oem_required",
+        width: 130,
+        render: (_, row) =>
+          row.oem_required_total ? `${row.oem_covered}/${row.oem_required_total}` : "—",
+      },
+      {
+        title: "Потенциал консолидации",
+        key: "consolidation",
+        width: 170,
+        render: (_, row) =>
+          row.supplier_country ? (
+            <Tag color="cyan">{row.supplier_country}</Tag>
+          ) : (
+            <Text type="secondary">неизвестно</Text>
+          ),
+      },
+    ],
+    []
+  )
+
+  const comboColumns = useMemo(
+    () => [
+      { title: "Комбинация", dataIndex: "supplier_names", key: "supplier_names", width: 340 },
+      {
+        title: "Прогресс структуры",
+        dataIndex: "structure_coverage_pct",
+        key: "structure_coverage_pct",
+        width: 130,
+        render: (v) => <Tag color={safeNum(v) >= 100 ? "green" : "blue"}>{safeNum(v)}%</Tag>,
+      },
+      {
+        title: "Прогресс с ценой",
+        dataIndex: "priced_coverage_pct",
+        key: "priced_coverage_pct",
+        width: 130,
+        render: (v) => `${safeNum(v)}%`,
+      },
+      {
+        title: "OEM",
+        dataIndex: "oem_ok",
+        key: "oem_ok",
+        width: 90,
+        render: (v) => (v ? <Tag color="green">OK</Tag> : <Tag color="red">Нет</Tag>),
+      },
+      { title: "Поставщиков", dataIndex: "supplier_count", key: "supplier_count", width: 110 },
+      {
+        title: "Стран",
+        key: "countries",
+        width: 130,
+        render: (_, row) => {
+          const uniqueCountries = [...new Set((row.countries || []).filter(Boolean))]
+          return uniqueCountries.length ? uniqueCountries.join(", ") : "—"
+        },
+      },
+      {
+        title: "Потенциал консолидации",
+        dataIndex: "consolidation_hint",
+        key: "consolidation_hint",
+        width: 170,
+        render: (v) => {
+          const color =
+            v === "Высокий"
+              ? "green"
+              : v === "Средний"
+                ? "gold"
+                : v === "Низкий"
+                  ? "red"
+                  : "default"
+          return <Tag color={color}>{v}</Tag>
+        },
+      },
+      {
+        title: "Score",
+        dataIndex: "score",
+        key: "score",
+        width: 90,
+        sorter: (a, b) => safeNum(a.score) - safeNum(b.score),
+      },
+      {
+        title: "Статус",
+        dataIndex: "status",
+        key: "status",
+        width: 150,
+        render: (v) => {
+          let color = "default"
+          if (String(v).includes("Готова")) color = "green"
+          else if (String(v).includes("Нужны")) color = "gold"
+          else if (String(v).includes("дыры")) color = "red"
+          return <Tag color={color}>{v}</Tag>
+        },
+      },
+      {
+        title: "Действия",
+        key: "actions",
+        width: 160,
+        render: (_, row) => (
+          <Button
+            size="small"
+            onClick={() => saveComboOption(row)}
+            loading={savingComboKey === row.key}
+            disabled={!row?.persist_option?.lines?.length}
+          >
+            Сохранить смешанный
+          </Button>
+        ),
+      },
+    ],
+    [savingComboKey]
+  )
+
+  useEffect(() => {
+    setMatrixColumnKeys((prev) => {
+      const keys = matrixColumns.map((column) => column.key).filter(Boolean)
+      const prevSet = new Set(prev)
+      const kept = prev.filter((key) => keys.includes(key))
+      const appended = keys.filter((key) => !prevSet.has(key))
+      return kept.length || appended.length ? [...kept, ...appended] : keys
+    })
+  }, [matrixColumns])
+
+  useEffect(() => {
+    setSupplierSummaryColumnKeys((prev) => {
+      const keys = supplierSummaryColumns.map((column) => column.key).filter(Boolean)
+      const prevSet = new Set(prev)
+      const kept = prev.filter((key) => keys.includes(key))
+      const appended = keys.filter((key) => !prevSet.has(key))
+      return kept.length || appended.length ? [...kept, ...appended] : keys
+    })
+  }, [supplierSummaryColumns])
+
+  useEffect(() => {
+    setComboColumnKeys((prev) => {
+      const keys = comboColumns.map((column) => column.key).filter(Boolean)
+      const prevSet = new Set(prev)
+      const kept = prev.filter((key) => keys.includes(key))
+      const appended = keys.filter((key) => !prevSet.has(key))
+      return kept.length || appended.length ? [...kept, ...appended] : keys
+    })
+  }, [comboColumns])
+
+  const orderedMatrixColumns = useMemo(() => {
+    const byKey = new Map(matrixColumns.map((column) => [column.key, column]))
+    return (matrixColumnKeys.length ? matrixColumnKeys : matrixColumns.map((column) => column.key))
+      .map((key) => byKey.get(key))
+      .filter(Boolean)
+  }, [matrixColumns, matrixColumnKeys])
+
+  const orderedSupplierSummaryColumns = useMemo(() => {
+    const byKey = new Map(supplierSummaryColumns.map((column) => [column.key, column]))
+    return (
+      supplierSummaryColumnKeys.length
+        ? supplierSummaryColumnKeys
+        : supplierSummaryColumns.map((column) => column.key)
+    )
+      .map((key) => byKey.get(key))
+      .filter(Boolean)
+  }, [supplierSummaryColumns, supplierSummaryColumnKeys])
+
+  const orderedComboColumns = useMemo(() => {
+    const byKey = new Map(comboColumns.map((column) => [column.key, column]))
+    return (comboColumnKeys.length ? comboColumnKeys : comboColumns.map((column) => column.key))
+      .map((key) => byKey.get(key))
+      .filter(Boolean)
+  }, [comboColumns, comboColumnKeys])
+
   const matrixTableRows = useMemo(
     () =>
       matrixDisplayRows.map((row) => ({
@@ -1440,18 +2235,25 @@ export default function CoverageTabContent({
                     : [
                         { value: "matrix", label: "Матрица покрытия" },
                         { value: "suppliers", label: "Сводка поставщиков" },
-                        { value: "combos", label: "Комбинации" },
+                        { value: "combos", label: "Комбинации по позиции" },
                       ]
                 }
               />
+              <Button type="primary" loading={savingCoverage} onClick={saveCoverageOptions}>
+                Сохранить покрытие RFQ
+              </Button>
+              <Button onClick={openManualModal} disabled={!rfqId || !activeItemId}>
+                Ручной вариант
+              </Button>
+              <Button onClick={() => setHelpOpen(true)}>Справка</Button>
             </Space>
             <Space wrap>
               {scopeMode === "item" ? (
                 <>
                   <Tag color="blue">
-                    Стратегия: {activeItem?.strategy?.mode || "—"}
+                    Стратегия: {STRATEGY_MODE_LABELS[String(activeItem?.strategy?.mode || "").toUpperCase()] || activeItem?.strategy?.mode || "—"}
                   </Tag>
-                  {Number(activeItem?.strategy?.allow_kit) === 1 ? <Tag color="green">Kit разрешен</Tag> : null}
+                  {Number(activeItem?.strategy?.allow_kit) === 1 ? <Tag color="green">Комплект разрешён</Tag> : null}
                 </>
               ) : (
                 <Tag color="blue">Сводно по всему RFQ</Tag>
@@ -1467,6 +2269,12 @@ export default function CoverageTabContent({
             <Tag color="gold">Лучший прогресс с ценой: {kpis.bestPricedCoveragePct}%</Tag>
             <Tag color="orange">OEM критичные: {kpis.oemCoveredText}</Tag>
           </Space>
+
+          <Text type="secondary">
+            {scopeMode === "item"
+              ? "Покрытие в режиме позиции показывает, как закрыть одну строку RFQ: целиком, по BOM или смешанно от нескольких поставщиков. Комбинации по всему заказу собираются на вкладке Сценарии."
+              : "В режиме всего RFQ показывается общая картина покрытия по заказу. Комбинирование вариантов между разными позициями выполняется на вкладке Сценарии."}
+          </Text>
 
           {mode === "matrix" ? (
             <>
@@ -1490,15 +2298,19 @@ export default function CoverageTabContent({
                     { value: "gaps", label: "Только дыры/неполные" },
                   ]}
                 />
+                <Text type="secondary">Колонки можно перетаскивать мышью за заголовки.</Text>
               </Space>
 
-              <Table
+              <DraggableColumnsTable
+                className="op-table"
                 size="small"
                 rowKey="key"
                 dataSource={matrixTableRows}
-                columns={matrixColumns}
+                columns={orderedMatrixColumns}
                 pagination={{ pageSize: 100, hideOnSinglePage: true }}
                 scroll={{ x: "max-content" }}
+                nonDraggableKeys={scopeMode === "rfq" ? ["rfq_item"] : []}
+                onColumnOrderChange={({ orderedVisibleKeys }) => setMatrixColumnKeys(orderedVisibleKeys)}
               />
 
               {scopeMode === "item" &&
@@ -1511,11 +2323,10 @@ export default function CoverageTabContent({
                         <Space wrap size={6}>
                           <Text strong>{slot.label}</Text>
                           <Tag color="blue">Слот</Tag>
-                          {slot.is_oem_required ? <Tag color="gold">OEM only</Tag> : null}
+                          {slot.is_oem_required ? <Tag color="gold">Только OEM</Tag> : null}
                           {slot.required_qty != null ? (
                             <Text type="secondary">
-                              Qty: {slot.required_qty}
-                              {slot.uom ? ` ${slot.uom}` : ""}
+                              Требуется: {formatQtyWithUomLabel(slot.required_qty, slot.uom)}
                             </Text>
                           ) : null}
                         </Space>
@@ -1607,59 +2418,14 @@ export default function CoverageTabContent({
           ) : null}
 
           {mode === "suppliers" ? (
-            <Table
+            <DraggableColumnsTable
+              className="op-table"
               size="small"
               rowKey="supplier_id"
               dataSource={supplierSummaryRows}
               pagination={{ pageSize: 50, hideOnSinglePage: true }}
-              columns={[
-                { title: "Поставщик", dataIndex: "supplier_name", width: 240 },
-                {
-                  title: "Страна",
-                  dataIndex: "supplier_country",
-                  width: 100,
-                  render: (v) => v || "—",
-                },
-                { title: "Запрошено эл.", dataIndex: "requested_elements", width: 130 },
-                {
-                  title: "Закрыто (полностью)",
-                  dataIndex: "closed_required",
-                  width: 150,
-                },
-                {
-                  title: "С ценой (полностью)",
-                  dataIndex: "priced_required",
-                  width: 160,
-                },
-                {
-                  title: "Прогресс покрытия, %",
-                  dataIndex: "coverage_goal_pct",
-                  width: 140,
-                  render: (v) => <Tag color={safeNum(v) >= 100 ? "green" : "blue"}>{safeNum(v)}%</Tag>,
-                },
-                {
-                  title: "Прогресс с ценой, %",
-                  dataIndex: "coverage_priced_pct",
-                  width: 150,
-                  render: (v) => `${safeNum(v)}%`,
-                },
-                {
-                  title: "OEM-критичные",
-                  width: 130,
-                  render: (_, row) =>
-                    row.oem_required_total ? `${row.oem_covered}/${row.oem_required_total}` : "—",
-                },
-                {
-                  title: "Потенциал консолидации",
-                  width: 170,
-                  render: (_, row) =>
-                    row.supplier_country ? (
-                      <Tag color="cyan">{row.supplier_country}</Tag>
-                    ) : (
-                      <Text type="secondary">неизвестно</Text>
-                    ),
-                },
-              ]}
+              columns={orderedSupplierSummaryColumns}
+              onColumnOrderChange={({ orderedVisibleKeys }) => setSupplierSummaryColumnKeys(orderedVisibleKeys)}
             />
           ) : null}
 
@@ -1667,18 +2433,16 @@ export default function CoverageTabContent({
             <Space direction="vertical" style={{ width: "100%" }} size={12}>
               <Space wrap>
                 <Button type="primary" onClick={buildCombinationSuggestions}>
-                  Подсказать комбинации
-                </Button>
-                <Button
-                  loading={importingToEconomics}
-                  disabled={comboRows.length === 0 || !rfqId || !activeItemId}
-                  onClick={transferCombosToEconomics}
-                >
-                  Передать в Экономику
+                  Подсказать комбинации по позиции
                 </Button>
               </Space>
 
-              <Table
+              <Text type="secondary">
+                Здесь система комбинирует поставщиков только внутри выбранной позиции RFQ. Например, две детали сборки от одного поставщика и две от другого. Комбинации между разными позициями всего заказа формируются на вкладке Сценарии.
+              </Text>
+
+              <DraggableColumnsTable
+                className="op-table"
                 size="small"
                 rowKey="key"
                 dataSource={comboRows}
@@ -1713,75 +2477,172 @@ export default function CoverageTabContent({
                     />
                   ),
                 }}
-                columns={[
-                  { title: "Комбинация", dataIndex: "supplier_names", width: 340 },
-                  {
-                    title: "Прогресс структуры",
-                    dataIndex: "structure_coverage_pct",
-                    width: 130,
-                    render: (v) => <Tag color={safeNum(v) >= 100 ? "green" : "blue"}>{safeNum(v)}%</Tag>,
-                  },
-                  {
-                    title: "Прогресс с ценой",
-                    dataIndex: "priced_coverage_pct",
-                    width: 130,
-                    render: (v) => `${safeNum(v)}%`,
-                  },
-                  {
-                    title: "OEM",
-                    dataIndex: "oem_ok",
-                    width: 90,
-                    render: (v) => (v ? <Tag color="green">OK</Tag> : <Tag color="red">Нет</Tag>),
-                  },
-                  { title: "Поставщиков", dataIndex: "supplier_count", width: 110 },
-                  {
-                    title: "Стран",
-                    width: 130,
-                    render: (_, row) => {
-                      const uniqueCountries = [...new Set((row.countries || []).filter(Boolean))]
-                      return uniqueCountries.length ? uniqueCountries.join(", ") : "—"
-                    },
-                  },
-                  {
-                    title: "Потенциал консолидации",
-                    dataIndex: "consolidation_hint",
-                    width: 170,
-                    render: (v) => {
-                      const color =
-                        v === "Высокий"
-                          ? "green"
-                          : v === "Средний"
-                            ? "gold"
-                            : v === "Низкий"
-                              ? "red"
-                              : "default"
-                      return <Tag color={color}>{v}</Tag>
-                    },
-                  },
-                  {
-                    title: "Score",
-                    dataIndex: "score",
-                    width: 90,
-                    sorter: (a, b) => safeNum(a.score) - safeNum(b.score),
-                  },
-                  {
-                    title: "Статус",
-                    dataIndex: "status",
-                    width: 150,
-                    render: (v) => {
-                      let color = "default"
-                      if (String(v).includes("Готова")) color = "green"
-                      else if (String(v).includes("Нужны")) color = "gold"
-                      else if (String(v).includes("дыры")) color = "red"
-                      return <Tag color={color}>{v}</Tag>
-                    },
-                  },
-                ]}
+                columns={orderedComboColumns}
+                onColumnOrderChange={({ orderedVisibleKeys }) => setComboColumnKeys(orderedVisibleKeys)}
+                nonDraggableKeys={["actions"]}
               />
             </Space>
           ) : null}
         </>
       )}
+      <Modal
+        open={manualModalOpen}
+        onCancel={() => setManualModalOpen(false)}
+        onOk={handleCreateManualOption}
+        confirmLoading={manualSaving}
+        width={920}
+        title="Ручной вариант покрытия"
+      >
+        <Form form={manualForm} layout="vertical">
+          <Card
+            size="small"
+            style={{ marginBottom: 16, background: "#fafafa" }}
+            bodyStyle={{ padding: 12 }}
+          >
+            <Text type="secondary">
+              Соберите вариант исполнения вручную, если нужно зафиксировать нестандартную схему: особую договорённость, смешанную поставку, временное решение или вариант, который система не собрала автоматически.
+            </Text>
+          </Card>
+          <Space wrap align="start">
+            <Form.Item name="rfq_item_id" label="Строка RFQ" rules={[{ required: true }]}>
+              <Select style={{ width: 360 }} options={itemOptions} />
+            </Form.Item>
+            <Form.Item
+              name="option_kind"
+              label="Тип варианта"
+              tooltip="Определяет, как интерпретировать вариант: вручную, узлом целиком, по составу, комплектом или смешанно."
+            >
+              <Select
+                style={{ width: 160 }}
+                options={[
+                  { value: "MANUAL", label: COVERAGE_KIND_LABELS.MANUAL },
+                  { value: "MIXED", label: COVERAGE_KIND_LABELS.MIXED },
+                  { value: "KIT", label: COVERAGE_KIND_LABELS.KIT },
+                  { value: "BOM", label: COVERAGE_KIND_LABELS.BOM },
+                  { value: "WHOLE", label: COVERAGE_KIND_LABELS.WHOLE },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="goods_currency" label="Валюта">
+              <Select style={{ width: 120 }} options={[{ value: "USD", label: "USD" }, { value: "EUR", label: "EUR" }, { value: "RUB", label: "RUB" }]} />
+            </Form.Item>
+          </Space>
+          <Form.Item name="note" label="Комментарий">
+            <Input.TextArea rows={2} placeholder="Почему собираем вариант вручную" />
+          </Form.Item>
+          <Form.List name="lines">
+            {(fields, { add, remove }) => (
+              <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                {fields.map((field, index) => (
+                  <Card
+                    key={field.key}
+                    size="small"
+                    title={`Строка варианта #${index + 1}`}
+                    extra={
+                      fields.length > 1 ? (
+                        <Button danger type="text" onClick={() => remove(field.name)}>
+                          Удалить
+                        </Button>
+                      ) : null
+                    }
+                  >
+                    <Space wrap align="start">
+                      <Form.Item
+                        {...field}
+                        name={[field.name, "supplier_id"]}
+                        label="Поставщик"
+                        rules={[{ required: true, message: "Выберите поставщика" }]}
+                      >
+                        <Select
+                          style={{ width: 260 }}
+                          options={supplierCatalog.map((supplier) => ({
+                            value: supplier.supplier_id,
+                            label: supplier.supplier_name,
+                          }))}
+                        />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, "line_role"]} label="Роль">
+                        <Select
+                          style={{ width: 160 }}
+                          options={[
+                            { value: "MANUAL", label: COVERAGE_LINE_ROLE_LABELS.MANUAL },
+                            { value: "WHOLE", label: COVERAGE_LINE_ROLE_LABELS.WHOLE },
+                            { value: "COMPONENT", label: COVERAGE_LINE_ROLE_LABELS.COMPONENT },
+                            { value: "KIT_ROLE", label: COVERAGE_LINE_ROLE_LABELS.KIT_ROLE },
+                          ]}
+                        />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, "qty"]} label="Кол-во">
+                        <InputNumber style={{ width: 120 }} min={0} />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, "uom"]} label="Ед.">
+                        <Input style={{ width: 100 }} />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, "unit_price"]} label="Цена">
+                        <InputNumber style={{ width: 140 }} min={0} />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, "goods_currency"]} label="Валюта">
+                        <Select style={{ width: 120 }} options={[{ value: "USD", label: "USD" }, { value: "EUR", label: "EUR" }, { value: "RUB", label: "RUB" }]} />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, "lead_time_days"]} label="Срок, дн">
+                        <InputNumber style={{ width: 120 }} min={0} />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, "origin_country"]} label="Страна происхождения">
+                        <Input style={{ width: 140 }} placeholder="Например: Китай" />
+                      </Form.Item>
+                    </Space>
+                    <Form.Item {...field} name={[field.name, "note"]} label="Комментарий">
+                      <Input placeholder="Причина, ограничение, временное решение" />
+                    </Form.Item>
+                  </Card>
+                ))}
+                <Button
+                  onClick={() =>
+                    add({
+                      line_role: "MANUAL",
+                      qty: activeItem?.requested_qty || 1,
+                      uom: formatUomLabel(activeItem?.uom) || "шт",
+                      goods_currency: manualForm.getFieldValue("goods_currency") || "USD",
+                    })
+                  }
+                >
+                  Добавить строку
+                </Button>
+              </Space>
+            )}
+          </Form.List>
+        </Form>
+      </Modal>
+      <Drawer
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        width={520}
+        title="Справка по вкладке «Покрытие»"
+      >
+        <Space direction="vertical" size={16} style={{ width: "100%" }}>
+          {COVERAGE_HELP_SECTIONS.map((section) => (
+            <Card key={section.title} size="small" title={section.title}>
+              <Text>{section.body}</Text>
+            </Card>
+          ))}
+          <Card size="small" title="Формализованный пример">
+            <Space direction="vertical" size={8}>
+              <Text>
+                В заказе есть <Text strong>строка 1</Text> со сборкой и <Text strong>строка 2</Text> с обычной деталью.
+              </Text>
+              <Text>
+                По строке 1 система может увидеть два варианта: <Text strong>Поставщик A — узел целиком</Text> или <Text strong>Поставщик B — по составу</Text>.
+              </Text>
+              <Text>
+                По строке 2 может быть вариант <Text strong>Поставщик C — узел целиком</Text>.
+              </Text>
+              <Text>
+                Сначала на этой вкладке вы сохраняете эти варианты как допустимые. Затем в <Text strong>Сценариях</Text> выбираете по одному варианту на каждую строку RFQ и собираете полный план исполнения всего заказа.
+              </Text>
+            </Space>
+          </Card>
+        </Space>
+      </Drawer>
     </Space>
   )
 }

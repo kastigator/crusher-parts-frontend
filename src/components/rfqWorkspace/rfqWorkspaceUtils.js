@@ -9,10 +9,18 @@ export const formatDate = (value) => {
   }
 }
 
+export const formatIncotermsWithPlace = (code, place) => {
+  const parts = [String(code || "").trim(), String(place || "").trim()].filter(Boolean)
+  return parts.length ? parts.join(" ") : "—"
+}
+
 export const STEP_LABELS = [
   "RFQ",
   "Поставщики",
   "Ответы",
+  "Покрытие",
+  "Сценарии",
+  "Логистика",
   "Экономика",
   "Выбор",
   "КП",
@@ -24,6 +32,9 @@ export const STEP_TO_TAB = [
   "rfq",
   "suppliers",
   "responses",
+  "coverage",
+  "scenarios",
+  "logistics",
   "economics",
   "selection",
   "sales",
@@ -34,9 +45,7 @@ export const STEP_TO_TAB = [
 export const TAB_TO_STEP = STEP_TO_TAB.reduce((acc, key, index) => {
   acc[key] = index
   return acc
-}, {
-  coverage: 2,
-})
+}, {})
 
 export const statusToColor = (value) => {
   if (!value) return "default"
@@ -73,7 +82,7 @@ export const supplierStatusLabel = (value) => {
 
 const matchTypeLabel = {
   WHOLE: "Целиком",
-  BOM: "BOM",
+  BOM: "По составу",
   KIT: "Комплект",
 }
 
@@ -199,6 +208,8 @@ const resolveHeaderField = (headerValue) => {
   if (key === "строка" || key === "line" || key === "line number" || key === "line_number") {
     return "line_number"
   }
+  if (key === "selection key" || key === "selection_key") return "selection_key"
+  if (key === "rfq item id" || key === "rfq_item_id") return "rfq_item_id"
   if (includes("строк") || includes("line")) return "line_number"
   if (key === "цена" || key === "price") return "price"
   if (key === "кол во" || key === "кол-во" || key === "qty" || key === "quantity") return "offered_qty"
@@ -211,6 +222,9 @@ const resolveHeaderField = (headerValue) => {
   if (includes("тип") || includes("offer")) return "offer_type"
   if (includes("статус ответа") || includes("reply status") || includes("quote status")) {
     return "supplier_reply_status"
+  }
+  if (includes("incoterm") && (includes("place") || includes("named") || includes("пункт") || includes("мест"))) {
+    return "incoterms_place"
   }
   if (includes("incoterm")) return "incoterms"
   if (includes("услов") || includes("payment")) return "payment_terms"
@@ -244,7 +258,11 @@ const parseImportRowByHeaderMap = (cells, headerMap) => {
   if (!requiresPrice && (price != null || currency)) return null
 
   return {
+    rfq_item_id: parseNumberOrNull(getValue("rfq_item_id")),
     line_number: Number(lineNumber),
+    selection_key: getValue("selection_key")
+      ? String(getValue("selection_key")).trim()
+      : null,
     price: requiresPrice ? Number(price) : null,
     currency: requiresPrice ? currency : null,
     supplier_reply_status: supplierReplyStatus,
@@ -255,6 +273,9 @@ const parseImportRowByHeaderMap = (cells, headerMap) => {
     moq: parseNumberOrNull(getValue("moq")),
     packaging: getValue("packaging") ? String(getValue("packaging")).trim() : null,
     incoterms: getValue("incoterms") ? String(getValue("incoterms")).trim().toUpperCase() : null,
+    incoterms_place: getValue("incoterms_place")
+      ? String(getValue("incoterms_place")).trim()
+      : null,
     payment_terms: getValue("payment_terms") ? String(getValue("payment_terms")).trim() : null,
     validity_days: parseNumberOrNull(getValue("validity_days")),
     supplier_part_number: getValue("supplier_part_number")
@@ -284,7 +305,9 @@ export const parseImportRow = (cells) => {
     if (requiresPrice && (templatePrice == null || !templateCurrency)) return null
     if (!requiresPrice && (templatePrice != null || templateCurrency)) return null
     return {
+      rfq_item_id: parseNumberOrNull(row[idx.rfqItemId]),
       line_number: Number(lineNumber),
+      selection_key: row[idx.selectionKey] ? String(row[idx.selectionKey]).trim() : null,
       price: requiresPrice ? Number(templatePrice) : null,
       currency: requiresPrice ? templateCurrency : null,
       supplier_reply_status: supplierReplyStatus,
@@ -295,6 +318,9 @@ export const parseImportRow = (cells) => {
       moq: parseNumberOrNull(row[idx.moq]),
       packaging: row[idx.packaging] ? String(row[idx.packaging]).trim() : null,
       incoterms: row[idx.incoterms] ? String(row[idx.incoterms]).trim().toUpperCase() : null,
+      incoterms_place: row[idx.incotermsPlace]
+        ? String(row[idx.incotermsPlace]).trim()
+        : null,
       payment_terms: row[idx.paymentTerms] ? String(row[idx.paymentTerms]).trim() : null,
       validity_days: parseNumberOrNull(row[idx.validity]),
       supplier_part_number: row[idx.supplierPartNumber]
@@ -331,9 +357,12 @@ export const parseImportRow = (cells) => {
     moq: 18,
     packaging: 19,
     incoterms: 20,
-    paymentTerms: 21,
-    validity: 22,
-    comment: 23,
+    incotermsPlace: 21,
+    paymentTerms: 22,
+    validity: 23,
+    comment: 24,
+    selectionKey: 25,
+    rfqItemId: 26,
   })
   if (fromTemplateV2) return fromTemplateV2
 
@@ -356,9 +385,12 @@ export const parseImportRow = (cells) => {
     moq: 19,
     packaging: 20,
     incoterms: 21,
-    paymentTerms: 22,
-    validity: 23,
-    comment: 24,
+    incotermsPlace: 22,
+    paymentTerms: 23,
+    validity: 24,
+    comment: 25,
+    selectionKey: 26,
+    rfqItemId: 27,
   })
   if (fromTemplateV1) return fromTemplateV1
 
@@ -371,7 +403,9 @@ export const parseImportRow = (cells) => {
   if (!fallbackRequiresPrice && (fallbackPrice != null || fallbackCurrency)) return null
 
   return {
+    rfq_item_id: null,
     line_number: Number(lineNumber),
+    selection_key: null,
     price: fallbackRequiresPrice ? Number(fallbackPrice) : null,
     currency: fallbackRequiresPrice ? fallbackCurrency : null,
     supplier_reply_status: fallbackReplyStatus,
@@ -382,7 +416,8 @@ export const parseImportRow = (cells) => {
     moq: parseNumberOrNull(row[6]),
     packaging: row[7] ? String(row[7]).trim() : null,
     incoterms: row[17] ? String(row[17]).trim().toUpperCase() : null,
-    payment_terms: row[18] ? String(row[18]).trim() : null,
+    incoterms_place: row[18] ? String(row[18]).trim() : null,
+    payment_terms: row[19] ? String(row[19]).trim() : null,
     validity_days: parseNumberOrNull(row[8]),
     supplier_part_number: row[9] ? String(row[9]).trim() : null,
     supplier_description: row[10] ? String(row[10]).trim() : null,
@@ -393,6 +428,30 @@ export const parseImportRow = (cells) => {
     is_overweight: parseBooleanFlagOrNull(row[15]),
     is_oversize: parseBooleanFlagOrNull(row[16]),
   }
+}
+
+export const parseImportSheetRows = (table) => {
+  const rowsTable = Array.isArray(table) ? table : []
+  if (!rowsTable.length) return []
+
+  const firstRow = Array.isArray(rowsTable[0]) ? rowsTable[0] : []
+  const headerMap = {}
+  firstRow.forEach((cell, index) => {
+    const field = resolveHeaderField(cell)
+    if (field && !Object.prototype.hasOwnProperty.call(headerMap, field)) {
+      headerMap[field] = index
+    }
+  })
+  const hasHeader =
+    Number.isFinite(headerMap.line_number) &&
+    (
+      (Number.isFinite(headerMap.price) && Number.isFinite(headerMap.currency)) ||
+      Number.isFinite(headerMap.supplier_reply_status)
+    )
+
+  return (hasHeader ? rowsTable.slice(1) : rowsTable)
+    .map((cells) => (hasHeader ? parseImportRowByHeaderMap(cells, headerMap) : parseImportRow(cells)))
+    .filter((row) => row && Number.isFinite(row.line_number))
 }
 
 export const parseImportTextRows = (text) =>
@@ -419,8 +478,5 @@ export const parseImportTextRows = (text) =>
         Number.isFinite(headerMap.supplier_reply_status)
       )
 
-    const rows = (hasHeader ? table.slice(1) : table)
-      .map((cells) => (hasHeader ? parseImportRowByHeaderMap(cells, headerMap) : parseImportRow(cells)))
-      .filter((row) => row && Number.isFinite(row.line_number))
-    return rows
+    return parseImportSheetRows(table)
   }

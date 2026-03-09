@@ -3,7 +3,10 @@ import { Alert, Button, Checkbox, Input, Modal, Select, Space, Typography, messa
 import { UploadOutlined } from "@ant-design/icons"
 import * as XLSX from "xlsx"
 import axios from "@/api/axiosInstance"
-import { parseImportRow, parseImportTextRows } from "@/components/rfqWorkspace/rfqWorkspaceUtils"
+import {
+  parseImportSheetRows,
+  parseImportTextRows,
+} from "@/components/rfqWorkspace/rfqWorkspaceUtils"
 
 const { Text } = Typography
 
@@ -32,6 +35,7 @@ const buildPreviewKey = (supplierId, rows, newRevision) =>
     supplierId: Number(supplierId || 0),
     newRevision: newRevision === true,
     rows: (Array.isArray(rows) ? rows : []).map((row) => ({
+      rfq_item_id: Number(row?.rfq_item_id || 0),
       line_number: Number(row?.line_number || 0),
       price: row?.price ?? null,
       currency: String(row?.currency || "").toUpperCase(),
@@ -205,7 +209,7 @@ export default function ImportResponsesModal({
           Обязательные поля для строки: «Строка» и либо («Цена» + «Валюта»), либо «Статус ответа» без цены.
           Для сгенерированного Excel «Строка» уже предзаполнена.
           Поле «Срок действия цены (дн.) / Validity» опционально.
-          Остальные колонки (тип, срок, MOQ, упаковка, PN, вес/габариты, инкотермс, условия оплаты) импортируются как дополнительные.
+          Остальные колонки (тип, срок, MOQ, упаковка, PN, вес/габариты, инкотермс, пункт Incoterms, условия оплаты) импортируются как дополнительные.
           TSV можно вставлять как без шапки, так и с шапкой колонок.
         </Text>
         <Select
@@ -251,7 +255,7 @@ export default function ImportResponsesModal({
             )
           }
           placeholder={
-            "Строка\tЦена\tВалюта\tСрок\tКомментарий\tТип\tСтатус ответа\tИнкотермс\tУсловия оплаты\n1\t100\tEUR\t10\tпо телефону\tANALOG\tQUOTED\tFCA\t100% предоплата"
+            "Строка\tЦена\tВалюта\tСрок\tКомментарий\tТип\tСтатус ответа\tИнкотермс\tПункт Incoterms\tУсловия оплаты\n1\t100\tEUR\t10\tпо телефону\tANALOG\tQUOTED\tFCA\tShanghai\t100% предоплата"
           }
         />
         <Button
@@ -285,9 +289,7 @@ export default function ImportResponsesModal({
                     normalizedDetected.includes(normalizedOption)
                   )
                 })
-              const rowsParsed = json
-                .map((r) => parseImportRow(r))
-                .filter((r) => r && Number.isFinite(r.line_number))
+              const rowsParsed = parseImportSheetRows(json)
               if (!rowsParsed.length) {
                 message.warning(
                   "Не удалось распарсить файл: проверьте заполнение колонок Строка и (Цена+Валюта или Статус ответа без цены)"
@@ -306,6 +308,7 @@ export default function ImportResponsesModal({
                       r.offer_type || "",
                       r.supplier_reply_status || "",
                       r.incoterms || "",
+                      r.incoterms_place || "",
                       r.payment_terms || "",
                     ].join("\t")
                 )

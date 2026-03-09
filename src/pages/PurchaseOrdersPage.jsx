@@ -15,6 +15,7 @@ import {
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
+import { formatIncotermsWithPlace } from "@/components/rfqWorkspace/rfqWorkspaceUtils"
 
 export default function PurchaseOrdersPage() {
   const [orders, setOrders] = useState([])
@@ -130,6 +131,7 @@ export default function PurchaseOrdersPage() {
         supplier_reference: values.supplier_reference || null,
         currency: values.currency || null,
         incoterms: values.incoterms || null,
+        incoterms_place: values.incoterms_place || null,
       })
       createForm.resetFields()
       await loadOrders()
@@ -202,6 +204,9 @@ export default function PurchaseOrdersPage() {
               <Form.Item label="Инкотермс" name="incoterms">
                 <Input style={{ width: 120 }} />
               </Form.Item>
+              <Form.Item label="Пункт Incoterms" name="incoterms_place">
+                <Input style={{ width: 220 }} placeholder="Например: Shanghai Port" />
+              </Form.Item>
               <Form.Item style={{ marginTop: 30 }}>
                 <Button type="primary" htmlType="submit">
                   Создать
@@ -229,7 +234,11 @@ export default function PurchaseOrdersPage() {
               { title: "Поставщик", dataIndex: "supplier_name", width: 180 },
               { title: "Статус", dataIndex: "status", width: 120 },
               { title: "Референс", dataIndex: "supplier_reference" },
-              { title: "Инкотермс", dataIndex: "incoterms", width: 120 },
+              {
+                title: "Инкотермс",
+                width: 180,
+                render: (_, row) => formatIncotermsWithPlace(row?.incoterms, row?.incoterms_place),
+              },
             ]}
           />
         </Card>

@@ -13,7 +13,7 @@ export default function AdhocRouteModal({
   return (
     <Modal
       open={open}
-      title="Ad-hoc маршрут"
+      title="Разовый маршрут"
       onCancel={onCancel}
       onOk={onOk}
       confirmLoading={confirmLoading}
@@ -96,10 +96,10 @@ export default function AdhocRouteModal({
         </Space>
 
         <Space style={{ width: "100%", marginTop: 8 }} size="middle" align="start">
-          <Form.Item name="eta_min_days" label="ETA min, дн" style={{ flex: 1, marginBottom: 0 }}>
+          <Form.Item name="eta_min_days" label="ETA от, дн" style={{ flex: 1, marginBottom: 0 }}>
             <InputNumber style={{ width: "100%" }} min={0} />
           </Form.Item>
-          <Form.Item name="eta_max_days" label="ETA max, дн" style={{ flex: 1, marginBottom: 0 }}>
+          <Form.Item name="eta_max_days" label="ETA до, дн" style={{ flex: 1, marginBottom: 0 }}>
             <InputNumber style={{ width: "100%" }} min={0} />
           </Form.Item>
         </Space>

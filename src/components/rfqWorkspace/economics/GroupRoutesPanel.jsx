@@ -129,7 +129,7 @@ export default function GroupRoutesPanel({
                 <Space direction="vertical" size={0}>
                   <Text>{r.route_name_snapshot || r.route_template_name || "—"}</Text>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    {r.route_source_type === "adhoc" ? "Ad-hoc" : "Шаблон"}
+                    {r.route_source_type === "adhoc" ? "Разовый маршрут" : "Шаблон"}
                   </Text>
                 </Space>
               ),
@@ -187,10 +187,10 @@ export default function GroupRoutesPanel({
               width: 110,
               render: (v) => {
                 const raw = String(v || "")
-                if (raw === "ok") return <Tag color="green">ok</Tag>
-                if (raw === "warning") return <Tag color="orange">warning</Tag>
-                if (raw === "error") return <Tag color="red">error</Tag>
-                if (raw === "draft") return <Tag>draft</Tag>
+                if (raw === "ok") return <Tag color="green">OK</Tag>
+                if (raw === "warning") return <Tag color="orange">Предупреждение</Tag>
+                if (raw === "error") return <Tag color="red">Ошибка</Tag>
+                if (raw === "draft") return <Tag>Черновик</Tag>
                 return raw || "—"
               },
             },
@@ -229,7 +229,7 @@ export default function GroupRoutesPanel({
                     onChange={(val) => assignRouteTemplate(r, val)}
                   />
                   <Button size="small" onClick={() => openAdhocModal(r)}>
-                    Ad-hoc
+                    Разовый
                   </Button>
                 </Space>
               ),

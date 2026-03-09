@@ -5,6 +5,7 @@ import { Modal, Table, Space, Typography, Divider, Button, Tag, message, Segment
 import { UploadOutlined, DownloadOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
+import { formatIncotermsWithPlace } from "@/components/rfqWorkspace/rfqWorkspaceUtils"
 
 const { Title, Text } = Typography
 
@@ -296,7 +297,7 @@ export default function ProposalPreviewModal({ open, onClose, order, items, view
             <Text strong>Валюта:</Text> {order?.currency || "—"}
           </Text>
           <Text>
-            <Text strong>Incoterms:</Text> {order?.incoterms || "—"}
+      <Text strong>Incoterms:</Text> {formatIncotermsWithPlace(order?.incoterms, order?.incoterms_place)}
           </Text>
           <Text>
             <Text strong>Оплата:</Text> {order?.payment_terms || "—"}

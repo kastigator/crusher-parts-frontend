@@ -1139,6 +1139,45 @@ export default function RfqWorkspacePage() {
     }
   }, [])
 
+  const loadCommercialSnapshot = useCallback(
+    async (rfqId, opts = {}) => {
+      const { silent = false } = opts
+      const rfqIdNum = Number(rfqId || 0) || null
+      if (!rfqIdNum) return
+
+      const rfq = Number(activeRfq?.id || 0) === rfqIdNum
+        ? activeRfq
+        : rfqs.find((row) => Number(row.id) === rfqIdNum) || null
+      const requestId = Number(rfq?.client_request_id || 0) || null
+
+      try {
+        const [selectionResp, quotesResp, contractsResp, poResp] = await Promise.all([
+          axios.get("/selection", { params: { rfq_id: rfqIdNum } }),
+          axios.get("/sales-quotes", { params: { rfq_id: rfqIdNum } }),
+          requestId ? axios.get("/contracts", { params: { request_id: requestId } }) : Promise.resolve({ data: [] }),
+          axios.get("/purchase-orders", { params: { rfq_id: rfqIdNum } }),
+        ])
+
+        const selectionRows = Array.isArray(selectionResp?.data) ? selectionResp.data : []
+        const quoteRows = Array.isArray(quotesResp?.data) ? quotesResp.data : []
+        const contractRows = Array.isArray(contractsResp?.data) ? contractsResp.data : []
+        const poRows = Array.isArray(poResp?.data) ? poResp.data : []
+        const rfqQuoteIds = new Set(quoteRows.map((row) => Number(row.id)).filter(Boolean))
+
+        setSelections(selectionRows)
+        setSalesQuotes(quoteRows)
+        setContracts(contractRows.filter((row) => rfqQuoteIds.has(Number(row.sales_quote_id || 0))))
+        setPurchaseOrders(poRows)
+      } catch (e) {
+        console.error(e)
+        if (!silent) {
+          message.error("Не удалось обновить downstream-вкладки RFQ")
+        }
+      }
+    },
+    [activeRfq, rfqs]
+  )
+
   useEffect(() => {
     if (!activeRfqId) return
     if (activeTabKey !== "selection") return
@@ -2782,7 +2821,8 @@ export default function RfqWorkspacePage() {
         responseLines={responseLines}
         coverageRows={coverageRows}
         selections={selections}
-        onSelectionFinalized={() => loadSelectionSnapshot(activeRfqId, { silent: true })}
+        onSelectionFinalized={() => loadCommercialSnapshot(activeRfqId, { silent: true })}
+        onCommercialUpdated={() => loadCommercialSnapshot(activeRfqId, { silent: true })}
         salesQuotes={salesQuotes}
         contracts={contracts}
         purchaseOrders={purchaseOrders}

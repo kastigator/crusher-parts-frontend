@@ -116,6 +116,7 @@ export const logSchemas = {
       payment_terms: "Условия оплаты",
       preferred_currency: "Валюта (ISO3)",
       incoterms: "Инкотермс",
+      incoterms_place: "Пункт Incoterms",
       default_lead_time_days: "Срок поставки, дни",
       notes: "Примечания",
 
@@ -210,6 +211,7 @@ export const logSchemas = {
       responsible_user_id: "Ответственный",
       currency: "Валюта",
       incoterms: "Инкотермс",
+      incoterms_place: "Пункт Incoterms",
       payment_terms: "Условия оплаты",
       client_po_number: "Номер заказа клиента",
     },

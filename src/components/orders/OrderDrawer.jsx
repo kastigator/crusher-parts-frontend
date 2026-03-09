@@ -466,6 +466,7 @@ export default function OrderDrawer({
         status: values.status,
         currency: values.currency,
         incoterms: values.incoterms,
+        incoterms_place: values.incoterms_place || null,
         payment_terms: values.payment_terms,
         client_po_number: values.client_po_number,
         responsible_user_id: values.responsible_user_id || null,
@@ -1061,6 +1062,9 @@ export default function OrderDrawer({
           </Form.Item>
           <Form.Item label="Инкотермс" name="incoterms">
             <IncotermsSelect allowClear />
+          </Form.Item>
+          <Form.Item label="Пункт Incoterms" name="incoterms_place">
+            <Input placeholder="Например: Novorossiysk / Shanghai Port" />
           </Form.Item>
           <Form.Item label="Условия оплаты" name="payment_terms">
             <Input placeholder="Например, 50/50" />

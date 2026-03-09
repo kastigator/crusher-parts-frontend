@@ -6,6 +6,8 @@ import SuppliersTabContent from "@/components/rfqWorkspace/SuppliersTabContent"
 import ResponsesTabContent from "@/components/rfqWorkspace/ResponsesTabContent"
 import CoverageTabContent from "@/components/rfqWorkspace/CoverageTabContent"
 import SelectionTabContent from "@/components/rfqWorkspace/SelectionTabContent"
+import ScenariosTabContent from "@/components/rfqWorkspace/ScenariosTabContent"
+import LogisticsTabContent from "@/components/rfqWorkspace/LogisticsTabContent"
 import EconomicsTabContent from "@/components/rfqWorkspace/EconomicsTabContent"
 import SalesTabContent from "@/components/rfqWorkspace/SalesTabContent"
 import ContractsTabContent from "@/components/rfqWorkspace/ContractsTabContent"
@@ -76,6 +78,7 @@ export default function RfqWorkspaceMainContent({
   coverageRows,
   selections,
   onSelectionFinalized,
+  onCommercialUpdated,
   salesQuotes,
   contracts,
   purchaseOrders,
@@ -279,6 +282,18 @@ export default function RfqWorkspaceMainContent({
                   ),
                 },
                 {
+                  key: "scenarios",
+                  label: "Сценарии",
+                  disabled: !isStructureConfirmed,
+                  children: <ScenariosTabContent rfqId={activeRfqIdForTabs} />,
+                },
+                {
+                  key: "logistics",
+                  label: "Логистика",
+                  disabled: !isStructureConfirmed,
+                  children: <LogisticsTabContent rfqId={activeRfqIdForTabs} />,
+                },
+                {
                   key: "economics",
                   label: "Экономика",
                   disabled: !isStructureConfirmed,
@@ -303,13 +318,27 @@ export default function RfqWorkspaceMainContent({
                   key: "sales",
                   label: "КП",
                   disabled: !isStructureConfirmed,
-                  children: <SalesTabContent salesQuotes={salesQuotes} formatDate={formatDate} />,
+                  children: (
+                    <SalesTabContent
+                      activeRfq={activeRfq}
+                      selections={selections}
+                      salesQuotes={salesQuotes}
+                      formatDate={formatDate}
+                      onCommercialUpdated={onCommercialUpdated}
+                    />
+                  ),
                 },
                 {
                   key: "contracts",
                   label: "Контракт",
                   disabled: !isStructureConfirmed,
-                  children: <ContractsTabContent contracts={contracts} formatDate={formatDate} />,
+                  children: (
+                    <ContractsTabContent
+                      contracts={contracts}
+                      formatDate={formatDate}
+                      onCommercialUpdated={onCommercialUpdated}
+                    />
+                  ),
                 },
                 {
                   key: "po",
@@ -317,8 +346,11 @@ export default function RfqWorkspaceMainContent({
                   disabled: !isStructureConfirmed,
                   children: (
                     <PurchaseOrdersTabContent
+                      selections={selections}
+                      contracts={contracts}
                       purchaseOrders={purchaseOrders}
                       formatDate={formatDate}
+                      onCommercialUpdated={onCommercialUpdated}
                     />
                   ),
                 },

@@ -23,6 +23,9 @@ import {
 } from "antd"
 import { CloseOutlined, EditOutlined, SaveOutlined } from "@ant-design/icons"
 import dayjs from "dayjs"
+import RequestMarginTabContent from "@/components/clientRequests/RequestMarginTabContent"
+import RequestQuoteTabContent from "@/components/clientRequests/RequestQuoteTabContent"
+import RequestContractTabContent from "@/components/clientRequests/RequestContractTabContent"
 
 const { Text } = Typography
 
@@ -549,23 +552,16 @@ export default function ClientRequestWorkspaceCard({
               key: "margin",
               label: "Маржа/Экономика",
               children: (
-                <Alert
-                  type="info"
-                  message="Раздел в разработке"
-                  description="Тут будет блок расчета маржи и экономики после работы закупщика."
-                  showIcon
-                />
+                <RequestMarginTabContent requestId={activeRequest?.id} />
               ),
             },
             {
               key: "quote",
               label: "КП",
               children: (
-                <Alert
-                  type="info"
-                  message="Раздел в разработке"
-                  description="Тут появится подготовка коммерческого предложения."
-                  showIcon
+                <RequestQuoteTabContent
+                  requestId={activeRequest?.id}
+                  activeRevisionId={activeRevisionId}
                 />
               ),
             },
@@ -573,12 +569,7 @@ export default function ClientRequestWorkspaceCard({
               key: "contract",
               label: "Контракт",
               children: (
-                <Alert
-                  type="info"
-                  message="Раздел в разработке"
-                  description="Тут будет хранение и согласование контракта."
-                  showIcon
-                />
+                <RequestContractTabContent requestId={activeRequest?.id} />
               ),
             },
           ]}
