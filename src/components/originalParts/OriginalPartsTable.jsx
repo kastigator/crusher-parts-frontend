@@ -96,6 +96,20 @@ export default function OriginalPartsTable({
       .map((name) => ({ text: name, value: name }))
   }, [data])
 
+  const clientFilters = useMemo(() => {
+    const set = new Set()
+    ;(Array.isArray(data) ? data : []).forEach((r) => {
+      String(r.client_names || "")
+        .split("|")
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .forEach((name) => set.add(name))
+    })
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ text: name, value: name }))
+  }, [data])
+
   // Группа (работает всегда, если есть group_name)
   const groupFilters = useMemo(() => {
     const set = new Set()
@@ -175,6 +189,30 @@ export default function OriginalPartsTable({
             sorter: (a, b) =>
               (a.model_name || "").localeCompare(b.model_name || ""),
             sortDirections: ["ascend", "descend"],
+          },
+          {
+            key: "client_names",
+            title: "Клиенты",
+            dataIndex: "client_names",
+            width: 220,
+            ellipsis: true,
+            filters: clientFilters,
+            onFilter: (value, record) =>
+              String(record.client_names || "")
+                .split("|")
+                .map((v) => v.trim())
+                .includes(String(value || "")),
+            render: (value) => <ValueDisplay value={value ? value.replaceAll(" | ", ", ") : ""} />,
+          },
+          {
+            key: "client_units_count",
+            title: "Машины клиентов",
+            dataIndex: "client_units_count",
+            width: 150,
+            align: "right",
+            sorter: (a, b) => Number(a.client_units_count || 0) - Number(b.client_units_count || 0),
+            sortDirections: ["ascend", "descend"],
+            render: (value) => Number(value || 0),
           },
         ]
       : []),

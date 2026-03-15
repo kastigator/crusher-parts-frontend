@@ -123,6 +123,9 @@ export default function OriginalPartDetailPage() {
   return (
     <TabRendererPage tabKey="original_parts">
       <Space direction="vertical" style={{ width: "100%" }} size={12}>
+        <Typography.Title level={2} style={{ margin: 0 }}>
+          OEM детали
+        </Typography.Title>
         <Space>
           <Button onClick={goBackToList}>
             Назад к списку
@@ -143,7 +146,7 @@ export default function OriginalPartDetailPage() {
             Удалить полностью
           </Button>
           {part?.cat_number ? (
-            <Text type="secondary">Деталь: {part.cat_number}</Text>
+            <Text type="secondary">OEM деталь: {part.cat_number}</Text>
           ) : null}
         </Space>
 

@@ -62,6 +62,7 @@ export default function OriginalPartsMain() {
   const location = useLocation()
   const [manufacturer, setManufacturer] = useState(null)
   const [model, setModel] = useState(null)
+  const [catalogContext, setCatalogContext] = useState(null)
 
   const [search, setSearch] = useState("")
   // viewMode:
@@ -70,7 +71,7 @@ export default function OriginalPartsMain() {
   // - parts: таблица только деталей
   // - all: таблица всех
   // - orphans: таблица "вне структуры" (детали без родителей)
-  const [viewMode, setViewMode] = useState("roots")
+  const [viewMode, setViewMode] = useState("all")
 
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -106,7 +107,7 @@ export default function OriginalPartsMain() {
   const partsAbortRef = useRef(null)
 
   // 🔹 режим "Показать все детали"
-  const [showAll, setShowAll] = useState(false)
+  const [showAll, setShowAll] = useState(true)
 
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [filters, setFilters] = useState({})
@@ -142,6 +143,9 @@ export default function OriginalPartsMain() {
     }
     if (restore.model) {
       setModel(restore.model)
+    }
+    if (restore.catalogContext !== undefined) {
+      setCatalogContext(restore.catalogContext || null)
     }
     if (restore.search !== undefined) setSearch(restore.search || "")
     if (restore.showAll !== undefined) setShowAll(!!restore.showAll)
@@ -254,6 +258,65 @@ export default function OriginalPartsMain() {
     }
   }, [manufacturer?.id])
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || "")
+    const manufacturerId = Number(params.get("manufacturer_id") || 0) || null
+    const equipmentModelId = Number(params.get("equipment_model_id") || 0) || null
+    const classifierNodeId = Number(params.get("classifier_node_id") || 0) || null
+
+    if (!manufacturerId && !equipmentModelId && !classifierNodeId) return
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        if (equipmentModelId) {
+          const { data } = await axios.get(`/equipment-models/${equipmentModelId}`)
+          if (cancelled || !data) return
+          const nextManufacturer = data.manufacturer_id
+            ? { id: data.manufacturer_id, name: data.manufacturer_name }
+            : null
+          setManufacturer(nextManufacturer)
+          setModel({
+            id: data.id,
+            model_name: data.model_name,
+            manufacturer_id: data.manufacturer_id,
+          })
+          if (classifierNodeId) {
+            const { data: node } = await axios.get(`/equipment-classifier-nodes/${classifierNodeId}`)
+            if (cancelled) return
+            setCatalogContext({
+              mode: "classifier",
+              classifierNode: node || null,
+            })
+          }
+          return
+        }
+
+        if (manufacturerId) {
+          const { data } = await axios.get("/equipment-manufacturers")
+          if (cancelled) return
+          const row = (Array.isArray(data) ? data : []).find((item) => Number(item.id) === manufacturerId) || null
+          if (row) setManufacturer({ id: row.id, name: row.name })
+        }
+
+        if (classifierNodeId) {
+          const { data: node } = await axios.get(`/equipment-classifier-nodes/${classifierNodeId}`)
+          if (cancelled) return
+          setCatalogContext({
+            mode: "classifier",
+            classifierNode: node || null,
+          })
+        }
+      } catch (e) {
+        console.error("Не удалось восстановить контекст каталога из URL", e)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [location.search])
+
   /* ---------------------- загрузка деталей --------------------- */
   const fetchParts = useCallback(async () => {
     const modelId = model?.id
@@ -280,6 +343,9 @@ export default function OriginalPartsMain() {
       // в обычном режиме фильтруем по модели
       if (!showAll && modelId) {
         params.equipment_model_id = modelId
+      }
+      if (showAll && catalogContext?.mode === "classifier" && catalogContext?.classifierNode?.id) {
+        params.classifier_node_id = catalogContext.classifierNode.id
       }
 
       if (search?.trim()) params.q = search.trim()
@@ -343,7 +409,21 @@ export default function OriginalPartsMain() {
   const ensureDefaultColumnsForView = useCallback(
     (viewKey, meta) => {
       if (!meta?.options?.length) return
-      if (columnsByView && Object.prototype.hasOwnProperty.call(columnsByView, viewKey)) return
+      if (columnsByView && Object.prototype.hasOwnProperty.call(columnsByView, viewKey)) {
+        if (viewKey.startsWith("showAll:")) {
+          const nextKeys = ["manufacturer", "model", "client_names", "client_units_count"]
+          const current = Array.isArray(columnsByView[viewKey]) ? columnsByView[viewKey] : []
+          const allToggleKeys = meta.options.map((o) => o.key)
+          const missing = nextKeys.filter((key) => allToggleKeys.includes(key) && !current.includes(key))
+          if (missing.length) {
+            setColumnsByView((prev) => ({
+              ...(prev || {}),
+              [viewKey]: [...current, ...missing],
+            }))
+          }
+        }
+        return
+      }
 
       const allToggleKeys = meta.options.map((o) => o.key)
       const pick = (keys) => keys.filter((k) => allToggleKeys.includes(k))
@@ -395,7 +475,13 @@ export default function OriginalPartsMain() {
       // showAll: prefer manufacturer/model
       if (viewKey.startsWith("showAll:")) {
         const base = recommended || pick(["description_ru", "description_en", "group_name", "tnved_code", "weight_kg", "dims"])
-        recommended = pick(["manufacturer", "model", ...base])
+        recommended = pick([
+          "manufacturer",
+          "model",
+          "client_names",
+          "client_units_count",
+          ...base,
+        ])
       }
 
       if (!recommended) return
@@ -755,6 +841,7 @@ export default function OriginalPartsMain() {
           listState: {
             manufacturer,
             model,
+            catalogContext,
             search,
             showAll,
             viewMode,
@@ -771,6 +858,7 @@ export default function OriginalPartsMain() {
       location.search,
       manufacturer,
       model,
+      catalogContext,
       search,
       showAll,
       viewMode,
@@ -903,9 +991,10 @@ export default function OriginalPartsMain() {
   const clearSelection = () => {
     setManufacturer(null)
     setModel(null)
+    setCatalogContext(null)
     setRows([])
-    setShowAll(false) // при сбросе также выключаем режим "все"
-    setViewMode("roots")
+    setShowAll(true)
+    setViewMode("all")
     setFilters({})
     // columnsByView are per-user prefs: do not clear on selection reset
   }
@@ -1055,16 +1144,57 @@ export default function OriginalPartsMain() {
                 onClick={() => setPickerOpen(true)}
               >
                 {manufacturer && model
-                  ? "Изменить производителя/модель"
+                  ? "Изменить фильтр производителя/модели"
                   : "Выбрать производителя и модель"}
               </Button>
 
-              {manufacturer && !showAll ? (
-                <Tag color="geekblue">
-                  Производитель: {manufacturer.name}
-                </Tag>
-              ) : null}
-              {model && !showAll ? <Tag color="blue">Модель: {model.model_name}</Tag> : null}
+              {showAll ? (
+                <>
+                  <Tag color="green">Режим: весь OEM каталог</Tag>
+                  {manufacturer || model ? (
+                    <Tag>
+                      Контекст: {[manufacturer?.name, model?.model_name].filter(Boolean).join(" / ")}
+                    </Tag>
+                  ) : null}
+                  {catalogContext?.mode === "client" && catalogContext?.equipmentUnit ? (
+                    <Tag color="purple">
+                      Контекст машины:{" "}
+                      {[
+                        catalogContext.client?.company_name || "—",
+                        catalogContext.equipmentUnit.serial_number || "без серийника",
+                      ].join(" / ")}
+                    </Tag>
+                  ) : null}
+                  {catalogContext?.mode === "classifier" && catalogContext?.classifierNode ? (
+                    <Tag color="cyan">
+                      Контекст типа: {catalogContext.classifierNode.name}
+                    </Tag>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  {manufacturer ? (
+                    <Tag color="geekblue">
+                      Производитель: {manufacturer.name}
+                    </Tag>
+                  ) : null}
+                  {model ? <Tag color="blue">Модель: {model.model_name}</Tag> : null}
+                  {catalogContext?.mode === "client" && catalogContext?.equipmentUnit ? (
+                    <>
+                      <Tag color="purple">Клиент: {catalogContext.client?.company_name || "—"}</Tag>
+                      <Tag color="magenta">
+                        Машина: {catalogContext.equipmentUnit.serial_number || "без серийника"}
+                      </Tag>
+                      {catalogContext.equipmentUnit.manufacture_year ? (
+                        <Tag>Год: {catalogContext.equipmentUnit.manufacture_year}</Tag>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {catalogContext?.mode === "classifier" && catalogContext?.classifierNode ? (
+                    <Tag color="cyan">Классификатор: {catalogContext.classifierNode.name}</Tag>
+                  ) : null}
+                </>
+              )}
 
               {(manufacturer || model || showAll) && (
                 <Button
@@ -1097,7 +1227,7 @@ export default function OriginalPartsMain() {
               if (e.target.checked && viewMode === "orphans") setViewMode("all")
             }}
           >
-            По всем моделям
+            Показывать весь OEM каталог
           </Checkbox>
 
             <Button
@@ -1121,7 +1251,7 @@ export default function OriginalPartsMain() {
             <Button
               onClick={() => {
                 if (!model?.id) {
-                  message.warning("Выберите модель для импорта каталога")
+                  message.warning("Выберите модель для импорта OEM-каталога")
                   return
                 }
                 setImportOpen(true)
@@ -1158,7 +1288,7 @@ export default function OriginalPartsMain() {
                     value={viewMode}
                     onChange={(val) => setViewMode(String(val))}
                     options={[
-                      { label: "Узлы (дерево)", value: "roots", disabled: showAll || !model },
+                  { label: "Узлы (дерево)", value: "roots", disabled: showAll || !model },
                       { label: "Сборки", value: "assemblies" },
                       { label: "Детали", value: "parts" },
                       { label: "Все", value: "all" },
@@ -1274,6 +1404,7 @@ export default function OriginalPartsMain() {
                       listState: {
                         manufacturer,
                         model,
+                        catalogContext,
                         search,
                         showAll,
                         viewMode,
@@ -1323,7 +1454,7 @@ export default function OriginalPartsMain() {
           ) : (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="Выберите производителя и модель или включите режим «Показать все детали»"
+              description="Каталог пуст для текущего фильтра"
               style={{ padding: "48px 0" }}
             />
           )}
@@ -1805,9 +1936,10 @@ export default function OriginalPartsMain() {
         onClose={() => setPickerOpen(false)}
         initialManufacturerId={manufacturer?.id ?? null}
         initialModelId={model?.id ?? null}
-        onPick={(mf, md) => {
+        onPick={(mf, md, meta) => {
           setManufacturer(mf)
           setModel(md)
+          setCatalogContext(meta || null)
           setShowAll(false)
           setViewMode("roots")
           setFilters({})

@@ -19,6 +19,8 @@ const CATALOG_CHILD_PATHS = new Set([
   "/suppliers",
   "/supplier-parts",
   "/original-parts",
+  "/standard-parts",
+  "/equipment-classifier",
   "/materials",
   "/tnved-codes",
   "/logistics-corridors",
@@ -30,11 +32,18 @@ const CATALOG_ICON_BY_PATH = {
   "/suppliers": "suppliers",
   "/supplier-parts": "supplier-parts",
   "/original-parts": "original-parts",
+  "/standard-parts": "materials",
+  "/equipment-classifier": "catalogs",
   "/materials": "materials",
   "/tnved-codes": "tnved-codes",
   "/logistics-corridors": "coverage",
 }
+const CATALOG_LABEL_BY_PATH = {
+  "/original-parts": "OEM детали",
+}
 const CATALOG_FALLBACK_ITEMS = [
+  { path: "/equipment-classifier", name: "Классификатор оборудования", icon: "catalogs" },
+  { path: "/standard-parts", name: "Стандартные детали", icon: "materials" },
   { path: "/logistics-corridors", name: "Логистические коридоры", icon: "coverage" },
 ]
 
@@ -135,6 +144,7 @@ export default function Sidebar() {
         const withFallbackIcon = {
           ...tab,
           icon: tab.icon || CATALOG_ICON_BY_PATH[tab.path] || "catalogs",
+          name: CATALOG_LABEL_BY_PATH[tab.path] || tab.name,
         }
         childItems.push(buildMenuItem(withFallbackIcon, { withIcon: true }))
       })

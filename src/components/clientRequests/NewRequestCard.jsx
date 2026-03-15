@@ -8,12 +8,16 @@ export default function NewRequestCard({
   clients,
   setCreateClientOpen,
   loadContacts,
+  handleClientChange,
   userOptions,
   sourceOptions,
   contactsLoading,
   contactOptions,
   contactDropdownOpen,
   setContactDropdownOpen,
+  equipmentUnitOptions,
+  selectedEquipmentUnitId,
+  setSelectedEquipmentUnitId,
 }) {
   return (
     <Card title="Новая заявка" size="small">
@@ -34,26 +38,7 @@ export default function NewRequestCard({
               showSearch
               optionFilterProp="label"
               placeholder="Выберите клиента"
-              onChange={(val) => {
-                if (val === "__create__") {
-                  createForm.setFieldsValue({ client_id: null })
-                  setCreateClientOpen(true)
-                  return
-                }
-                const client = clients.find((c) => c.id === val)
-                if (!client) return
-                const current = createForm.getFieldsValue([
-                  "contact_name",
-                  "contact_email",
-                  "contact_phone",
-                ])
-                createForm.setFieldsValue({
-                  contact_name: current.contact_name || client.contact_person || "",
-                  contact_email: current.contact_email || client.email || "",
-                  contact_phone: current.contact_phone || client.phone || "",
-                })
-                loadContacts(val)
-              }}
+              onChange={handleClientChange}
             />
           </Form.Item>
           <Form.Item label="Ответственный" name="assigned_to_user_id">
@@ -75,6 +60,21 @@ export default function NewRequestCard({
           </Form.Item>
           <Form.Item label="Референс клиента" name="client_reference">
             <Input style={{ width: 220 }} />
+          </Form.Item>
+          <Form.Item
+            label="Единица техники"
+            tooltip="Контекст для OEM-подбора: машина клиента, её модель и серийный номер."
+          >
+            <Select
+              style={{ width: 320 }}
+              options={equipmentUnitOptions}
+              showSearch
+              optionFilterProp="label"
+              placeholder="Не выбрана"
+              allowClear
+              value={selectedEquipmentUnitId || undefined}
+              onChange={(value) => setSelectedEquipmentUnitId(value || null)}
+            />
           </Form.Item>
           <Form.Item label="Комментарий (внутр.)" name="comment_internal">
             <Input.TextArea style={{ width: 320 }} rows={2} />

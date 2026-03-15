@@ -37,6 +37,7 @@ export default function AddPositionsModal({
   catalogLoading,
   catalogRowInputs,
   setCatalogRowInputs,
+  equipmentContextLabel,
 }) {
   return (
     <Modal
@@ -51,6 +52,9 @@ export default function AddPositionsModal({
           <Text type="secondary">
             Можно искать по каталожному номеру сразу или уточнять через производителя и модель.
           </Text>
+          {equipmentContextLabel ? (
+            <Text type="secondary">Текущий equipment context: {equipmentContextLabel}</Text>
+          ) : null}
           <Space wrap align="center">
             <AutoComplete
               style={{ width: 360 }}
@@ -74,7 +78,7 @@ export default function AddPositionsModal({
                 setModalSearch(value)
                 setModalSelectedPart(option.part || null)
               }}
-              placeholder="Глобальный поиск по оригинальным деталям"
+              placeholder="Глобальный поиск по OEM деталям"
               notFoundContent={modalLoading ? "Поиск..." : "Нет совпадений"}
             >
               <Input
@@ -168,7 +172,9 @@ export default function AddPositionsModal({
             <Text type="secondary">
               {catalogSearch && catalogSearch.length >= 2
                 ? "Результаты поиска"
-                : "Все детали выбранной модели"}
+                : modelId
+                  ? "Детали, подходящие выбранной технике"
+                  : "Все детали выбранной модели"}
             </Text>
             <Space>
               <Button
@@ -211,6 +217,18 @@ export default function AddPositionsModal({
                 title: "Описание",
                 render: (_, row) =>
                   row.description_ru || row.description_en || "—",
+              },
+              {
+                title: "Применяемость",
+                width: 170,
+                render: (_, row) =>
+                  equipmentContextLabel ? (
+                    <Tag color="green">Подходит выбранной технике</Tag>
+                  ) : Number(row.fitments_count || 0) > 0 ? (
+                    <Tag color="blue">{row.fitments_count} связей</Tag>
+                  ) : (
+                    <Tag>Нет связей</Tag>
+                  ),
               },
               {
                 title: "Кол-во",

@@ -40,6 +40,7 @@ import axios from "@/api/axiosInstance"
 import dayjs from "dayjs"
 import confirmAction from "@/utils/confirmAction"
 import { useAuth } from "@/auth/AuthContext"
+import { useSearchParams } from "react-router-dom"
 
 const STATUS_OPTIONS = [
   { value: "draft", label: "Черновик" },
@@ -69,6 +70,36 @@ const UOM_OPTIONS = [
 
 const CLIENT_REQUEST_TEMPLATE_URL =
   "https://storage.googleapis.com/shared-parts-bucket/templates/client_request_items_template.xlsx"
+
+const normalizeCatalogPart = (part) => {
+  if (!part) return null
+  return {
+    ...part,
+    cat_number: part.cat_number || part.part_number || null,
+    original_part_id: part.original_part_id || part.oem_part_id || part.id || null,
+    description_ru: part.description_ru || null,
+    description_en: part.description_en || null,
+    uom: part.uom || "pcs",
+  }
+}
+
+const formatEquipmentUnitLabel = (unit) => {
+  if (!unit) return ""
+  const left = [
+    unit.internal_name || null,
+    unit.manufacturer_name || null,
+    unit.model_name || null,
+  ]
+    .filter(Boolean)
+    .join(" • ")
+  const suffix = [
+    unit.serial_number ? `SN ${unit.serial_number}` : null,
+    unit.site_name || null,
+  ]
+    .filter(Boolean)
+    .join(" • ")
+  return [left || "Единица техники", suffix].filter(Boolean).join(" • ")
+}
 
 const IMPORT_HEADER_MAP = {
   Производитель: "manufacturer",
@@ -122,6 +153,7 @@ const getStatusStepIndex = (status) => {
 
 export default function ClientRequestsPage() {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [requests, setRequests] = useState([])
   const [clients, setClients] = useState([])
   const [users, setUsers] = useState([])
@@ -175,6 +207,10 @@ export default function ClientRequestsPage() {
   const [manufacturerId, setManufacturerId] = useState(null)
   const [models, setModels] = useState([])
   const [modelId, setModelId] = useState(null)
+  const [createEquipmentUnits, setCreateEquipmentUnits] = useState([])
+  const [createEquipmentUnitId, setCreateEquipmentUnitId] = useState(null)
+  const [activeEquipmentUnits, setActiveEquipmentUnits] = useState([])
+  const [activeEquipmentUnitId, setActiveEquipmentUnitId] = useState(null)
   const [frequentParts, setFrequentParts] = useState([])
   const [frequentLoading, setFrequentLoading] = useState(false)
   const [addModalOpen, setAddModalOpen] = useState(false)
@@ -198,6 +234,34 @@ export default function ClientRequestsPage() {
   const [requestForm] = Form.useForm()
   const [revisionForm] = Form.useForm()
   const [itemForm] = Form.useForm()
+
+  const selectedCreateEquipmentUnit = useMemo(
+    () => createEquipmentUnits.find((row) => Number(row.id) === Number(createEquipmentUnitId)) || null,
+    [createEquipmentUnits, createEquipmentUnitId],
+  )
+
+  const selectedActiveEquipmentUnit = useMemo(
+    () => activeEquipmentUnits.find((row) => Number(row.id) === Number(activeEquipmentUnitId)) || null,
+    [activeEquipmentUnits, activeEquipmentUnitId],
+  )
+
+  const createEquipmentUnitOptions = useMemo(
+    () =>
+      createEquipmentUnits.map((row) => ({
+        value: row.id,
+        label: formatEquipmentUnitLabel(row),
+      })),
+    [createEquipmentUnits],
+  )
+
+  const activeEquipmentUnitOptions = useMemo(
+    () =>
+      activeEquipmentUnits.map((row) => ({
+        value: row.id,
+        label: formatEquipmentUnitLabel(row),
+      })),
+    [activeEquipmentUnits],
+  )
 
   const loadRequests = async () => {
     setLoading(true)
@@ -263,6 +327,28 @@ export default function ClientRequestsPage() {
     loadManufacturers()
   }, [])
 
+  useEffect(() => {
+    const clientId = Number(searchParams.get("client_id") || 0) || null
+    const equipmentUnitId = Number(searchParams.get("equipment_unit_id") || 0) || null
+    if (!clientId) return
+
+    let cancelled = false
+    ;(async () => {
+      createForm.setFieldsValue({ client_id: clientId })
+      await loadContacts(clientId)
+      const units = await loadEquipmentUnits(clientId)
+      if (cancelled) return
+      setCreateEquipmentUnits(units)
+      if (equipmentUnitId && units.some((row) => Number(row.id) === equipmentUnitId)) {
+        setCreateEquipmentUnitId(equipmentUnitId)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [searchParams, createForm, clients.length])
+
   const loadContacts = async (clientId, applyToForm = true) => {
     if (!clientId) {
       setClientContacts([])
@@ -292,6 +378,26 @@ export default function ClientRequestsPage() {
     }
   }
 
+  const loadEquipmentUnits = async (clientId) => {
+    if (!clientId) return []
+    try {
+      const { data } = await axios.get("/client-equipment-units", {
+        params: { client_id: clientId, limit: 500 },
+      })
+      return Array.isArray(data) ? data : []
+    } catch (e) {
+      console.error(e)
+      return []
+    }
+  }
+
+  const applyEquipmentContext = (unit) => {
+    const nextManufacturerId = Number(unit?.manufacturer_id || 0) || null
+    const nextModelId = Number(unit?.equipment_model_id || 0) || null
+    setManufacturerId(nextManufacturerId)
+    setModelId(nextModelId)
+  }
+
   const loadFrequentParts = async (clientId) => {
     if (!clientId) {
       setFrequentParts([])
@@ -308,6 +414,37 @@ export default function ClientRequestsPage() {
     } finally {
       setFrequentLoading(false)
     }
+  }
+
+  const handleCreateClientChange = async (value) => {
+    if (value === "__create__") {
+      createForm.setFieldsValue({ client_id: null })
+      setCreateClientOpen(true)
+      return
+    }
+
+    const client = clients.find((c) => c.id === value)
+    if (client) {
+      const current = createForm.getFieldsValue(["contact_name", "contact_email", "contact_phone"])
+      createForm.setFieldsValue({
+        contact_name: current.contact_name || client.contact_person || "",
+        contact_email: current.contact_email || client.email || "",
+        contact_phone: current.contact_phone || client.phone || "",
+      })
+    }
+
+    await loadContacts(value)
+    const units = await loadEquipmentUnits(value)
+    setCreateEquipmentUnits(units)
+    setCreateEquipmentUnitId(null)
+  }
+
+  const handleActiveEquipmentUnitChange = (value) => {
+    const nextId = value || null
+    setActiveEquipmentUnitId(nextId)
+    const unit =
+      activeEquipmentUnits.find((row) => Number(row.id) === Number(nextId)) || null
+    applyEquipmentContext(unit)
   }
 
   useEffect(() => {
@@ -341,6 +478,11 @@ export default function ClientRequestsPage() {
     }
   }, [activeRequest?.client_id])
 
+  useEffect(() => {
+    if (!selectedActiveEquipmentUnit) return
+    applyEquipmentContext(selectedActiveEquipmentUnit)
+  }, [selectedActiveEquipmentUnit])
+
 
   useEffect(() => {
     if (!itemEditOpen) {
@@ -354,10 +496,19 @@ export default function ClientRequestsPage() {
     const timer = setTimeout(async () => {
       setOriginalLoading(true)
       try {
-        const { data } = await axios.get("/original-parts", {
-          params: { q: originalSearch },
+        const params = { q: originalSearch }
+        if (selectedActiveEquipmentUnit?.equipment_model_id) {
+          params.equipment_model_id = selectedActiveEquipmentUnit.equipment_model_id
+        }
+        if (selectedActiveEquipmentUnit?.manufacturer_id) {
+          params.manufacturer_id = selectedActiveEquipmentUnit.manufacturer_id
+        }
+        const { data } = await axios.get("/oem-parts", {
+          params,
         })
-        setOriginalResults(Array.isArray(data) ? data.slice(0, 50) : [])
+        setOriginalResults(
+          Array.isArray(data) ? data.slice(0, 50).map(normalizeCatalogPart) : [],
+        )
       } catch (e) {
         console.error(e)
       } finally {
@@ -365,7 +516,7 @@ export default function ClientRequestsPage() {
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [originalSearch, itemEditOpen])
+  }, [originalSearch, itemEditOpen, selectedActiveEquipmentUnit])
 
   useEffect(() => {
     if (!quickSearch || quickSearch.length < 2) {
@@ -376,10 +527,19 @@ export default function ClientRequestsPage() {
     const timer = setTimeout(async () => {
       setQuickLoading(true)
       try {
-        const { data } = await axios.get("/original-parts", {
-          params: { q: quickSearch },
+        const params = { q: quickSearch }
+        if (selectedActiveEquipmentUnit?.equipment_model_id) {
+          params.equipment_model_id = selectedActiveEquipmentUnit.equipment_model_id
+        }
+        if (selectedActiveEquipmentUnit?.manufacturer_id) {
+          params.manufacturer_id = selectedActiveEquipmentUnit.manufacturer_id
+        }
+        const { data } = await axios.get("/oem-parts", {
+          params,
         })
-        setQuickResults(Array.isArray(data) ? data.slice(0, 20) : [])
+        setQuickResults(
+          Array.isArray(data) ? data.slice(0, 20).map(normalizeCatalogPart) : [],
+        )
       } catch (e) {
         console.error(e)
       } finally {
@@ -387,7 +547,7 @@ export default function ClientRequestsPage() {
       }
     }, 250)
     return () => clearTimeout(timer)
-  }, [quickSearch])
+  }, [quickSearch, selectedActiveEquipmentUnit])
 
   useEffect(() => {
     if (!quickSearch || !quickResults.length) {
@@ -432,8 +592,8 @@ export default function ClientRequestsPage() {
         if (catalogSearch && catalogSearch.length >= 2) {
           params.q = catalogSearch
         }
-        const { data } = await axios.get("/original-parts", { params })
-        setCatalogResults(Array.isArray(data) ? data : [])
+        const { data } = await axios.get("/oem-parts", { params })
+        setCatalogResults(Array.isArray(data) ? data.map(normalizeCatalogPart) : [])
       } catch (e) {
         console.error(e)
       } finally {
@@ -471,10 +631,15 @@ export default function ClientRequestsPage() {
     const timer = setTimeout(async () => {
       setModalLoading(true)
       try {
-        const { data } = await axios.get("/original-parts", {
-          params: { q: modalSearch },
+        const params = { q: modalSearch }
+        if (modelId) params.equipment_model_id = modelId
+        if (manufacturerId) params.manufacturer_id = manufacturerId
+        const { data } = await axios.get("/oem-parts", {
+          params,
         })
-        setModalResults(Array.isArray(data) ? data.slice(0, 20) : [])
+        setModalResults(
+          Array.isArray(data) ? data.slice(0, 20).map(normalizeCatalogPart) : [],
+        )
       } catch (e) {
         console.error(e)
       } finally {
@@ -482,7 +647,7 @@ export default function ClientRequestsPage() {
       }
     }, 250)
     return () => clearTimeout(timer)
-  }, [addModalOpen, modalSearch])
+  }, [addModalOpen, modalSearch, modelId, manufacturerId])
 
   useEffect(() => {
     if (!bulkMode) return
@@ -527,7 +692,7 @@ export default function ClientRequestsPage() {
         comment_internal: values.comment_internal || null,
         comment_client: values.comment_client || null,
       }
-      await axios.post("/client-requests", payload)
+      const { data } = await axios.post("/client-requests", payload)
       const clientId = values.client_id
       const name = String(values.contact_name || "").trim()
       const email = String(values.contact_email || "").trim().toLowerCase()
@@ -556,7 +721,13 @@ export default function ClientRequestsPage() {
       }
       message.success("Заявка создана")
       createForm.resetFields()
-      loadRequests()
+      setCreateEquipmentUnitId(null)
+      setCreateEquipmentUnits([])
+      await loadRequests()
+      if (data?.id) {
+        await openWorkspace(data, { equipmentUnitId: selectedCreateEquipmentUnit?.id || null })
+        setSearchParams({}, { replace: true })
+      }
     } catch (e) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось создать заявку")
@@ -576,6 +747,8 @@ export default function ClientRequestsPage() {
       if (data) {
         setClients((prev) => [data, ...prev])
         createForm.setFieldsValue({ client_id: data.id })
+        setCreateEquipmentUnits([])
+        setCreateEquipmentUnitId(null)
         loadContacts(data.id)
       }
       setCreateClientOpen(false)
@@ -589,7 +762,7 @@ export default function ClientRequestsPage() {
     }
   }
 
-  const openWorkspace = async (record) => {
+  const openWorkspace = async (record, options = {}) => {
     setActiveRequest(record)
     setRequestEditing(false)
     setAddModalOpen(false)
@@ -620,6 +793,13 @@ export default function ClientRequestsPage() {
     setChangeDraftActive(false)
     setPendingChanges({ adds: [], updates: {}, deletes: [] })
     originalItemsRef.current = []
+    const units = record?.client_id ? await loadEquipmentUnits(record.client_id) : []
+    setActiveEquipmentUnits(units)
+    const nextEquipmentUnitId =
+      units.find((row) => Number(row.id) === Number(options.equipmentUnitId || activeEquipmentUnitId))
+        ?.id || null
+    setActiveEquipmentUnitId(nextEquipmentUnitId)
+    applyEquipmentContext(units.find((row) => Number(row.id) === Number(nextEquipmentUnitId)) || null)
     requestForm.setFieldsValue({
       client_id: record.client_id,
       source_type: record.source_type || null,
@@ -795,6 +975,7 @@ export default function ClientRequestsPage() {
     oem_only: data.oem_only || false,
     client_comment: data.client_comment || "",
     internal_comment: data.internal_comment || "",
+    equipment_model_id: data.equipment_model_id || null,
   })
 
   const updateStagedRow = (id, patch) => {
@@ -1068,6 +1249,18 @@ export default function ClientRequestsPage() {
       requested_qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
       uom: overrides.uom || part?.uom || "pcs",
       oem_only: overrides.oem_only ? 1 : 0,
+      equipment_model_id:
+        overrides.equipment_model_id ||
+        selectedActiveEquipmentUnit?.equipment_model_id ||
+        modelId ||
+        null,
+      model_name:
+        overrides.model_name || selectedActiveEquipmentUnit?.model_name || part?.model_name || null,
+      manufacturer_name:
+        overrides.manufacturer_name ||
+        selectedActiveEquipmentUnit?.manufacturer_name ||
+        part?.manufacturer_name ||
+        null,
     }
   }
 
@@ -1091,6 +1284,11 @@ export default function ClientRequestsPage() {
         itemsToAdd.map((item) =>
           axios.post(`/client-requests/revisions/${revisionId}/items`, {
             original_part_id: item.original_part_id || null,
+            equipment_model_id:
+              item.equipment_model_id ||
+              selectedActiveEquipmentUnit?.equipment_model_id ||
+              modelId ||
+              null,
             client_part_number:
               item.client_part_number || item.original_cat_number || null,
             client_description:
@@ -1331,6 +1529,14 @@ export default function ClientRequestsPage() {
       requested_qty: payload.requested_qty || null,
       uom: payload.uom || "pcs",
       oem_only: payload.oem_only ? 1 : 0,
+      equipment_model_id:
+        payload.equipment_model_id ||
+        selectedActiveEquipmentUnit?.equipment_model_id ||
+        modelId ||
+        null,
+      model_name: payload.model_name || selectedActiveEquipmentUnit?.model_name || null,
+      manufacturer_name:
+        payload.manufacturer_name || selectedActiveEquipmentUnit?.manufacturer_name || null,
     }
     setItems((prev) => [newItem, ...prev])
     setPendingChanges((prev) => ({
@@ -1377,6 +1583,11 @@ export default function ClientRequestsPage() {
         if (!target) continue
         const payload = {
           original_part_id: target.original_part_id || null,
+          equipment_model_id:
+            target.equipment_model_id ||
+            selectedActiveEquipmentUnit?.equipment_model_id ||
+            modelId ||
+            null,
           client_part_number: target.client_part_number || null,
           client_description: target.client_description || null,
           client_line_text: target.client_line_text || null,
@@ -1403,6 +1614,11 @@ export default function ClientRequestsPage() {
       for (const row of pendingChanges.adds || []) {
         const payload = {
           original_part_id: row.original_part_id || null,
+          equipment_model_id:
+            row.equipment_model_id ||
+            selectedActiveEquipmentUnit?.equipment_model_id ||
+            modelId ||
+            null,
           client_part_number: row.client_part_number || null,
           client_description: row.client_description || null,
           requested_qty: row.requested_qty ?? null,
@@ -1460,6 +1676,11 @@ export default function ClientRequestsPage() {
       if (changeDraftActive) {
         stageUpdate(itemEditRecord.line_number, {
           original_part_id: values.original_part_id || null,
+          equipment_model_id:
+            itemEditRecord?.equipment_model_id ||
+            selectedActiveEquipmentUnit?.equipment_model_id ||
+            modelId ||
+            null,
           client_part_number: values.client_part_number || null,
           client_description: values.client_description || null,
           client_line_text: values.client_line_text || null,
@@ -1511,6 +1732,9 @@ export default function ClientRequestsPage() {
         requested_qty: quickQty || 1,
         uom: quickSelectedPart?.uom || "pcs",
         oem_only: quickOemOnly ? 1 : 0,
+        equipment_model_id: selectedActiveEquipmentUnit?.equipment_model_id || modelId || null,
+        model_name: selectedActiveEquipmentUnit?.model_name || null,
+        manufacturer_name: selectedActiveEquipmentUnit?.manufacturer_name || null,
       })
       setQuickSearch("")
       setQuickSelectedPart(null)
@@ -1523,6 +1747,7 @@ export default function ClientRequestsPage() {
     if (!revisionId) return
     const payload = {
       original_part_id: quickSelectedPart?.id || null,
+      equipment_model_id: selectedActiveEquipmentUnit?.equipment_model_id || modelId || null,
       client_part_number: quickSelectedPart?.cat_number || quickSearch.trim(),
       client_description:
         quickSelectedPart?.description_ru ||
@@ -1952,6 +2177,21 @@ export default function ClientRequestsPage() {
         return <span title={tip || undefined}>{label}</span>
       },
     },
+    {
+      title: "Контекст техники",
+      width: 220,
+      render: (_, record) => {
+        const top = [record.manufacturer_name, record.model_name].filter(Boolean).join(" • ")
+        const sub = record.model_code || null
+        if (!top && !sub) return "—"
+        return (
+          <Space direction="vertical" size={0}>
+            <span>{top || "—"}</span>
+            {sub ? <Text type="secondary">{sub}</Text> : null}
+          </Space>
+        )
+      },
+    },
     { title: "Описание клиента", dataIndex: "client_description" },
     {
       title: "Кол-во",
@@ -2216,12 +2456,16 @@ export default function ClientRequestsPage() {
           clients={clients}
           setCreateClientOpen={setCreateClientOpen}
           loadContacts={loadContacts}
+          handleClientChange={handleCreateClientChange}
           userOptions={userOptions}
           sourceOptions={SOURCE_OPTIONS}
           contactsLoading={contactsLoading}
           contactOptions={contactOptions}
           contactDropdownOpen={contactDropdownOpen}
           setContactDropdownOpen={setContactDropdownOpen}
+          equipmentUnitOptions={createEquipmentUnitOptions}
+          selectedEquipmentUnitId={createEquipmentUnitId}
+          setSelectedEquipmentUnitId={setCreateEquipmentUnitId}
         />
 
         <RequestsListCard
@@ -2303,6 +2547,10 @@ export default function ClientRequestsPage() {
           contactDropdownOpen={contactDropdownOpen}
           setContactDropdownOpen={setContactDropdownOpen}
           loadContacts={loadContacts}
+          equipmentUnitOptions={activeEquipmentUnitOptions}
+          selectedEquipmentUnitId={activeEquipmentUnitId}
+          setSelectedEquipmentUnitId={handleActiveEquipmentUnitChange}
+          selectedEquipmentUnitLabel={formatEquipmentUnitLabel(selectedActiveEquipmentUnit)}
         />
       </Space>
 
@@ -2342,6 +2590,7 @@ export default function ClientRequestsPage() {
         originalLoading={originalLoading}
         originalOptions={originalOptions}
         uomOptions={UOM_OPTIONS}
+        equipmentContextLabel={formatEquipmentUnitLabel(selectedActiveEquipmentUnit)}
       />
 
       <AddPositionsModal
@@ -2391,6 +2640,7 @@ export default function ClientRequestsPage() {
         catalogLoading={catalogLoading}
         catalogRowInputs={catalogRowInputs}
         setCatalogRowInputs={setCatalogRowInputs}
+        equipmentContextLabel={formatEquipmentUnitLabel(selectedActiveEquipmentUnit)}
       />
 
       <ImportExcelModal

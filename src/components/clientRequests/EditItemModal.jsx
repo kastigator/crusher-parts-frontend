@@ -1,5 +1,5 @@
 import React from "react"
-import { Checkbox, DatePicker, Form, Input, InputNumber, Modal, Select, Space } from "antd"
+import { Checkbox, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Typography } from "antd"
 
 export default function EditItemModal({
   open,
@@ -10,6 +10,7 @@ export default function EditItemModal({
   originalLoading,
   originalOptions,
   uomOptions,
+  equipmentContextLabel,
 }) {
   return (
     <Modal
@@ -22,6 +23,11 @@ export default function EditItemModal({
       width={760}
     >
       <Form form={form} onFinish={onFinish} layout="vertical">
+        {equipmentContextLabel ? (
+          <Typography.Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
+            Контекст оборудования: {equipmentContextLabel}
+          </Typography.Text>
+        ) : null}
         <Space wrap align="start">
           <Form.Item
             label="Оригинал"

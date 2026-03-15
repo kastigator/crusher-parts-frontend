@@ -30,7 +30,7 @@ import ManufacturerModelPicker from "@/components/originalParts/ManufacturerMode
 const { Text } = Typography;
 
 /**
- * Drawer-подборщик оригинальных деталей.
+ * Drawer-подборщик OEM деталей и сборок.
  *
  * Props:
  * - open: boolean
@@ -42,7 +42,7 @@ export default function OriginalsPickerDrawer({
   open,
   onClose,
   excludeIds = [],
-  title = "Подбор оригинальных деталей",
+  title = "Подбор OEM деталей и сборок",
   confirmLabel = "Привязать выбранные",
   onPick,
 }) {
@@ -108,7 +108,7 @@ export default function OriginalsPickerDrawer({
     } catch (e) {
       if (e?.name === "CanceledError" || e?.code === "ERR_CANCELED") return;
       console.error(e);
-      message.error("Не удалось загрузить оригинальные детали");
+      message.error("Не удалось загрузить OEM детали");
     } finally {
       setLoading(false);
     }

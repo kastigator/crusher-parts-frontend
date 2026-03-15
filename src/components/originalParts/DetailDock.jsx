@@ -8,6 +8,8 @@ import SuppliersLinksTab from "./SuppliersLinksTab"
 import BundleTab from "./bundle/BundleTab"
 import OriginalPartDocumentsTab from "./OriginalPartDocumentsTab"
 import OriginalPartMaterialsTab from "./OriginalPartMaterialsTab"
+import OriginalPartStandardPartsTab from "./OriginalPartStandardPartsTab"
+import OriginalPartUnitOverridesTab from "./OriginalPartUnitOverridesTab"
 
 const { Text } = Typography
 
@@ -26,7 +28,7 @@ export default function DetailDock({
 
     return (
       <Space size="small" wrap>
-        <Text type="secondary">Деталь:</Text>
+        <Text type="secondary">OEM деталь:</Text>
         <Tag>{part?.cat_number}</Tag>
 
         {part?.description_ru ? (
@@ -88,6 +90,16 @@ export default function DetailDock({
             key: "materials",
             label: "Материалы",
             children: <OriginalPartMaterialsTab partId={partId} />,
+          },
+          {
+            key: "standard-parts",
+            label: "Стандартные детали",
+            children: <OriginalPartStandardPartsTab partId={partId} />,
+          },
+          {
+            key: "unit-overrides",
+            label: "По машинам клиентов",
+            children: <OriginalPartUnitOverridesTab partId={partId} part={part} />,
           },
           {
             key: "bundle",

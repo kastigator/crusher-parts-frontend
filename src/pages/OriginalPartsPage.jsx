@@ -19,7 +19,7 @@ export default function OriginalPartsPage() {
   return (
     <TabRendererPage
       tabKey="original_parts"
-      helpText="Клик по строке — открыть карточку детали. Редактирование выполняется в карточке."
+      helpText="OEM каталог с полным рабочим интерфейсом: список, импорт, BOM, материалы, документы, альтернативы и связи с поставщиками."
     >
       <OriginalPartsMain />
     </TabRendererPage>

@@ -31,6 +31,8 @@ const SupplierPartsPage = lazy(() => import('@/pages/SupplierPartsPage'))
 const SupplierPartDetailPage = lazy(() => import('@/pages/SupplierPartDetailPage'))
 const MaterialsPage = lazy(() => import('@/pages/MaterialsPage'))
 const LogisticsCorridorsPage = lazy(() => import('@/pages/LogisticsCorridorsPage'))
+const StandardPartsPage = lazy(() => import('@/pages/StandardPartsPage'))
+const EquipmentClassifierPage = lazy(() => import('@/pages/EquipmentClassifierPage'))
 
 const AppRouter = () => (
   <Suspense fallback={<div>Загрузка...</div>}>
@@ -69,6 +71,8 @@ const AppRouter = () => (
         <Route path="original-parts/:id" element={<OriginalPartDetailPage />} />
         <Route path="supplier-parts" element={<SupplierPartsPage />} />
         <Route path="supplier-parts/:id" element={<SupplierPartDetailPage />} />
+        <Route path="standard-parts" element={<StandardPartsPage />} />
+        <Route path="equipment-classifier" element={<EquipmentClassifierPage />} />
         <Route path="materials" element={<MaterialsPage />} />
         <Route path="logistics-corridors" element={<LogisticsCorridorsPage />} />
         <Route path="*" element={<div style={{ padding: 32 }}>Страница не найдена</div>} />

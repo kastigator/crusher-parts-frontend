@@ -96,6 +96,10 @@ export default function ClientRequestWorkspaceCard({
   contactDropdownOpen,
   setContactDropdownOpen,
   loadContacts,
+  equipmentUnitOptions,
+  selectedEquipmentUnitId,
+  setSelectedEquipmentUnitId,
+  selectedEquipmentUnitLabel,
 }) {
   if (!activeRequest) {
     return (
@@ -118,6 +122,7 @@ export default function ClientRequestWorkspaceCard({
               </Tag>
             ) : null}
             <Text type="secondary">Клиент: {activeRequest?.client_name || "—"}</Text>
+            {selectedEquipmentUnitLabel ? <Tag color="blue">Оборудование: {selectedEquipmentUnitLabel}</Tag> : null}
             <Text type="secondary">
               {activeRevisionLabel} ({activeRevisionDate})
             </Text>
@@ -210,6 +215,16 @@ export default function ClientRequestWorkspaceCard({
                   </Space>
 
                   <Space wrap align="center" style={{ width: "100%" }}>
+                    <Select
+                      style={{ width: 340 }}
+                      placeholder="Контекст оборудования"
+                      options={equipmentUnitOptions}
+                      showSearch
+                      optionFilterProp="label"
+                      allowClear
+                      value={selectedEquipmentUnitId || undefined}
+                      onChange={(value) => setSelectedEquipmentUnitId(value || null)}
+                    />
                     <Switch
                       checked={bulkMode}
                       onChange={(checked) => {
@@ -463,6 +478,20 @@ export default function ClientRequestWorkspaceCard({
                       </Form.Item>
                       <Form.Item label="Референс клиента" name="client_reference">
                         <Input style={{ width: 220 }} disabled={!requestEditing} />
+                      </Form.Item>
+                      <Form.Item
+                        label="Контекст оборудования"
+                        tooltip="Используется для фильтрации OEM-подбора и автоподстановки модели в новые строки заявки."
+                      >
+                        <Select
+                          style={{ width: 320 }}
+                          options={equipmentUnitOptions}
+                          showSearch
+                          optionFilterProp="label"
+                          allowClear
+                          value={selectedEquipmentUnitId || undefined}
+                          onChange={(value) => setSelectedEquipmentUnitId(value || null)}
+                        />
                       </Form.Item>
                       <Form.Item label="Дата получения" name="received_at">
                         <DatePicker

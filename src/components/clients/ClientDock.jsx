@@ -7,6 +7,7 @@ import ShippingAddressesMain from "./ShippingAddressesMain"
 import BankDetailsMain from "./BankDetailsMain"
 import ClientContactsMain from "./ClientContactsMain"
 import ClientOrdersTab from "./ClientOrdersTab"
+import ClientEquipmentUnitsMain from "./ClientEquipmentUnitsMain"
 
 const { Text } = Typography
 
@@ -63,6 +64,11 @@ export default function ClientDock({ client, onChanged }) {
             children: <BankDetailsMain clientId={clientId} onChanged={onChanged} />,
           },
           {
+            key: "equipment",
+            label: "Оборудование",
+            children: <ClientEquipmentUnitsMain clientId={clientId} onChanged={onChanged} />,
+          },
+          {
             key: "orders",
             label: "История заказов",
             children: <ClientOrdersTab clientId={clientId} />,
@@ -72,4 +78,3 @@ export default function ClientDock({ client, onChanged }) {
     </Card>
   )
 }
-

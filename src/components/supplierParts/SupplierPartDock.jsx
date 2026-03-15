@@ -75,7 +75,7 @@ export default function SupplierPartDock({
             key: "links",
             label: (
               <Space size={6}>
-                Привязки к оригиналам
+                Привязки к деталям
                   <Tag color="blue">
                     {part.original_cat_numbers ? part.original_cat_numbers.split(",").length : 0}
                   </Tag>

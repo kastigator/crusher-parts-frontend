@@ -1,22 +1,29 @@
-// src/components/supplierParts/OriginalsLinkTab.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react"
-import { Button, Checkbox, Space, Table, Tag, Typography, message, Tooltip, Popconfirm } from "antd"
-import { PlusOutlined, DeleteOutlined, LinkOutlined } from "@ant-design/icons"
+import {
+  Button,
+  Checkbox,
+  Modal,
+  Popconfirm,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+} from "antd"
+import { DeleteOutlined, LinkOutlined, PlusOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import OriginalsPickerDrawer from "./OriginalsPickerDrawer"
+import StandardPartsPickerDrawer from "./StandardPartsPickerDrawer"
 
 const { Text } = Typography
 
-/**
- * Вкладка «Привязки к оригиналам».
- * Props:
- * - supplierPartId: number (обязательно)
- * - onChanged?: () => void (опционально, уведомить родителя)
- */
 export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} }) {
-  const [list, setList] = useState([])
+  const [oemLinks, setOemLinks] = useState([])
+  const [standardLinks, setStandardLinks] = useState([])
   const [loading, setLoading] = useState(false)
-  const [pickerOpen, setPickerOpen] = useState(false)
+  const [oemPickerOpen, setOemPickerOpen] = useState(false)
+  const [standardPickerOpen, setStandardPickerOpen] = useState(false)
   const [preferredDraft, setPreferredDraft] = useState({})
 
   const popupContainer = (trigger) =>
@@ -26,19 +33,28 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
 
   const loadLinks = useCallback(async () => {
     if (!supplierPartId) {
-      setList([])
+      setOemLinks([])
+      setStandardLinks([])
       return
     }
     setLoading(true)
     try {
-      const { data } = await axios.get("/supplier-part-originals", {
-        params: { supplier_part_id: supplierPartId },
-      })
-      const next = Array.isArray(data) ? data : []
-      setList(next)
+      const [{ data: oemData }, { data: standardData }] = await Promise.all([
+        axios.get("/supplier-part-originals", { params: { supplier_part_id: supplierPartId } }),
+        axios.get("/supplier-part-standard-parts", { params: { supplier_part_id: supplierPartId } }),
+      ])
+
+      const nextOem = Array.isArray(oemData) ? oemData : []
+      const nextStandard = Array.isArray(standardData) ? standardData : []
+      setOemLinks(nextOem)
+      setStandardLinks(nextStandard)
+
       const draft = {}
-      next.forEach((row) => {
-        draft[row.original_part_id] = Number(row.is_preferred || 0) > 0
+      nextOem.forEach((row) => {
+        draft[`oem:${row.original_part_id}`] = Number(row.is_preferred || 0) > 0
+      })
+      nextStandard.forEach((row) => {
+        draft[`standard:${row.standard_part_id}`] = Number(row.is_preferred || 0) > 0
       })
       setPreferredDraft(draft)
     } catch (e) {
@@ -50,22 +66,23 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
   }, [supplierPartId])
 
   useEffect(() => {
-    setList([])
+    setOemLinks([])
+    setStandardLinks([])
     if (supplierPartId) loadLinks()
   }, [supplierPartId, loadLinks])
 
-  // Уже привязанные original_part_id — исключаем в пикере
-  const excludeIds = useMemo(
-    () => list.map((x) => Number(x.original_part_id)).filter(Boolean),
-    [list]
+  const excludeOemIds = useMemo(
+    () => oemLinks.map((x) => Number(x.original_part_id)).filter(Boolean),
+    [oemLinks]
+  )
+  const excludeStandardIds = useMemo(
+    () => standardLinks.map((x) => Number(x.standard_part_id)).filter(Boolean),
+    [standardLinks]
   )
 
-  const addLinks = async (pickedRows) => {
+  const addOemLinks = async (pickedRows) => {
     if (!supplierPartId) return
-    const toAdd = pickedRows
-      .map((r) => Number(r.id))
-      .filter((id) => id && !excludeIds.includes(id))
-
+    const toAdd = pickedRows.map((r) => Number(r.id)).filter((id) => id && !excludeOemIds.includes(id))
     if (!toAdd.length) {
       message.info("Нечего добавлять")
       return
@@ -81,58 +98,81 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
         })
         added++
       } catch (e) {
-        if (e?.response?.status === 409) {
-          errors.push(`ID ${originalId}: уже существует`)
-        } else {
-          errors.push(`ID ${originalId}: ошибка`)
-          console.error(e)
-        }
+        errors.push(`OEM ID ${originalId}: ${e?.response?.data?.message || "ошибка"}`)
       }
     }
 
     if (added) {
-      message.success(`Добавлено привязок: ${added}`)
+      message.success(`Добавлено OEM-привязок: ${added}`)
       await loadLinks()
       onChanged()
     }
-    if (errors.length) {
-      message.warning(`Часть не добавилась: ${errors.join("; ")}`)
-    }
-    setPickerOpen(false)
+    if (errors.length) message.warning(`Часть OEM-привязок не добавилась: ${errors.join("; ")}`)
+    setOemPickerOpen(false)
   }
 
-  const unlink = async (original_part_id) => {
-    try {
-      await axios.delete("/supplier-part-originals", {
-        data: { supplier_part_id: supplierPartId, original_part_id },
-      })
-      message.success("Привязка удалена")
-      setList((prev) =>
-        prev.filter((x) => Number(x.original_part_id) !== Number(original_part_id))
-      )
+  const addStandardLinks = async (pickedRows) => {
+    if (!supplierPartId) return
+    const toAdd = pickedRows
+      .map((r) => Number(r.id))
+      .filter((id) => id && !excludeStandardIds.includes(id))
+    if (!toAdd.length) {
+      message.info("Нечего добавлять")
+      return
+    }
+
+    let added = 0
+    const errors = []
+    for (const standardId of toAdd) {
+      try {
+        await axios.post("/supplier-part-standard-parts", {
+          supplier_part_id: supplierPartId,
+          standard_part_id: standardId,
+        })
+        added++
+      } catch (e) {
+        errors.push(`STD ID ${standardId}: ${e?.response?.data?.message || "ошибка"}`)
+      }
+    }
+
+    if (added) {
+      message.success(`Добавлено standard-привязок: ${added}`)
+      await loadLinks()
       onChanged()
-    } catch (e) {
-      console.error(e)
-      message.error("Не удалось удалить привязку")
     }
+    if (errors.length) message.warning(`Часть standard-привязок не добавилась: ${errors.join("; ")}`)
+    setStandardPickerOpen(false)
   }
 
-  const updatePreferred = async (original_part_id) => {
+  const chooseLinkType = () => {
+    Modal.confirm({
+      title: "Что привязать к детали поставщика?",
+      okText: "OEM деталь / сборка",
+      cancelText: "Стандартное изделие",
+      onOk: () => setOemPickerOpen(true),
+      onCancel: () => setStandardPickerOpen(true),
+    })
+  }
+
+  const updatePreferred = async (row) => {
     try {
-      const is_preferred = preferredDraft[original_part_id] ? 1 : 0
-      await axios.patch("/supplier-part-originals", {
-        supplier_part_id: supplierPartId,
-        original_part_id,
-        is_preferred,
-      })
+      const key = `${row.link_type}:${row.link_id}`
+      const is_preferred = preferredDraft[key] ? 1 : 0
+      if (row.link_type === "oem") {
+        await axios.patch("/supplier-part-originals", {
+          supplier_part_id: supplierPartId,
+          original_part_id: row.link_id,
+          is_preferred,
+        })
+      } else {
+        await axios.patch("/supplier-part-standard-parts", {
+          supplier_part_id: supplierPartId,
+          standard_part_id: row.link_id,
+          is_preferred,
+        })
+      }
       message.success("Признак приоритетности обновлен")
-      setList((prev) =>
-        prev.map((row) =>
-          Number(row.original_part_id) === Number(original_part_id)
-            ? { ...row, is_preferred }
-            : row
-        )
-      )
+      await loadLinks()
       onChanged()
     } catch (e) {
       console.error(e)
@@ -140,40 +180,92 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
     }
   }
 
-  const openOriginal = (original_part_id) => {
-    const url = `/original-parts/${encodeURIComponent(original_part_id)}`
+  const unlink = async (row) => {
+    try {
+      if (row.link_type === "oem") {
+        await axios.delete("/supplier-part-originals", {
+          params: { supplier_part_id: supplierPartId, original_part_id: row.link_id },
+        })
+      } else {
+        await axios.delete("/supplier-part-standard-parts", {
+          params: { supplier_part_id: supplierPartId, standard_part_id: row.link_id },
+        })
+      }
+      message.success("Привязка удалена")
+      await loadLinks()
+      onChanged()
+    } catch (e) {
+      console.error(e)
+      message.error("Не удалось удалить привязку")
+    }
+  }
+
+  const openLinkedItem = (row) => {
+    const url =
+      row.link_type === "oem"
+        ? `/original-parts/${encodeURIComponent(row.link_id)}`
+        : `/standard-parts`
     window.open(url, "_blank")
   }
 
+  const combinedRows = useMemo(() => {
+    const oemRows = oemLinks.map((row) => ({
+      ...row,
+      key: `oem:${row.original_part_id}`,
+      link_type: "oem",
+      link_id: row.original_part_id,
+      number_text: row.cat_number,
+      name_text: row.description_ru || row.description_en || "—",
+      context_text: [row.manufacturer_name, row.model_name].filter(Boolean).join(" / "),
+    }))
+    const stdRows = standardLinks.map((row) => ({
+      ...row,
+      key: `standard:${row.standard_part_id}`,
+      link_type: "standard",
+      link_id: row.standard_part_id,
+      number_text: row.designation,
+      name_text: row.description_ru || row.description_en || "—",
+      context_text: [row.part_type, row.standard_system].filter(Boolean).join(" / "),
+    }))
+    return [...oemRows, ...stdRows]
+  }, [oemLinks, standardLinks])
+
   const columns = [
     {
-      title: "Каталожный номер",
-      dataIndex: "cat_number",
-      width: 140,
-      render: (v) => <Text strong>{v}</Text>,
+      title: "Тип привязки",
+      dataIndex: "link_type",
+      width: 170,
+      render: (value) =>
+        value === "oem" ? <Tag color="blue">OEM деталь / сборка</Tag> : <Tag color="green">Стандартное изделие</Tag>,
+    },
+    {
+      title: "Номер / обозначение",
+      dataIndex: "number_text",
+      width: 180,
+      render: (v) => <Text strong>{v || "—"}</Text>,
     },
     {
       title: "Название / описание",
-      key: "desc",
-      render: (_, r) => (
-        <Space direction="vertical" size={2}>
-          {r.description_ru && <Text>{r.description_ru}</Text>}
-          {r.description_en && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {r.description_en}
-            </Text>
-          )}
-        </Space>
-      ),
+      dataIndex: "name_text",
+      render: (v) => v || <Text type="secondary">—</Text>,
     },
     {
-      title: "Оборудование",
-      key: "meta",
+      title: "Контекст",
+      dataIndex: "context_text",
       width: 260,
-      render: (_, r) => (
+      render: (v, row) => (
         <Space size={6} wrap>
-          <Tag color="geekblue">{r.manufacturer_name || "—"}</Tag>
-          <Tag>{r.model_name || "—"}</Tag>
+          {row.link_type === "oem" ? (
+            <>
+              <Tag color="geekblue">{row.manufacturer_name || "—"}</Tag>
+              <Tag>{row.model_name || "—"}</Tag>
+            </>
+          ) : (
+            <>
+              <Tag color="green">{row.part_type || "—"}</Tag>
+              <Tag>{row.standard_system || "—"}</Tag>
+            </>
+          )}
         </Space>
       ),
     },
@@ -181,9 +273,9 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
       title: "Приоритетный",
       key: "is_preferred",
       width: 230,
-      render: (_, r) => {
-        const current = Number(r.is_preferred || 0) > 0
-        const value = Boolean(preferredDraft[r.original_part_id])
+      render: (_, row) => {
+        const current = Number(row.is_preferred || 0) > 0
+        const value = Boolean(preferredDraft[row.key])
         const changed = value !== current
         return (
           <Space size={6}>
@@ -192,18 +284,13 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
               onChange={(e) =>
                 setPreferredDraft((prev) => ({
                   ...prev,
-                  [r.original_part_id]: e.target.checked,
+                  [row.key]: e.target.checked,
                 }))
               }
             >
-              приоритетный поставщик
+              приоритетный
             </Checkbox>
-            <Button
-              size="small"
-              type={changed ? "primary" : "default"}
-              disabled={!changed}
-              onClick={() => updatePreferred(r.original_part_id)}
-            >
+            <Button size="small" type={changed ? "primary" : "default"} disabled={!changed} onClick={() => updatePreferred(row)}>
               Сохранить
             </Button>
           </Space>
@@ -214,25 +301,17 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
       title: "Действия",
       key: "actions",
       width: 140,
-      render: (_, r) => (
+      render: (_, row) => (
         <Space>
-          <Tooltip
-            title="Открыть оригинал в новой вкладке"
-            getPopupContainer={popupContainer}
-          >
-            <Button
-              size="small"
-              icon={<LinkOutlined />}
-              onClick={() => openOriginal(r.original_part_id)}
-            />
+          <Tooltip title="Открыть связанную деталь" getPopupContainer={popupContainer}>
+            <Button size="small" icon={<LinkOutlined />} onClick={() => openLinkedItem(row)} />
           </Tooltip>
-
           <Popconfirm
             title="Удалить привязку?"
             okType="danger"
             okText="Удалить"
             cancelText="Отмена"
-            onConfirm={() => unlink(r.original_part_id)}
+            onConfirm={() => unlink(row)}
             getPopupContainer={popupContainer}
           >
             <Tooltip title="Удалить привязку" getPopupContainer={popupContainer}>
@@ -247,38 +326,43 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
   return (
     <>
       <Space style={{ width: "100%", marginBottom: 8 }} wrap>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setPickerOpen(true)}
-        >
+        <Button type="primary" icon={<PlusOutlined />} onClick={chooseLinkType}>
           Добавить привязку
         </Button>
 
-        <Tag color="blue">
-          Привязок: {list.length}
-        </Tag>
+        <Tag color="blue">Всего привязок: {combinedRows.length}</Tag>
+        <Tag color="geekblue">OEM: {oemLinks.length}</Tag>
+        <Tag color="green">Standard: {standardLinks.length}</Tag>
 
         <Text type="secondary">
-          Можно привязывать несколько разных оригиналов (разные производители/модели).
+          Для OEM-специфичных позиций привязывайте OEM деталь или сборку. Для болтов, подшипников и других типовых изделий привязывайте standard part.
         </Text>
       </Space>
 
       <Table
         size="middle"
-        rowKey={(r) => String(r.original_part_id)}
+        rowKey="key"
         loading={loading}
-        dataSource={list}
+        dataSource={combinedRows}
         columns={columns}
         pagination={{ pageSize: 8, showSizeChanger: false }}
         className="op-table parts-table"
       />
 
       <OriginalsPickerDrawer
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        excludeIds={excludeIds}
-        onPick={addLinks}
+        open={oemPickerOpen}
+        onClose={() => setOemPickerOpen(false)}
+        excludeIds={excludeOemIds}
+        onPick={addOemLinks}
+        title="Подбор OEM деталей и сборок"
+      />
+
+      <StandardPartsPickerDrawer
+        open={standardPickerOpen}
+        onClose={() => setStandardPickerOpen(false)}
+        excludeIds={excludeStandardIds}
+        onPick={addStandardLinks}
+        title="Подбор стандартных изделий"
       />
     </>
   )
