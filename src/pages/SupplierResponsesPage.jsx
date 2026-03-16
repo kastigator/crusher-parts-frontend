@@ -19,6 +19,7 @@ import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import cc from "currency-codes"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
+import { formatUomLabel } from "@/utils/uom"
 
 const OFFER_OPTIONS = [
   { value: "OEM", label: "OEM" },
@@ -236,7 +237,7 @@ export default function SupplierResponsesPage() {
     () =>
       rfqItems.map((item) => ({
         value: item.id,
-        label: `${item.original_cat_number || "Без номера"} · ${item.client_description || ""} · ${item.requested_qty || 0} ${item.uom || "pcs"}`.trim(),
+        label: `${item.original_cat_number || "Без номера"} · ${item.client_description || ""} · ${item.requested_qty || 0} ${formatUomLabel(item.uom || "pcs")}`.trim(),
       })),
     [rfqItems],
   )

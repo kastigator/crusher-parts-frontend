@@ -1,5 +1,6 @@
 import React from "react"
 import { Space, Table, Tag, Typography } from "antd"
+import { formatUomLabel } from "@/utils/uom"
 
 const { Text } = Typography
 
@@ -93,8 +94,8 @@ export default function RfqOverviewTabContent({
       dataIndex: "uom",
       width: 80,
       render: (_, record) => {
-        if (record.type === "DEMAND") return record.uom || "-"
-        if (record.type === "BOM_COMPONENT") return record.uom || "-"
+        if (record.type === "DEMAND") return formatUomLabel(record.uom) || "-"
+        if (record.type === "BOM_COMPONENT") return formatUomLabel(record.uom) || "-"
         return "-"
       },
     },

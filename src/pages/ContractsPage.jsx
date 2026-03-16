@@ -14,6 +14,21 @@ import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
+const CREATE_STATUS_OPTIONS = [
+  { value: "draft", label: "Черновик" },
+  { value: "sent_to_client", label: "Отправлен клиенту" },
+  { value: "signed", label: "Подписан" },
+]
+
+const STATUS_LABELS = {
+  draft: "Черновик",
+  sent_to_client: "Отправлен клиенту",
+  signed: "Подписан",
+  in_execution: "В исполнении",
+  completed: "Исполнен",
+  closed_with_issues: "Закрыт с проблемами",
+}
+
 export default function ContractsPage() {
   const [contracts, setContracts] = useState([])
   const [quotes, setQuotes] = useState([])
@@ -116,11 +131,7 @@ export default function ContractsPage() {
               <Form.Item label="Статус" name="status" initialValue="draft">
                 <Select
                   style={{ width: 140 }}
-                  options={[
-                    { value: "draft", label: "Черновик" },
-                    { value: "signed", label: "Подписан" },
-                    { value: "closed", label: "Закрыт" },
-                  ]}
+                  options={CREATE_STATUS_OPTIONS}
                 />
               </Form.Item>
               <Form.Item label="Файл" name="file_url">
@@ -155,7 +166,12 @@ export default function ContractsPage() {
                 render: (v, r) => formatPriceWithCurrency(v, r?.currency),
               },
               { title: "Валюта", dataIndex: "currency", width: 90 },
-              { title: "Статус", dataIndex: "status", width: 120 },
+              {
+                title: "Статус",
+                dataIndex: "status",
+                width: 160,
+                render: (value) => STATUS_LABELS[String(value || "").trim()] || value || "—",
+              },
             ]}
           />
         </Card>

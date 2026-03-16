@@ -35,7 +35,41 @@ const SCENARIO_STATUS_LABELS = {
   calculated: "Рассчитан",
 }
 
+const COVERAGE_WARNING_LABELS = {
+  whole_uom_mismatch: "Ед. изм. whole-строки не совпадает с RFQ",
+  multiple_whole_lines: "В whole-варианте больше одной whole-строки",
+}
+
+const riskLabel = (value) =>
+  ({
+    low: "низкий риск",
+    medium: "средний риск",
+    high: "высокий риск",
+    critical: "критичный риск",
+  }[String(value || "").trim().toLowerCase()] || null)
+
+const riskColor = (value) =>
+  ({
+    low: "green",
+    medium: "gold",
+    high: "volcano",
+    critical: "red",
+  }[String(value || "").trim().toLowerCase()] || "default")
+
 const uniqueNonEmpty = (values) => [...new Set((values || []).filter(Boolean))]
+const parseWarnings = (value) => {
+  if (!value) return []
+  if (Array.isArray(value)) return value.filter(Boolean)
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value)
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : []
+    } catch (_e) {
+      return []
+    }
+  }
+  return []
+}
 const safeNum = (value) => {
   const n = Number(value)
   return Number.isFinite(n) ? n : null
@@ -160,11 +194,19 @@ const buildCompositionGroups = (option) => {
     lines.forEach((line) => {
       const supplier = line?.supplier_name || "Поставщик не указан"
       const label = line?.note || line?.original_cat_number || line?.client_part_number || line?.line_code || "Позиция"
-      const list = grouped.get(supplier) || []
-      if (!list.includes(label)) list.push(label)
+      const list = grouped.get(supplier) || {
+        supplier,
+        items: [],
+        reliability_rating:
+          line?.reliability_rating === undefined || line?.reliability_rating === null
+            ? null
+            : Number(line.reliability_rating),
+        risk_level: line?.risk_level || null,
+      }
+      if (!list.items.includes(label)) list.items.push(label)
       grouped.set(supplier, list)
     })
-    return Array.from(grouped.entries()).map(([supplier, items]) => ({ supplier, items }))
+    return Array.from(grouped.values())
   }
 
   const itemLabels = uniqueNonEmpty(
@@ -179,6 +221,8 @@ const buildCompositionGroups = (option) => {
     {
       supplier: supplierNames.join(" + ") || "Состав",
       items: itemLabels,
+      reliability_rating: null,
+      risk_level: null,
     },
   ]
 }
@@ -193,6 +237,25 @@ const buildSupplierAllocationSummary = (groups = []) =>
 
 const buildSupplierAllocationText = (allocation = []) =>
   allocation.map((entry) => `${entry.supplier}: ${entry.count} комп.`).join(" · ")
+
+const buildSupplierQualityBadges = (lines = []) => {
+  const supplierMap = new Map()
+  ;(lines || []).forEach((line) => {
+    const supplierName = String(line?.supplier_name || "").trim()
+    if (!supplierName) return
+    if (!supplierMap.has(supplierName)) {
+      supplierMap.set(supplierName, {
+        supplier: supplierName,
+        reliability_rating:
+          line?.reliability_rating === undefined || line?.reliability_rating === null
+            ? null
+            : Number(line.reliability_rating),
+        risk_level: line?.risk_level || null,
+      })
+    }
+  })
+  return Array.from(supplierMap.values())
+}
 
 const convertPreviewAmount = (amount, fromCurrency, targetCurrency, fxRates = {}) => {
   const value = safeNum(amount)
@@ -363,18 +426,21 @@ const buildCoverageOptionDetail = (option, ctx = {}) => {
     ? `Поставщики: ${supplierNames.join(" + ")}`
     : `Поставщики: ${safeNum(option?.supplier_count) || 0}`
   const supplierAllocationText = buildSupplierAllocationText(supplierAllocation)
+  const supplierQuality = buildSupplierQualityBadges(option?.lines || [])
 
   return {
     composition,
     compositionGroups,
     supplierAllocation,
     supplierAllocationText,
+    supplierQuality,
     completeness,
     goodsLabel,
     leadLabel,
     oemLabel,
     supplierLabel,
     convertedNoRate: converted.noRate,
+    warnings: parseWarnings(option?.warning_json),
   }
 }
 
@@ -393,6 +459,8 @@ const buildScenarioLineOptionDetail = (line, scenarioMeta = {}) => {
     lines: Array.isArray(line?.option_lines)
       ? line.option_lines.map((row) => ({
           supplier_name: row?.supplier_name,
+          reliability_rating: row?.reliability_rating,
+          risk_level: row?.risk_level,
           note: row?.note || row?.line_code || row?.original_cat_number || row?.client_part_number,
           original_cat_number: row?.original_cat_number,
           client_part_number: row?.client_part_number,
@@ -432,7 +500,15 @@ const renderCompositionGroups = (detail, expanded, onToggle) => {
               >
                 <Space wrap size={[6, 6]} style={{ justifyContent: "space-between", width: "100%" }}>
                   <Text strong>{group.supplier}</Text>
-                  <Tag color="default">{group.items.length} комп.</Tag>
+                  <Space size={[4, 4]} wrap>
+                    <Tag color="default">{group.items.length} комп.</Tag>
+                    {group.reliability_rating !== null && group.reliability_rating !== undefined ? (
+                      <Tag color="blue">Надежность: {group.reliability_rating}</Tag>
+                    ) : null}
+                    {riskLabel(group.risk_level) ? (
+                      <Tag color={riskColor(group.risk_level)}>{riskLabel(group.risk_level)}</Tag>
+                    ) : null}
+                  </Space>
                 </Space>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {group.items.length <= 3
@@ -823,10 +899,29 @@ export default function ScenariosTabContent({ rfqId }) {
                   <Tag color="purple">Срок: {detail.leadLabel}</Tag>
                   <Tag color="blue">Полнота: {detail.completeness}</Tag>
                   <Tag color={Number(line?.is_oem_ok || 0) === 1 ? "success" : "default"}>{detail.oemLabel}</Tag>
+                  {detail.warnings.map((warning) => (
+                    <Tag key={warning} color="orange">
+                      {COVERAGE_WARNING_LABELS[warning] || warning}
+                    </Tag>
+                  ))}
                 </Space>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {detail.supplierLabel}
                 </Text>
+                {detail.supplierQuality?.length ? (
+                  <Space size={[4, 4]} wrap>
+                    {detail.supplierQuality.map((entry) => (
+                      <React.Fragment key={entry.supplier}>
+                        {entry.reliability_rating !== null && entry.reliability_rating !== undefined ? (
+                          <Tag color="blue">{entry.supplier}: надежность {entry.reliability_rating}</Tag>
+                        ) : null}
+                        {riskLabel(entry.risk_level) ? (
+                          <Tag color={riskColor(entry.risk_level)}>{entry.supplier}: {riskLabel(entry.risk_level)}</Tag>
+                        ) : null}
+                      </React.Fragment>
+                    ))}
+                  </Space>
+                ) : null}
                 {detail.supplierAllocationText ? (
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     Распределение: {detail.supplierAllocationText}
@@ -965,12 +1060,31 @@ export default function ScenariosTabContent({ rfqId }) {
                                     <Tag color="purple">{optDetail.leadLabel}</Tag>
                                     <Tag color="blue">Полнота: {optDetail.completeness}</Tag>
                                     {optDetail.convertedNoRate ? <Tag color="warning">Без конвертации</Tag> : null}
+                                    {optDetail.warnings.map((warning) => (
+                                      <Tag key={warning} color="orange">
+                                        {COVERAGE_WARNING_LABELS[warning] || warning}
+                                      </Tag>
+                                    ))}
                                   </Space>
                                 ) : null}
                                 {optDetail?.supplierAllocationText ? (
                                   <Text type="secondary" style={{ fontSize: 12 }}>
                                     {optDetail.supplierAllocationText}
                                   </Text>
+                                ) : null}
+                                {optDetail?.supplierQuality?.length ? (
+                                  <Space size={[4, 4]} wrap>
+                                    {optDetail.supplierQuality.map((entry) => (
+                                      <React.Fragment key={`${optionData?.data?.value}-${entry.supplier}`}>
+                                        {entry.reliability_rating !== null && entry.reliability_rating !== undefined ? (
+                                          <Tag color="blue">{entry.supplier}: надежность {entry.reliability_rating}</Tag>
+                                        ) : null}
+                                        {riskLabel(entry.risk_level) ? (
+                                          <Tag color={riskColor(entry.risk_level)}>{entry.supplier}: {riskLabel(entry.risk_level)}</Tag>
+                                        ) : null}
+                                      </React.Fragment>
+                                    ))}
+                                  </Space>
                                 ) : null}
                               </Space>
                             )
@@ -987,6 +1101,11 @@ export default function ScenariosTabContent({ rfqId }) {
                               {detail.oemLabel}
                             </Tag>
                             {detail.convertedNoRate ? <Tag color="warning">Без конвертации</Tag> : null}
+                            {detail.warnings.map((warning) => (
+                              <Tag key={warning} color="orange">
+                                {COVERAGE_WARNING_LABELS[warning] || warning}
+                              </Tag>
+                            ))}
                             {renderCompositionGroups(detail, isCompositionExpanded, () =>
                               toggleCompositionExpanded(row.rfq_item_id)
                             )}
@@ -997,6 +1116,20 @@ export default function ScenariosTabContent({ rfqId }) {
                           <Text type="secondary" style={{ fontSize: 12 }}>
                             {detail.supplierLabel}
                           </Text>
+                        ) : null}
+                        {detail?.supplierQuality?.length ? (
+                          <Space size={[4, 4]} wrap>
+                            {detail.supplierQuality.map((entry) => (
+                              <React.Fragment key={`selected-${row.rfq_item_id}-${entry.supplier}`}>
+                                {entry.reliability_rating !== null && entry.reliability_rating !== undefined ? (
+                                  <Tag color="blue">{entry.supplier}: надежность {entry.reliability_rating}</Tag>
+                                ) : null}
+                                {riskLabel(entry.risk_level) ? (
+                                  <Tag color={riskColor(entry.risk_level)}>{entry.supplier}: {riskLabel(entry.risk_level)}</Tag>
+                                ) : null}
+                              </React.Fragment>
+                            ))}
+                          </Space>
                         ) : null}
                         {detail?.supplierAllocationText ? (
                           <Text type="secondary" style={{ fontSize: 12 }}>

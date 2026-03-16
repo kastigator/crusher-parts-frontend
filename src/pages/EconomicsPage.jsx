@@ -15,7 +15,7 @@ export default function EconomicsPage() {
           <Alert
             type="info"
             showIcon
-            message="Standalone economics page выведена из основного процесса"
+            message="Отдельная страница экономики выведена из основного процесса"
             description="Используйте RFQ Workspace: Покрытие -> Сценарии -> Логистика -> Экономика -> Выбор."
           />
           <Text type="secondary">

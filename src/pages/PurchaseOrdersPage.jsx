@@ -16,6 +16,7 @@ import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import { formatIncotermsWithPlace } from "@/components/rfqWorkspace/rfqWorkspaceUtils"
+import SupplierQualityEventModal from "@/components/suppliers/SupplierQualityEventModal"
 
 export default function PurchaseOrdersPage() {
   const [orders, setOrders] = useState([])
@@ -24,6 +25,7 @@ export default function PurchaseOrdersPage() {
   const [loading, setLoading] = useState(false)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [qualityModalOpen, setQualityModalOpen] = useState(false)
   const [activeOrder, setActiveOrder] = useState(null)
   const [lines, setLines] = useState([])
   const [responseLines, setResponseLines] = useState([])
@@ -239,6 +241,22 @@ export default function PurchaseOrdersPage() {
                 width: 180,
                 render: (_, row) => formatIncotermsWithPlace(row?.incoterms, row?.incoterms_place),
               },
+              {
+                title: "Качество",
+                width: 160,
+                render: (_, row) => (
+                  <Button
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setActiveOrder(row)
+                      setQualityModalOpen(true)
+                    }}
+                  >
+                    Добавить событие
+                  </Button>
+                ),
+              },
             ]}
           />
         </Card>
@@ -313,10 +331,31 @@ export default function PurchaseOrdersPage() {
               },
               { title: "Валюта", dataIndex: "currency", width: 90 },
               { title: "Срок, дней", dataIndex: "lead_time_days", width: 110 },
+              {
+                title: "Качество",
+                width: 150,
+                render: () => (
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setQualityModalOpen(true)
+                    }}
+                  >
+                    Событие качества
+                  </Button>
+                ),
+              },
             ]}
           />
         </Space>
       </Drawer>
+
+      <SupplierQualityEventModal
+        open={qualityModalOpen}
+        supplierId={activeOrder?.supplier_id || null}
+        purchaseOrder={activeOrder}
+        onClose={() => setQualityModalOpen(false)}
+      />
     </PageWrapper>
   )
 }

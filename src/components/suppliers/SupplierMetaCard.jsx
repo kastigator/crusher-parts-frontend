@@ -173,6 +173,7 @@ export default function SupplierMetaCard({ supplier, onSaved }) {
         <Space direction="vertical" size={10} style={{ width: "100%" }}>
           <Text type="secondary">
             Основные данные поставщика вынесены в единое боковое окно создания/редактирования.
+            Рейтинг надежности и риск могут автоматически обновляться по событиям качества.
           </Text>
 
           <Space size={8} wrap>

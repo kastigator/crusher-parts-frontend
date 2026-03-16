@@ -21,6 +21,7 @@ const currencyOptions = [
   { value: "USD", label: "USD" },
   { value: "EUR", label: "EUR" },
   { value: "RUB", label: "RUB" },
+  { value: "CNY", label: "CNY" },
 ]
 
 const ROUTE_TYPE_LABELS = {
@@ -60,6 +61,10 @@ const LOGISTICS_WARNING_LABELS = {
   missing_tnved: "Нет ТН ВЭД",
   missing_duty_rate: "Нет ставки пошлины",
   mixed_duty_rates: "Смешанные ставки пошлины",
+  mixed_origin_countries: "Смешаны страны происхождения",
+  mixed_incoterms: "Смешаны разные Incoterms",
+  mixed_incoterms_places: "Смешаны разные пункты Incoterms",
+  missing_customs_data: "Не хватает данных для таможни",
   missing_fx_rate: "Нет курса валют",
 }
 
@@ -107,11 +112,25 @@ const buildLineWarnings = (row) => {
 }
 
 const buildGroupWarnings = (row) => {
+  const compatibilityWarnings = []
+  const lines = Array.isArray(row?.lines) ? row.lines : []
+  const uniqueOrigins = Array.from(new Set(lines.map((line) => normalizeText(line?.origin_country_raw || line?.origin_country)).filter(Boolean)))
+  const uniqueIncoterms = Array.from(new Set(lines.map((line) => normalizeText(line?.incoterms)).filter(Boolean)))
+  const uniqueIncotermsPlaces = Array.from(new Set(lines.map((line) => normalizeText(line?.incoterms_place)).filter(Boolean)))
+  const missingCustomsData = lines.some((line) =>
+    !normalizeText(line?.tnved_code) && !normalizeText(line?.cost_tnved_code) && !line?.tnved_code_id && !line?.cost_tnved_code_id
+  )
+
+  if (uniqueOrigins.length > 1) compatibilityWarnings.push("mixed_origin_countries")
+  if (uniqueIncoterms.length > 1) compatibilityWarnings.push("mixed_incoterms")
+  if (uniqueIncotermsPlaces.length > 1) compatibilityWarnings.push("mixed_incoterms_places")
+  if (missingCustomsData) compatibilityWarnings.push("missing_customs_data")
+
   const lineWarnings = Array.isArray(row?.lines)
     ? row.lines.flatMap((line) => buildLineWarnings(line))
     : []
   const sourceWarnings = parseWarningsFromSourceNote(row?.source_note)
-  return Array.from(new Set([...lineWarnings, ...sourceWarnings]))
+  return Array.from(new Set([...compatibilityWarnings, ...lineWarnings, ...sourceWarnings]))
 }
 
 const renderWarnings = (warnings) => {
@@ -133,6 +152,24 @@ const formatOriginSummary = (row) => {
   const place = normalizeText(row?.incoterms_place)
   if (country && place) return `${country} · ${place}`
   return country || place || "—"
+}
+
+const renderOriginCell = (row) => {
+  const snapshotOrigin = normalizeText(row?.origin_country_raw || row?.origin_country)
+  const costBaseOrigin = normalizeText(row?.cost_origin_country)
+  const supplierCountry = normalizeText(row?.supplier_country)
+  const display = snapshotOrigin || costBaseOrigin || supplierCountry || "—"
+  let source = "не определён"
+  if (snapshotOrigin) source = "из покрытия"
+  else if (costBaseOrigin) source = "из ответа / cost base"
+  else if (supplierCountry) source = "только страна поставщика"
+
+  return (
+    <Space direction="vertical" size={0}>
+      <span>{display}</span>
+      <span style={{ color: "#666", fontSize: 12 }}>Источник: {source}</span>
+    </Space>
+  )
 }
 
 const LOGISTICS_HELP_SECTIONS = [
@@ -445,7 +482,7 @@ export default function LogisticsTabContent({ rfqId }) {
       },
       { key: "option", title: "Вариант", width: 180, render: (_, row) => `${row.option_code} · ${row.option_kind}` },
       { key: "supplier", title: "Поставщик", dataIndex: "supplier_name", width: 180, render: fmt },
-      { key: "origin_country", title: "Страна происхождения", dataIndex: "origin_country", width: 140, render: (value, row) => fmt(value || row?.cost_origin_country || row?.supplier_country) },
+      { key: "origin_country", title: "Страна происхождения", width: 220, render: (_, row) => renderOriginCell(row) },
       { key: "tnved", title: "ТН ВЭД", width: 140, render: (_, row) => fmt(row?.tnved_code || row?.cost_tnved_code) },
       { key: "duty_rate", title: "Пошлина, %", width: 110, render: (_, row) => fmt(row?.duty_rate_pct ?? row?.cost_duty_rate_pct) },
       {

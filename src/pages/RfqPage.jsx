@@ -21,6 +21,7 @@ import { DeleteOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
+import { formatUomLabel } from "@/utils/uom"
 import { useLocation } from "react-router-dom"
 import OriginalsPickerDrawer from "@/components/supplierParts/OriginalsPickerDrawer"
 
@@ -199,7 +200,7 @@ export default function RfqPage() {
     () =>
       revisionItems.map((item) => ({
         value: item.id,
-        label: `${item.original_cat_number || "Без номера"} · ${item.client_description || ""} · ${item.requested_qty || 0} ${item.uom || "pcs"}`.trim(),
+        label: `${item.original_cat_number || "Без номера"} · ${item.client_description || ""} · ${item.requested_qty || 0} ${formatUomLabel(item.uom || "pcs")}`.trim(),
       })),
     [revisionItems],
   )
@@ -994,7 +995,12 @@ export default function RfqPage() {
                         },
                       },
                       { title: "Кол-во", dataIndex: "requested_qty", width: 100 },
-                      { title: "Ед.", dataIndex: "uom", width: 80 },
+                      {
+                        title: "Ед.",
+                        dataIndex: "uom",
+                        width: 80,
+                        render: (value) => formatUomLabel(value) || "—",
+                      },
                       {
                         title: "OEM",
                         dataIndex: "oem_only",

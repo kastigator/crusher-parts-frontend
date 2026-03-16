@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { Alert, Button, Card, InputNumber, Select, Space, Table, Tag, Typography, message } from "antd"
+import { Alert, Button, Card, Drawer, InputNumber, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
@@ -7,9 +7,14 @@ const pricingStatusMeta = {
   OK: { color: "green", label: "OK" },
   INCOMPLETE: { color: "default", label: "Не заполнено" },
   LOW_MARGIN: { color: "orange", label: "Низкий GM%" },
-  LOW_MARKUP: { color: "gold", label: "Низкий markup" },
+  LOW_MARKUP: { color: "gold", label: "Низкая наценка" },
   LOW_PROFIT: { color: "red", label: "Низкая прибыль" },
 }
+
+const lineStatusOptions = [
+  { value: "active", label: "В КП" },
+  { value: "excluded", label: "Исключена" },
+]
 
 export default function RequestMarginTabContent({ requestId }) {
   const [quotes, setQuotes] = useState([])
@@ -20,6 +25,15 @@ export default function RequestMarginTabContent({ requestId }) {
   const [loading, setLoading] = useState(false)
   const [savingLineId, setSavingLineId] = useState(null)
   const [drafts, setDrafts] = useState({})
+  const [helpOpen, setHelpOpen] = useState(false)
+  const quoteStatusLabel = (value) =>
+    ({
+      draft: "Черновик",
+      internal_review: "Внутреннее согласование",
+      sent_to_client: "Отправлено клиенту",
+      client_approved: "Согласовано клиентом",
+      contract_signed: "Контракт подписан",
+    }[String(value || "").trim()] || value || "—")
 
   const loadQuotes = async () => {
     if (!requestId) return
@@ -74,6 +88,7 @@ export default function RequestMarginTabContent({ requestId }) {
           sell_price: row.sell_price,
           margin_pct: row.margin_pct,
           currency: row.currency || "USD",
+          line_status: row.line_status || "active",
         }
       })
       setDrafts(nextDrafts)
@@ -105,6 +120,8 @@ export default function RequestMarginTabContent({ requestId }) {
     const totalsBase = lines.reduce(
       (acc, row) => {
         const draft = drafts[row.id] || row
+        const isActive = String(draft.line_status || row.line_status || "active") === "active"
+        if (!isActive) return acc
         const qty = Number(draft.qty || 0)
         const cost = Number(draft.cost || 0)
         const sell = Number(draft.sell_price || 0)
@@ -159,9 +176,13 @@ export default function RequestMarginTabContent({ requestId }) {
       <Alert
         type="info"
         showIcon
-        message="Маржа считается на seller-side поверх selection cost"
-        description="В cost уже лежит закупочная/landed база из selection. Продавец задаёт sell price или margin и ведёт клиентскую экономику без раскрытия реальных поставщиков. Статус строки теперь сверяется с активной pricing policy."
+        message="Маржа считается в коммерческом контуре поверх закупочной базы"
+        description="В себестоимости уже лежит landed-база из выбора закупки. Продавец задает цену продажи или наценку и ведет клиентскую экономику без раскрытия реальных поставщиков. Статус строки позволяет исключить позицию из коммерческой ревизии."
       />
+
+      <Button size="small" onClick={() => setHelpOpen(true)} style={{ alignSelf: "flex-start" }}>
+        Справка
+      </Button>
 
       <Space wrap>
         <Select
@@ -172,7 +193,7 @@ export default function RequestMarginTabContent({ requestId }) {
           onChange={(value) => setSelectedQuoteId(Number(value || 0) || null)}
           options={quotes.map((row) => ({
             value: Number(row.id),
-            label: `КП #${row.id} · ${row.status} · ${formatPriceWithCurrency(row.total_sell, row.currency || "USD")}`,
+            label: `КП #${row.id} · ${quoteStatusLabel(row.status)} · ${formatPriceWithCurrency(row.total_sell, row.currency || "USD")}`,
           }))}
         />
         <Select
@@ -186,14 +207,14 @@ export default function RequestMarginTabContent({ requestId }) {
             label: `Rev ${row.rev_number}`,
           }))}
         />
-        <Tag color="blue">Cost total: {formatPriceWithCurrency(totals.cost, "USD")}</Tag>
-        <Tag color="green">Sell total: {formatPriceWithCurrency(totals.sell, "USD")}</Tag>
-        <Tag color="gold">Profit: {formatPriceWithCurrency(totals.profit, "USD")}</Tag>
+        <Tag color="blue">Себестоимость: {formatPriceWithCurrency(totals.cost, "USD")}</Tag>
+        <Tag color="green">Продажа: {formatPriceWithCurrency(totals.sell, "USD")}</Tag>
+        <Tag color="gold">Прибыль: {formatPriceWithCurrency(totals.profit, "USD")}</Tag>
         <Tag color="purple">GM%: {totals.marginPct.toFixed(1)}%</Tag>
-        <Tag color="cyan">Markup%: {totals.markupPct.toFixed(1)}%</Tag>
+        <Tag color="cyan">Наценка%: {totals.markupPct.toFixed(1)}%</Tag>
       </Space>
 
-      <Card size="small" title="Seller economics по строкам КП">
+      <Card size="small" title="Коммерческая экономика по строкам КП">
         <Table
           size="small"
           rowKey="id"
@@ -217,7 +238,20 @@ export default function RequestMarginTabContent({ requestId }) {
               render: (value) => value || "—",
             },
             {
-              title: "Qty",
+              title: "Статус строки",
+              width: 130,
+              render: (_, row) => (
+                <Select
+                  size="small"
+                  style={{ width: 120 }}
+                  value={drafts[row.id]?.line_status || "active"}
+                  onChange={(value) => handleDraftChange(row.id, { line_status: value })}
+                  options={lineStatusOptions}
+                />
+              ),
+            },
+            {
+              title: "Кол-во",
               width: 90,
               render: (_, row) => (
                 <InputNumber
@@ -228,7 +262,7 @@ export default function RequestMarginTabContent({ requestId }) {
               ),
             },
             {
-              title: "Cost",
+              title: "Себестоимость",
               width: 120,
               render: (_, row) => (
                 <InputNumber
@@ -244,7 +278,7 @@ export default function RequestMarginTabContent({ requestId }) {
               ),
             },
             {
-              title: "Sell",
+              title: "Продажа",
               width: 120,
               render: (_, row) => (
                 <InputNumber
@@ -298,18 +332,19 @@ export default function RequestMarginTabContent({ requestId }) {
               },
             },
             {
-              title: "Profit / line",
+              title: "Прибыль по строке",
               width: 140,
               render: (_, row) => {
                 const draft = drafts[row.id] || row
                 const qty = Number(draft.qty || 0)
                 const cost = Number(draft.cost || 0)
                 const sell = Number(draft.sell_price || 0)
-                return formatPriceWithCurrency((sell - cost) * qty, draft.currency || row.currency || "USD")
+                const profit = String(draft.line_status || row.line_status || "active") === "active" ? (sell - cost) * qty : 0
+                return formatPriceWithCurrency(profit, draft.currency || row.currency || "USD")
               },
             },
             {
-              title: "Policy",
+              title: "Правило",
               width: 180,
               render: (_, row) => {
                 const meta = pricingStatusMeta[row.pricing_status] || { color: "default", label: row.pricing_status || "—" }
@@ -337,6 +372,29 @@ export default function RequestMarginTabContent({ requestId }) {
           ]}
         />
       </Card>
+
+      <Drawer
+        title="Справка по вкладке «Маржа»"
+        placement="right"
+        width={440}
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Typography.Paragraph>
+            Здесь продавец работает уже не с закупкой, а с коммерческой моделью клиента: задает цену
+            продажи, корректирует маржу и при необходимости исключает строки из rev КП.
+          </Typography.Paragraph>
+          <Typography.Paragraph>
+            Статус строки нужен для клиентского торга. Исключенная строка не участвует в коммерческих
+            итогах и не должна потом попасть в PO поставщику.
+          </Typography.Paragraph>
+          <Typography.Paragraph style={{ marginBottom: 0 }}>
+            Если клиент меняет состав слишком сильно, это сигнал вернуть вопрос в закупку и пересобрать
+            закупочный baseline, а не просто править продажную экономику.
+          </Typography.Paragraph>
+        </Space>
+      </Drawer>
     </Space>
   )
 }

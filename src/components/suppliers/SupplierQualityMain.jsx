@@ -4,6 +4,7 @@ import {
   Space,
   Table,
   Button,
+  Drawer,
   Modal,
   Form,
   Select,
@@ -53,12 +54,21 @@ const renderSeverity = (value) => {
   return <Tag color={color}>{v}</Tag>
 }
 
+const renderPoStatus = (value) =>
+  ({
+    draft: "Черновик",
+    sent: "Отправлен",
+    confirmed: "Подтвержден",
+  }[String(value || "").trim().toLowerCase()] || value || "Черновик")
+
 export default function SupplierQualityMain({ supplierId }) {
   const [summary, setSummary] = useState(null)
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [editingEvent, setEditingEvent] = useState(null)
   const [purchaseOrders, setPurchaseOrders] = useState([])
   const [purchaseOrdersLoading, setPurchaseOrdersLoading] = useState(false)
   const [purchaseOrderLines, setPurchaseOrderLines] = useState([])
@@ -118,6 +128,21 @@ export default function SupplierQualityMain({ supplierId }) {
   const summaryStats = useMemo(() => {
     if (!summary) return []
     return [
+      { label: "Надежность (авто)", value: summary.reliability_rating ?? "-" },
+      {
+        label: "Риск (авто)",
+        value:
+          summary.risk_level === "low"
+            ? "низкий"
+            : summary.risk_level === "medium"
+              ? "средний"
+              : summary.risk_level === "high"
+                ? "высокий"
+                : summary.risk_level === "critical"
+                  ? "критичный"
+                  : "-",
+      },
+      { label: "Quality score", value: summary.quality_score ?? "-" },
       { label: "Всего", value: summary.total ?? 0 },
       { label: "Рекламации", value: summary.complaints ?? 0 },
       { label: "Задержки", value: summary.delays ?? 0 },
@@ -145,7 +170,7 @@ export default function SupplierQualityMain({ supplierId }) {
     if (!supplierId) return
     setCreating(true)
     try {
-      await axios.post(`/suppliers/${supplierId}/quality-events`, {
+      const payload = {
         event_type: values.event_type,
         severity: values.severity ?? 3,
         status: values.status || "open",
@@ -164,12 +189,24 @@ export default function SupplierQualityMain({ supplierId }) {
         supplier_purchase_order_id: values.supplier_purchase_order_id ?? null,
         supplier_purchase_order_line_id: values.supplier_purchase_order_line_id ?? null,
         rfq_response_line_id: values.rfq_response_line_id ?? null,
+        selection_id: values.selection_id ?? null,
+        selection_line_id: values.selection_line_id ?? null,
+        sales_quote_id: values.sales_quote_id ?? null,
+        sales_quote_line_id: values.sales_quote_line_id ?? null,
         original_part_id: values.original_part_id ?? null,
         qty_affected: values.qty_affected ?? null,
-      })
-      message.success("Событие добавлено")
+      }
+      if (editingEvent?.id) {
+        await axios.patch(`/suppliers/${supplierId}/quality-events/${editingEvent.id}`, payload)
+        message.success("Событие обновлено")
+      } else {
+        await axios.post(`/suppliers/${supplierId}/quality-events`, payload)
+        message.success("Событие добавлено")
+      }
       form.resetFields()
       setModalOpen(false)
+      setEditingEvent(null)
+      setSelectedLineMeta(null)
       await loadSummary()
       await loadEvents()
     } catch (e) {
@@ -218,7 +255,21 @@ export default function SupplierQualityMain({ supplierId }) {
       render: (value, record) => value || record.po_id || "-",
     },
     {
-      title: "PO line",
+      title: "Выбор",
+      dataIndex: "selection_id",
+      width: 100,
+      render: (value) => (value ? `#${value}` : "-"),
+    },
+    {
+      title: "КП",
+      width: 110,
+      render: (_, record) =>
+        record.sales_quote_id
+          ? `#${record.sales_quote_id}${record.sales_quote_revision_number ? ` / Rev ${record.sales_quote_revision_number}` : ""}`
+          : "-",
+    },
+    {
+      title: "Строка PO",
       dataIndex: "supplier_purchase_order_line_id",
       width: 110,
       render: (value) => value || "-",
@@ -240,10 +291,76 @@ export default function SupplierQualityMain({ supplierId }) {
       dataIndex: "note",
       render: (value) => value || "-",
     },
+    {
+      title: "Действия",
+      width: 180,
+      render: (_, record) => (
+        <Space>
+          <Button
+            size="small"
+            onClick={() => {
+              setEditingEvent(record)
+              setSelectedLineMeta(record)
+              form.setFieldsValue({
+                event_type: record.event_type,
+                severity: record.severity,
+                status: record.status || "open",
+                occurred_at: record.occurred_at ? dayjs(record.occurred_at) : null,
+                expected_date: record.expected_date ? dayjs(record.expected_date) : null,
+                actual_date: record.actual_date ? dayjs(record.actual_date) : null,
+                delay_days: record.delay_days,
+                rating: record.rating,
+                note: record.note || null,
+                supplier_purchase_order_id: record.supplier_purchase_order_id || null,
+                supplier_purchase_order_line_id: record.supplier_purchase_order_line_id || null,
+                rfq_response_line_id: record.rfq_response_line_id || null,
+                selection_id: record.selection_id || null,
+                selection_line_id: record.selection_line_id || null,
+                sales_quote_id: record.sales_quote_id || null,
+                sales_quote_line_id: record.sales_quote_line_id || null,
+                original_part_id: record.oem_part_id || null,
+                qty_affected: record.qty_affected ?? null,
+              })
+              setModalOpen(true)
+            }}
+          >
+            Изменить
+          </Button>
+          {String(record.status || "").toLowerCase() !== "closed" ? (
+            <Button
+              size="small"
+              onClick={async () => {
+                try {
+                  await axios.patch(`/suppliers/${supplierId}/quality-events/${record.id}`, {
+                    status: "closed",
+                  })
+                  message.success("Событие закрыто")
+                  await loadSummary()
+                  await loadEvents()
+                } catch (e) {
+                  message.error(e?.response?.data?.message || "Не удалось закрыть событие")
+                }
+              }}
+            >
+              Закрыть
+            </Button>
+          ) : null}
+        </Space>
+      ),
+    },
   ]
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={12}>
+      <Card size="small">
+        <Typography.Paragraph style={{ marginBottom: 0 }}>
+          Здесь фиксируются рекламации, задержки и оценки по поставщику. Правильная точка входа:
+          выбирать строку <Text strong>PO</Text>, чтобы событие автоматически привязывалось к закупочному
+          выбору, коммерческому КП и детали. Эти события автоматически пересчитывают рейтинг надежности
+          и уровень риска поставщика.
+        </Typography.Paragraph>
+      </Card>
+
       <Card size="small" title="Сводка">
         <Space wrap size="large">
           {summaryStats.map((item) => (
@@ -265,9 +382,22 @@ export default function SupplierQualityMain({ supplierId }) {
         size="small"
         title="События качества"
         extra={
-          <Button type="primary" onClick={() => setModalOpen(true)}>
-            Добавить событие
-          </Button>
+          <Space>
+            <Button size="small" onClick={() => setHelpOpen(true)}>
+              Справка
+            </Button>
+            <Button
+              type="primary"
+              onClick={() => {
+                setEditingEvent(null)
+                setSelectedLineMeta(null)
+                form.resetFields()
+                setModalOpen(true)
+              }}
+            >
+              Добавить событие
+            </Button>
+          </Space>
         }
       >
         <Table
@@ -280,9 +410,13 @@ export default function SupplierQualityMain({ supplierId }) {
       </Card>
 
       <Modal
-        title="Новое событие качества"
+        title={editingEvent ? `Событие качества #${editingEvent.id}` : "Новое событие качества"}
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
+        onCancel={() => {
+          setModalOpen(false)
+          setEditingEvent(null)
+          setSelectedLineMeta(null)
+        }}
         onOk={() => form.submit()}
         okText="Сохранить"
         cancelText="Отмена"
@@ -319,12 +453,16 @@ export default function SupplierQualityMain({ supplierId }) {
                 optionFilterProp="label"
                 options={purchaseOrders.map((po) => ({
                   value: po.id,
-                  label: `PO #${po.id}${po.supplier_reference ? ` · ${po.supplier_reference}` : ""} · ${po.status || "draft"} · ${formatDate(po.created_at)}`.trim(),
+                  label: `PO #${po.id}${po.supplier_reference ? ` · ${po.supplier_reference}` : ""} · ${renderPoStatus(po.status)} · ${formatDate(po.created_at)}`.trim(),
                 }))}
                 onChange={async (value) => {
                   form.setFieldsValue({
                     supplier_purchase_order_line_id: null,
                     rfq_response_line_id: null,
+                    selection_id: null,
+                    selection_line_id: null,
+                    sales_quote_id: null,
+                    sales_quote_line_id: null,
                     original_part_id: null,
                   })
                   setSelectedLineMeta(null)
@@ -348,7 +486,7 @@ export default function SupplierQualityMain({ supplierId }) {
                 }}
               />
             </Form.Item>
-            <Form.Item label="PO line" name="supplier_purchase_order_line_id">
+            <Form.Item label="Строка PO" name="supplier_purchase_order_line_id">
               <Select
                 style={{ width: 260 }}
                 showSearch
@@ -364,6 +502,10 @@ export default function SupplierQualityMain({ supplierId }) {
                   setSelectedLineMeta(line)
                   form.setFieldsValue({
                     rfq_response_line_id: line?.rfq_response_line_id || null,
+                    selection_id: line?.selection_id || null,
+                    selection_line_id: line?.selection_line_id || null,
+                    sales_quote_id: line?.sales_quote_id || null,
+                    sales_quote_line_id: line?.sales_quote_line_id || null,
                     original_part_id: line?.original_part_id || null,
                   })
                 }}
@@ -410,6 +552,18 @@ export default function SupplierQualityMain({ supplierId }) {
           <Form.Item name="rfq_response_line_id" hidden>
             <InputNumber />
           </Form.Item>
+          <Form.Item name="selection_id" hidden>
+            <InputNumber />
+          </Form.Item>
+          <Form.Item name="selection_line_id" hidden>
+            <InputNumber />
+          </Form.Item>
+          <Form.Item name="sales_quote_id" hidden>
+            <InputNumber />
+          </Form.Item>
+          <Form.Item name="sales_quote_line_id" hidden>
+            <InputNumber />
+          </Form.Item>
           <Form.Item name="original_part_id" hidden>
             <InputNumber />
           </Form.Item>
@@ -419,6 +573,29 @@ export default function SupplierQualityMain({ supplierId }) {
           </Form.Item>
         </Form>
       </Modal>
+
+      <Drawer
+        title="Справка по вкладке «Качество поставщика»"
+        placement="right"
+        width={460}
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Typography.Paragraph>
+            Здесь фиксируются рекламации, задержки и оценки исполнения по конкретным поставкам поставщика.
+          </Typography.Paragraph>
+          <Typography.Paragraph>
+            Правильная точка входа для события качества — строка <strong>PO</strong>. Тогда событие
+            автоматически связывается с закупочным выбором, коммерческим КП и конкретной деталью.
+          </Typography.Paragraph>
+          <Typography.Paragraph style={{ marginBottom: 0 }}>
+            Этот журнал должен использоваться как часть execution loop: после подтвержденного PO, поставки
+            и последующих претензий клиента. Он помогает видеть историю сбоев по поставщику и принимать
+            решение по будущим RFQ.
+          </Typography.Paragraph>
+        </Space>
+      </Drawer>
     </Space>
   )
 }

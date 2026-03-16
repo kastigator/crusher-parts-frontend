@@ -6,6 +6,7 @@ import { UploadOutlined, DownloadOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import { formatIncotermsWithPlace } from "@/components/rfqWorkspace/rfqWorkspaceUtils"
+import { formatUomLabel } from "@/utils/uom"
 
 const { Title, Text } = Typography
 
@@ -27,12 +28,6 @@ export default function ProposalPreviewModal({ open, onClose, order, items, view
   const roleCanSeeSupplier = canViewSupplierDetails(viewRole)
   const [uploading, setUploading] = useState(false)
   const [viewMode, setViewMode] = useState("client") // client | internal
-
-  const uomLabel = (uom) => {
-    if (!uom) return "—"
-    const map = { pcs: "шт", kg: "кг", set: "компл." }
-    return map[uom] || uom
-  }
 
   const itemTables = useMemo(() => {
     if (!Array.isArray(items)) return []
@@ -84,7 +79,7 @@ export default function ProposalPreviewModal({ open, onClose, order, items, view
           supplier_part_number: offer?.supplier_part_number || "",
           supplier_part_description: offer?.supplier_part_description || "",
           qty: it.requested_qty || 1,
-          uom: uomLabel(it.uom),
+          uom: formatUomLabel(it.uom) || "—",
           supplier: supplierLabel,
           supplier_price:
             offer && offer.supplier_price != null

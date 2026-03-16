@@ -9,6 +9,7 @@ import createTablePagination from "@/utils/tablePagination"
 import useTableScrollHints from "@/utils/useTableScrollHints"
 import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
 import { getOrderedKeys } from "@/utils/columnOrder"
+import { formatUomLabel } from "@/utils/uom"
 
 /**
  * Таблица оригинальных деталей.
@@ -338,7 +339,7 @@ export default function OriginalPartsTable({
       title: "Ед. изм.",
       dataIndex: "uom",
       width: 110,
-      render: (value) => value || "",
+      render: (value) => formatUomLabel(value) || "",
     },
 
     // 🔹 Габариты

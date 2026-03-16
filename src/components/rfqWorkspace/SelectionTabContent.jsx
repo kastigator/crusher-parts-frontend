@@ -66,6 +66,8 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
   const [scenarioMeta, setScenarioMeta] = useState(null)
   const [scenarioLines, setScenarioLines] = useState([])
   const [helpOpen, setHelpOpen] = useState(false)
+  const [selectionLines, setSelectionLines] = useState([])
+  const [loadingSelectionLines, setLoadingSelectionLines] = useState(false)
 
   const loadScenarios = async () => {
     if (!rfqId) return
@@ -137,13 +139,37 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
     }
   }
 
+  const loadSelectionLines = async (selectionId) => {
+    const id = Number(selectionId || 0)
+    if (!id) {
+      setSelectionLines([])
+      return
+    }
+    setLoadingSelectionLines(true)
+    try {
+      const { data } = await axios.get(`/selection/${id}/lines`)
+      setSelectionLines(Array.isArray(data) ? data : [])
+    } catch (e) {
+      setSelectionLines([])
+      message.error(e?.response?.data?.message || "Не удалось загрузить baseline lines")
+    } finally {
+      setLoadingSelectionLines(false)
+    }
+  }
+
+  useEffect(() => {
+    const latestSelectionId = Array.isArray(selections) && selections.length ? Number(selections[0]?.id || 0) : 0
+    loadSelectionLines(latestSelectionId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selections])
+
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <Alert
         type="info"
         showIcon
         message="Выбор фиксирует сценарий как финальный снимок"
-        description="После этого downstream-документы должны строиться от утверждённого выбора, а не пересобираться заново из покрытия или сценариев."
+        description="После утверждения создаётся procurement baseline: supplier mix, себестоимость, origin и supplier public codes фиксируются в selection. Дальше продавец работает уже от этого baseline."
       />
 
       <Space wrap>
@@ -231,6 +257,47 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
         ) : (
           <Text type="secondary">Финальный выбор ещё не создан.</Text>
         )}
+      </Card>
+
+      <Card
+        size="small"
+        title="Baseline для продавца"
+        extra={<span style={{ color: "#666", fontSize: 12 }}>Это snapshot procurement-решения, из которого создаётся КП.</span>}
+      >
+        <Table
+          size="small"
+          loading={loadingSelectionLines}
+          rowKey="id"
+          dataSource={selectionLines}
+          pagination={{ pageSize: 10, hideOnSinglePage: true }}
+          columns={[
+            {
+              title: "Строка",
+              render: (_, row) => (
+                <Space direction="vertical" size={0}>
+                  <span>{row.line_number} · {row.original_cat_number || row.client_part_number || `#${row.rfq_item_id}`}</span>
+                  {row.client_description ? <span style={{ color: "#666", fontSize: 12 }}>{row.client_description}</span> : null}
+                </Space>
+              ),
+            },
+            {
+              title: "Supplier code",
+              width: 160,
+              render: (_, row) => row.supplier_public_code ? <Tag color="blue">{row.supplier_public_code}</Tag> : <Tag>—</Tag>,
+            },
+            {
+              title: "Cost basis",
+              width: 180,
+              render: (_, row) => formatPriceWithCurrency(row.landed_amount, row.selection_currency || scenarioMeta?.calc_currency || "USD"),
+            },
+            {
+              title: "Origin",
+              dataIndex: "origin_country",
+              width: 100,
+              render: (value) => value || "—",
+            },
+          ]}
+        />
       </Card>
 
       <Drawer

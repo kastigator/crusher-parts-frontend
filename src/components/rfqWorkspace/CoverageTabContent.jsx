@@ -52,9 +52,43 @@ const STATUS_RANK = {
 const CLOSED_STATUSES = new Set(["Q+", "Q+P", "Q+OEM"])
 const PRICED_STATUSES = new Set(["Q+P", "Q+OEM"])
 
+const COVERAGE_OPTION_WARNING_LABELS = {
+  whole_uom_mismatch: "Ед. изм. whole-строки не совпадает с RFQ",
+  multiple_whole_lines: "В whole-варианте больше одной whole-строки",
+}
+
 const safeNum = (v, fallback = 0) => {
   const n = Number(v)
   return Number.isFinite(n) ? n : fallback
+}
+
+const buildCoverageOptionWarnings = (option, requestedUom) => {
+  const optionKind = String(option?.option_kind || "").toUpperCase()
+  const lines = Array.isArray(option?.lines) ? option.lines : []
+  const wholeLikeLines = lines.filter((line) => ["WHOLE", "MANUAL"].includes(String(line?.line_role || "").toUpperCase()))
+  const warnings = []
+
+  if (optionKind === "WHOLE" && wholeLikeLines.length > 1) warnings.push("multiple_whole_lines")
+  if (
+    requestedUom &&
+    wholeLikeLines.some((line) => {
+      const uom = String(line?.uom || "").trim()
+      return uom && uom !== requestedUom
+    })
+  ) {
+    warnings.push("whole_uom_mismatch")
+  }
+
+  return warnings
+}
+
+const summarizeCoverageWarnings = (options = [], itemsById = new Map()) => {
+  const unique = new Set()
+  options.forEach((option) => {
+    const item = itemsById.get(Number(option?.rfq_item_id || 0)) || null
+    buildCoverageOptionWarnings(option, item?.uom || null).forEach((warning) => unique.add(warning))
+  })
+  return Array.from(unique).map((warning) => COVERAGE_OPTION_WARNING_LABELS[warning] || warning)
 }
 
 const COVERAGE_HELP_SECTIONS = [
@@ -94,6 +128,43 @@ const STRATEGY_MODE_LABELS = {
   SINGLE: "Одна позиция",
   BOM: "По составу",
   MIXED: "Гибко",
+}
+
+const UOM_OPTIONS = [
+  { value: "pcs", label: "шт" },
+  { value: "kg", label: "кг" },
+  { value: "set", label: "компл." },
+]
+
+const riskLabel = (value) =>
+  ({
+    low: "низкий риск",
+    medium: "средний риск",
+    high: "высокий риск",
+    critical: "критичный риск",
+  }[String(value || "").trim().toLowerCase()] || null)
+
+const riskColor = (value) =>
+  ({
+    low: "green",
+    medium: "gold",
+    high: "volcano",
+    critical: "red",
+  }[String(value || "").trim().toLowerCase()] || "default")
+
+const renderSupplierQualityTags = (supplier) => {
+  const reliability =
+    supplier?.reliability_rating === undefined || supplier?.reliability_rating === null
+      ? null
+      : Number(supplier.reliability_rating)
+  const risk = riskLabel(supplier?.risk_level)
+  if (reliability === null && !risk) return null
+  return (
+    <Space size={[4, 4]} wrap>
+      {reliability !== null ? <Tag color="blue">Надежность: {reliability}</Tag> : null}
+      {risk ? <Tag color={riskColor(supplier?.risk_level)}>{risk}</Tag> : null}
+    </Space>
+  )
 }
 
 const uniqBy = (arr, keyFn) => {
@@ -670,6 +741,11 @@ export default function CoverageTabContent({
     [structureItems, activeItemId]
   )
 
+  const itemsById = useMemo(
+    () => new Map(structureItems.map((item) => [Number(item.rfq_item_id || 0), item])),
+    [structureItems]
+  )
+
   const workspaceRowsForItem = useMemo(
     () => workspace.filter((row) => Number(row?.rfq_item_id) === Number(activeItemId)),
     [workspace, activeItemId]
@@ -685,6 +761,9 @@ export default function CoverageTabContent({
         rfq_supplier_id: Number(s?.id || 0) || null,
         supplier_name: s?.supplier_name || `Поставщик #${id}`,
         supplier_country: s?.supplier_country || s?.country || null,
+        reliability_rating:
+          s?.reliability_rating === undefined || s?.reliability_rating === null ? null : Number(s.reliability_rating),
+        risk_level: s?.risk_level || null,
       })
     })
     workspace.forEach((row) => {
@@ -696,6 +775,11 @@ export default function CoverageTabContent({
           rfq_supplier_id: Number(row?.rfq_supplier_id || 0) || null,
           supplier_name: row?.supplier_name || `Поставщик #${id}`,
           supplier_country: row?.supplier_country || row?.country || null,
+          reliability_rating:
+            row?.reliability_rating === undefined || row?.reliability_rating === null
+              ? null
+              : Number(row.reliability_rating),
+          risk_level: row?.risk_level || null,
         })
       }
     })
@@ -1742,6 +1826,11 @@ export default function CoverageTabContent({
       return
     }
 
+    const warningMessages = summarizeCoverageWarnings(options, itemsById)
+    if (warningMessages.length) {
+      message.warning(`Покрытие сохранится с предупреждениями: ${warningMessages.join("; ")}`)
+    }
+
     setSavingCoverage(true)
     try {
       const { data } = await axios.post(`/coverage/rfq/${rfqId}/options/replace`, {
@@ -1841,6 +1930,15 @@ export default function CoverageTabContent({
       lines: normalizedLines,
     }
 
+    const manualWarnings = buildCoverageOptionWarnings(option, activeItem?.uom || null)
+    if (manualWarnings.length) {
+      message.warning(
+        `Ручной вариант будет сохранён с предупреждениями: ${manualWarnings
+          .map((warning) => COVERAGE_OPTION_WARNING_LABELS[warning] || warning)
+          .join("; ")}`
+      )
+    }
+
     setManualSaving(true)
     try {
       const { data } = await axios.post(`/coverage/rfq/${rfqId}/options`, { option })
@@ -1920,7 +2018,12 @@ export default function CoverageTabContent({
     ]
 
     const supplierCols = visibleSuppliers.map((supplier) => ({
-      title: supplier.supplier_name || `#${supplier.supplier_id}`,
+      title: (
+        <Space direction="vertical" size={2}>
+          <Text strong style={{ fontSize: 12 }}>{supplier.supplier_name || `#${supplier.supplier_id}`}</Text>
+          {renderSupplierQualityTags(supplier)}
+        </Space>
+      ),
       key: `supplier-${supplier.supplier_id}`,
       width: 170,
       render: (_, row) => {
@@ -1976,7 +2079,18 @@ export default function CoverageTabContent({
 
   const supplierSummaryColumns = useMemo(
     () => [
-      { title: "Поставщик", dataIndex: "supplier_name", key: "supplier_name", width: 240 },
+      {
+        title: "Поставщик",
+        dataIndex: "supplier_name",
+        key: "supplier_name",
+        width: 260,
+        render: (_, row) => (
+          <Space direction="vertical" size={2}>
+            <Text>{row.supplier_name || "—"}</Text>
+            {renderSupplierQualityTags(row)}
+          </Space>
+        ),
+      },
       {
         title: "Страна",
         dataIndex: "supplier_country",
@@ -2368,6 +2482,7 @@ export default function CoverageTabContent({
                     <Text>
                       <Text strong>Поставщик:</Text> {selectedCell.supplier?.supplier_name || "—"}
                     </Text>
+                    {renderSupplierQualityTags(selectedCell.supplier)}
                     <Space wrap>
                       <Tag color={(STATUS_META[selectedCell.cell?.code] || STATUS_META.NQ).color}>
                         {(STATUS_META[selectedCell.cell?.code] || STATUS_META.NQ).label}
@@ -2576,7 +2691,7 @@ export default function CoverageTabContent({
                         <InputNumber style={{ width: 120 }} min={0} />
                       </Form.Item>
                       <Form.Item {...field} name={[field.name, "uom"]} label="Ед.">
-                        <Input style={{ width: 100 }} />
+                        <Select style={{ width: 100 }} options={UOM_OPTIONS} allowClear />
                       </Form.Item>
                       <Form.Item {...field} name={[field.name, "unit_price"]} label="Цена">
                         <InputNumber style={{ width: 140 }} min={0} />

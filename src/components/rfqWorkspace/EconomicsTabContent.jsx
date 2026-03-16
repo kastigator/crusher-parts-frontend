@@ -26,6 +26,15 @@ const WARNING_LABELS = {
   missing_fx_rate: "Нет курса валют",
 }
 
+const SOURCE_LABELS = {
+  coverage_snapshot: "Origin: из покрытия",
+  response_or_cost_base: "Origin: из ответа/базы себестоимости",
+  supplier_only: "Origin: только страна поставщика",
+  missing: "Origin: не определён",
+  tnved: "Пошлина: по ТН ВЭД",
+  tnved_missing_rate: "Пошлина: ТН ВЭД есть, ставки нет",
+}
+
 const parseWarnings = (value) => {
   if (!value) return []
   if (Array.isArray(value)) return value.filter(Boolean)
@@ -189,6 +198,19 @@ export default function EconomicsTabContent({ rfqId }) {
           )
         },
       },
+      {
+        key: "sources",
+        title: "Источники",
+        width: 280,
+        render: (_, row) => (
+          <Space size={[4, 4]} wrap>
+            <Tag>{SOURCE_LABELS[row?.origin_source] || row?.origin_source || "Origin: —"}</Tag>
+            <Tag color={row?.duty_source === "tnved" ? "blue" : "default"}>
+              {SOURCE_LABELS[row?.duty_source] || row?.duty_source || "Пошлина: —"}
+            </Tag>
+          </Space>
+        ),
+      },
       { key: "eta", title: "ETA, дн", dataIndex: "eta_days", width: 100, render: (value) => value ?? "—" },
     ],
     [scenarioMeta],
@@ -266,6 +288,7 @@ export default function EconomicsTabContent({ rfqId }) {
           <Tag>Фрахт: {formatPriceWithCurrency(scenarioMeta.freight_total, scenarioMeta.calc_currency || "USD")}</Tag>
           <Tag>Пошлина: {formatPriceWithCurrency(scenarioMeta.duty_total, scenarioMeta.calc_currency || "USD")}</Tag>
           <Tag color="green">Себестоимость: {formatPriceWithCurrency(scenarioMeta.landed_total, scenarioMeta.calc_currency || "USD")}</Tag>
+          {scenarioMeta.fx_as_of ? <Tag color="blue">FX snapshot: {String(scenarioMeta.fx_as_of).slice(0, 10)}</Tag> : null}
           {parseWarnings(scenarioMeta.warning_json).map((warning) => (
             <Tag key={warning} color="orange">{WARNING_LABELS[warning] || warning}</Tag>
           ))}

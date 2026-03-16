@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Button, Card, Drawer, Empty, Select, Space, Table, Tag, Typography, message } from "antd"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
+import { formatUomLabel } from "@/utils/uom"
 
 const { Text } = Typography
 
@@ -132,7 +133,12 @@ export default function CoveragePage() {
                 render: (v, r) => v || r.client_description || "—",
               },
               { title: "Кол-во", dataIndex: "requested_qty", width: 100 },
-              { title: "Ед.", dataIndex: "uom", width: 80 },
+              {
+                title: "Ед.",
+                dataIndex: "uom",
+                width: 80,
+                render: (value) => formatUomLabel(value) || "—",
+              },
               {
                 title: "BOM",
                 dataIndex: "has_bom",

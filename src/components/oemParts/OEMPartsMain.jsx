@@ -16,6 +16,7 @@ import {
 } from "antd"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import axios from "@/api/axiosInstance"
+import { formatUomLabel } from "@/utils/uom"
 
 const UOM_OPTIONS = [
   { value: "pcs", label: "шт" },
@@ -283,7 +284,7 @@ export default function OEMPartsMain() {
       dataIndex: "uom",
       width: 90,
       align: "center",
-      render: textOrDash,
+      render: (value) => formatUomLabel(value) || "—",
     },
     {
       title: "Применяемость",

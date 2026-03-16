@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { Alert, Button, Card, Form, Input, Select, Space, Table, Tag, message } from "antd"
+import { Alert, Button, Card, Drawer, Form, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import CompanyLegalSummary from "@/components/common/CompanyLegalSummary"
@@ -29,7 +29,23 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
   const [updatingQuoteId, setUpdatingQuoteId] = useState(null)
   const [selectedQuoteId, setSelectedQuoteId] = useState(null)
   const [quoteRevisions, setQuoteRevisions] = useState([])
+  const [helpOpen, setHelpOpen] = useState(false)
   const [form] = Form.useForm()
+  const quoteStatusLabel = (value) =>
+    ({
+      draft: "Черновик",
+      internal_review: "Внутреннее согласование",
+      sent_to_client: "Отправлено клиенту",
+      client_approved: "Согласовано клиентом",
+      contract_signed: "Контракт подписан",
+    }[String(value || "").trim()] || value || "—")
+  const quoteStatusOptions = [
+    { value: "draft", label: "Черновик" },
+    { value: "internal_review", label: "Внутреннее согласование" },
+    { value: "sent_to_client", label: "Отправлено клиенту" },
+    { value: "client_approved", label: "Согласовано клиентом" },
+    { value: "contract_signed", label: "Контракт подписан" },
+  ]
 
   const loadData = async () => {
     if (!requestId) return
@@ -82,7 +98,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
     () =>
       selections.map((row) => ({
         value: Number(row.id),
-        label: `Selection #${row.id} · ${formatDate(row.selected_at || row.created_at)} · ${formatPriceWithCurrency(
+        label: `Выбор #${row.id} · ${formatDate(row.selected_at || row.created_at)} · ${formatPriceWithCurrency(
           row.landed_total,
           row.calc_currency || "USD"
         )}`,
@@ -126,7 +142,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
     setCreatingRevision(true)
     try {
       const { data } = await axios.post(`/sales-quotes/${quoteId}/revisions`, {
-        note: "Новая seller-ревизия",
+        note: "Новая коммерческая ревизия",
         copy_previous: true,
       })
       message.success(data?.message || "Ревизия КП создана")
@@ -167,25 +183,26 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
       <Alert
         type="info"
         showIcon
-        message="Seller-side КП строится от selection"
-        description="После выбора закупки продавец создаёт draft КП по текущей ревизии заявки и дальше уже ведёт клиентскую экономику и ревизии КП."
+        message="КП строится от утвержденного выбора закупки"
+        description="После утверждения закупочного выбора продавец создает черновик КП по текущей ревизии заявки и дальше ведет коммерческие ревизии уже в коммерческом контуре."
       />
 
-      <Card size="small" title="Создать КП из selection">
+      <Card
+        size="small"
+        title="Создать КП из выбора закупки"
+        extra={
+          <Button size="small" onClick={() => setHelpOpen(true)}>
+            Справка
+          </Button>
+        }
+      >
         <Form form={form} layout="vertical" onFinish={handleCreateQuote} initialValues={{ status: "draft", currency: "USD" }}>
           <Space wrap align="start">
-            <Form.Item name="selection_id" label="Selection" rules={[{ required: true }]}>
+            <Form.Item name="selection_id" label="Выбор закупки" rules={[{ required: true }]}>
               <Select style={{ width: 420 }} options={selectionOptions} />
             </Form.Item>
             <Form.Item name="status" label="Статус">
-              <Select
-                style={{ width: 160 }}
-                options={[
-                  { value: "draft", label: "draft" },
-                  { value: "internal_review", label: "internal_review" },
-                  { value: "sent_to_client", label: "sent_to_client" },
-                ]}
-              />
+              <Select style={{ width: 180 }} options={quoteStatusOptions} />
             </Form.Item>
             <Form.Item name="currency" label="Валюта">
               <Select
@@ -199,7 +216,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
             </Form.Item>
           </Space>
           <Button type="primary" htmlType="submit" loading={saving} disabled={!activeRevisionId}>
-            Создать draft КП
+            Создать черновик КП
           </Button>
         </Form>
       </Card>
@@ -217,7 +234,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
               onChange={(value) => setSelectedQuoteId(Number(value || 0) || null)}
               options={quotes.map((row) => ({
                 value: Number(row.id),
-                label: `КП #${row.id} · Rev ${row.rev_number ?? "?"} · ${row.status}`,
+                label: `КП #${row.id} · Rev ${row.rev_number ?? "?"} · ${quoteStatusLabel(row.status)}`,
               }))}
             />
             <Button onClick={handleCreateRevision} loading={creatingRevision} disabled={!selectedQuoteId}>
@@ -243,18 +260,14 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
                   value={row.status || "draft"}
                   loading={updatingQuoteId === Number(row.id)}
                   onChange={(value) => handleUpdateQuoteStatus(row.id, value)}
-                  options={[
-                    { value: "draft", label: "draft" },
-                    { value: "internal_review", label: "internal_review" },
-                    { value: "sent_to_client", label: "sent_to_client" },
-                  ]}
+                  options={quoteStatusOptions}
                 />
               ),
             },
             { title: "Rev заявки", dataIndex: "rev_number", width: 100 },
-            { title: "Latest rev КП", dataIndex: "latest_revision_number", width: 110, render: (value) => value || "—" },
-            { title: "Cost", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_cost, row.currency || "USD") },
-            { title: "Sell", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_sell, row.currency || "USD") },
+            { title: "Последняя rev КП", dataIndex: "latest_revision_number", width: 130, render: (value) => value || "—" },
+            { title: "Себестоимость", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_cost, row.currency || "USD") },
+            { title: "Продажа", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_sell, row.currency || "USD") },
             { title: "Маржа", width: 100, render: (_, row) => `${Number(row.margin_pct_avg || 0).toFixed(1)}%` },
             { title: "Создано", dataIndex: "created_at", width: 120, render: formatDate },
           ]}
@@ -271,8 +284,18 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
               pagination={false}
               columns={[
                 { title: "Rev", dataIndex: "rev_number", width: 80 },
-                { title: "Cost", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_cost, "USD") },
-                { title: "Sell", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_sell, "USD") },
+                { title: "Себестоимость", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_cost, selectedQuote?.currency || "USD") },
+                { title: "Продажа", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_sell, selectedQuote?.currency || "USD") },
+                { title: "Маржа", width: 100, render: (_, row) => `${Number(row.margin_pct_avg || 0).toFixed(1)}%` },
+                {
+                  title: "Срез",
+                  width: 110,
+                  render: (_, row) => (
+                    <Tag color={row.rev_number === selectedQuote?.latest_revision_number ? "green" : "default"}>
+                      {row.rev_number === selectedQuote?.latest_revision_number ? "актуальная" : "архив"}
+                    </Tag>
+                  ),
+                },
                 { title: "Создано", dataIndex: "created_at", width: 120, render: formatDate },
                 { title: "Комментарий", dataIndex: "note" },
               ]}
@@ -280,6 +303,29 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
           </div>
         ) : null}
       </Card>
+
+      <Drawer
+        title="Справка по вкладке «КП»"
+        placement="right"
+        width={440}
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Typography.Paragraph>
+            Здесь продавец получает базовую закупочную модель и создает коммерческое предложение клиенту по
+            текущей ревизии заявки.
+          </Typography.Paragraph>
+          <Typography.Paragraph>
+            Новые rev КП нужны для торга: можно пересматривать цену, состав и условия, не меняя исходный
+            закупочный выбор.
+          </Typography.Paragraph>
+          <Typography.Paragraph style={{ marginBottom: 0 }}>
+            После согласования клиента процесс переходит во вкладку контрактов, где фиксируется уже
+            конкретная коммерческая ревизия.
+          </Typography.Paragraph>
+        </Space>
+      </Drawer>
     </Space>
   )
 }

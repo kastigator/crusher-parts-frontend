@@ -39,6 +39,7 @@ import RequestsListCard from "@/components/clientRequests/RequestsListCard"
 import axios from "@/api/axiosInstance"
 import dayjs from "dayjs"
 import confirmAction from "@/utils/confirmAction"
+import { formatUomLabel } from "@/utils/uom"
 import { useAuth } from "@/auth/AuthContext"
 import { useSearchParams } from "react-router-dom"
 
@@ -2222,7 +2223,12 @@ export default function ClientRequestsPage() {
         )
       },
     },
-    { title: "Ед.", dataIndex: "uom", width: 70 },
+    {
+      title: "Ед.",
+      dataIndex: "uom",
+      width: 70,
+      render: (value) => formatUomLabel(value) || "—",
+    },
     {
       title: "OEM",
       dataIndex: "oem_only",
