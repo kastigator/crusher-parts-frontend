@@ -19,6 +19,13 @@ export default function OriginalPartDetailPage() {
   const [loading, setLoading] = useState(false)
   const [part, setPart] = useState(null)
 
+  const currentModelId =
+    Number(location.state?.currentModelId || 0) ||
+    Number(part?.equipment_model_id || 0) ||
+    (Array.isArray(part?.application_models) && part.application_models.length === 1
+      ? Number(part.application_models[0]?.equipment_model_id || 0) || null
+      : null)
+
   const goBackToList = () => {
     const from = location.state?.from || "/original-parts"
     const listState = location.state?.listState
@@ -35,6 +42,7 @@ export default function OriginalPartDetailPage() {
     navigate(`/original-parts/${idNum}`, {
       state: {
         from: location.pathname,
+        currentModelId,
         listState: location.state?.listState,
       },
     })
@@ -67,7 +75,11 @@ export default function OriginalPartDetailPage() {
     )
     if (!confirmed) return
     try {
-      await axios.delete(`/original-parts/${part.id}`)
+      await axios.delete(`/original-parts/${part.id}`, {
+        data: {
+          equipment_model_id: currentModelId,
+        },
+      })
       message.success("Удалено из текущей модели")
       goBackToList()
     } catch (e) {
@@ -184,7 +196,7 @@ export default function OriginalPartDetailPage() {
 
             <DetailDock
               part={part}
-              modelId={part?.equipment_model_id || null}
+              modelId={currentModelId}
               manufacturerName={part?.manufacturer_name}
               modelName={part?.model_name}
               onOpenPart={openPartCardFromBom}

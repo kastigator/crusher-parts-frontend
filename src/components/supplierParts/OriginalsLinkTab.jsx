@@ -18,6 +18,33 @@ import StandardPartsPickerDrawer from "./StandardPartsPickerDrawer"
 
 const { Text } = Typography
 
+function parseOemContexts(row) {
+  const raw = String(row.model_contexts || "").trim()
+  if (raw) {
+    return raw
+      .split("\n")
+      .map((entry) => {
+        const [manufacturer_name, model_name] = entry.split("||")
+        return {
+          manufacturer_name: manufacturer_name || null,
+          model_name: model_name || null,
+        }
+      })
+      .filter((ctx) => ctx.manufacturer_name || ctx.model_name)
+  }
+
+  if (row.manufacturer_name || row.model_name) {
+    return [
+      {
+        manufacturer_name: row.manufacturer_name || null,
+        model_name: row.model_name || null,
+      },
+    ]
+  }
+
+  return []
+}
+
 export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} }) {
   const [oemLinks, setOemLinks] = useState([])
   const [standardLinks, setStandardLinks] = useState([])
@@ -216,7 +243,10 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
       link_id: row.original_part_id,
       number_text: row.cat_number,
       name_text: row.description_ru || row.description_en || "—",
-      context_text: [row.manufacturer_name, row.model_name].filter(Boolean).join(" / "),
+      contexts: parseOemContexts(row),
+      context_text: parseOemContexts(row)
+        .map((ctx) => [ctx.manufacturer_name, ctx.model_name].filter(Boolean).join(" / "))
+        .join("; "),
     }))
     const stdRows = standardLinks.map((row) => ({
       ...row,
@@ -256,10 +286,15 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
       render: (v, row) => (
         <Space size={6} wrap>
           {row.link_type === "oem" ? (
-            <>
-              <Tag color="geekblue">{row.manufacturer_name || "—"}</Tag>
-              <Tag>{row.model_name || "—"}</Tag>
-            </>
+            row.contexts?.length ? (
+              row.contexts.map((ctx, index) => (
+                <Tag key={`${row.key}:ctx:${index}`} color="geekblue">
+                  {[ctx.manufacturer_name, ctx.model_name].filter(Boolean).join(" / ") || "—"}
+                </Tag>
+              ))
+            ) : (
+              <Text type="secondary">—</Text>
+            )
           ) : (
             <>
               <Tag color="green">{row.part_type || "—"}</Tag>

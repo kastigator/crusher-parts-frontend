@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react"
-import { notification, Tag, Space, Button, Typography } from "antd"
+import { notification, Tag, Space, Button, Typography, message } from "antd"
 import { useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 
@@ -12,6 +12,7 @@ const EVENT_LABELS = {
 }
 
 const EVENTS_POLL_INTERVAL_MS = 30000
+const CLIENT_ORDERS_ENABLED = false
 
 export default function useDashboardNotifications() {
   const navigate = useNavigate()
@@ -19,6 +20,10 @@ export default function useDashboardNotifications() {
 
   const openOrderById = useCallback((orderId) => {
     if (!orderId) return
+    if (!CLIENT_ORDERS_ENABLED) {
+      message.info("Модуль заказов клиента сейчас отключён")
+      return
+    }
     navigate(`/client-orders?orderId=${encodeURIComponent(orderId)}`)
   }, [navigate])
 
@@ -58,8 +63,9 @@ export default function useDashboardNotifications() {
                   size="small"
                   type="link"
                   onClick={() => openOrderById(event.order_id)}
+                  disabled={!CLIENT_ORDERS_ENABLED}
                 >
-                  Открыть
+                  {CLIENT_ORDERS_ENABLED ? "Открыть" : "Недоступно"}
                 </Button>
               </Space>
             ))}

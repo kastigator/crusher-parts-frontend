@@ -411,7 +411,7 @@ export default function OriginalPartsMain() {
       if (!meta?.options?.length) return
       if (columnsByView && Object.prototype.hasOwnProperty.call(columnsByView, viewKey)) {
         if (viewKey.startsWith("showAll:")) {
-          const nextKeys = ["manufacturer", "model", "client_names", "client_units_count"]
+          const nextKeys = ["manufacturer", "model", "client_names", "client_machine_refs"]
           const current = Array.isArray(columnsByView[viewKey]) ? columnsByView[viewKey] : []
           const allToggleKeys = meta.options.map((o) => o.key)
           const missing = nextKeys.filter((key) => allToggleKeys.includes(key) && !current.includes(key))
@@ -479,7 +479,7 @@ export default function OriginalPartsMain() {
           "manufacturer",
           "model",
           "client_names",
-          "client_units_count",
+          "client_machine_refs",
           ...base,
         ])
       }
@@ -833,11 +833,21 @@ export default function OriginalPartsMain() {
   }
 
   const openPartDetail = useCallback(
-    (partId) => {
-      if (!partId) return
+    (recordOrId) => {
+      const partId =
+        typeof recordOrId === "object" && recordOrId !== null
+          ? Number(recordOrId.id)
+          : Number(recordOrId)
+      if (!Number.isFinite(partId) || partId <= 0) return
+      const currentModelId =
+        typeof recordOrId === "object" && recordOrId !== null
+          ? Number(recordOrId.equipment_model_id || model?.id || 0) || null
+          : Number(model?.id || 0) || null
+
       navigate(`/original-parts/${partId}`, {
         state: {
           from: `${location.pathname}${location.search || ""}`,
+          currentModelId,
           listState: {
             manufacturer,
             model,
@@ -1397,10 +1407,12 @@ export default function OriginalPartsMain() {
                 rows={rows}
                 focusId={treeFocusId}
                 onOpenDetail={(partId) => {
-                  if (!partId) return
-                  navigate(`/original-parts/${partId}`, {
+                  const nextPartId = Number(partId)
+                  if (!Number.isFinite(nextPartId) || nextPartId <= 0) return
+                  navigate(`/original-parts/${nextPartId}`, {
                     state: {
                       from: `${location.pathname}${location.search || ""}`,
+                      currentModelId: model?.id || null,
                       listState: {
                         manufacturer,
                         model,
@@ -1444,7 +1456,7 @@ export default function OriginalPartsMain() {
                 onEditRecord={openEditDrawer}
                 onOpenDetail={(record) => {
                   if (!record?.id) return
-                  openPartDetail(record.id)
+                  openPartDetail(record)
                 }}
                 onRemove={(id) => {
                   setRows((prev) => prev.filter((r) => r.id !== id))
@@ -1785,7 +1797,7 @@ export default function OriginalPartsMain() {
                   onClick={() => {
                     if (!editingRow?.id) return
                     setEditOpen(false)
-                    openPartDetail(editingRow.id)
+                    openPartDetail(editingRow)
                   }}
                 >
                   Открыть карточку

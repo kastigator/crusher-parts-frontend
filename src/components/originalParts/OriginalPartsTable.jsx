@@ -110,6 +110,20 @@ export default function OriginalPartsTable({
       .map((name) => ({ text: name, value: name }))
   }, [data])
 
+  const clientMachineFilters = useMemo(() => {
+    const set = new Set()
+    ;(Array.isArray(data) ? data : []).forEach((r) => {
+      String(r.client_machine_refs || "")
+        .split("|")
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .forEach((name) => set.add(name))
+    })
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ text: name, value: name }))
+  }, [data])
+
   // Группа (работает всегда, если есть group_name)
   const groupFilters = useMemo(() => {
     const set = new Set()
@@ -205,14 +219,26 @@ export default function OriginalPartsTable({
             render: (value) => <ValueDisplay value={value ? value.replaceAll(" | ", ", ") : ""} />,
           },
           {
-            key: "client_units_count",
+            key: "client_machine_refs",
             title: "Машины клиентов",
-            dataIndex: "client_units_count",
-            width: 150,
-            align: "right",
+            dataIndex: "client_machine_refs",
+            width: 260,
+            ellipsis: true,
+            filters: clientMachineFilters,
+            onFilter: (value, record) =>
+              String(record.client_machine_refs || "")
+                .split("|")
+                .map((v) => v.trim())
+                .includes(String(value || "")),
             sorter: (a, b) => Number(a.client_units_count || 0) - Number(b.client_units_count || 0),
             sortDirections: ["ascend", "descend"],
-            render: (value) => Number(value || 0),
+            render: (value, record) => {
+              const text = value ? value.replaceAll(" | ", ", ") : ""
+              if (text) return <ValueDisplay value={text} />
+              return Number(record.client_units_count || 0) > 0
+                ? <ValueDisplay value={`${Number(record.client_units_count || 0)} шт.`} />
+                : <ValueDisplay value="" />
+            },
           },
         ]
       : []),
