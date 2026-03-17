@@ -705,6 +705,7 @@ export default function CoverageTabContent({
   const [helpOpen, setHelpOpen] = useState(false)
   const [manualForm] = Form.useForm()
   const [savingComboKey, setSavingComboKey] = useState(null)
+  const [savedCoverageOptions, setSavedCoverageOptions] = useState([])
   const [matrixColumnKeys, setMatrixColumnKeys] = useState([])
   const [supplierSummaryColumnKeys, setSupplierSummaryColumnKeys] = useState([])
   const [comboColumnKeys, setComboColumnKeys] = useState([])
@@ -740,6 +741,16 @@ export default function CoverageTabContent({
     () => structureItems.find((item) => Number(item.rfq_item_id) === Number(activeItemId)) || null,
     [structureItems, activeItemId]
   )
+  const savedOptionCodeSet = useMemo(() => {
+    const codes = new Set()
+    savedCoverageOptions.forEach((option) => {
+      if (Number(option?.rfq_item_id || 0) !== Number(activeItemId || 0)) return
+      if (String(option?.option_kind || "").toUpperCase() !== "MIXED") return
+      const code = String(option?.option_code || "").trim()
+      if (code) codes.add(code)
+    })
+    return codes
+  }, [savedCoverageOptions, activeItemId])
 
   const itemsById = useMemo(
     () => new Map(structureItems.map((item) => [Number(item.rfq_item_id || 0), item])),
@@ -1556,7 +1567,8 @@ export default function CoverageTabContent({
         oem_ok: oemOkBool,
         consolidation_hint: consolidationHint,
         score,
-        status,
+        status: savedOptionCodeSet.has(`COMBO_${comboKey(supplierIds)}`) ? "Уже сохранена" : status,
+        is_saved: savedOptionCodeSet.has(`COMBO_${comboKey(supplierIds)}`),
         assignment_preview: assignmentPreview,
         persist_option: {
           rfq_item_id: Number(activeItem?.rfq_item_id || 0) || null,
@@ -1626,10 +1638,16 @@ export default function CoverageTabContent({
       message.warning("Комбинация пока не готова для сохранения")
       return
     }
+    if (comboRow?.is_saved) {
+      message.info("Этот смешанный вариант уже сохранён")
+      return
+    }
     setSavingComboKey(comboRow.key)
     try {
       const { data } = await axios.post(`/coverage/rfq/${rfqId}/options`, { option })
       message.success(data?.message || "Комбинированный вариант сохранён")
+      const refreshed = await axios.get(`/coverage/rfq/${rfqId}/options`)
+      setSavedCoverageOptions(Array.isArray(refreshed?.data?.rows) ? refreshed.data.rows : [])
     } catch (e) {
       message.error(e?.response?.data?.message || "Не удалось сохранить комбинированный вариант")
     } finally {
@@ -2215,6 +2233,7 @@ export default function CoverageTabContent({
           if (String(v).includes("Готова")) color = "green"
           else if (String(v).includes("Нужны")) color = "gold"
           else if (String(v).includes("дыры")) color = "red"
+          else if (String(v).includes("Уже сохран")) color = "blue"
           return <Tag color={color}>{v}</Tag>
         },
       },
@@ -2227,15 +2246,61 @@ export default function CoverageTabContent({
             size="small"
             onClick={() => saveComboOption(row)}
             loading={savingComboKey === row.key}
-            disabled={!row?.persist_option?.lines?.length}
+            disabled={!row?.persist_option?.lines?.length || row?.is_saved}
           >
-            Сохранить смешанный
+            {row?.is_saved ? "Уже сохранён" : "Сохранить смешанный"}
           </Button>
         ),
       },
     ],
     [savingComboKey]
   )
+
+  useEffect(() => {
+    let cancelled = false
+    const loadSavedCoverageOptions = async () => {
+      if (!rfqId) {
+        setSavedCoverageOptions([])
+        return
+      }
+      try {
+        const { data } = await axios.get(`/coverage/rfq/${rfqId}/options`)
+        if (!cancelled) {
+          setSavedCoverageOptions(Array.isArray(data?.rows) ? data.rows : [])
+        }
+      } catch (_) {
+        if (!cancelled) {
+          setSavedCoverageOptions([])
+        }
+      }
+    }
+    loadSavedCoverageOptions()
+    return () => {
+      cancelled = true
+    }
+  }, [rfqId])
+
+  useEffect(() => {
+    setComboRows((prev) =>
+      prev.map((row) => {
+        const optionCode = String(row?.persist_option?.option_code || "").trim()
+        const isSaved = !!optionCode && savedOptionCodeSet.has(optionCode)
+        let nextStatus = "Потенциально"
+        if (safeNum(row?.structure_coverage_pct) >= 100 && safeNum(row?.priced_coverage_pct) >= 100 && row?.oem_ok) {
+          nextStatus = "Готова в экономику"
+        } else if (safeNum(row?.structure_coverage_pct) < 100) {
+          nextStatus = "Есть дыры"
+        } else if (safeNum(row?.priced_coverage_pct) < 100) {
+          nextStatus = "Нужны цены"
+        }
+        return {
+          ...row,
+          is_saved: isSaved,
+          status: isSaved ? "Уже сохранена" : nextStatus,
+        }
+      })
+    )
+  }, [savedOptionCodeSet])
 
   useEffect(() => {
     setMatrixColumnKeys((prev) => {
