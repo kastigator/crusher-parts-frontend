@@ -1,5 +1,14 @@
 import React from "react"
-import { Divider, Form, Input, InputNumber, Modal, Select, Space } from "antd"
+import { Divider, Form, Input, InputNumber, Modal, Select, Space, Typography } from "antd"
+
+const { Text } = Typography
+const TRANSPORT_OPTIONS = [
+  { value: "ROAD", label: "Авто" },
+  { value: "SEA", label: "Море" },
+  { value: "AIR", label: "Авиа" },
+  { value: "RAIL", label: "Ж/д" },
+  { value: "MULTI", label: "Мультимодально" },
+]
 
 export default function AdhocRouteModal({
   open,
@@ -7,13 +16,13 @@ export default function AdhocRouteModal({
   onOk,
   confirmLoading,
   form,
-  corridorOptions,
   pricingModelLabel,
+  groupDirection,
 }) {
   return (
     <Modal
       open={open}
-      title="Разовый маршрут"
+      title="Ручной вариант доставки"
       onCancel={onCancel}
       onOk={onOk}
       confirmLoading={confirmLoading}
@@ -22,21 +31,20 @@ export default function AdhocRouteModal({
       destroyOnClose
     >
       <Form layout="vertical" form={form}>
-        <Form.Item
-          name="corridor_id"
-          label="Логистический коридор"
-          rules={[{ required: true, message: "Выберите коридор" }]}
-        >
-          <Select
-            showSearch
-            optionFilterProp="label"
-            options={corridorOptions}
-            placeholder="Например: CN -> RU SEA"
-          />
+        <Form.Item label="Направление">
+          <Text>{groupDirection || "Определится по группе отгрузки"}</Text>
         </Form.Item>
 
-        <Form.Item name="name" label="Название маршрута">
-          <Input placeholder="Например: Морем FCL, экспедитор X" />
+        <Form.Item
+          name="transport_mode"
+          label="Транспорт"
+          rules={[{ required: true, message: "Выберите транспорт" }]}
+        >
+          <Select options={TRANSPORT_OPTIONS} placeholder="Выберите транспорт" />
+        </Form.Item>
+
+        <Form.Item name="name" label="Название варианта">
+          <Input placeholder="Например: Море через Новороссийск" />
         </Form.Item>
 
         <Space style={{ width: "100%" }} size="middle" align="start">

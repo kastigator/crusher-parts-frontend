@@ -142,11 +142,11 @@ export default function SupplierQualityMain({ supplierId }) {
                   ? "критичный"
                   : "-",
       },
-      { label: "Quality score", value: summary.quality_score ?? "-" },
+      { label: "Индекс качества", value: summary.quality_score ?? "-" },
       { label: "Всего", value: summary.total ?? 0 },
       { label: "Рекламации", value: summary.complaints ?? 0 },
       { label: "Задержки", value: summary.delays ?? 0 },
-      { label: "Оценки обработки", value: summary.processing_ratings ?? 0 },
+      { label: "Оценки работы", value: summary.processing_ratings ?? 0 },
       { label: "Открыто", value: summary.open_count ?? 0 },
       { label: "Закрыто", value: summary.closed_count ?? 0 },
       {
@@ -265,7 +265,7 @@ export default function SupplierQualityMain({ supplierId }) {
       width: 110,
       render: (_, record) =>
         record.sales_quote_id
-          ? `#${record.sales_quote_id}${record.sales_quote_revision_number ? ` / Rev ${record.sales_quote_revision_number}` : ""}`
+          ? `#${record.sales_quote_id}${record.sales_quote_revision_number ? ` / Ревизия ${record.sales_quote_revision_number}` : ""}`
           : "-",
     },
     {
@@ -495,7 +495,7 @@ export default function SupplierQualityMain({ supplierId }) {
                 optionFilterProp="label"
                 options={purchaseOrderLines.map((line) => ({
                   value: line.id,
-                  label: `Line #${line.id} · ${line.original_cat_number || "без номера"} · ${line.qty || 0} ${line.currency || ""}`.trim(),
+                  label: `Строка #${line.id} · ${line.original_cat_number || "без номера"} · ${line.qty || 0} ${line.currency || ""}`.trim(),
                 }))}
                 onChange={(value) => {
                   const line = purchaseOrderLines.find((item) => item.id === value) || null
@@ -590,7 +590,7 @@ export default function SupplierQualityMain({ supplierId }) {
             автоматически связывается с закупочным выбором, коммерческим КП и конкретной деталью.
           </Typography.Paragraph>
           <Typography.Paragraph style={{ marginBottom: 0 }}>
-            Этот журнал должен использоваться как часть execution loop: после подтвержденного PO, поставки
+            Этот журнал должен использоваться как часть контура исполнения: после подтвержденного PO, поставки
             и последующих претензий клиента. Он помогает видеть историю сбоев по поставщику и принимать
             решение по будущим RFQ.
           </Typography.Paragraph>

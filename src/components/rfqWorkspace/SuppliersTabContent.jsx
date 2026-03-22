@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Alert, Button, Card, Checkbox, Form, Input, Popover, Select, Space, Table, Tag, Typography } from "antd"
+import useCapabilities from "@/hooks/useCapabilities"
 
 const { Text } = Typography
 const HINT_FILTER_MODE_KEY = "rfq_workspace_suppliers_hint_filter_mode"
@@ -43,6 +44,8 @@ export default function SuppliersTabContent({
   docsLoading,
   activeRfq,
 }) {
+  const { can } = useCapabilities()
+  const canEditCatalogs = can("catalogs.edit")
   const [hintFilterMode, setHintFilterMode] = useState(() => {
     if (typeof window === "undefined") return "all"
     const saved = window.localStorage.getItem(HINT_FILTER_MODE_KEY)
@@ -353,7 +356,7 @@ export default function SuppliersTabContent({
               </Button>
             </Form.Item>
             <Form.Item style={{ marginTop: 30 }}>
-              <Button onClick={() => setSupplierCreateOpen(true)}>
+              <Button onClick={() => setSupplierCreateOpen(true)} disabled={!canEditCatalogs}>
                 Создать поставщика
               </Button>
             </Form.Item>

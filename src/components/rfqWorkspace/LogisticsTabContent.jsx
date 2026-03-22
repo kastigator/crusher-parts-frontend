@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react"
 import {
+  Alert,
   Button,
   Card,
   Drawer,
@@ -33,7 +34,7 @@ const ROUTE_TYPE_LABELS = {
   MULTI: "Мультимодально",
 }
 
-const routeOptions = [
+const deliveryModeOptions = [
   { value: "MANUAL", label: ROUTE_TYPE_LABELS.MANUAL },
   { value: "ROAD", label: ROUTE_TYPE_LABELS.ROAD },
   { value: "AIR", label: ROUTE_TYPE_LABELS.AIR },
@@ -85,7 +86,7 @@ const parseWarningsFromSourceNote = (value) => {
 
 const buildLineWarnings = (row) => {
   const warnings = []
-  if (!normalizeText(row?.origin_country) && !normalizeText(row?.cost_origin_country) && !normalizeText(row?.supplier_country)) {
+  if (!normalizeText(row?.origin_country) && !normalizeText(row?.cost_origin_country)) {
     warnings.push("missing_origin_country")
   }
   if (!normalizeText(row?.incoterms)) {
@@ -148,7 +149,7 @@ const renderWarnings = (warnings) => {
 }
 
 const formatOriginSummary = (row) => {
-  const country = normalizeText(row?.from_country || row?.origin_country || row?.supplier_country)
+  const country = normalizeText(row?.from_country || row?.origin_country)
   const place = normalizeText(row?.incoterms_place)
   if (country && place) return `${country} · ${place}`
   return country || place || "—"
@@ -158,16 +159,20 @@ const renderOriginCell = (row) => {
   const snapshotOrigin = normalizeText(row?.origin_country_raw || row?.origin_country)
   const costBaseOrigin = normalizeText(row?.cost_origin_country)
   const supplierCountry = normalizeText(row?.supplier_country)
-  const display = snapshotOrigin || costBaseOrigin || supplierCountry || "—"
+  const strictOrigin = snapshotOrigin || costBaseOrigin
+  const display = strictOrigin || "не указана"
   let source = "не определён"
   if (snapshotOrigin) source = "из покрытия"
   else if (costBaseOrigin) source = "из ответа / cost base"
-  else if (supplierCountry) source = "только страна поставщика"
+  else source = "не заполнена"
 
   return (
     <Space direction="vertical" size={0}>
       <span>{display}</span>
       <span style={{ color: "#666", fontSize: 12 }}>Источник: {source}</span>
+      {!strictOrigin && supplierCountry ? (
+        <span style={{ color: "#666", fontSize: 12 }}>Страна поставщика: {supplierCountry}</span>
+      ) : null}
     </Space>
   )
 }
@@ -176,12 +181,12 @@ const LOGISTICS_HELP_SECTIONS = [
   {
     title: "Зачем нужна вкладка",
     body:
-      "Логистика собирает строки выбранного сценария в группы отгрузки. Здесь вы определяете, какие позиции едут вместе, каким маршрутом, с каким freight и каким ETA. Именно отсюда данные переходят в Экономику.",
+      "Логистика собирает строки выбранного сценария в группы отгрузки. Здесь вы определяете, какие позиции едут вместе, каким способом доставки, с каким freight и каким ETA. Именно отсюда данные переходят в Экономику.",
   },
   {
     title: "Откуда берутся данные",
     body:
-      "Основа берётся из сценария и ответов поставщиков: страна происхождения, Incoterms, пункт Incoterms, срок и вес. Если часть полей не пришла из ответа или мастер-данных, логистика показывает предупреждения и автогруппировка становится менее точной.",
+      "Основа берётся из сценария и ответов поставщиков: страна происхождения, Incoterms, пункт Incoterms, срок и вес. Если страна происхождения не указана, страна поставщика показывается только как справка и не считается полноценной заменой origin.",
   },
   {
     title: "Как работает автогруппировка",
@@ -191,7 +196,7 @@ const LOGISTICS_HELP_SECTIONS = [
   {
     title: "Когда нужна ручная группа",
     body:
-      "Ручная группа нужна, когда вы хотите осознанно объединить или разделить строки не по стандартной логике: отдельная консолидация, особый маршрут, смешанная поставка, нестандартный freight или отдельный ETA.",
+      "Ручная группа нужна, когда вы хотите осознанно объединить или разделить строки не по стандартной логике: отдельная консолидация, особый способ доставки, смешанная поставка, нестандартный freight или отдельный ETA.",
   },
   {
     title: "Что проверить перед расчётом",
@@ -200,7 +205,50 @@ const LOGISTICS_HELP_SECTIONS = [
   },
 ]
 
-export default function LogisticsTabContent({ rfqId }) {
+const REMEDIATION_ACTIONS = {
+  missing_origin_country: {
+    tabKey: "responses",
+    buttonLabel: "Открыть Ответы",
+    hint: "Проверьте страну происхождения в ответе поставщика или задайте её в ручном варианте покрытия.",
+  },
+  missing_weight: {
+    tabKey: "responses",
+    buttonLabel: "Открыть Ответы",
+    hint: "Проверьте вес в детали поставщика на вкладке Ответы. Для ручного варианта покрытия вес можно задать прямо в Покрытии.",
+  },
+  missing_incoterms: {
+    tabKey: "responses",
+    buttonLabel: "Открыть Ответы",
+    hint: "Проверьте Incoterms в ответе поставщика или заполните их в ручном варианте покрытия.",
+  },
+  missing_incoterms_place: {
+    tabKey: "responses",
+    buttonLabel: "Открыть Ответы",
+    hint: "Проверьте пункт Incoterms в ответе поставщика или заполните его в ручном варианте покрытия.",
+  },
+  missing_lead_time: {
+    tabKey: "responses",
+    buttonLabel: "Открыть Ответы",
+    hint: "Проверьте срок поставки в ответе поставщика или задайте его в ручном варианте покрытия.",
+  },
+  missing_tnved: {
+    tabKey: "coverage",
+    buttonLabel: "Открыть Покрытие",
+    hint: "Проверьте связь покрытия с номенклатурой и ТН ВЭД.",
+  },
+  missing_duty_rate: {
+    tabKey: "coverage",
+    buttonLabel: "Открыть Покрытие",
+    hint: "ТН ВЭД найден, но ставки пошлины нет. Проверьте справочник ТН ВЭД.",
+  },
+}
+
+const buildRemediationItems = (warnings = []) =>
+  Array.from(new Set((warnings || []).filter(Boolean)))
+    .map((warning) => ({ warning, ...(REMEDIATION_ACTIONS[warning] || {}) }))
+    .filter((item) => item.hint)
+
+export default function LogisticsTabContent({ rfqId, onNavigateTab }) {
   const [scenarios, setScenarios] = useState([])
   const [selectedScenarioId, setSelectedScenarioId] = useState(null)
   const [groups, setGroups] = useState([])
@@ -438,7 +486,7 @@ export default function LogisticsTabContent({ rfqId }) {
       { key: "name", title: "Группа", dataIndex: "name" },
       { key: "supplier", title: "Поставщик", width: 160, render: (_, row) => fmt(row?.lines?.[0]?.supplier_name || row?.supplier_id) },
       { key: "from_country", title: "Откуда", width: 180, render: (_, row) => formatOriginSummary(row) },
-      { key: "route_type", title: "Маршрут", dataIndex: "route_type", width: 120, render: formatRouteType },
+      { key: "route_type", title: "Способ доставки", dataIndex: "route_type", width: 140, render: formatRouteType },
       {
         key: "incoterms",
         title: "Incoterms",
@@ -550,6 +598,12 @@ export default function LogisticsTabContent({ rfqId }) {
     return poolColumnKeys.map((key) => byKey.get(key)).filter(Boolean)
   }, [poolColumns, poolColumnKeys])
 
+  const logisticsRemediationItems = useMemo(() => {
+    const groupWarnings = groups.flatMap((row) => buildGroupWarnings(row))
+    const poolWarnings = poolRows.flatMap((row) => buildLineWarnings(row))
+    return buildRemediationItems([...groupWarnings, ...poolWarnings])
+  }, [groups, poolRows])
+
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <div
@@ -559,8 +613,30 @@ export default function LogisticsTabContent({ rfqId }) {
           fontSize: 14,
         }}
       >
-        Логистика рассчитывается по группам отгрузки выбранного сценария. Сначала создайте группы автоматически или вручную, затем задайте маршрут, freight и ETA.
+        Логистика рассчитывается по группам отгрузки выбранного сценария. Сначала создайте группы автоматически или вручную, затем задайте способ доставки, freight и ETA.
       </div>
+
+      {logisticsRemediationItems.length ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="Перед фиксацией логистики лучше уточнить недостающие данные"
+          description={
+            <Space direction="vertical" size={8} style={{ width: "100%" }}>
+              {logisticsRemediationItems.map((item) => (
+                <Space key={item.warning} wrap>
+                  <Text>{LOGISTICS_WARNING_LABELS[item.warning] || item.warning}: {item.hint}</Text>
+                  {item.tabKey && typeof onNavigateTab === "function" ? (
+                    <Button size="small" onClick={() => onNavigateTab(item.tabKey)}>
+                      {item.buttonLabel}
+                    </Button>
+                  ) : null}
+                </Space>
+              ))}
+            </Space>
+          }
+        />
+      ) : null}
 
       <Space wrap>
         <Select
@@ -608,8 +684,8 @@ export default function LogisticsTabContent({ rfqId }) {
             <Form.Item name="name" label="Название">
               <Input style={{ width: 260 }} />
             </Form.Item>
-            <Form.Item name="route_type" label="Маршрут">
-              <Select style={{ width: 160 }} options={routeOptions} />
+            <Form.Item name="route_type" label="Способ доставки">
+              <Select style={{ width: 180 }} options={deliveryModeOptions} />
             </Form.Item>
             <Form.Item name="incoterms" label="Incoterms">
               <Input style={{ width: 120 }} placeholder="FOB" />
@@ -680,12 +756,19 @@ export default function LogisticsTabContent({ rfqId }) {
         width={760}
       >
         <Form form={manualForm} layout="vertical">
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Когда нужна ручная группа"
+            description="Используйте ручную группу, если хотите задать отдельный способ доставки или особую консолидацию. Но сначала лучше поправить origin, вес, Incoterms и срок в Ответах или Покрытии, чтобы автогруппировка была точнее."
+          />
           <Space wrap align="start">
             <Form.Item name="name" label="Название" rules={[{ required: true }]}>
               <Input style={{ width: 260 }} />
             </Form.Item>
-            <Form.Item name="route_type" label="Маршрут">
-              <Select style={{ width: 160 }} options={routeOptions} />
+            <Form.Item name="route_type" label="Способ доставки">
+              <Select style={{ width: 180 }} options={deliveryModeOptions} />
             </Form.Item>
             <Form.Item name="incoterms" label="Incoterms">
               <Input style={{ width: 120 }} placeholder="FOB" />

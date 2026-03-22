@@ -1,15 +1,26 @@
 import React from "react"
-import { Card, Table } from "antd"
+import { Card, Input, Space, Table } from "antd"
 
 export default function RequestsListCard({
   requestColumns,
   requests,
+  listSearch,
+  setListSearch,
   loading,
   openWorkspace,
   activeRequestId,
 }) {
   return (
     <Card title="Список заявок" size="small">
+      <Space style={{ marginBottom: 12 }}>
+        <Input.Search
+          allowClear
+          style={{ width: 340 }}
+          placeholder="Поиск по клиенту, номеру, референсу, контакту"
+          value={listSearch}
+          onChange={(event) => setListSearch(event.target.value)}
+        />
+      </Space>
       <Table
         rowKey="id"
         columns={requestColumns}

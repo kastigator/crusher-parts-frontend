@@ -1,6 +1,6 @@
 // src/components/common/ImportModal.jsx
 import React, { useState } from "react"
-import { Modal, Button, Alert, Upload, Typography, Spin, Space } from "antd"
+import { Modal, Button, Alert, Upload, Typography, Spin, Space, message } from "antd"
 import { UploadOutlined, FileExcelOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 
@@ -15,9 +15,59 @@ export default function ImportModal({
   extraParams = {},     // 👈 ВАЖНО: сюда прокидываем { equipment_model_id: ... } и т.п.
 }) {
   const [loading, setLoading] = useState(false)
+  const [templateLoading, setTemplateLoading] = useState(false)
   const [error, setError] = useState("")
   const [errors, setErrors] = useState([])
   const [imported, setImported] = useState(0)
+
+  const downloadBlob = (blob, filename) => {
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename || `${type || "import"}_template.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  }
+
+  const getFilenameFromDisposition = (disposition) => {
+    if (!disposition) return null
+    const utfMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+    if (utfMatch?.[1]) {
+      try {
+        return decodeURIComponent(utfMatch[1])
+      } catch {
+        return utfMatch[1]
+      }
+    }
+    const match = disposition.match(/filename="?([^"]+)"?/i)
+    return match?.[1] || null
+  }
+
+  const handleTemplateDownload = async () => {
+    if (!type) return
+    try {
+      setTemplateLoading(true)
+      const res = await axios.get(`/import/template/${type}`, {
+        params: extraParams,
+        responseType: "blob",
+      })
+      const filename =
+        getFilenameFromDisposition(res.headers?.["content-disposition"]) ||
+        `${type}_template.xlsx`
+      downloadBlob(res.data, filename)
+    } catch (e) {
+      console.error("Не удалось скачать шаблон через API", e)
+      if (templateUrl) {
+        window.open(templateUrl, "_blank", "noopener,noreferrer")
+        return
+      }
+      message.error("Не удалось скачать шаблон")
+    } finally {
+      setTemplateLoading(false)
+    }
+  }
 
   const handleUpload = async ({ file, onSuccess: markOk, onError: markErr }) => {
     if (!file || !type) return
@@ -159,17 +209,14 @@ export default function ImportModal({
         {loading && <Spin tip="Загрузка..." />}
 
         <Space>
-          {templateUrl && (
-            <Button
-              icon={<FileExcelOutlined />}
-              href={templateUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-            >
-              Скачать шаблон Excel
-            </Button>
-          )}
+          <Button
+            icon={<FileExcelOutlined />}
+            onClick={handleTemplateDownload}
+            loading={templateLoading}
+            disabled={loading || templateLoading || !type}
+          >
+            Скачать шаблон Excel
+          </Button>
 
           <Upload
             accept=".xlsx"

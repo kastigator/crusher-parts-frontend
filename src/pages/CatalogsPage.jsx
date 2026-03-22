@@ -14,7 +14,7 @@ const catalogLinks = [
   { path: "/equipment-classifier", label: "Классификатор оборудования" },
   { path: "/materials", label: "Материалы" },
   { path: "/tnved-codes", label: "Коды ТН ВЭД" },
-  { path: "/logistics-corridors", label: "Логистические коридоры" },
+  { path: "/logistics-route-templates", label: "Шаблоны доставки" },
 ]
 
 export default function CatalogsPage() {

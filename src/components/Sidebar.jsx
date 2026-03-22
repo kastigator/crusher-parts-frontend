@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Layout, Menu, Tooltip, Spin, Button } from "antd"
 import { useLocation, useNavigate } from "react-router-dom"
 import { useTabs } from "@/context/TabsContext"
+import { useAuth } from "@/auth/AuthContext"
 import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons"
 import { buildIconPath, resolveIconUrl } from "@/constants/sidebarIcons"
 
@@ -23,7 +24,7 @@ const CATALOG_CHILD_PATHS = new Set([
   "/equipment-classifier",
   "/materials",
   "/tnved-codes",
-  "/logistics-corridors",
+  "/logistics-route-templates",
 ])
 
 const ADMIN_PATH = "/admin"
@@ -36,16 +37,12 @@ const CATALOG_ICON_BY_PATH = {
   "/equipment-classifier": "catalogs",
   "/materials": "materials",
   "/tnved-codes": "tnved-codes",
-  "/logistics-corridors": "coverage",
+  "/logistics-route-templates": "coverage",
 }
 const CATALOG_LABEL_BY_PATH = {
   "/original-parts": "OEM детали",
+  "/logistics-route-templates": "Шаблоны доставки",
 }
-const CATALOG_FALLBACK_ITEMS = [
-  { path: "/equipment-classifier", name: "Классификатор оборудования", icon: "catalogs" },
-  { path: "/standard-parts", name: "Стандартные детали", icon: "materials" },
-  { path: "/logistics-corridors", name: "Логистические коридоры", icon: "coverage" },
-]
 
 function normalizeIconName(value) {
   if (!value) return "default"
@@ -89,6 +86,7 @@ export default function Sidebar() {
   const location = useLocation()
   const navigate = useNavigate()
   const { tabs, loading } = useTabs()
+  const { user } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
 
   const { menuItems, parentByKey } = useMemo(() => {
@@ -132,12 +130,6 @@ export default function Sidebar() {
     if (catalogTabs.length) {
       const catalogRoot = catalogTabs.find((t) => t.path === CATALOG_ROOT_PATH) || null
       const catalogChildren = catalogTabs.filter((t) => t.path !== CATALOG_ROOT_PATH)
-      const existingCatalogPaths = new Set(catalogChildren.map((t) => t.path))
-      CATALOG_FALLBACK_ITEMS.forEach((fallback) => {
-        if (!existingCatalogPaths.has(fallback.path)) {
-          catalogChildren.push(fallback)
-        }
-      })
 
       const childItems = []
       catalogChildren.forEach((tab) => {

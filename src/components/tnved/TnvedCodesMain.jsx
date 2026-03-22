@@ -514,7 +514,6 @@ export default function TnvedCodesMain() {
         onClose={() => setImportVisible(false)}
         onSuccess={fetchData}
         type="tnved_codes"
-        templateUrl="https://storage.googleapis.com/shared-parts-bucket/templates/tnved_codes_template.xlsx"
       />
 
       {logId === "deleted" && (

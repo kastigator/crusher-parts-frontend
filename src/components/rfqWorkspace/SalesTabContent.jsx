@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react"
 import { Alert, Button, Card, Drawer, Form, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
+import useCapabilities from "@/hooks/useCapabilities"
 
 const { Text } = Typography
 
@@ -29,6 +30,8 @@ export default function SalesTabContent({
   formatDate,
   onCommercialUpdated,
 }) {
+  const { can } = useCapabilities()
+  const canManageSalesQuotes = can("workflow.sales_quotes.manage")
   const [creating, setCreating] = useState(false)
   const [updatingQuoteId, setUpdatingQuoteId] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -148,7 +151,7 @@ export default function SalesTabContent({
         type="info"
         showIcon
         message="КП создаётся из утверждённого выбора закупки и уходит продавцу"
-        description="Закупщик передаёт продавцу базовую закупочную модель из выбора закупки. Дальше продавец должен работать через коммерческие rev КП: маржа, уступки клиенту и переговоры уже не меняют сам выбор закупки."
+        description="Закупщик передаёт продавцу базовую закупочную модель из выбора закупки. Дальше продавец должен работать через коммерческие ревизии КП: маржа, уступки клиенту и переговоры уже не меняют сам выбор закупки."
       />
 
       <Card
@@ -188,7 +191,7 @@ export default function SalesTabContent({
               />
             </Form.Item>
           </Space>
-          <Button type="primary" htmlType="submit" loading={creating}>
+          <Button type="primary" htmlType="submit" loading={creating} disabled={!canManageSalesQuotes}>
             Создать КП и передать продавцу
           </Button>
         </Form>
@@ -203,7 +206,7 @@ export default function SalesTabContent({
           <span>1. Утверждённый выбор закупки как базовая закупочная модель.</span>
           <span>2. Базовая себестоимость по строкам и по заказу.</span>
           <span>3. Публичные коды поставщиков вместо внутренних названий.</span>
-          <span>4. Дальше уже коммерческие rev КП: цена продажи, маржа, уступки клиенту.</span>
+          <span>4. Дальше уже коммерческие ревизии КП: цена продажи, маржа, уступки клиенту.</span>
         </Space>
       </Card>
 
@@ -242,11 +245,17 @@ export default function SalesTabContent({
                   value={row.status || "draft"}
                   options={quoteStatusOptions}
                   loading={updatingQuoteId === Number(row.id)}
+                  disabled={!canManageSalesQuotes}
                   onChange={(value) => updateQuoteStatus(row.id, value)}
                 />
               ),
             },
-            { title: "Последняя rev", dataIndex: "latest_revision_number", width: 110, render: (value) => value || "—" },
+            {
+              title: "Последняя ревизия",
+              dataIndex: "latest_revision_number",
+              width: 130,
+              render: (value) => value || "—",
+            },
             {
               title: "Себестоимость",
               width: 140,
@@ -316,7 +325,7 @@ export default function SalesTabContent({
               dataSource={revisions}
               pagination={false}
               columns={[
-                { title: "Rev", dataIndex: "rev_number", width: 80 },
+                { title: "Ревизия", dataIndex: "rev_number", width: 90 },
                 { title: "Создано", dataIndex: "created_at", width: 120, render: formatDate },
                 { title: "Себестоимость", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_cost, drawerQuote?.currency || "USD") },
                 { title: "Продажа", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_sell, drawerQuote?.currency || "USD") },
@@ -344,7 +353,7 @@ export default function SalesTabContent({
 
           <Card
             size="small"
-            title={selectedRevision ? `Строки rev ${selectedRevision.rev_number}` : "Строки ревизии"}
+            title={selectedRevision ? `Строки ревизии ${selectedRevision.rev_number}` : "Строки ревизии"}
             extra={<Text type="secondary">Продавец должен видеть коды поставщиков, базовую себестоимость и цену продажи.</Text>}
           >
             <Table
@@ -396,7 +405,7 @@ export default function SalesTabContent({
             закупки.
           </Typography.Paragraph>
           <Typography.Paragraph>
-            Продавец видит коды поставщиков, себестоимость и коммерческие rev КП, но не должен менять сам
+            Продавец видит коды поставщиков, себестоимость и коммерческие ревизии КП, но не должен менять сам
             закупочный baseline через этот экран.
           </Typography.Paragraph>
           <Typography.Paragraph style={{ marginBottom: 0 }}>

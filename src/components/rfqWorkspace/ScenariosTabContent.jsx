@@ -19,10 +19,10 @@ const SCENARIO_CURRENCY_OPTIONS = ["USD", "EUR", "RUB", "CNY"].map((code) => ({
 }))
 
 const OPTION_KIND_LABELS = {
-  WHOLE: "Узел целиком",
+  WHOLE: "Целиком",
   BOM: "По составу",
   KIT: "Комплект",
-  MIXED: "Смешанный",
+  MIXED: "Комбинированный",
   MANUAL: "Ручной",
 }
 
@@ -163,7 +163,7 @@ const buildCompositionSummary = (option) => {
   const suffix = lineLabels.length > 3 ? ` + ещё ${lineLabels.length - 3}` : ""
   const kind = String(option?.option_kind || "").toUpperCase()
 
-  if (kind === "WHOLE") return "Узел целиком"
+  if (kind === "WHOLE") return "Целиком"
   if (kind === "BOM") {
     if (!lineLabels.length) return "По составу"
     return `По составу: ${lineLabels.length} поз. (${trimmed.join(", ")}${suffix})`
@@ -176,7 +176,7 @@ const buildCompositionSummary = (option) => {
     const supplierNames = uniqueNonEmpty(lines.map((line) => line?.supplier_name))
     const partsInfo = lineLabels.length ? `${lineLabels.length} поз.` : `${lines.length || 0} линий`
     const supplierInfo = supplierNames.length ? `${supplierNames.length} пост.` : null
-    return `Смешанный: ${[partsInfo, supplierInfo].filter(Boolean).join(", ")}`
+    return `Комбинированный: ${[partsInfo, supplierInfo].filter(Boolean).join(", ")}`
   }
   return OPTION_KIND_LABELS[kind] || "Вариант"
 }
@@ -186,7 +186,7 @@ const buildCompositionGroups = (option) => {
   const kind = String(option?.option_kind || "").toUpperCase()
 
   if (kind === "WHOLE") {
-    return [{ supplier: "Вариант", items: ["Узел целиком"] }]
+    return [{ supplier: "Вариант", items: ["Целиком"] }]
   }
 
   if (kind === "MIXED") {
@@ -398,7 +398,7 @@ const buildCoverageOptionShortLabel = (option) => {
 
   let sourceLabel = ""
   if (String(option?.option_kind || "").toUpperCase() === "MIXED") {
-    sourceLabel = supplierNames.length ? `Смешанный вариант: ${supplierNames.join(" + ")}` : "Смешанный вариант"
+    sourceLabel = supplierNames.length ? `Комбинированный вариант: ${supplierNames.join(" + ")}` : "Комбинированный вариант"
   } else if (supplierNames.length === 1) {
     sourceLabel = supplierNames[0]
   } else if (supplierNames.length > 1) {

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react"
 import {
+  Alert,
   Card,
   Space,
   Table,
@@ -16,6 +17,8 @@ import {
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
+
+const LEGACY_READ_ONLY = true
 
 export default function SalesQuotesPage() {
   const [quotes, setQuotes] = useState([])
@@ -235,6 +238,12 @@ export default function SalesQuotesPage() {
       helpText="Фиксируйте КП на основе выбора и ревизий заявки."
     >
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
+        <Alert
+          type="warning"
+          showIcon
+          message="Страница оставлена только для обзора"
+          description="Рабочее создание КП и ревизий теперь должно идти в Client Request Workspace. Здесь ручное создание и изменение отключены."
+        />
         <Card title="Новое КП" size="small">
           <Form form={createForm} layout="vertical" onFinish={handleCreate}>
             <Space wrap align="start">
@@ -276,7 +285,7 @@ export default function SalesQuotesPage() {
                 <Input style={{ width: 90 }} placeholder="USD" />
               </Form.Item>
               <Form.Item style={{ marginTop: 30 }}>
-                <Button type="primary" htmlType="submit">
+                <Button type="primary" htmlType="submit" disabled={LEGACY_READ_ONLY}>
                   Создать КП
                 </Button>
               </Form.Item>
@@ -330,7 +339,7 @@ export default function SalesQuotesPage() {
                           <Input style={{ width: 320 }} />
                         </Form.Item>
                         <Form.Item style={{ marginTop: 30 }}>
-                          <Button type="primary" htmlType="submit">
+                          <Button type="primary" htmlType="submit" disabled={LEGACY_READ_ONLY}>
                             Создать
                           </Button>
                         </Form.Item>
@@ -399,7 +408,7 @@ export default function SalesQuotesPage() {
                           <Input style={{ width: 200 }} />
                         </Form.Item>
                         <Form.Item style={{ marginTop: 30 }}>
-                          <Button type="primary" htmlType="submit" disabled={!activeRevisionId}>
+                          <Button type="primary" htmlType="submit" disabled={LEGACY_READ_ONLY || !activeRevisionId}>
                             Добавить
                           </Button>
                         </Form.Item>

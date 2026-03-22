@@ -1,6 +1,7 @@
 import React from "react"
 import { Alert, Button, Card, Modal, Space, Switch, Table, Typography, Upload } from "antd"
 import { FileExcelOutlined, UploadOutlined } from "@ant-design/icons"
+import axios from "@/api/axiosInstance"
 
 const { Text } = Typography
 
@@ -8,6 +9,7 @@ export default function ImportExcelModal({
   open,
   onCancel,
   templateUrl,
+  templateRequestUrl,
   handleExcelUpload,
   stagedRows,
   setStagedRows,
@@ -23,6 +25,31 @@ export default function ImportExcelModal({
   importLoading,
   previewColumns,
 }) {
+  const downloadTemplate = async () => {
+    if (templateRequestUrl) {
+      try {
+        const res = await axios.get(templateRequestUrl, { responseType: "blob" })
+        const disposition = res.headers?.["content-disposition"] || ""
+        const match = disposition.match(/filename="?([^"]+)"?/i)
+        const filename = match?.[1] || "client_request_items_template.xlsx"
+        const url = window.URL.createObjectURL(res.data)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        window.URL.revokeObjectURL(url)
+        return
+      } catch (e) {
+        console.error("Не удалось скачать шаблон через API", e)
+      }
+    }
+    if (templateUrl) {
+      window.open(templateUrl, "_blank", "noopener,noreferrer")
+    }
+  }
+
   return (
     <Modal
       title="Импорт из Excel"
@@ -35,10 +62,7 @@ export default function ImportExcelModal({
         <Space wrap align="center">
           <Button
             icon={<FileExcelOutlined />}
-            href={templateUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
+            onClick={downloadTemplate}
           >
             Скачать шаблон
           </Button>

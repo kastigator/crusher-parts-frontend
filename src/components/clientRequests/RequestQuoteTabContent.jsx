@@ -3,6 +3,7 @@ import { Alert, Button, Card, Drawer, Form, Select, Space, Table, Tag, Typograph
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import CompanyLegalSummary from "@/components/common/CompanyLegalSummary"
+import useCapabilities from "@/hooks/useCapabilities"
 
 const formatDate = (value) => {
   if (!value) return "—"
@@ -21,6 +22,8 @@ const parseSnapshot = (value) => {
 }
 
 export default function RequestQuoteTabContent({ requestId, activeRevisionId }) {
+  const { can } = useCapabilities()
+  const canManageSalesQuotes = can("workflow.sales_quotes.manage")
   const [quotes, setQuotes] = useState([])
   const [selections, setSelections] = useState([])
   const [loading, setLoading] = useState(false)
@@ -215,7 +218,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
               />
             </Form.Item>
           </Space>
-          <Button type="primary" htmlType="submit" loading={saving} disabled={!activeRevisionId}>
+          <Button type="primary" htmlType="submit" loading={saving} disabled={!activeRevisionId || !canManageSalesQuotes}>
             Создать черновик КП
           </Button>
         </Form>
@@ -234,10 +237,10 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
               onChange={(value) => setSelectedQuoteId(Number(value || 0) || null)}
               options={quotes.map((row) => ({
                 value: Number(row.id),
-                label: `КП #${row.id} · Rev ${row.rev_number ?? "?"} · ${quoteStatusLabel(row.status)}`,
+                label: `КП #${row.id} · ревизия заявки ${row.rev_number ?? "?"} · ${quoteStatusLabel(row.status)}`,
               }))}
             />
-            <Button onClick={handleCreateRevision} loading={creatingRevision} disabled={!selectedQuoteId}>
+            <Button onClick={handleCreateRevision} loading={creatingRevision} disabled={!selectedQuoteId || !canManageSalesQuotes}>
               Новая ревизия КП
             </Button>
           </Space>
@@ -259,13 +262,19 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
                   style={{ width: 180 }}
                   value={row.status || "draft"}
                   loading={updatingQuoteId === Number(row.id)}
+                  disabled={!canManageSalesQuotes}
                   onChange={(value) => handleUpdateQuoteStatus(row.id, value)}
                   options={quoteStatusOptions}
                 />
               ),
             },
-            { title: "Rev заявки", dataIndex: "rev_number", width: 100 },
-            { title: "Последняя rev КП", dataIndex: "latest_revision_number", width: 130, render: (value) => value || "—" },
+            { title: "Ревизия заявки", dataIndex: "rev_number", width: 120 },
+            {
+              title: "Последняя ревизия КП",
+              dataIndex: "latest_revision_number",
+              width: 150,
+              render: (value) => value || "—",
+            },
             { title: "Себестоимость", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_cost, row.currency || "USD") },
             { title: "Продажа", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_sell, row.currency || "USD") },
             { title: "Маржа", width: 100, render: (_, row) => `${Number(row.margin_pct_avg || 0).toFixed(1)}%` },
@@ -283,7 +292,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
               dataSource={quoteRevisions}
               pagination={false}
               columns={[
-                { title: "Rev", dataIndex: "rev_number", width: 80 },
+                { title: "Ревизия", dataIndex: "rev_number", width: 90 },
                 { title: "Себестоимость", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_cost, selectedQuote?.currency || "USD") },
                 { title: "Продажа", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_sell, selectedQuote?.currency || "USD") },
                 { title: "Маржа", width: 100, render: (_, row) => `${Number(row.margin_pct_avg || 0).toFixed(1)}%` },
@@ -317,7 +326,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
             текущей ревизии заявки.
           </Typography.Paragraph>
           <Typography.Paragraph>
-            Новые rev КП нужны для торга: можно пересматривать цену, состав и условия, не меняя исходный
+            Новые ревизии КП нужны для торга: можно пересматривать цену, состав и условия, не меняя исходный
             закупочный выбор.
           </Typography.Paragraph>
           <Typography.Paragraph style={{ marginBottom: 0 }}>

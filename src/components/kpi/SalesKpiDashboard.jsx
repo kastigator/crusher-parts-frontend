@@ -131,7 +131,6 @@ export default function SalesKpiDashboard() {
   const [loading, setLoading] = useState(false)
   const [apiReady, setApiReady] = useState(true)
   const [error, setError] = useState("")
-  const [rebuildLoading, setRebuildLoading] = useState(false)
   const [savingTarget, setSavingTarget] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editingTarget, setEditingTarget] = useState(null)
@@ -173,23 +172,10 @@ export default function SalesKpiDashboard() {
       const base = payload.summary || payload.data || payload
       if (base && typeof base === "object") {
         return {
-          orders_count: pickNumber(base, [
-            "orders_count",
-            "orders",
-            "orders_total",
-          ]),
-          revenue: pickNumber(base, ["revenue", "total_revenue", "sales"]),
-          margin: pickNumber(base, ["margin", "profit", "gross_margin"]),
-          proposals_sent: pickNumber(base, [
-            "proposals_sent",
-            "offers_sent",
-            "proposals",
-          ]),
-          proposals_approved: pickNumber(base, [
-            "proposals_approved",
-            "offers_approved",
-            "approved_offers",
-          ]),
+          requests_count: pickNumber(base, ["requests_count", "requests"]),
+          quotes_count: pickNumber(base, ["quotes_count", "quotes"]),
+          contracts_count: pickNumber(base, ["contracts_count", "contracts"]),
+          signed_amount: pickNumber(base, ["signed_amount", "amount"]),
           currency: base.currency || base.base_currency || "RUB",
         }
       }
@@ -199,21 +185,17 @@ export default function SalesKpiDashboard() {
 
     return dailyRows.reduce(
       (acc, row) => ({
-        orders_count: acc.orders_count + pickNumber(row, ["orders_count"]),
-        revenue: acc.revenue + pickNumber(row, ["revenue"]),
-        margin: acc.margin + pickNumber(row, ["margin"]),
-        proposals_sent:
-          acc.proposals_sent + pickNumber(row, ["proposals_sent"]),
-        proposals_approved:
-          acc.proposals_approved + pickNumber(row, ["proposals_approved"]),
+        requests_count: acc.requests_count + pickNumber(row, ["requests_count"]),
+        quotes_count: acc.quotes_count + pickNumber(row, ["quotes_count"]),
+        contracts_count: acc.contracts_count + pickNumber(row, ["contracts_count"]),
+        signed_amount: acc.signed_amount + pickNumber(row, ["signed_amount"]),
         currency: acc.currency,
       }),
       {
-        orders_count: 0,
-        revenue: 0,
-        margin: 0,
-        proposals_sent: 0,
-        proposals_approved: 0,
+        requests_count: 0,
+        quotes_count: 0,
+        contracts_count: 0,
+        signed_amount: 0,
         currency: "RUB",
       },
     )
@@ -265,19 +247,10 @@ export default function SalesKpiDashboard() {
       const dailyRows = extractList(dailyPayload).map((row) => ({
         ...row,
         day: resolveDay(row),
-        orders_count: pickNumber(row, ["orders_count", "orders"]),
-        revenue: pickNumber(row, ["revenue", "total_revenue", "sales"]),
-        margin: pickNumber(row, ["margin", "profit", "gross_margin"]),
-        proposals_sent: pickNumber(row, [
-          "proposals_sent",
-          "offers_sent",
-          "proposals",
-        ]),
-        proposals_approved: pickNumber(row, [
-          "proposals_approved",
-          "offers_approved",
-          "approved_offers",
-        ]),
+        requests_count: pickNumber(row, ["requests_count", "requests"]),
+        quotes_count: pickNumber(row, ["quotes_count", "quotes"]),
+        contracts_count: pickNumber(row, ["contracts_count", "contracts"]),
+        signed_amount: pickNumber(row, ["signed_amount", "amount"]),
       }))
 
       setDaily(dailyRows)
@@ -300,39 +273,6 @@ export default function SalesKpiDashboard() {
     }
   }, [range, sellerId, buildSummary])
 
-  const handleRebuild = useCallback(async () => {
-    const [from, to] = range || []
-    if (!from || !to) return
-    const { confirmed } = await confirmAction({
-      title: "Пересчитать KPI за период?",
-      text: `Период: ${from.format("YYYY-MM-DD")} → ${to.format("YYYY-MM-DD")}`,
-      confirmLabel: "Пересчитать",
-    })
-    if (!confirmed) return
-
-    const payload = {
-      date_from: from.format("YYYY-MM-DD"),
-      date_to: to.format("YYYY-MM-DD"),
-    }
-    if (sellerId) payload.seller_id = sellerId
-
-    setRebuildLoading(true)
-    try {
-      await axios.post("/sales-kpi/rebuild", payload)
-      message.success("KPI пересчитан")
-      await loadKpi()
-    } catch (e) {
-      if (e?.response?.status === 409) {
-        message.warning("Пересчёт KPI уже выполняется")
-      } else {
-        console.error("Ошибка пересчёта KPI:", e)
-        message.error("Не удалось пересчитать KPI")
-      }
-    } finally {
-      setRebuildLoading(false)
-    }
-  }, [range, sellerId, loadKpi])
-
   const handleCreateTarget = async (values) => {
     const [start, end] = values.period || []
     if (!start || !end) {
@@ -344,10 +284,10 @@ export default function SalesKpiDashboard() {
       seller_user_id: values.seller_user_id,
       period_start: start.format("YYYY-MM-DD"),
       period_end: end.format("YYYY-MM-DD"),
-      target_revenue: values.target_revenue ?? null,
-      target_margin: values.target_margin ?? null,
-      target_orders: values.target_orders ?? null,
-      target_proposals: values.target_proposals ?? null,
+      target_requests: values.target_requests ?? null,
+      target_quotes: values.target_quotes ?? null,
+      target_contracts: values.target_contracts ?? null,
+      target_signed_amount: values.target_signed_amount ?? null,
     }
 
     setSavingTarget(true)
@@ -376,10 +316,10 @@ export default function SalesKpiDashboard() {
         row.period_start ? dayjs(row.period_start) : null,
         row.period_end ? dayjs(row.period_end) : null,
       ],
-      target_revenue: row.target_revenue ?? null,
-      target_margin: row.target_margin ?? null,
-      target_orders: row.target_orders ?? null,
-      target_proposals: row.target_proposals ?? null,
+      target_requests: row.target_requests ?? null,
+      target_quotes: row.target_quotes ?? null,
+      target_contracts: row.target_contracts ?? null,
+      target_signed_amount: row.target_signed_amount ?? null,
     })
     setEditOpen(true)
   }
@@ -398,10 +338,10 @@ export default function SalesKpiDashboard() {
         seller_user_id: values.seller_user_id,
         period_start: start.format("YYYY-MM-DD"),
         period_end: end.format("YYYY-MM-DD"),
-        target_revenue: values.target_revenue ?? null,
-        target_margin: values.target_margin ?? null,
-        target_orders: values.target_orders ?? null,
-        target_proposals: values.target_proposals ?? null,
+        target_requests: values.target_requests ?? null,
+        target_quotes: values.target_quotes ?? null,
+        target_contracts: values.target_contracts ?? null,
+        target_signed_amount: values.target_signed_amount ?? null,
       }
 
       setSavingTarget(true)
@@ -498,59 +438,54 @@ export default function SalesKpiDashboard() {
       },
     },
     {
-      title: "План, выручка",
-      dataIndex: "target_revenue",
+      title: "План, заявки",
+      dataIndex: "target_requests",
+      align: "right",
+      render: (v, row) => formatNumber(v ?? row.targetRequests),
+    },
+    {
+      title: "План, КП",
+      dataIndex: "target_quotes",
+      align: "right",
+      render: (v, row) => formatNumber(v ?? row.targetQuotes),
+    },
+    {
+      title: "План, контракты",
+      dataIndex: "target_contracts",
+      align: "right",
+      render: (v, row) => formatNumber(v ?? row.targetContracts),
+    },
+    {
+      title: "План, сумма контрактов",
+      dataIndex: "target_signed_amount",
       align: "right",
       render: (v, row) =>
-        formatMoney(v ?? row.targetRevenue, row.currency || currency),
+        formatMoney(v ?? row.targetSignedAmount, row.currency || currency),
     },
     {
-      title: "План, маржа",
-      dataIndex: "target_margin",
+      title: "Факт, заявки",
+      dataIndex: "actual_requests",
+      align: "right",
+      render: (v, row) => formatNumber(v ?? row.actual_requests ?? row.actualRequests),
+    },
+    {
+      title: "Факт, КП",
+      dataIndex: "actual_quotes",
+      align: "right",
+      render: (v, row) => formatNumber(v ?? row.actual_quotes ?? row.actualQuotes),
+    },
+    {
+      title: "Факт, контракты",
+      dataIndex: "actual_contracts",
+      align: "right",
+      render: (v, row) => formatNumber(v ?? row.actual_contracts ?? row.actualContracts),
+    },
+    {
+      title: "Факт, сумма контрактов",
+      dataIndex: "actual_signed_amount",
       align: "right",
       render: (v, row) =>
-        formatMoney(v ?? row.targetMargin, row.currency || currency),
-    },
-    {
-      title: "План, заказы",
-      dataIndex: "target_orders",
-      align: "right",
-      render: (v, row) => formatNumber(v ?? row.targetOrders),
-    },
-    {
-      title: "План, предложения",
-      dataIndex: "target_proposals",
-      align: "right",
-      render: (v, row) => formatNumber(v ?? row.targetProposals),
-    },
-    {
-      title: "Факт, выручка",
-      dataIndex: "actual_revenue",
-      align: "right",
-      render: (v, row) =>
-        formatMoney(v ?? row.actualRevenue, row.currency || currency),
-    },
-    {
-      title: "Факт, маржа",
-      dataIndex: "actual_margin",
-      align: "right",
-      render: (v, row) =>
-        formatMoney(v ?? row.actualMargin, row.currency || currency),
-    },
-    {
-      title: "Факт, заказы",
-      dataIndex: "actual_orders",
-      align: "right",
-      render: (v, row) => formatNumber(v ?? row.actualOrders),
-    },
-    {
-      title: "Факт, предложения",
-      dataIndex: "actual_proposals",
-      align: "right",
-      render: (_, row) =>
-        `${formatNumber(row.actual_proposals_sent ?? row.actualProposalsSent)} / ${formatNumber(
-          row.actual_proposals_approved ?? row.actualProposalsApproved,
-        )}`,
+        formatMoney(v ?? row.actualSignedAmount ?? row.actual_signed_amount, row.currency || currency),
     },
   ]
 
@@ -608,11 +543,6 @@ export default function SalesKpiDashboard() {
           >
             Обновить
           </Button>
-          {isAdmin && (
-            <Button onClick={handleRebuild} loading={rebuildLoading}>
-              Пересчитать
-            </Button>
-          )}
         </Space>
       </Card>
 
@@ -624,20 +554,19 @@ export default function SalesKpiDashboard() {
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div>1) Выберите период и продавца → нажмите «Обновить».</div>
             <div>
-              2) Администратор использует «Пересчитать», если менялись офферы
-              или их статусы.
+              2) KPI продавца считается по текущему коммерческому контуру:
+              заявки клиента, созданные КП и подписанные контракты.
             </div>
             <div>
-              3) Планы задаются внизу: выручка, маржа, заказы, предложения.
+              3) Планы задаются внизу: заявки, КП, контракты и сумма подписанных контрактов.
             </div>
             <div>
-              Формулы: заказы = одобренные позиции (approved), предложения
-              отправлены = статус proposed, согласованы = approved; выручка/маржа
-              считаются по client_price/landed_cost × qty.
+              Формулы: заявки = созданные/полученные client requests, КП = созданные sales quotes,
+              контракты = подписанные договоры, сумма = поле amount по контрактам с пересчетом в базовую валюту KPI.
             </div>
             <div>
               Пример: период 2026-01-01 → 2026-01-31, продавец «Иван» — увидите
-              все предложения и заказы этого продавца за январь.
+              все заявки, КП и контракты этого продавца за январь.
             </div>
           </div>
         }
@@ -659,32 +588,30 @@ export default function SalesKpiDashboard() {
       <Row gutter={[12, 12]}>
         <Col xs={24} sm={12} lg={6}>
           <SummaryCard
-            title="Заказы"
-            value={formatNumber(summary?.orders_count)}
+            title="Заявки"
+            value={formatNumber(summary?.requests_count)}
             tone="#2563eb"
           />
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <SummaryCard
-            title="Выручка"
-            value={formatMoney(summary?.revenue, currency)}
+            title="КП"
+            value={formatNumber(summary?.quotes_count)}
             tone="#16a34a"
           />
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <SummaryCard
-            title="Маржа"
-            value={formatMoney(summary?.margin, currency)}
+            title="Контракты"
+            value={formatNumber(summary?.contracts_count)}
             tone="#f97316"
           />
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <SummaryCard
-            title="Предложения"
-            value={`${formatNumber(summary?.proposals_sent)} / ${formatNumber(
-              summary?.proposals_approved,
-            )}`}
-            hint="Отправлено / согласовано"
+            title="Сумма контрактов"
+            value={formatMoney(summary?.signed_amount, currency)}
+            hint="Подписанные контракты за период"
             tone="#9333ea"
           />
         </Col>
@@ -714,7 +641,7 @@ export default function SalesKpiDashboard() {
               />
               <Tooltip
                 formatter={(value, name) => {
-                  if (name === "Выручка" || name === "Маржа") {
+                  if (name === "Сумма контрактов") {
                     return formatMoney(value, currency)
                   }
                   return formatNumber(value)
@@ -725,17 +652,17 @@ export default function SalesKpiDashboard() {
               <Line
                 yAxisId="left"
                 type="monotone"
-                dataKey="revenue"
-                name="Выручка"
+                dataKey="signed_amount"
+                name="Сумма контрактов"
                 stroke="#2563eb"
                 strokeWidth={2}
                 dot={false}
               />
               <Line
-                yAxisId="left"
+                yAxisId="right"
                 type="monotone"
-                dataKey="margin"
-                name="Маржа"
+                dataKey="requests_count"
+                name="Заявки"
                 stroke="#16a34a"
                 strokeWidth={2}
                 dot={false}
@@ -743,9 +670,18 @@ export default function SalesKpiDashboard() {
               <Line
                 yAxisId="right"
                 type="monotone"
-                dataKey="orders_count"
-                name="Заказы"
+                dataKey="quotes_count"
+                name="КП"
                 stroke="#f97316"
+                strokeWidth={2}
+                dot={false}
+              />
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="contracts_count"
+                name="Контракты"
+                stroke="#9333ea"
                 strokeWidth={2}
                 dot={false}
               />
@@ -782,17 +718,17 @@ export default function SalesKpiDashboard() {
             >
               <RangePicker />
             </Form.Item>
-            <Form.Item name="target_revenue" label="План, выручка">
-              <InputNumber min={0} style={{ width: 160 }} />
-            </Form.Item>
-            <Form.Item name="target_margin" label="План, маржа">
-              <InputNumber min={0} style={{ width: 160 }} />
-            </Form.Item>
-            <Form.Item name="target_orders" label="План, заказы">
+            <Form.Item name="target_requests" label="План, заявки">
               <InputNumber min={0} precision={0} style={{ width: 140 }} />
             </Form.Item>
-            <Form.Item name="target_proposals" label="План, предложения">
-              <InputNumber min={0} precision={0} style={{ width: 160 }} />
+            <Form.Item name="target_quotes" label="План, КП">
+              <InputNumber min={0} precision={0} style={{ width: 140 }} />
+            </Form.Item>
+            <Form.Item name="target_contracts" label="План, контракты">
+              <InputNumber min={0} precision={0} style={{ width: 140 }} />
+            </Form.Item>
+            <Form.Item name="target_signed_amount" label="План, сумма">
+              <InputNumber min={0} style={{ width: 160 }} />
             </Form.Item>
             <Form.Item>
               <Button type="primary" htmlType="submit" loading={savingTarget}>
@@ -848,17 +784,17 @@ export default function SalesKpiDashboard() {
           >
             <RangePicker style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item name="target_revenue" label="План, выручка">
-            <InputNumber min={0} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="target_margin" label="План, маржа">
-            <InputNumber min={0} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="target_orders" label="План, заказы">
+          <Form.Item name="target_requests" label="План, заявки">
             <InputNumber min={0} precision={0} style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item name="target_proposals" label="План, предложения">
+          <Form.Item name="target_quotes" label="План, КП">
             <InputNumber min={0} precision={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="target_contracts" label="План, контракты">
+            <InputNumber min={0} precision={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="target_signed_amount" label="План, сумма контрактов">
+            <InputNumber min={0} style={{ width: "100%" }} />
           </Form.Item>
         </Form>
       </Modal>

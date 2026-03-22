@@ -22,9 +22,6 @@ import SuppliersFiltersDrawer from "./SuppliersFiltersDrawer"
 import { countActiveFilters } from "./suppliersFiltersUtils"
 import SupplierUpsertDrawer from "./SupplierUpsertDrawer"
 
-const SUPPLIERS_TEMPLATE_URL =
-  "https://storage.googleapis.com/shared-parts-bucket/templates/suppliers_template.xlsx"
-
 const trimOrNull = (v) => {
   const s = (v ?? "").toString().trim()
   return s === "" ? null : s
@@ -543,7 +540,6 @@ export default function SuppliersMain() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         type="suppliers"
-        templateUrl={SUPPLIERS_TEMPLATE_URL}
         onSuccess={fetchSuppliers}
       />
 

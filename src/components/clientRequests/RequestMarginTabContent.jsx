@@ -6,7 +6,7 @@ import { formatPriceWithCurrency } from "@/utils/priceFormat"
 const pricingStatusMeta = {
   OK: { color: "green", label: "OK" },
   INCOMPLETE: { color: "default", label: "Не заполнено" },
-  LOW_MARGIN: { color: "orange", label: "Низкий GM%" },
+  LOW_MARGIN: { color: "orange", label: "Низкая валовая маржа" },
   LOW_MARKUP: { color: "gold", label: "Низкая наценка" },
   LOW_PROFIT: { color: "red", label: "Низкая прибыль" },
 }
@@ -184,7 +184,7 @@ export default function RequestMarginTabContent({ requestId }) {
         Справка
       </Button>
 
-      <Space wrap>
+      <Space wrap size={[12, 12]}>
         <Select
           style={{ width: 320 }}
           allowClear
@@ -204,14 +204,17 @@ export default function RequestMarginTabContent({ requestId }) {
           onChange={(value) => setSelectedRevisionId(Number(value || 0) || null)}
           options={revisions.map((row) => ({
             value: Number(row.id),
-            label: `Rev ${row.rev_number}`,
+            label: `Ревизия ${row.rev_number}`,
           }))}
         />
+      </Space>
+
+      <Space wrap size={[8, 8]}>
         <Tag color="blue">Себестоимость: {formatPriceWithCurrency(totals.cost, "USD")}</Tag>
         <Tag color="green">Продажа: {formatPriceWithCurrency(totals.sell, "USD")}</Tag>
         <Tag color="gold">Прибыль: {formatPriceWithCurrency(totals.profit, "USD")}</Tag>
-        <Tag color="purple">GM%: {totals.marginPct.toFixed(1)}%</Tag>
-        <Tag color="cyan">Наценка%: {totals.markupPct.toFixed(1)}%</Tag>
+        <Tag color="purple">Валовая маржа: {totals.marginPct.toFixed(1)}%</Tag>
+        <Tag color="cyan">Наценка: {totals.markupPct.toFixed(1)}%</Tag>
       </Space>
 
       <Card size="small" title="Коммерческая экономика по строкам КП">
@@ -221,9 +224,11 @@ export default function RequestMarginTabContent({ requestId }) {
           loading={loading}
           dataSource={lines}
           pagination={false}
+          scroll={{ x: 1650 }}
           columns={[
             {
               title: "Позиция клиента",
+              width: 260,
               render: (_, row) => (
                 <Space direction="vertical" size={0}>
                   <span>{row.original_cat_number || row.client_part_number || `#${row.client_request_revision_item_id}`}</span>
@@ -234,12 +239,12 @@ export default function RequestMarginTabContent({ requestId }) {
             {
               title: "Коды поставщиков",
               dataIndex: "supplier_public_codes",
-              width: 180,
+              width: 170,
               render: (value) => value || "—",
             },
             {
               title: "Статус строки",
-              width: 130,
+              width: 140,
               render: (_, row) => (
                 <Select
                   size="small"
@@ -252,10 +257,11 @@ export default function RequestMarginTabContent({ requestId }) {
             },
             {
               title: "Кол-во",
-              width: 90,
+              width: 100,
               render: (_, row) => (
                 <InputNumber
                   min={0}
+                  style={{ width: "100%" }}
                   value={drafts[row.id]?.qty}
                   onChange={(value) => handleDraftChange(row.id, { qty: value })}
                 />
@@ -263,10 +269,11 @@ export default function RequestMarginTabContent({ requestId }) {
             },
             {
               title: "Себестоимость",
-              width: 120,
+              width: 140,
               render: (_, row) => (
                 <InputNumber
                   min={0}
+                  style={{ width: "100%" }}
                   value={drafts[row.id]?.cost}
                   onChange={(value) =>
                     handleDraftChange(row.id, {
@@ -279,10 +286,11 @@ export default function RequestMarginTabContent({ requestId }) {
             },
             {
               title: "Продажа",
-              width: 120,
+              width: 140,
               render: (_, row) => (
                 <InputNumber
                   min={0}
+                  style={{ width: "100%" }}
                   value={drafts[row.id]?.sell_price}
                   onChange={(value) =>
                     handleDraftChange(row.id, {
@@ -299,6 +307,7 @@ export default function RequestMarginTabContent({ requestId }) {
               render: (_, row) => (
                 <InputNumber
                   min={0}
+                  style={{ width: "100%" }}
                   value={drafts[row.id]?.margin_pct}
                   onChange={(value) =>
                     handleDraftChange(row.id, {
@@ -310,8 +319,8 @@ export default function RequestMarginTabContent({ requestId }) {
               ),
             },
             {
-              title: "GM %",
-              width: 100,
+              title: "Валовая маржа, %",
+              width: 120,
               render: (_, row) => {
                 const draft = drafts[row.id] || row
                 const cost = Number(draft.cost || 0)
@@ -321,7 +330,7 @@ export default function RequestMarginTabContent({ requestId }) {
               },
             },
             {
-              title: "Markup %",
+              title: "Наценка, %",
               width: 110,
               render: (_, row) => {
                 const draft = drafts[row.id] || row
@@ -333,7 +342,7 @@ export default function RequestMarginTabContent({ requestId }) {
             },
             {
               title: "Прибыль по строке",
-              width: 140,
+              width: 150,
               render: (_, row) => {
                 const draft = drafts[row.id] || row
                 const qty = Number(draft.qty || 0)
@@ -345,7 +354,7 @@ export default function RequestMarginTabContent({ requestId }) {
             },
             {
               title: "Правило",
-              width: 180,
+              width: 210,
               render: (_, row) => {
                 const meta = pricingStatusMeta[row.pricing_status] || { color: "default", label: row.pricing_status || "—" }
                 return (
@@ -363,6 +372,7 @@ export default function RequestMarginTabContent({ requestId }) {
             {
               title: "Сохранить",
               width: 120,
+              fixed: "right",
               render: (_, row) => (
                 <Button size="small" type="primary" onClick={() => saveLine(row.id)} loading={savingLineId === row.id}>
                   Сохранить
@@ -383,7 +393,7 @@ export default function RequestMarginTabContent({ requestId }) {
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Typography.Paragraph>
             Здесь продавец работает уже не с закупкой, а с коммерческой моделью клиента: задает цену
-            продажи, корректирует маржу и при необходимости исключает строки из rev КП.
+            продажи, корректирует маржу и при необходимости исключает строки из ревизии КП.
           </Typography.Paragraph>
           <Typography.Paragraph>
             Статус строки нужен для клиентского торга. Исключенная строка не участвует в коммерческих

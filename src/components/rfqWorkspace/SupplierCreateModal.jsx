@@ -1,5 +1,6 @@
 import React from "react"
 import { Button, Checkbox, Form, Input, Modal, Space } from "antd"
+import useCapabilities from "@/hooks/useCapabilities"
 
 export default function SupplierCreateModal({
   open,
@@ -9,6 +10,8 @@ export default function SupplierCreateModal({
   autoAddCreatedSupplier,
   setAutoAddCreatedSupplier,
 }) {
+  const { can } = useCapabilities()
+  const canEditCatalogs = can("catalogs.edit")
   return (
     <Modal
       open={open}
@@ -45,7 +48,7 @@ export default function SupplierCreateModal({
         </Form.Item>
         <Space>
           <Button onClick={onCancel}>Отмена</Button>
-          <Button type="primary" htmlType="submit">
+          <Button type="primary" htmlType="submit" disabled={!canEditCatalogs}>
             Создать
           </Button>
         </Space>

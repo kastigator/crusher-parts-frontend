@@ -1,6 +1,7 @@
 // src/api/axiosInstance.js
 
 import axios from 'axios'
+import { message } from 'antd'
 import { logout } from '../auth/authService' // ✅ добавлено
 
 const API_BASE = `${import.meta.env.VITE_API_URL}/api`
@@ -24,6 +25,7 @@ instance.interceptors.request.use((config) => {
 // ===============================================
 let isRefreshing = false
 let failedQueue = []
+let lastForbiddenMessageAt = 0
 
 const processQueue = (error, token = null) => {
   failedQueue.forEach(p => {
@@ -91,6 +93,14 @@ instance.interceptors.response.use(
         return Promise.reject(err)
       } finally {
         isRefreshing = false
+      }
+    }
+
+    if (status === 403) {
+      const now = Date.now()
+      if (now - lastForbiddenMessageAt > 2500) {
+        lastForbiddenMessageAt = now
+        message.warning(data?.message || 'Недостаточно прав для этого действия')
       }
     }
 

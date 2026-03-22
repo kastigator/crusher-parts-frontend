@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react"
 import {
+  Alert,
   Card,
   Space,
   Table,
@@ -35,6 +36,18 @@ export default function ContractsPage() {
   const [loading, setLoading] = useState(false)
   const [form] = Form.useForm()
 
+  const handleGenerate = async (contract) => {
+    try {
+      const { data } = await axios.post(`/contracts/${contract.id}/generate`)
+      await loadContracts()
+      if (data?.url) window.open(data.url, "_blank", "noopener")
+      message.success("DOCX контракта сформирован")
+    } catch (e) {
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось сформировать DOCX")
+    }
+  }
+
   const loadContracts = async () => {
     setLoading(true)
     try {
@@ -66,7 +79,7 @@ export default function ContractsPage() {
     () =>
       quotes.map((q) => ({
         value: q.id,
-        label: `${q.client_name || "Клиент"} · Rev ${q.rev_number || ""}`.trim(),
+        label: `${q.client_name || "Клиент"} · ревизия ${q.rev_number || ""}`.trim(),
       })),
     [quotes],
   )
@@ -95,9 +108,15 @@ export default function ContractsPage() {
   return (
     <PageWrapper
       title="Контракты"
-      helpText="Фиксируйте согласованные условия с клиентом."
+      helpText="Контракт фиксирует согласованную коммерческую ревизию и открывает переход к заказам поставщикам."
     >
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
+        <Alert
+          type="warning"
+          showIcon
+          message="Страница создания контрактов выведена из основного процесса"
+          description="Новые контракты создавайте в Client Request Workspace. Здесь оставлены обзор и генерация DOCX для уже существующих контрактов."
+        />
         <Card title="Новый контракт" size="small">
           <Form form={form} layout="vertical" onFinish={handleCreate}>
             <Space wrap align="start">
@@ -141,7 +160,7 @@ export default function ContractsPage() {
                 <Input style={{ width: 240 }} />
               </Form.Item>
               <Form.Item style={{ marginTop: 30 }}>
-                <Button type="primary" htmlType="submit">
+                <Button type="primary" htmlType="submit" disabled>
                   Создать
                 </Button>
               </Form.Item>
@@ -171,6 +190,22 @@ export default function ContractsPage() {
                 dataIndex: "status",
                 width: 160,
                 render: (value) => STATUS_LABELS[String(value || "").trim()] || value || "—",
+              },
+              {
+                title: "Файл",
+                width: 220,
+                render: (_, row) => (
+                  <Space>
+                    {row.file_url ? (
+                      <Button size="small" onClick={() => window.open(row.file_url, "_blank", "noopener")}>
+                        Открыть файл
+                      </Button>
+                    ) : null}
+                    <Button size="small" onClick={() => handleGenerate(row)}>
+                      Сформировать DOCX
+                    </Button>
+                  </Space>
+                ),
               },
             ]}
           />

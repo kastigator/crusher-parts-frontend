@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react"
 import {
+  Alert,
   Button,
   Card,
   Drawer,
@@ -95,7 +96,7 @@ const COVERAGE_HELP_SECTIONS = [
   {
     title: "Зачем нужна вкладка",
     body:
-      "Покрытие показывает, как каждая строка RFQ может быть исполнена: узлом целиком, по составу BOM или смешанно от нескольких поставщиков. Здесь вы не выбираете победителя по всему заказу, а собираете допустимые варианты по каждой строке.",
+      "Покрытие показывает, как каждая строка RFQ может быть исполнена: целиком, по составу или комбинированно от нескольких поставщиков. Здесь вы не выбираете победителя по всему заказу, а собираете допустимые варианты по каждой строке.",
   },
   {
     title: "Как читать матрицу",
@@ -127,7 +128,7 @@ const COVERAGE_HELP_SECTIONS = [
 const STRATEGY_MODE_LABELS = {
   SINGLE: "Одна позиция",
   BOM: "По составу",
-  MIXED: "Гибко",
+  MIXED: "Комбинированно",
 }
 
 const UOM_OPTIONS = [
@@ -307,7 +308,7 @@ const buildCoverageElementsForItem = (item, workspaceRowsForItem) => {
       path_group: "WHOLE",
       line_type: "DEMAND",
       label: item.original_cat_number || item.client_part_number || "Позиция клиента",
-      description: "Узел целиком",
+      description: "Целиком",
       original_part_id: Number(item.original_part_id || 0) || null,
       bundle_item_id: null,
       required_qty: item.requested_qty ?? null,
@@ -611,16 +612,16 @@ const buildCoverageSlotsForItem = (item, workspaceRowsForItem) => {
     ? {
         key: `WHOLE_SLOT:${item?.rfq_item_id}`,
         label: item?.original_cat_number || item?.client_part_number || "Позиция клиента",
-        description: "Узел целиком",
+        description: "Целиком",
         required_qty: item?.requested_qty ?? null,
         uom: item?.uom || null,
         is_oem_required: Number(item?.oem_only || 0) === 1,
         variants: [
           {
             key: `WHOLE_VARIANT:${item?.rfq_item_id}`,
-            label: "Узел целиком",
+            label: "Целиком",
             type: "WHOLE",
-            atoms: [{ key: `WHOLE:${item?.rfq_item_id}`, label: "Узел целиком", kind: "DEMAND" }],
+            atoms: [{ key: `WHOLE:${item?.rfq_item_id}`, label: "Целиком", kind: "DEMAND" }],
           },
         ],
       }
@@ -688,6 +689,7 @@ const deriveCoverageMetrics = ({ slotEvaluations = [], wholeEvaluation = null } 
 
 export default function CoverageTabContent({
   rfqId,
+  onNavigateTab,
   structure,
   workspaceRows,
   suppliers,
@@ -1912,9 +1914,12 @@ export default function CoverageTabContent({
           goods_amount: unitPrice === null ? null : qty * unitPrice,
           goods_currency: line?.goods_currency || values?.goods_currency || "USD",
           lead_time_days: line?.lead_time_days ?? null,
+          weight_kg: line?.weight_kg ?? null,
           has_price: unitPrice === null ? 0 : 1,
           is_oem_offer: Number(line?.is_oem_offer) ? 1 : 0,
           origin_country: line?.origin_country || null,
+          incoterms: line?.incoterms || null,
+          incoterms_place: line?.incoterms_place || null,
           note: line?.note || null,
         }
       })
@@ -2014,7 +2019,7 @@ export default function CoverageTabContent({
           <Space direction="vertical" size={0}>
             <Space wrap size={6}>
               <Text strong>{row.label || "—"}</Text>
-              {row.path_group === "WHOLE" ? <Tag>Узел целиком</Tag> : <Tag color="blue">Состав</Tag>}
+              {row.path_group === "WHOLE" ? <Tag>Целиком</Tag> : <Tag color="blue">Состав</Tag>}
               {row.line_type === "KIT_ROLE" ? <Tag color="green">Роль</Tag> : null}
               {row.is_oem_required ? <Tag color="gold">Только OEM</Tag> : null}
             </Space>
@@ -2372,6 +2377,28 @@ export default function CoverageTabContent({
         <Empty description="Нет структуры RFQ для анализа покрытия" />
       ) : (
         <>
+          <Alert
+            type="info"
+            showIcon
+            message="Где исправлять страну происхождения, вес и Incoterms"
+            description={
+              <Space direction="vertical" size={8} style={{ width: "100%" }}>
+                <Text>Если строка пришла из ответа поставщика, исправляйте страну происхождения, Incoterms, пункт Incoterms и срок на вкладке «Ответы».</Text>
+                <Text>Если вы создаёте ручной вариант покрытия, заполните эти поля прямо в ручных строках. Вес особенно важен: без него Логистика и Экономика будут давать предупреждение и грубое распределение фрахта.</Text>
+                <Space wrap>
+                  {typeof onNavigateTab === "function" ? (
+                    <Button size="small" onClick={() => onNavigateTab("responses")}>
+                      Открыть Ответы
+                    </Button>
+                  ) : null}
+                  <Button size="small" onClick={openManualModal} disabled={!rfqId || !activeItemId}>
+                    Открыть ручной вариант
+                  </Button>
+                </Space>
+              </Space>
+            }
+          />
+
           <Space wrap align="center" style={{ width: "100%", justifyContent: "space-between" }}>
             <Space wrap>
               <Select
@@ -2451,7 +2478,7 @@ export default function CoverageTabContent({
 
           <Text type="secondary">
             {scopeMode === "item"
-              ? "Покрытие в режиме позиции показывает, как закрыть одну строку RFQ: целиком, по BOM или смешанно от нескольких поставщиков. Комбинации по всему заказу собираются на вкладке Сценарии."
+              ? "Покрытие в режиме позиции показывает, как закрыть одну строку RFQ: целиком, по составу или комбинированно от нескольких поставщиков. Комбинации по всему заказу собираются на вкладке Сценарии."
               : "В режиме всего RFQ показывается общая картина покрытия по заказу. Комбинирование вариантов между разными позициями выполняется на вкладке Сценарии."}
           </Text>
 
@@ -2690,7 +2717,7 @@ export default function CoverageTabContent({
             <Form.Item
               name="option_kind"
               label="Тип варианта"
-              tooltip="Определяет, как интерпретировать вариант: вручную, узлом целиком, по составу, комплектом или смешанно."
+              tooltip="Определяет, как интерпретировать вариант: вручную, целиком, по составу, комплектом или комбинированно."
             >
               <Select
                 style={{ width: 160 }}
@@ -2767,8 +2794,17 @@ export default function CoverageTabContent({
                       <Form.Item {...field} name={[field.name, "lead_time_days"]} label="Срок, дн">
                         <InputNumber style={{ width: 120 }} min={0} />
                       </Form.Item>
+                      <Form.Item {...field} name={[field.name, "weight_kg"]} label="Вес, кг">
+                        <InputNumber style={{ width: 120 }} min={0} />
+                      </Form.Item>
                       <Form.Item {...field} name={[field.name, "origin_country"]} label="Страна происхождения">
                         <Input style={{ width: 140 }} placeholder="Например: Китай" />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, "incoterms"]} label="Incoterms">
+                        <Input style={{ width: 120 }} placeholder="FOB" />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, "incoterms_place"]} label="Пункт Incoterms">
+                        <Input style={{ width: 220 }} placeholder="Например: Shanghai Port" />
                       </Form.Item>
                     </Space>
                     <Form.Item {...field} name={[field.name, "note"]} label="Комментарий">

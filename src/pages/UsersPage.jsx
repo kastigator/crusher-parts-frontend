@@ -9,7 +9,7 @@ export default function UsersPage() {
     <TabRendererPage
       tabKey="users"
       title="Пользователи и роли"
-      helpText="Кнопка карандаш — редактирование; Enter — сохранить; Esc — отменить."
+      helpText="На этой странице администратор назначает роли по обязанностям: кто работает с клиентом, кто ведет закупку, кто поддерживает каталоги и кто только наблюдает."
     >
       <UsersMain />
     </TabRendererPage>

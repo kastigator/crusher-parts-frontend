@@ -24,6 +24,8 @@ import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
 import IncotermsSelect from "@/components/inputs/IncotermsSelect"
 import { formatIncotermsWithPlace } from "./rfqWorkspaceUtils"
 import { formatQtyWithUomLabel } from "./rfqDisplayUtils"
+import { useNavigate } from "react-router-dom"
+import useCapabilities from "@/hooks/useCapabilities"
 import {
   SUPPLIER_DEFAULT_CURRENCY_OPTIONS,
   SUPPLIER_DEFAULT_PAYMENT_TERMS_OPTIONS,
@@ -626,6 +628,9 @@ export default function ResponsesTabContent({
   responseLines = [],
   formatDate,
 }) {
+  const navigate = useNavigate()
+  const { can } = useCapabilities()
+  const canWriteRfqMasterData = can("workflow.rfq.master_data.write", "catalogs.edit")
   const [viewMode, setViewMode] = useState("supplier")
   const [onlyWaiting, setOnlyWaiting] = useState(false)
   const [visibleSupplierColumnKeys, setVisibleSupplierColumnKeys] = useState([
@@ -911,7 +916,7 @@ export default function ResponsesTabContent({
         : null
     )
     manualForm.resetFields()
-    setCreateSupplierPart(false)
+    setCreateSupplierPart(preset?.forceCreateSupplierPart === true)
     setSupplierPartSearch("")
     setSupplierPartOptions([])
     const presetStatus = String(preset?.workspace_status || "").toUpperCase()
@@ -958,6 +963,34 @@ export default function ResponsesTabContent({
     setSupplierPartSearch("")
     setSupplierPartOptions([])
   }, [manualModalOpen, manualSupplierId, manualForm])
+
+  const openSupplierPartDetail = (supplierPartId) => {
+    const id = Number(supplierPartId || 0)
+    if (!id) return
+    navigate(`/supplier-parts/${id}`)
+  }
+
+  const renderSupplierPartMeta = (row) => {
+    const description = row?.latest_supplier_part_description || "—"
+    const weight =
+      row?.latest_supplier_part_weight_kg === null ||
+      row?.latest_supplier_part_weight_kg === undefined ||
+      row?.latest_supplier_part_weight_kg === ""
+        ? null
+        : Number(row.latest_supplier_part_weight_kg)
+    return (
+      <Space direction="vertical" size={0}>
+        <span>{description}</span>
+        {row?.latest_supplier_part_id ? (
+          <Tag color={weight !== null ? "blue" : "orange"}>
+            {weight !== null ? `Вес детали: ${weight} кг` : "В детали поставщика нет веса"}
+          </Tag>
+        ) : (
+          <Tag color="orange">Деталь поставщика не привязана</Tag>
+        )}
+      </Space>
+    )
+  }
 
   useEffect(() => {
     if (!manualModalOpen) return
@@ -1411,7 +1444,7 @@ export default function ResponsesTabContent({
       dataIndex: "latest_supplier_part_description",
       width: 240,
       ellipsis: true,
-      render: (value) => value || "—",
+      render: (_, r) => renderSupplierPartMeta(r),
     },
     {
       key: "reason",
@@ -1467,6 +1500,38 @@ export default function ResponsesTabContent({
           >
             Переговоры
           </Button>
+          {r.latest_supplier_part_id ? (
+            <Button size="small" onClick={() => openSupplierPartDetail(r.latest_supplier_part_id)}>
+              Карточка детали
+            </Button>
+          ) : (
+            <Button
+              size="small"
+              disabled={!canWriteRfqMasterData}
+              onClick={() =>
+                openManualModal({
+                  supplier_id: r.supplier_id,
+                  rfq_item_id: r.rfq_item_id,
+                  supplier_name: r.supplier_name,
+                  rfq_line_number: r.rfq_line_number,
+                  requested_original_cat_number: r.requested_original_cat_number,
+                  requested_original_description_ru: r.requested_original_description_ru,
+                  requested_original_description_en: r.requested_original_description_en,
+                  client_description: r.client_description,
+                  workspace_status: r.workspace_status,
+                  rfq_item_component_id: r.selected_line_type === "BOM_COMPONENT"
+                    ? r.rfq_item_component_id
+                    : null,
+                  selected_selection_key: r.selected_selection_key,
+                  selected_bundle_id: r.selected_bundle_id,
+                  selected_line_type: r.selected_line_type,
+                  forceCreateSupplierPart: true,
+                })
+              }
+            >
+              Создать деталь
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -1576,7 +1641,7 @@ export default function ResponsesTabContent({
       dataIndex: "latest_supplier_part_description",
       width: 240,
       ellipsis: true,
-      render: (value) => value || "—",
+      render: (_, r) => renderSupplierPartMeta(r),
     },
     { key: "response_date", title: "Дата ответа", dataIndex: "latest_response_created_at", width: 120, render: formatDate },
     {
@@ -1627,6 +1692,38 @@ export default function ResponsesTabContent({
           >
             Переговоры
           </Button>
+          {r.latest_supplier_part_id ? (
+            <Button size="small" onClick={() => openSupplierPartDetail(r.latest_supplier_part_id)}>
+              Карточка детали
+            </Button>
+          ) : (
+            <Button
+              size="small"
+              disabled={!canWriteRfqMasterData}
+              onClick={() =>
+                openManualModal({
+                  supplier_id: r.supplier_id,
+                  rfq_item_id: r.rfq_item_id,
+                  supplier_name: r.supplier_name,
+                  rfq_line_number: r.rfq_line_number,
+                  requested_original_cat_number: r.requested_original_cat_number,
+                  requested_original_description_ru: r.requested_original_description_ru,
+                  requested_original_description_en: r.requested_original_description_en,
+                  client_description: r.client_description,
+                  workspace_status: r.workspace_status,
+                  rfq_item_component_id: r.selected_line_type === "BOM_COMPONENT"
+                    ? r.rfq_item_component_id
+                    : null,
+                  selected_selection_key: r.selected_selection_key,
+                  selected_bundle_id: r.selected_bundle_id,
+                  selected_line_type: r.selected_line_type,
+                  forceCreateSupplierPart: true,
+                })
+              }
+            >
+              Создать деталь
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -1674,6 +1771,12 @@ export default function ResponsesTabContent({
         type="info"
         showIcon
         message="Рабочая матрица по ответам: что отправлено, где ждём ответ и где уже есть цена. Можно вносить ответы вручную и вести переговорные ревизии."
+      />
+      <Alert
+        type="warning"
+        showIcon
+        message="Для логистики и экономики вес берётся из детали поставщика, а не из самой строки ответа"
+        description="Если позже в Логистике или Экономике появляется предупреждение «Нет веса», проверьте, привязана ли строка к детали поставщика и заполнен ли у этой детали вес. При ручном ответе это поле заполняется при создании новой детали поставщика."
       />
       <Space wrap>
         <Tag color="gold">Ожидают: {counters.waiting}</Tag>
@@ -2049,6 +2152,7 @@ export default function ResponsesTabContent({
           <Form.Item>
             <Checkbox
               checked={createSupplierPart}
+              disabled={!canWriteRfqMasterData}
               onChange={(e) => {
                 const checked = e.target.checked
                 setCreateSupplierPart(checked)

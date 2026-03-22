@@ -274,6 +274,7 @@ export default function RfqWorkspaceMainContent({
                   children: (
                     <CoverageTabContent
                       rfqId={activeRfqIdForTabs}
+                      onNavigateTab={setActiveTabKey}
                       coverageRows={coverageRows}
                       structure={structure}
                       workspaceRows={responseWorkspaceRows}
@@ -291,14 +292,22 @@ export default function RfqWorkspaceMainContent({
                   key: "logistics",
                   label: "Логистика",
                   disabled: !isStructureConfirmed,
-                  children: <LogisticsTabContent rfqId={activeRfqIdForTabs} />,
+                  children: (
+                    <LogisticsTabContent
+                      rfqId={activeRfqIdForTabs}
+                      onNavigateTab={setActiveTabKey}
+                    />
+                  ),
                 },
                 {
                   key: "economics",
                   label: "Экономика",
                   disabled: !isStructureConfirmed,
                   children: (
-                    <EconomicsTabContent rfqId={activeRfqIdForTabs} />
+                    <EconomicsTabContent
+                      rfqId={activeRfqIdForTabs}
+                      onNavigateTab={setActiveTabKey}
+                    />
                   ),
                 },
                 {
@@ -342,7 +351,7 @@ export default function RfqWorkspaceMainContent({
                 },
                 {
                   key: "po",
-                  label: "PO",
+                  label: "Заказы",
                   disabled: !isStructureConfirmed,
                   children: (
                     <PurchaseOrdersTabContent

@@ -49,8 +49,8 @@ const numOrDash = (value) => {
 
 const STRATEGY_LABELS = {
   SINGLE: "Единая позиция",
-  BOM: "BOM",
-  MIXED: "Смешанная",
+  BOM: "По составу",
+  MIXED: "Комбинированная",
 }
 
 const formatStrategyMode = (mode) => STRATEGY_LABELS[mode] || "—"
@@ -676,8 +676,8 @@ export default function RfqPage() {
               style={{ width: 200 }}
               options={[
                 { value: "SINGLE", label: "Единая позиция" },
-                { value: "BOM", label: "BOM (компоненты)" },
-                { value: "MIXED", label: "Смешанная (BOM + позиция)" },
+                { value: "BOM", label: "По составу (компоненты)" },
+                { value: "MIXED", label: "Комбинированная (состав + позиция)" },
               ]}
             />
           </Form.Item>

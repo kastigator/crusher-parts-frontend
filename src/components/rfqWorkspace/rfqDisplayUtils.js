@@ -1,16 +1,16 @@
 export { formatQtyWithUomLabel, formatUomLabel } from "@/utils/uom"
 
 export const COVERAGE_KIND_LABELS = {
-  WHOLE: "Узел целиком",
+  WHOLE: "Целиком",
   BOM: "По составу",
   KIT: "Комплект",
-  MIXED: "Смешанный",
+  MIXED: "Комбинированный",
   MANUAL: "Ручной вариант",
 }
 
 export const COVERAGE_LINE_ROLE_LABELS = {
   MANUAL: "Свободная строка",
-  WHOLE: "Узел целиком",
+  WHOLE: "Целиком",
   COMPONENT: "Компонент",
   KIT_ROLE: "Роль комплекта",
 }

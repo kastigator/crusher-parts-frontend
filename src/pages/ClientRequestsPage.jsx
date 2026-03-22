@@ -42,6 +42,7 @@ import confirmAction from "@/utils/confirmAction"
 import { formatUomLabel } from "@/utils/uom"
 import { useAuth } from "@/auth/AuthContext"
 import { useSearchParams } from "react-router-dom"
+import useCapabilities from "@/hooks/useCapabilities"
 
 const STATUS_OPTIONS = [
   { value: "draft", label: "Черновик" },
@@ -69,8 +70,7 @@ const UOM_OPTIONS = [
   { value: "set", label: "компл." },
 ]
 
-const CLIENT_REQUEST_TEMPLATE_URL =
-  "https://storage.googleapis.com/shared-parts-bucket/templates/client_request_items_template.xlsx"
+const CLIENT_REQUEST_TEMPLATE_REQUEST_URL = "/client-requests/import-template/items"
 
 const normalizeCatalogPart = (part) => {
   if (!part) return null
@@ -154,11 +154,14 @@ const getStatusStepIndex = (status) => {
 
 export default function ClientRequestsPage() {
   const { user } = useAuth()
+  const { can } = useCapabilities()
+  const canWriteClientMasterData = can("workflow.client.master_data.write", "catalogs.edit")
   const [searchParams, setSearchParams] = useSearchParams()
   const [requests, setRequests] = useState([])
   const [clients, setClients] = useState([])
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
+  const [listSearch, setListSearch] = useState("")
   const [activeRequest, setActiveRequest] = useState(null)
   const [requestEditing, setRequestEditing] = useState(false)
   const [revisions, setRevisions] = useState([])
@@ -419,6 +422,10 @@ export default function ClientRequestsPage() {
 
   const handleCreateClientChange = async (value) => {
     if (value === "__create__") {
+      if (!canWriteClientMasterData) {
+        message.warning("Недостаточно прав для создания клиента из заявки")
+        return
+      }
       createForm.setFieldsValue({ client_id: null })
       setCreateClientOpen(true)
       return
@@ -736,6 +743,10 @@ export default function ClientRequestsPage() {
   }
 
   const handleCreateClient = async (values) => {
+    if (!canWriteClientMasterData) {
+      message.warning("Недостаточно прав для создания клиента")
+      return
+    }
     try {
       setCreateClientLoading(true)
       const { data } = await axios.post("/clients", {
@@ -1985,11 +1996,14 @@ export default function ClientRequestsPage() {
   )
 
   const clientSelectOptions = useMemo(
-    () => [
-      ...clientOptions,
-      { value: "__create__", label: "+ Создать клиента" },
-    ],
-    [clientOptions],
+    () => {
+      const options = [...clientOptions]
+      if (canWriteClientMasterData) {
+        options.push({ value: "__create__", label: "+ Создать клиента" })
+      }
+      return options
+    },
+    [clientOptions, canWriteClientMasterData],
   )
 
   const contactOptions = useMemo(
@@ -2154,6 +2168,27 @@ export default function ClientRequestsPage() {
       ),
     },
   ]
+
+  const filteredRequests = useMemo(() => {
+    const needle = String(listSearch || "").trim().toLowerCase()
+    if (!needle) return requests
+
+    return requests.filter((row) => {
+      const haystack = [
+        row?.client_name,
+        row?.internal_number,
+        row?.client_reference,
+        row?.contact_name,
+        row?.assigned_user_name,
+        row?.status,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+
+      return haystack.includes(needle)
+    })
+  }, [requests, listSearch])
 
   const revisionColumns = [
     { title: "Rev", dataIndex: "rev_number", width: 70 },
@@ -2476,7 +2511,9 @@ export default function ClientRequestsPage() {
 
         <RequestsListCard
           requestColumns={requestColumns}
-          requests={requests}
+          requests={filteredRequests}
+          listSearch={listSearch}
+          setListSearch={setListSearch}
           loading={loading}
           openWorkspace={openWorkspace}
           activeRequestId={activeRequest?.id}
@@ -2656,7 +2693,7 @@ export default function ClientRequestsPage() {
           setStagedRows([])
           resetImportState()
         }}
-        templateUrl={CLIENT_REQUEST_TEMPLATE_URL}
+        templateRequestUrl={CLIENT_REQUEST_TEMPLATE_REQUEST_URL}
         handleExcelUpload={handleExcelUpload}
         stagedRows={stagedRows}
         setStagedRows={setStagedRows}

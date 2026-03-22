@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react"
 import {
+  Alert,
   Card,
   Space,
   Table,
@@ -14,6 +15,8 @@ import {
 } from "antd"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
+
+const LEGACY_READ_ONLY = true
 
 export default function SelectionPage() {
   const [selections, setSelections] = useState([])
@@ -230,6 +233,12 @@ export default function SelectionPage() {
       helpText="Фиксируйте решения по каждой позиции и причину выбора."
     >
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
+        <Alert
+          type="warning"
+          showIcon
+          message="Страница оставлена только для обзора"
+          description="Рабочий выбор теперь формируется внутри RFQ Workspace. Здесь создание выбора и ручное добавление строк отключены, чтобы не обходить основной процесс."
+        />
         <Card title="Новый выбор" size="small">
           <Form form={createForm} layout="vertical" onFinish={handleCreate}>
             <Space wrap align="start">
@@ -253,7 +262,7 @@ export default function SelectionPage() {
                 <Input style={{ width: 240 }} />
               </Form.Item>
               <Form.Item style={{ marginTop: 30 }}>
-                <Button type="primary" htmlType="submit">
+                <Button type="primary" htmlType="submit" disabled={LEGACY_READ_ONLY}>
                   Создать
                 </Button>
               </Form.Item>
@@ -360,7 +369,7 @@ export default function SelectionPage() {
                   <Input style={{ width: 260 }} />
                 </Form.Item>
                 <Form.Item style={{ marginTop: 30 }}>
-                  <Button type="primary" htmlType="submit">
+                  <Button type="primary" htmlType="submit" disabled={LEGACY_READ_ONLY}>
                     Добавить
                   </Button>
                 </Form.Item>

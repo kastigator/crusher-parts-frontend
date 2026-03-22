@@ -13,10 +13,10 @@ const SCENARIO_BASIS_LABELS = {
 }
 
 const OPTION_KIND_LABELS = {
-  WHOLE: "Узел целиком",
+  WHOLE: "Целиком",
   BOM: "По составу",
   KIT: "Комплект",
-  MIXED: "Смешанный",
+  MIXED: "Комбинированный",
   MANUAL: "Ручной",
 }
 

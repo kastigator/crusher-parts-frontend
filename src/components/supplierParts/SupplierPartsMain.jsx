@@ -33,8 +33,6 @@ import { countActiveFilters } from "./supplierPartsFiltersUtils"
 import SupplierPriceListsDrawer from "./SupplierPriceListsDrawer"
 import SupplierPartUpsertDrawer from "./SupplierPartUpsertDrawer"
 
-const SUPPLIER_TEMPLATE_URL =
-  "https://storage.googleapis.com/shared-parts-bucket/templates/supplier_parts_template.xlsx"
 export default function SupplierPartsMain() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -803,7 +801,6 @@ export default function SupplierPartsMain() {
       <ImportModal
         open={importOpen}
         type="supplier_parts"
-        templateUrl={SUPPLIER_TEMPLATE_URL}
         extraParams={{ supplier_id: supplier?.id }}
         onClose={() => setImportOpen(false)}
         onSuccess={() => {

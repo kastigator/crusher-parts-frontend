@@ -42,9 +42,6 @@ import ManufacturerModelPicker from "@/components/originalParts/ManufacturerMode
 import OriginalPartGroupsManager from "@/components/originalParts/OriginalPartGroupsManager"
 import TnvedPicker from "@/components/fields/TnvedPicker"
 
-const TEMPLATE_URL =
-  "https://storage.googleapis.com/shared-parts-bucket/templates/original_parts_template.xlsx"
-
 const UOM_OPTIONS = [
   { value: "pcs", label: "шт" },
   { value: "kg", label: "кг" },
@@ -1476,7 +1473,6 @@ export default function OriginalPartsMain() {
       <ImportModal
         open={importOpen}
         type="original_parts"
-        templateUrl={TEMPLATE_URL}
         extraParams={{ equipment_model_id: model?.id }}
         onClose={() => setImportOpen(false)}
         onSuccess={() => {
