@@ -3,16 +3,9 @@ import { Alert, Button, Card, Drawer, Form, Select, Space, Table, Tag, Typograph
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import useCapabilities from "@/hooks/useCapabilities"
+import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
 
 const { Text } = Typography
-
-const quoteStatusOptions = [
-  { value: "draft", label: "Черновик" },
-  { value: "internal_review", label: "Внутреннее согласование" },
-  { value: "sent_to_client", label: "Отправлено клиенту" },
-  { value: "client_approved", label: "Согласовано клиентом" },
-  { value: "contract_signed", label: "Контракт подписан" },
-]
 
 const quoteStatusLabel = (value) =>
   ({
@@ -22,6 +15,15 @@ const quoteStatusLabel = (value) =>
     client_approved: "Согласовано клиентом",
     contract_signed: "Контракт подписан",
   }[String(value || "").trim()] || value || "—")
+
+const quoteStatusColor = (value) =>
+  ({
+    draft: "default",
+    internal_review: "blue",
+    sent_to_client: "gold",
+    client_approved: "green",
+    contract_signed: "success",
+  }[String(value || "").trim()] || "default")
 
 export default function SalesTabContent({
   activeRfq,
@@ -33,7 +35,6 @@ export default function SalesTabContent({
   const { can } = useCapabilities()
   const canManageSalesQuotes = can("workflow.sales_quotes.manage")
   const [creating, setCreating] = useState(false)
-  const [updatingQuoteId, setUpdatingQuoteId] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerQuote, setDrawerQuote] = useState(null)
   const [revisions, setRevisions] = useState([])
@@ -41,19 +42,25 @@ export default function SalesTabContent({
   const [revisionLines, setRevisionLines] = useState([])
   const [loadingRevisions, setLoadingRevisions] = useState(false)
   const [loadingLines, setLoadingLines] = useState(false)
+  const [updatingLineId, setUpdatingLineId] = useState(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const [form] = Form.useForm()
+  const selectedCreateSelectionId = Form.useWatch("selection_id", form)
 
   const selectionOptions = useMemo(
     () =>
       (Array.isArray(selections) ? selections : []).map((row) => ({
         value: Number(row.id),
-        label: `Выбор #${row.id} · ${row.status || "draft"} · ${formatPriceWithCurrency(
+        label: `Выбор #${row.id} · ${quoteStatusLabel(row.status)} · ${formatPriceWithCurrency(
           row.landed_total,
           row.calc_currency || "USD"
         )}`,
       })),
     [selections]
+  )
+  const selectedCreateSelection = useMemo(
+    () => (Array.isArray(selections) ? selections : []).find((row) => Number(row.id) === Number(selectedCreateSelectionId || 0)) || null,
+    [selections, selectedCreateSelectionId]
   )
 
   const handleCreateQuote = async (values) => {
@@ -67,35 +74,19 @@ export default function SalesTabContent({
       await axios.post("/sales-quotes", {
         client_request_revision_id: revisionId,
         selection_id: values.selection_id,
-        status: values.status || "draft",
-        currency: values.currency || "USD",
+        status: "internal_review",
         auto_create_revision: true,
         autofill_from_selection: true,
       })
-      message.success("КП создано и передано на сторону продавца")
+      message.success("Коммерческое предложение создано и передано продавцу")
       form.resetFields()
       if (typeof onCommercialUpdated === "function") {
         await onCommercialUpdated()
       }
     } catch (e) {
-      message.error(e?.response?.data?.message || "Не удалось создать КП")
+      message.error(e?.response?.data?.message || "Не удалось создать коммерческое предложение")
     } finally {
       setCreating(false)
-    }
-  }
-
-  const updateQuoteStatus = async (quoteId, status) => {
-    setUpdatingQuoteId(Number(quoteId))
-    try {
-      await axios.patch(`/sales-quotes/${quoteId}`, { status })
-      message.success("Статус КП обновлён")
-      if (typeof onCommercialUpdated === "function") {
-        await onCommercialUpdated()
-      }
-    } catch (e) {
-      message.error(e?.response?.data?.message || "Не удалось обновить статус КП")
-    } finally {
-      setUpdatingQuoteId(null)
     }
   }
 
@@ -111,7 +102,7 @@ export default function SalesTabContent({
       setRevisionLines(Array.isArray(data) ? data : [])
     } catch (e) {
       setRevisionLines([])
-      message.error(e?.response?.data?.message || "Не удалось загрузить строки ревизии КП")
+      message.error(e?.response?.data?.message || "Не удалось загрузить строки ревизии коммерческого предложения")
     } finally {
       setLoadingLines(false)
     }
@@ -134,7 +125,7 @@ export default function SalesTabContent({
       setRevisions([])
       setSelectedRevisionId(null)
       setRevisionLines([])
-      message.error(e?.response?.data?.message || "Не удалось загрузить ревизии КП")
+      message.error(e?.response?.data?.message || "Не удалось загрузить ревизии коммерческого предложения")
     } finally {
       setLoadingRevisions(false)
     }
@@ -145,18 +136,75 @@ export default function SalesTabContent({
     [revisions, selectedRevisionId]
   )
 
+  const resolveClientPresentationMode = (row) => {
+    const currentPart = String(row?.client_display_part_number || "").trim()
+    const currentDescription = String(row?.client_display_description || "").trim()
+    const clientPart = String(row?.client_part_number || "").trim()
+    const clientDescription = String(row?.client_description || "").trim()
+    const oemPart = String(row?.original_cat_number || "").trim()
+    const oemDescription = String(row?.original_description_ru || row?.client_description || "").trim()
+    const procurementPart = String(row?.procurement_display_part_number || "").trim()
+    const procurementDescription = String(row?.procurement_display_description || "").trim()
+
+    if (procurementPart && currentPart === procurementPart && (!procurementDescription || currentDescription === procurementDescription)) {
+      return "procurement"
+    }
+    if (oemPart && currentPart === oemPart && (!oemDescription || currentDescription === oemDescription)) {
+      return "oem"
+    }
+    if (clientPart && currentPart === clientPart && (!clientDescription || currentDescription === clientDescription)) {
+      return "client"
+    }
+    return "client"
+  }
+
+  const updateQuoteLinePresentation = async (row, mode) => {
+    const presentationMap = {
+      client: {
+        partNumber: row?.client_part_number || row?.original_cat_number || null,
+        description: row?.client_description || null,
+      },
+      oem: {
+        partNumber: row?.original_cat_number || row?.client_part_number || null,
+        description: row?.original_description_ru || row?.client_description || null,
+      },
+      procurement: {
+        partNumber: row?.procurement_display_part_number || row?.client_part_number || row?.original_cat_number || null,
+        description: row?.procurement_display_description || row?.client_description || null,
+      },
+    }
+    const target = presentationMap[mode]
+    if (!target) return
+    setUpdatingLineId(Number(row.id))
+    try {
+      await axios.patch(`/sales-quotes/lines/${row.id}`, {
+        client_display_part_number_snapshot: target.partNumber,
+        client_display_description_snapshot: target.description,
+      })
+      message.success("Представление строки для клиента обновлено")
+      await loadRevisionLines(selectedRevisionId)
+      if (typeof onCommercialUpdated === "function") {
+        await onCommercialUpdated()
+      }
+    } catch (e) {
+      message.error(e?.response?.data?.message || "Не удалось обновить представление строки")
+    } finally {
+      setUpdatingLineId(null)
+    }
+  }
+
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <Alert
         type="info"
         showIcon
-        message="КП создаётся из утверждённого выбора закупки и уходит продавцу"
-        description="Закупщик передаёт продавцу базовую закупочную модель из выбора закупки. Дальше продавец должен работать через коммерческие ревизии КП: маржа, уступки клиенту и переговоры уже не меняют сам выбор закупки."
+        message="Коммерческое предложение создаётся из утверждённого выбора закупки и уходит продавцу"
+        description="Закупщик передаёт продавцу базовую закупочную модель из выбора закупки. Дальше продавец должен работать через ревизии коммерческого предложения: маржа, уступки клиенту и переговоры уже не меняют сам выбор закупки."
       />
 
       <Card
         size="small"
-        title="Создать черновик КП из выбора закупки"
+        title="Создать коммерческое предложение из выбора закупки"
         extra={
           <Button size="small" onClick={() => setHelpOpen(true)}>
             Справка
@@ -166,7 +214,6 @@ export default function SalesTabContent({
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ status: "draft", currency: "USD" }}
           onFinish={handleCreateQuote}
         >
           <Space wrap align="start">
@@ -177,22 +224,14 @@ export default function SalesTabContent({
             >
               <Select style={{ width: 420 }} options={selectionOptions} />
             </Form.Item>
-            <Form.Item name="status" label="Статус КП">
-              <Select style={{ width: 180 }} options={quoteStatusOptions} />
-            </Form.Item>
-            <Form.Item name="currency" label="Валюта">
-              <Select
-                style={{ width: 120 }}
-                options={[
-                  { value: "USD", label: "USD" },
-                  { value: "EUR", label: "EUR" },
-                  { value: "RUB", label: "RUB" },
-                ]}
-              />
-            </Form.Item>
           </Space>
+          <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
+            После создания коммерческое предложение автоматически получает статус «Внутреннее согласование» и
+            передаётся продавцу. Валюта наследуется от утверждённого выбора закупки
+            {selectedCreateSelection?.calc_currency ? `: ${selectedCreateSelection.calc_currency}.` : "."}
+          </Text>
           <Button type="primary" htmlType="submit" loading={creating} disabled={!canManageSalesQuotes}>
-            Создать КП и передать продавцу
+            Создать коммерческое предложение и передать продавцу
           </Button>
         </Form>
       </Card>
@@ -206,7 +245,7 @@ export default function SalesTabContent({
           <span>1. Утверждённый выбор закупки как базовая закупочная модель.</span>
           <span>2. Базовая себестоимость по строкам и по заказу.</span>
           <span>3. Публичные коды поставщиков вместо внутренних названий.</span>
-          <span>4. Дальше уже коммерческие ревизии КП: цена продажи, маржа, уступки клиенту.</span>
+          <span>4. Дальше уже ревизии коммерческого предложения: цена продажи, маржа, уступки клиенту.</span>
         </Space>
       </Card>
 
@@ -224,14 +263,14 @@ export default function SalesTabContent({
           dataSource={salesQuotes}
           pagination={{ pageSize: 10, hideOnSinglePage: true }}
           columns={[
-            { title: "КП", width: 90, render: (_, row) => `#${row.id}` },
+            { title: "Предложение", width: 110, render: (_, row) => `#${row.id}` },
             { title: "Выбор", dataIndex: "selection_id", width: 100, render: (value) => value || "—" },
             {
               title: "База",
               width: 160,
               render: (_, row) => (
                 <Tag color="blue">
-                  {row.selection_id ? `из выбора #${row.selection_id}` : "ручное КП"}
+                  {row.selection_id ? `из выбора #${row.selection_id}` : "ручное предложение"}
                 </Tag>
               ),
             },
@@ -239,15 +278,7 @@ export default function SalesTabContent({
               title: "Статус",
               width: 220,
               render: (_, row) => (
-                <Select
-                  size="small"
-                  style={{ width: 180 }}
-                  value={row.status || "draft"}
-                  options={quoteStatusOptions}
-                  loading={updatingQuoteId === Number(row.id)}
-                  disabled={!canManageSalesQuotes}
-                  onChange={(value) => updateQuoteStatus(row.id, value)}
-                />
+                <Tag color={quoteStatusColor(row.status)}>{quoteStatusLabel(row.status)}</Tag>
               ),
             },
             {
@@ -300,7 +331,7 @@ export default function SalesTabContent({
       </Card>
 
       <Drawer
-        title={drawerQuote ? `КП #${drawerQuote.id}` : "Коммерческое предложение"}
+        title={drawerQuote ? `Коммерческое предложение #${drawerQuote.id}` : "Коммерческое предложение"}
         placement="right"
         width={980}
         open={drawerOpen}
@@ -317,7 +348,7 @@ export default function SalesTabContent({
             </Space>
           ) : null}
 
-          <Card size="small" title="Ревизии КП">
+          <Card size="small" title="Ревизии коммерческого предложения">
             <Table
               size="small"
               rowKey="id"
@@ -367,10 +398,52 @@ export default function SalesTabContent({
                   title: "Строка клиента",
                   render: (_, row) => (
                     <Space direction="vertical" size={0}>
-                      <span>{row.original_cat_number || row.client_part_number || `Строка #${row.client_request_revision_item_id}`}</span>
-                      {row.client_description ? <span style={{ color: "#666", fontSize: 12 }}>{row.client_description}</span> : null}
+                      <Space size={6} wrap>
+                        <span>{getClientFacingPartNumber(row, `Строка #${row.client_request_revision_item_id}`)}</span>
+                        {row.has_procurement_substitution ? <Tag color="orange">Подмена в закупке</Tag> : null}
+                      </Space>
+                      {getClientFacingDescription(row) ? <span style={{ color: "#666", fontSize: 12 }}>{getClientFacingDescription(row)}</span> : null}
+                      {row.has_procurement_substitution && row.procurement_display_part_number ? (
+                        <span style={{ color: "#ad6800", fontSize: 12 }}>
+                          Закупка велась по: {row.procurement_display_part_number}
+                        </span>
+                      ) : null}
                     </Space>
                   ),
+                },
+                {
+                  title: "Что показать клиенту",
+                  width: 220,
+                  render: (_, row) => {
+                    const options = [
+                      {
+                        value: "client",
+                        label: `Клиентский: ${row.client_part_number || row.original_cat_number || "—"}`,
+                      },
+                    ]
+                    if (row.original_cat_number) {
+                      options.push({
+                        value: "oem",
+                        label: `OEM: ${row.original_cat_number}`,
+                      })
+                    }
+                    if (row.procurement_display_part_number && row.has_procurement_substitution) {
+                      options.push({
+                        value: "procurement",
+                        label: `Наш номер: ${row.procurement_display_part_number}`,
+                      })
+                    }
+                    return (
+                      <Select
+                        size="small"
+                        style={{ width: 210 }}
+                        value={resolveClientPresentationMode(row)}
+                        options={options}
+                        loading={updatingLineId === Number(row.id)}
+                        onChange={(value) => updateQuoteLinePresentation(row, value)}
+                      />
+                    )
+                  },
                 },
                 {
                   title: "Коды поставщиков",
@@ -405,12 +478,12 @@ export default function SalesTabContent({
             закупки.
           </Typography.Paragraph>
           <Typography.Paragraph>
-            Продавец видит коды поставщиков, себестоимость и коммерческие ревизии КП, но не должен менять сам
-            закупочный baseline через этот экран.
+            Продавец видит коды поставщиков, себестоимость и ревизии коммерческого предложения, но не должен менять сам
+            утвержденный закупочный набор через этот экран.
           </Typography.Paragraph>
           <Typography.Paragraph style={{ marginBottom: 0 }}>
             После торга с клиентом именно коммерческая ревизия и ее контракт определяют, что дальше пойдет
-            в PO поставщику.
+            в заказ поставщику.
           </Typography.Paragraph>
         </Space>
       </Drawer>

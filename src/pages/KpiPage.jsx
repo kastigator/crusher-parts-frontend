@@ -1,37 +1,64 @@
-import React from "react"
-import { Alert, Tabs } from "antd"
+import React, { useMemo } from "react"
+import { Tabs } from "antd"
 import TabRendererPage from "@/components/common/TabRendererPage"
 import SalesKpiDashboard from "@/components/kpi/SalesKpiDashboard"
+import ProcurementKpiDashboard from "@/components/kpi/ProcurementKpiDashboard"
+import { useAuth } from "@/auth/AuthContext"
 
 export default function KpiPage() {
-  return (
-    <TabRendererPage
-      tabKey="kpi"
-      title="Показатели"
-      helpText="Управленческая панель по результативности команды. Первая версия уже показывает коммерческий контур продавцов. Закупочный контур будет добавлен следующим этапом."
-    >
-      <Tabs
-        defaultActiveKey="sales"
-        items={[
+  const { user } = useAuth()
+
+  const roleSlug = useMemo(
+    () => String(user?.role_slug || user?.role || "").trim().toLowerCase(),
+    [user],
+  )
+
+  const isSeller = roleSlug === "prodavec"
+  const isBuyer = roleSlug === "zakupshchik"
+  const canSeeBoth = !isSeller && !isBuyer
+
+  const effectiveSalesUserId = isSeller ? user?.id || null : null
+  const effectiveBuyerUserId = isBuyer ? user?.id || null : null
+
+  const defaultActiveKey = isBuyer ? "procurement" : "sales"
+  const items = [
+    ...(isBuyer
+      ? []
+      : [
           {
             key: "sales",
             label: "Коммерческий контур",
-            children: <SalesKpiDashboard />,
+            children: (
+              <SalesKpiDashboard
+                lockedSellerId={effectiveSalesUserId}
+                canSelectAnySeller={canSeeBoth}
+              />
+            ),
           },
+        ]),
+    ...(isSeller
+      ? []
+      : [
           {
             key: "procurement",
             label: "Закупочный контур",
             children: (
-              <Alert
-                type="info"
-                showIcon
-                message="KPI закупки будет подключен следующим этапом"
-                description="В первой версии верхней вкладки уже работает коммерческий KPI продавцов. Следующим блоком сюда нужно добавить RFQ, выбор, PO, инциденты поставщиков и скорость закупки."
+              <ProcurementKpiDashboard
+                lockedBuyerId={effectiveBuyerUserId}
+                canSelectAnyBuyer={canSeeBoth}
               />
             ),
           },
-        ]}
-      />
+        ]),
+  ]
+
+  return (
+    <TabRendererPage
+      tabKey="kpi"
+      title="Показатели"
+      helpText="Панель результативности по процессным контурам. Продавец видит свой коммерческий KPI, закупщик — свой закупочный KPI, руководитель и наблюдатель могут смотреть оба контура."
+    >
+      <Tabs defaultActiveKey={defaultActiveKey} items={items} />
     </TabRendererPage>
   )
 }

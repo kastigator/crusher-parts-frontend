@@ -45,7 +45,7 @@ export default function SuppliersTabContent({
   activeRfq,
 }) {
   const { can } = useCapabilities()
-  const canEditCatalogs = can("catalogs.edit")
+  const canEditCatalogs = can("catalogs.edit", "workflow.rfq.master_data.write")
   const [hintFilterMode, setHintFilterMode] = useState(() => {
     if (typeof window === "undefined") return "all"
     const saved = window.localStorage.getItem(HINT_FILTER_MODE_KEY)

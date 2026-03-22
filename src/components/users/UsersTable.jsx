@@ -5,6 +5,7 @@ import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import ActionButtons from "@/components/common/ActionButtons"
+import useCapabilities from "@/hooks/useCapabilities"
 
 function UserFormModal({
   open,
@@ -100,11 +101,13 @@ function UserFormModal({
 }
 
 export default function UsersTable({ rolesRevision = 0 }) {
+  const { can, isAdmin } = useCapabilities()
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
+  const canManageUsersRoles = isAdmin || can("admin.users_roles.manage")
 
   useEffect(() => {
     fetchData()
@@ -229,7 +232,11 @@ export default function UsersTable({ rolesRevision = 0 }) {
       key: "password",
       width: 140,
       render: (_, record) => (
-        <Button icon={<KeyOutlined />} onClick={() => handlePasswordReset(record.id)}>
+        <Button
+          icon={<KeyOutlined />}
+          onClick={() => handlePasswordReset(record.id)}
+          disabled={!canManageUsersRoles}
+        >
           Сбросить
         </Button>
       ),
@@ -253,8 +260,8 @@ export default function UsersTable({ rolesRevision = 0 }) {
       width: 90,
       render: (_, record) => (
         <ActionButtons
-          onEdit={() => setEditingUser(record)}
-          onDelete={() => deleteUser(record)}
+          onEdit={canManageUsersRoles ? () => setEditingUser(record) : null}
+          onDelete={canManageUsersRoles ? () => deleteUser(record) : null}
           size="small"
         />
       ),
@@ -265,7 +272,7 @@ export default function UsersTable({ rolesRevision = 0 }) {
     <>
       <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
         <div />
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} disabled={!canManageUsersRoles}>
           Создать пользователя
         </Button>
       </Space>

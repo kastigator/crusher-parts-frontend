@@ -27,6 +27,16 @@ export const parseKitKey = (key) => {
   }
 }
 
+export const parseProfileKey = (key) => {
+  const parts = String(key).split(":")
+  if (parts[0] !== "profile" || parts.length < 4) return null
+  return {
+    rfqItemId: Number(parts[1]),
+    basePartId: Number(parts[2]),
+    profileId: Number(parts[3]),
+  }
+}
+
 const removeAltForBase = (next, rfqItemId, basePartId) => {
   const prefix = `alt:${rfqItemId}:${basePartId}:`
   Array.from(next).forEach((key) => {
@@ -43,6 +53,13 @@ const removeOriginalForBase = (next, lineType, rfqItemId, basePartId) => {
       if (String(key).startsWith(prefix)) next.delete(key)
     })
   }
+}
+
+const removeProfileForBase = (next, rfqItemId, basePartId) => {
+  const prefix = `profile:${rfqItemId}:${basePartId}:`
+  Array.from(next).forEach((key) => {
+    if (String(key).startsWith(prefix)) next.delete(key)
+  })
 }
 
 const removeKitRolesForBase = (next, rfqItemId, basePartId, selectionNodeMap) => {
@@ -73,6 +90,17 @@ export const applyAltExclusionToKeys = (
     const lineType = selectionNodeMap.get(keyStr)?.line_type
     if (!lineType) return next
     removeOriginalForBase(next, lineType, parsed.rfqItemId, parsed.basePartId)
+    removeProfileForBase(next, parsed.rfqItemId, parsed.basePartId)
+    removeKitRolesForBase(next, parsed.rfqItemId, parsed.basePartId, selectionNodeMap)
+    return next
+  }
+  if (keyStr.startsWith("profile:")) {
+    const parsed = parseProfileKey(keyStr)
+    if (!parsed) return next
+    const lineType = selectionNodeMap.get(keyStr)?.line_type
+    if (!lineType) return next
+    removeOriginalForBase(next, lineType, parsed.rfqItemId, parsed.basePartId)
+    removeAltForBase(next, parsed.rfqItemId, parsed.basePartId)
     removeKitRolesForBase(next, parsed.rfqItemId, parsed.basePartId, selectionNodeMap)
     return next
   }
@@ -85,6 +113,7 @@ export const applyAltExclusionToKeys = (
       removeOriginalForBase(next, "DEMAND", parsed.rfqItemId, basePartId)
       removeOriginalForBase(next, "BOM_COMPONENT", parsed.rfqItemId, basePartId)
       removeAltForBase(next, parsed.rfqItemId, basePartId)
+      removeProfileForBase(next, parsed.rfqItemId, basePartId)
     }
     return next
   }
@@ -92,6 +121,7 @@ export const applyAltExclusionToKeys = (
     const node = selectionNodeMap.get(keyStr)
     if (node?.original_part_id) {
       removeAltForBase(next, node.rfq_item_id, node.original_part_id)
+      removeProfileForBase(next, node.rfq_item_id, node.original_part_id)
       removeKitRolesForBase(next, node.rfq_item_id, node.original_part_id, selectionNodeMap)
     }
     return next
@@ -100,6 +130,7 @@ export const applyAltExclusionToKeys = (
     const parsed = parseBomKey(keyStr)
     if (parsed) {
       removeAltForBase(next, parsed.rfqItemId, parsed.basePartId)
+      removeProfileForBase(next, parsed.rfqItemId, parsed.basePartId)
       removeKitRolesForBase(next, parsed.rfqItemId, parsed.basePartId, selectionNodeMap)
     }
   }

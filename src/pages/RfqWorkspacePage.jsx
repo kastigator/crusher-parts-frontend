@@ -18,6 +18,7 @@ import SelectionTabContent from "@/components/rfqWorkspace/SelectionTabContent"
 import SelectionStructureModal from "@/components/rfqWorkspace/SelectionStructureModal"
 import SuppliersTabContent from "@/components/rfqWorkspace/SuppliersTabContent"
 import SupplierCreateModal from "@/components/rfqWorkspace/SupplierCreateModal"
+import { getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
 import {
   buildPriceSourceText,
   formatDate,
@@ -50,6 +51,11 @@ const splitMetaLines = (value) =>
     .split("\n")
     .map((part) => String(part).trim())
     .filter(Boolean)
+
+const normalizeRfqWorkspaceTab = (value) => {
+  const key = String(value || "").trim().toLowerCase()
+  return STEP_TO_TAB.includes(key) ? key : null
+}
 
 export default function RfqWorkspacePage() {
   const { user } = useAuth()
@@ -639,8 +645,12 @@ export default function RfqWorkspacePage() {
   }
 
   useEffect(() => {
-    setActiveTabKey("rfq")
-  }, [activeRfqId])
+    const params = new URLSearchParams(location.search || "")
+    const desiredTab = normalizeRfqWorkspaceTab(
+      params.get("tab") || location.state?.tabKey || location.state?.tab
+    )
+    setActiveTabKey(desiredTab || "rfq")
+  }, [activeRfqId, location.search, location.state])
 
   const loadRfqs = async () => {
     setLoading(true)
@@ -1400,7 +1410,10 @@ export default function RfqWorkspacePage() {
           pushSelectionKey(savedSelectionKey)
         } else
         if (type === "DEMAND") {
-          if (row.alt_original_part_id) {
+          if (row.presentation_profile_id && row.original_part_id) {
+            const key = `profile:${row.rfq_item_id}:${row.original_part_id}:${row.presentation_profile_id}`
+            pushSelectionKey(key)
+          } else if (row.alt_original_part_id) {
             const key = `alt:${row.rfq_item_id}:${row.original_part_id}:${row.alt_original_part_id}`
             pushSelectionKey(key)
           } else {
@@ -1408,7 +1421,10 @@ export default function RfqWorkspacePage() {
             pushSelectionKey(key)
           }
         } else if (type === "BOM_COMPONENT") {
-          if (row.alt_original_part_id) {
+          if (row.presentation_profile_id && row.original_part_id) {
+            const key = `profile:${row.rfq_item_id}:${row.original_part_id}:${row.presentation_profile_id}`
+            pushSelectionKey(key)
+          } else if (row.alt_original_part_id) {
             const key = `alt:${row.rfq_item_id}:${row.original_part_id}:${row.alt_original_part_id}`
             pushSelectionKey(key)
           } else {
@@ -1553,6 +1569,7 @@ export default function RfqWorkspacePage() {
           line_type: node.line_type,
           original_part_id: node.original_part_id || null,
           alt_original_part_id: node.alt_original_part_id || null,
+          presentation_profile_id: node.presentation_profile_id || null,
           bundle_id: node.bundle_id || null,
           bundle_item_id: node.bundle_item_id || null,
           line_label: node.line_label || null,
@@ -1845,7 +1862,7 @@ export default function RfqWorkspacePage() {
             {
               rfq_item_component_id: null,
               original_part_id: item.original_part_id || null,
-              cat_number: item.original_cat_number || item.client_part_number || "-",
+              cat_number: getClientFacingPartNumber(item, "-"),
               description: item.description || item.client_description || "-",
               required_qty: item.requested_qty ?? "-",
             },
@@ -2232,6 +2249,65 @@ export default function RfqWorkspacePage() {
       })
     }
 
+    const buildProfileChildren = ({
+      rfqItemId,
+      basePartId,
+      lineType,
+      qty,
+      uom,
+      keyContext = null,
+      rfqItemComponentId = null,
+      profile = null,
+    }) => {
+      const profileId = Number(profile?.presentation_profile_id || profile?.id || 0)
+      if (!basePartId || !profileId) return []
+      const lineLabel =
+        profile?.supplier_visible_part_number || profile?.internal_part_number || ""
+      const lineDescription =
+        profile?.supplier_visible_description || profile?.internal_part_name || ""
+      if (!lineLabel && !lineDescription) return []
+
+      const baseKey = `profile:${rfqItemId}:${basePartId}:${profileId}`
+      const key = keyContext ? `${baseKey}:${keyContext}` : baseKey
+      const hints = getOriginalHints(basePartId)
+
+      nodeMap.set(key, {
+        key,
+        line_type: lineType,
+        rfq_item_id: rfqItemId,
+        original_part_id: basePartId,
+        presentation_profile_id: profileId,
+        rfq_item_component_id: rfqItemComponentId,
+        line_label: lineLabel,
+        line_description: lineDescription,
+        qty: qty ?? null,
+        uom: uom || null,
+      })
+
+      return [
+        {
+          key,
+          title: (
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, width: "100%" }}>
+              <Space>
+                <Tag color="gold">Наш номер</Tag>
+                <Text>{lineLabel || "—"}</Text>
+                {lineDescription ? <Text type="secondary">· {lineDescription}</Text> : null}
+              </Space>
+              {renderSideColumn({
+                hintsBadge: renderHintsBadge(hints, rfqItemId),
+                statusTag: acceptedSet.has(key) ? <Tag color="green">Цена принята</Tag> : null,
+                rfqItemId,
+                nodeKey: key,
+                hints,
+              })}
+            </div>
+          ),
+          isLeaf: true,
+        },
+      ]
+    }
+
     const buildKitChildren = ({
       rfqItemId,
       basePartId,
@@ -2323,6 +2399,16 @@ export default function RfqWorkspacePage() {
         const compBundleItems = selectedBundleId
           ? bundleItemsCache[selectedBundleId] || []
           : []
+        const profileChildren = buildProfileChildren({
+          rfqItemId: item.rfq_item_id,
+          basePartId: comp.original_part_id,
+          lineType: "BOM_COMPONENT",
+          qty: comp.required_qty ?? null,
+          uom: comp.uom || item.uom || null,
+          keyContext,
+          rfqItemComponentId: comp.rfq_item_component_id || comp.id || null,
+          profile: comp.presentation_profile,
+        })
         const altChildren = buildAltChildren({
           rfqItemId: item.rfq_item_id,
           basePartId: comp.original_part_id,
@@ -2405,6 +2491,15 @@ export default function RfqWorkspacePage() {
             />
           ) : null
 
+        if (profileChildren.length) {
+          children.push({
+            key: `profile-group-bom:${item.rfq_item_id}:${comp.original_part_id}`,
+            title: <Text type="secondary">Наш внутренний номер для запроса поставщику</Text>,
+            selectable: false,
+            checkable: false,
+            children: profileChildren,
+          })
+        }
         if (altChildren.length) {
           children.push({
             key: `alt-group-bom:${item.rfq_item_id}:${comp.original_part_id}`,
@@ -2452,7 +2547,7 @@ export default function RfqWorkspacePage() {
         <Space>
           <Tag>{item.line_number}</Tag>
           {newLineSet.has(Number(item.line_number)) ? <Tag color="orange">NEW</Tag> : null}
-          <Text strong>{item.original_cat_number || item.client_part_number || "—"}</Text>
+          <Text strong>{getClientFacingPartNumber(item)}</Text>
           <Text type="secondary">{item.description || ""}</Text>
           {statusTag}
         </Space>
@@ -2496,6 +2591,14 @@ export default function RfqWorkspacePage() {
         const itemBundleKey = `item:${item.rfq_item_id}`
         const selectedBundleId = bundleChoice[itemBundleKey]
         const bundleItems = selectedBundleId ? bundleItemsCache[selectedBundleId] || [] : []
+        const profileChildren = buildProfileChildren({
+          rfqItemId: item.rfq_item_id,
+          basePartId: item.original_part_id,
+          lineType: "DEMAND",
+          qty: item.requested_qty ?? null,
+          uom: item.uom || null,
+          profile: item.presentation_profile,
+        })
 
         const altChildren = buildAltChildren({
           rfqItemId: item.rfq_item_id,
@@ -2573,6 +2676,15 @@ export default function RfqWorkspacePage() {
             />
           ) : null
 
+        if (profileChildren.length) {
+          children.push({
+            key: `profile-group-item:${item.rfq_item_id}:${item.original_part_id}`,
+            title: <Text type="secondary">Наш внутренний номер для запроса поставщику</Text>,
+            selectable: false,
+            checkable: false,
+            children: profileChildren,
+          })
+        }
         if (altChildren.length) {
           children.push({
             key: `alt-group-item:${item.rfq_item_id}:${item.original_part_id}`,
@@ -2708,6 +2820,7 @@ export default function RfqWorkspacePage() {
         original_part_id: node.original_part_id || null,
         cat_number: node.cat_number,
         description: node.description,
+        presentation_profile: node.presentation_profile || null,
         required_qty: node.required_qty,
         uom: node.uom,
         has_bom: Array.isArray(node.children) && node.children.length > 0,
@@ -2728,6 +2841,7 @@ export default function RfqWorkspacePage() {
         original_cat_number: item.original_cat_number,
         client_part_number: item.client_part_number,
         description: item.description,
+        presentation_profile: item.presentation_profile || null,
         requested_qty: item.requested_qty,
         uom: item.uom,
         has_bom: item.has_bom,

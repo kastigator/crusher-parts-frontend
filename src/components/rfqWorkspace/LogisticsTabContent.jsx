@@ -17,6 +17,7 @@ import {
 import axios from "@/api/axiosInstance"
 import { formatIncotermsWithPlace } from "./rfqWorkspaceUtils"
 import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
+import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
 
 const currencyOptions = [
   { value: "USD", label: "USD" },
@@ -523,8 +524,8 @@ export default function LogisticsTabContent({ rfqId, onNavigateTab }) {
         width: 260,
         render: (_, row) => (
           <Space direction="vertical" size={0}>
-            <span>{fmt(row.line_number)} · {row.original_cat_number || row.client_part_number || `RFQ ${row.rfq_item_id}`}</span>
-            {row.client_description ? <span style={{ color: "#666", fontSize: 12 }}>{row.client_description}</span> : null}
+            <span>{fmt(row.line_number)} · {getClientFacingPartNumber(row, `RFQ ${row.rfq_item_id}`)}</span>
+            {getClientFacingDescription(row) ? <span style={{ color: "#666", fontSize: 12 }}>{getClientFacingDescription(row)}</span> : null}
           </Space>
         ),
       },

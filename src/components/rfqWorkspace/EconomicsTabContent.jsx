@@ -5,6 +5,7 @@ import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
 import GroupRoutesPanel from "@/components/rfqWorkspace/economics/GroupRoutesPanel"
 import AdhocRouteModal from "@/components/rfqWorkspace/economics/AdhocRouteModal"
+import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
 
 const OPTION_KIND_LABELS = {
   WHOLE: "Целиком",
@@ -279,8 +280,8 @@ export default function EconomicsTabContent({ rfqId, onNavigateTab }) {
         title: "Строка RFQ",
         render: (_, row) => (
           <Space direction="vertical" size={0}>
-            <span>{row.line_number} · {row.original_cat_number || row.client_part_number || `#${row.rfq_item_id}`}</span>
-            {row.client_description ? <span style={{ color: "#666", fontSize: 12 }}>{row.client_description}</span> : null}
+            <span>{row.line_number} · {getClientFacingPartNumber(row, `#${row.rfq_item_id}`)}</span>
+            {getClientFacingDescription(row) ? <span style={{ color: "#666", fontSize: 12 }}>{getClientFacingDescription(row)}</span> : null}
           </Space>
         ),
       },

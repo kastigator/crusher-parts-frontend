@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Alert, Button, Card, Drawer, InputNumber, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
+import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
 
 const pricingStatusMeta = {
   OK: { color: "green", label: "OK" },
@@ -12,7 +13,7 @@ const pricingStatusMeta = {
 }
 
 const lineStatusOptions = [
-  { value: "active", label: "В КП" },
+  { value: "active", label: "В предложении" },
   { value: "excluded", label: "Исключена" },
 ]
 
@@ -34,6 +35,8 @@ export default function RequestMarginTabContent({ requestId }) {
       client_approved: "Согласовано клиентом",
       contract_signed: "Контракт подписан",
     }[String(value || "").trim()] || value || "—")
+  const canonicalQuoteStatus = (value) =>
+    String(value || "").trim().toLowerCase() === "draft" ? "internal_review" : String(value || "").trim().toLowerCase()
 
   const loadQuotes = async () => {
     if (!requestId) return
@@ -45,7 +48,7 @@ export default function RequestMarginTabContent({ requestId }) {
       setSelectedQuoteId((prev) => prev || firstQuoteId)
     } catch (e) {
       setQuotes([])
-      message.error(e?.response?.data?.message || "Не удалось загрузить КП")
+      message.error(e?.response?.data?.message || "Не удалось загрузить коммерческие предложения")
     }
   }
 
@@ -64,7 +67,7 @@ export default function RequestMarginTabContent({ requestId }) {
     } catch (e) {
       setRevisions([])
       setSelectedRevisionId(null)
-      message.error(e?.response?.data?.message || "Не удалось загрузить ревизии КП")
+      message.error(e?.response?.data?.message || "Не удалось загрузить ревизии коммерческого предложения")
     }
   }
 
@@ -95,7 +98,7 @@ export default function RequestMarginTabContent({ requestId }) {
     } catch (e) {
       setLines([])
       setDrafts({})
-      message.error(e?.response?.data?.message || "Не удалось загрузить строки КП")
+      message.error(e?.response?.data?.message || "Не удалось загрузить строки коммерческого предложения")
     } finally {
       setLoading(false)
     }
@@ -115,6 +118,17 @@ export default function RequestMarginTabContent({ requestId }) {
     loadLines()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRevisionId])
+
+  const selectedQuote = useMemo(
+    () => quotes.find((row) => Number(row.id) === Number(selectedQuoteId || 0)) || null,
+    [quotes, selectedQuoteId]
+  )
+  const quoteCurrency = selectedQuote?.currency || "USD"
+  const isLatestRevisionSelected =
+    Number(selectedRevisionId || 0) > 0 &&
+    Number(selectedRevisionId || 0) === Number(selectedQuote?.latest_revision_id || 0)
+  const canEditRevision =
+    canonicalQuoteStatus(selectedQuote?.status) === "internal_review" && isLatestRevisionSelected
 
   const totals = useMemo(() => {
     const totalsBase = lines.reduce(
@@ -160,12 +174,12 @@ export default function RequestMarginTabContent({ requestId }) {
     setSavingLineId(lineId)
     try {
       await axios.patch(`/sales-quotes/lines/${lineId}`, payload)
-      message.success("Строка КП обновлена")
+      message.success("Строка коммерческого предложения обновлена")
       await loadLines()
       await loadQuotes()
       await loadRevisions()
     } catch (e) {
-      message.error(e?.response?.data?.message || "Не удалось обновить строку КП")
+      message.error(e?.response?.data?.message || "Не удалось обновить строку коммерческого предложения")
     } finally {
       setSavingLineId(null)
     }
@@ -177,8 +191,21 @@ export default function RequestMarginTabContent({ requestId }) {
         type="info"
         showIcon
         message="Маржа считается в коммерческом контуре поверх закупочной базы"
-        description="В себестоимости уже лежит landed-база из выбора закупки. Продавец задает цену продажи или наценку и ведет клиентскую экономику без раскрытия реальных поставщиков. Статус строки позволяет исключить позицию из коммерческой ревизии."
+        description="В себестоимости уже лежит полная закупочная база из выбора закупки. Продавец задает цену продажи или наценку и ведет клиентскую экономику без раскрытия реальных поставщиков. Статус строки позволяет исключить позицию из коммерческой ревизии."
       />
+
+      {!canEditRevision && selectedQuoteId ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="Редактирование этой ревизии закрыто"
+          description={
+            canonicalQuoteStatus(selectedQuote?.status) !== "internal_review"
+              ? "Править строки можно только пока коммерческое предложение находится во «Внутреннем согласовании». Чтобы менять отправленное или согласованное предложение, сначала верните его в работу и создайте новую ревизию."
+              : "Править можно только последнюю ревизию коммерческого предложения. Исторические ревизии доступны только для просмотра."
+          }
+        />
+      ) : null}
 
       <Button size="small" onClick={() => setHelpOpen(true)} style={{ alignSelf: "flex-start" }}>
         Справка
@@ -188,18 +215,18 @@ export default function RequestMarginTabContent({ requestId }) {
         <Select
           style={{ width: 320 }}
           allowClear
-          placeholder="КП"
+          placeholder="Коммерческое предложение"
           value={selectedQuoteId || undefined}
           onChange={(value) => setSelectedQuoteId(Number(value || 0) || null)}
           options={quotes.map((row) => ({
             value: Number(row.id),
-            label: `КП #${row.id} · ${quoteStatusLabel(row.status)} · ${formatPriceWithCurrency(row.total_sell, row.currency || "USD")}`,
+            label: `Коммерческое предложение #${row.id} · ${quoteStatusLabel(row.status)} · ${formatPriceWithCurrency(row.total_sell, row.currency || "USD")}`,
           }))}
         />
         <Select
           style={{ width: 220 }}
           allowClear
-          placeholder="Ревизия КП"
+          placeholder="Ревизия предложения"
           value={selectedRevisionId || undefined}
           onChange={(value) => setSelectedRevisionId(Number(value || 0) || null)}
           options={revisions.map((row) => ({
@@ -210,14 +237,14 @@ export default function RequestMarginTabContent({ requestId }) {
       </Space>
 
       <Space wrap size={[8, 8]}>
-        <Tag color="blue">Себестоимость: {formatPriceWithCurrency(totals.cost, "USD")}</Tag>
-        <Tag color="green">Продажа: {formatPriceWithCurrency(totals.sell, "USD")}</Tag>
-        <Tag color="gold">Прибыль: {formatPriceWithCurrency(totals.profit, "USD")}</Tag>
+        <Tag color="blue">Себестоимость: {formatPriceWithCurrency(totals.cost, quoteCurrency)}</Tag>
+        <Tag color="green">Продажа: {formatPriceWithCurrency(totals.sell, quoteCurrency)}</Tag>
+        <Tag color="gold">Прибыль: {formatPriceWithCurrency(totals.profit, quoteCurrency)}</Tag>
         <Tag color="purple">Валовая маржа: {totals.marginPct.toFixed(1)}%</Tag>
         <Tag color="cyan">Наценка: {totals.markupPct.toFixed(1)}%</Tag>
       </Space>
 
-      <Card size="small" title="Коммерческая экономика по строкам КП">
+      <Card size="small" title="Коммерческая экономика по строкам предложения">
         <Table
           size="small"
           rowKey="id"
@@ -231,8 +258,8 @@ export default function RequestMarginTabContent({ requestId }) {
               width: 260,
               render: (_, row) => (
                 <Space direction="vertical" size={0}>
-                  <span>{row.original_cat_number || row.client_part_number || `#${row.client_request_revision_item_id}`}</span>
-                  {row.client_description ? <span style={{ color: "#666", fontSize: 12 }}>{row.client_description}</span> : null}
+                  <span>{getClientFacingPartNumber(row, `#${row.client_request_revision_item_id}`)}</span>
+                  {getClientFacingDescription(row) ? <span style={{ color: "#666", fontSize: 12 }}>{getClientFacingDescription(row)}</span> : null}
                 </Space>
               ),
             },
@@ -252,6 +279,7 @@ export default function RequestMarginTabContent({ requestId }) {
                   value={drafts[row.id]?.line_status || "active"}
                   onChange={(value) => handleDraftChange(row.id, { line_status: value })}
                   options={lineStatusOptions}
+                  disabled={!canEditRevision}
                 />
               ),
             },
@@ -264,6 +292,7 @@ export default function RequestMarginTabContent({ requestId }) {
                   style={{ width: "100%" }}
                   value={drafts[row.id]?.qty}
                   onChange={(value) => handleDraftChange(row.id, { qty: value })}
+                  disabled={!canEditRevision}
                 />
               ),
             },
@@ -281,6 +310,7 @@ export default function RequestMarginTabContent({ requestId }) {
                       margin_pct: drafts[row.id]?.margin_pct,
                     })
                   }
+                  disabled={!canEditRevision}
                 />
               ),
             },
@@ -298,6 +328,7 @@ export default function RequestMarginTabContent({ requestId }) {
                       cost: drafts[row.id]?.cost,
                     })
                   }
+                  disabled={!canEditRevision}
                 />
               ),
             },
@@ -315,6 +346,7 @@ export default function RequestMarginTabContent({ requestId }) {
                       cost: drafts[row.id]?.cost,
                     })
                   }
+                  disabled={!canEditRevision}
                 />
               ),
             },
@@ -374,7 +406,13 @@ export default function RequestMarginTabContent({ requestId }) {
               width: 120,
               fixed: "right",
               render: (_, row) => (
-                <Button size="small" type="primary" onClick={() => saveLine(row.id)} loading={savingLineId === row.id}>
+                <Button
+                  size="small"
+                  type="primary"
+                  onClick={() => saveLine(row.id)}
+                  loading={savingLineId === row.id}
+                  disabled={!canEditRevision}
+                >
                   Сохранить
                 </Button>
               ),
@@ -393,15 +431,15 @@ export default function RequestMarginTabContent({ requestId }) {
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Typography.Paragraph>
             Здесь продавец работает уже не с закупкой, а с коммерческой моделью клиента: задает цену
-            продажи, корректирует маржу и при необходимости исключает строки из ревизии КП.
+            продажи, корректирует маржу и при необходимости исключает строки из ревизии предложения.
           </Typography.Paragraph>
           <Typography.Paragraph>
             Статус строки нужен для клиентского торга. Исключенная строка не участвует в коммерческих
-            итогах и не должна потом попасть в PO поставщику.
+            итогах и не должна потом попасть в заказ поставщику.
           </Typography.Paragraph>
           <Typography.Paragraph style={{ marginBottom: 0 }}>
             Если клиент меняет состав слишком сильно, это сигнал вернуть вопрос в закупку и пересобрать
-            закупочный baseline, а не просто править продажную экономику.
+            утвержденный закупочный набор, а не просто править продажную экономику.
           </Typography.Paragraph>
         </Space>
       </Drawer>

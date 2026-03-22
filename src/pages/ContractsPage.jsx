@@ -91,7 +91,6 @@ export default function ContractsPage() {
         contract_number: values.contract_number,
         contract_date: values.contract_date,
         amount: values.amount ?? null,
-        currency: values.currency || null,
         status: values.status || "draft",
         file_url: values.file_url || null,
         note: values.note || null,
@@ -143,9 +142,6 @@ export default function ContractsPage() {
               </Form.Item>
               <Form.Item label="Сумма" name="amount">
                 <InputNumber style={{ width: 140 }} min={0} />
-              </Form.Item>
-              <Form.Item label="Валюта" name="currency">
-                <Input style={{ width: 90 }} />
               </Form.Item>
               <Form.Item label="Статус" name="status" initialValue="draft">
                 <Select

@@ -119,7 +119,7 @@ export default function PurchaseOrdersTabContent({
 
   const handleCreatePo = async (values) => {
     if (!signedSelectionIds.has(Number(values.selection_id))) {
-      message.warning("PO можно создавать только после контракта, открытого к исполнению")
+      message.warning("Заказ поставщику можно создавать только после контракта, открытого к исполнению")
       return
     }
     setCreating(true)
@@ -130,18 +130,17 @@ export default function PurchaseOrdersTabContent({
         shipment_group_id: values.shipment_group_id || null,
         status: values.status || "draft",
         supplier_reference: values.supplier_reference,
-        currency: values.currency || "USD",
         incoterms: values.incoterms,
         incoterms_place: values.incoterms_place || null,
         autofill_from_selection: true,
       })
-      message.success("PO создан")
+      message.success("Заказ поставщику создан")
       form.resetFields(["supplier_id", "supplier_reference", "incoterms", "incoterms_place"])
       if (typeof onCommercialUpdated === "function") {
         await onCommercialUpdated()
       }
     } catch (e) {
-      message.error(e?.response?.data?.message || "Не удалось создать PO")
+      message.error(e?.response?.data?.message || "Не удалось создать заказ поставщику")
     } finally {
       setCreating(false)
     }
@@ -168,7 +167,7 @@ export default function PurchaseOrdersTabContent({
         type="info"
         showIcon
         message="Заказы поставщикам открываются только после подписанного контракта"
-        description="После подписанного контракта закупщик выпускает заказ поставщику не по всему выбору, а по составу подписанной коммерческой ревизии: исключённые строки не попадут в заказ, а количество берется из утвержденного коммерческого объема. Первый заказ переводит контракт в статус «В исполнении»."
+        description="После подписанного контракта закупщик выпускает заказ поставщику не по всему выбору, а по составу подписанной коммерческой ревизии: исключённые строки не попадут в заказ, а количество берется из утвержденного коммерческого объема. Первый заказ поставщику переводит контракт в статус «В исполнении»."
       />
 
       <Card
@@ -183,7 +182,7 @@ export default function PurchaseOrdersTabContent({
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ status: "draft", currency: "USD" }}
+          initialValues={{ status: "draft" }}
           onFinish={handleCreatePo}
         >
           <Space wrap align="start">
@@ -223,16 +222,6 @@ export default function PurchaseOrdersTabContent({
             <Form.Item name="status" label="Статус">
               <Select style={{ width: 140 }} options={statusOptions} />
             </Form.Item>
-            <Form.Item name="currency" label="Валюта">
-              <Select
-                style={{ width: 120 }}
-                options={[
-                  { value: "USD", label: "USD" },
-                  { value: "EUR", label: "EUR" },
-                  { value: "RUB", label: "RUB" },
-                ]}
-              />
-            </Form.Item>
             <Form.Item name="incoterms" label="Инкотермс">
               <Input style={{ width: 120 }} placeholder="EXW" />
             </Form.Item>
@@ -243,6 +232,9 @@ export default function PurchaseOrdersTabContent({
               <Input style={{ width: 180 }} />
             </Form.Item>
           </Space>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+            Валюта заказа поставщику наследуется из утверждённого профиля исполнения и не меняется вручную без нового пересчёта.
+          </Typography.Paragraph>
           <Button type="primary" htmlType="submit" loading={creating} disabled={!canManagePurchaseOrders}>
             Создать заказ
           </Button>
@@ -268,7 +260,14 @@ export default function PurchaseOrdersTabContent({
             {
               title: "Поставщик",
               width: 220,
-              render: (_, row) => row.supplier_name || row.supplier_public_code || `#${row.supplier_id}`,
+              render: (_, row) => (
+                <Space direction="vertical" size={2}>
+                  <span>{row.supplier_name || row.supplier_public_code || `#${row.supplier_id}`}</span>
+                  {Number(row.substitution_lines_total || 0) > 0 ? (
+                    <Tag color="orange">Подмена в закупке</Tag>
+                  ) : null}
+                </Space>
+              ),
             },
             {
               title: "Статус",
@@ -284,13 +283,26 @@ export default function PurchaseOrdersTabContent({
             },
             {
               title: "Основание",
-              width: 160,
+              width: 240,
               render: (_, row) => (
                 <>
                   <div>{signedSelectionIds.has(Number(row.selection_id || 0)) ? "Контракт открыт к исполнению" : "Только выбор"}</div>
                   {row.shipment_group_name ? <div style={{ color: "#8c8c8c" }}>{row.shipment_group_name}</div> : null}
+                  {Number(row.substitution_lines_total || 0) > 0 ? (
+                    <div style={{ color: "#ad6800" }}>
+                      Закупка шла по нашему номеру: {row.first_supplier_display_part_number || "—"}
+                    </div>
+                  ) : null}
                 </>
               ),
+            },
+            {
+              title: "Строки",
+              width: 120,
+              render: (_, row) =>
+                Number(row.substitution_lines_total || 0) > 0
+                  ? `${Number(row.substitution_lines_total || 0)}/${Number(row.lines_total || 0)}`
+                  : `${Number(row.lines_total || 0)}`
             },
             {
               title: "Качество",

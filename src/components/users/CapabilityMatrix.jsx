@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Alert, Button, Card, Checkbox, Col, Row, Space, Tooltip, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
+import useCapabilities from "@/hooks/useCapabilities"
 
 const { Text } = Typography
 
@@ -13,12 +14,14 @@ const SECTION_LABELS = {
 }
 
 export default function CapabilityMatrix({ revision = 0, onChanged, selectedRoleSlug = "" }) {
+  const { can, isAdmin } = useCapabilities()
   const [roles, setRoles] = useState([])
   const [capabilities, setCapabilities] = useState([])
   const [assignments, setAssignments] = useState({})
   const [presets, setPresets] = useState({})
   const [loading, setLoading] = useState(false)
   const [applyingPreset, setApplyingPreset] = useState("")
+  const canManageUsersRoles = isAdmin || can("admin.users_roles.manage")
 
   useEffect(() => {
     const load = async () => {
@@ -122,13 +125,14 @@ export default function CapabilityMatrix({ revision = 0, onChanged, selectedRole
           title={`Что может делать роль: ${selectedRole.name}`}
           extra={
             presets[selectedRole.slug] ? (
-              <Button
-                size="small"
-                onClick={() => applyPreset(selectedRole.slug)}
-                loading={applyingPreset === selectedRole.slug}
-              >
-                Применить базовые действия
-              </Button>
+                <Button
+                  size="small"
+                  onClick={() => applyPreset(selectedRole.slug)}
+                  loading={applyingPreset === selectedRole.slug}
+                  disabled={!canManageUsersRoles}
+                >
+                  Применить базовые действия
+                </Button>
             ) : null
           }
         >
@@ -149,6 +153,7 @@ export default function CapabilityMatrix({ revision = 0, onChanged, selectedRole
                           <Checkbox
                             checked={!!assignments[`${selectedRole.id}__${capability.id}`]}
                             onChange={() => toggleAssignment(selectedRole.id, capability.id)}
+                            disabled={!canManageUsersRoles}
                           />
                         </Space>
                       </Card>

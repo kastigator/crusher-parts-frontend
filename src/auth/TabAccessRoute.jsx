@@ -4,6 +4,18 @@ import { useTabs } from "@/context/TabsContext"
 import PageWrapper from "@/components/common/PageWrapper"
 
 const { Text, Title } = Typography
+const CLIENTS_LOOKUP_PATHS = new Set(["/clients", "/equipment-classifier"])
+const SUPPLIER_LOOKUP_PATHS = new Set([
+  "/suppliers",
+  "/supplier-parts",
+  "/materials",
+  "/tnved-codes",
+  "/logistics-route-templates",
+])
+const MASTER_DATA_LOOKUP_PATHS = new Set([
+  "/original-parts",
+  "/standard-parts",
+])
 
 export default function TabAccessRoute({
   tabKey,
@@ -26,8 +38,29 @@ export default function TabAccessRoute({
     if (path && item.path === path) return true
     return false
   })
+  const catalogRootTab = (tabs || []).find((item) => item.path === "/catalogs")
+  const clientWorkspaceTab = (tabs || []).find((item) => item.path === "/client-request-workspace")
+  const rfqWorkspaceTab = (tabs || []).find((item) => item.path === "/rfq-workspace")
+  const hasCatalogRootAccess = !!catalogRootTab && permissions.includes(catalogRootTab.id)
+  const hasClientWorkspaceAccess = !!clientWorkspaceTab && permissions.includes(clientWorkspaceTab.id)
+  const hasRfqWorkspaceAccess = !!rfqWorkspaceTab && permissions.includes(rfqWorkspaceTab.id)
+
+  const canAccessByBundle = (() => {
+    if (!path) return false
+    if (CLIENTS_LOOKUP_PATHS.has(path)) {
+      return hasCatalogRootAccess || hasClientWorkspaceAccess
+    }
+    if (SUPPLIER_LOOKUP_PATHS.has(path)) {
+      return hasCatalogRootAccess || hasRfqWorkspaceAccess
+    }
+    if (MASTER_DATA_LOOKUP_PATHS.has(path)) {
+      return hasCatalogRootAccess || hasClientWorkspaceAccess || hasRfqWorkspaceAccess
+    }
+    return false
+  })()
 
   if (!tab) {
+    if (canAccessByBundle) return children
     return (
       <PageWrapper title={title || "Доступ"}>
         <Title level={5} type="danger">
@@ -41,6 +74,7 @@ export default function TabAccessRoute({
   }
 
   if (!permissions.includes(tab.id)) {
+    if (canAccessByBundle) return children
     return (
       <PageWrapper title={title || tab.name}>
         <Text type="secondary">

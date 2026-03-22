@@ -78,7 +78,7 @@ const AppRouter = () => (
         <Route path="original-parts/:id" element={<TabAccessRoute path="/original-parts" title="OEM детали"><OriginalPartDetailPage /></TabAccessRoute>} />
         <Route path="supplier-parts" element={<TabAccessRoute path="/supplier-parts" title="Детали поставщиков"><SupplierPartsPage /></TabAccessRoute>} />
         <Route path="supplier-parts/:id" element={<TabAccessRoute path="/supplier-parts" title="Детали поставщиков"><SupplierPartDetailPage /></TabAccessRoute>} />
-        <Route path="standard-parts" element={<TabAccessRoute path="/materials" title="Каталоги"><StandardPartsPage /></TabAccessRoute>} />
+        <Route path="standard-parts" element={<TabAccessRoute path="/standard-parts" title="Стандартные детали"><StandardPartsPage /></TabAccessRoute>} />
         <Route path="equipment-classifier" element={<TabAccessRoute path="/equipment-classifier" title="Классификатор оборудования"><EquipmentClassifierPage /></TabAccessRoute>} />
         <Route path="materials" element={<TabAccessRoute path="/materials" title="Материалы"><MaterialsPage /></TabAccessRoute>} />
         <Route path="logistics-route-templates" element={<TabAccessRoute path="/logistics-route-templates" title="Шаблоны доставки"><LogisticsRouteTemplatesPage /></TabAccessRoute>} />

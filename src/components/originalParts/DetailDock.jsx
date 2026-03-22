@@ -8,6 +8,7 @@ import SuppliersLinksTab from "./SuppliersLinksTab"
 import BundleTab from "./bundle/BundleTab"
 import OriginalPartDocumentsTab from "./OriginalPartDocumentsTab"
 import OriginalPartMaterialsTab from "./OriginalPartMaterialsTab"
+import OriginalPartPresentationProfileTab from "./OriginalPartPresentationProfileTab"
 import OriginalPartStandardPartsTab from "./OriginalPartStandardPartsTab"
 import OriginalPartUnitOverridesTab from "./OriginalPartUnitOverridesTab"
 
@@ -90,6 +91,11 @@ export default function DetailDock({
             key: "materials",
             label: "Материалы",
             children: <OriginalPartMaterialsTab partId={partId} />,
+          },
+          {
+            key: "presentation-profile",
+            label: "Номера и видимость",
+            children: <OriginalPartPresentationProfileTab partId={partId} />,
           },
           {
             key: "standard-parts",

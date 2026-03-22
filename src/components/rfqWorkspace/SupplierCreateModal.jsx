@@ -11,7 +11,7 @@ export default function SupplierCreateModal({
   setAutoAddCreatedSupplier,
 }) {
   const { can } = useCapabilities()
-  const canEditCatalogs = can("catalogs.edit")
+  const canEditCatalogs = can("catalogs.edit", "workflow.rfq.master_data.write")
   return (
     <Modal
       open={open}

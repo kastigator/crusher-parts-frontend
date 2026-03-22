@@ -172,7 +172,6 @@ export default function PurchaseOrdersPage() {
         shipment_group_id: values.shipment_group_id || null,
         status: values.status || "draft",
         supplier_reference: values.supplier_reference || null,
-        currency: values.currency || null,
         incoterms: values.incoterms || null,
         incoterms_place: values.incoterms_place || null,
       })
@@ -192,7 +191,6 @@ export default function PurchaseOrdersPage() {
         rfq_response_line_id: values.rfq_response_line_id || null,
         qty: values.qty ?? null,
         price: values.price ?? null,
-        currency: values.currency || null,
         lead_time_days: values.lead_time_days ?? null,
         note: values.note || null,
       })
@@ -266,9 +264,6 @@ export default function PurchaseOrdersPage() {
               </Form.Item>
               <Form.Item label="Референс поставщика" name="supplier_reference">
                 <Input style={{ width: 180 }} />
-              </Form.Item>
-              <Form.Item label="Валюта" name="currency">
-                <Input style={{ width: 90 }} />
               </Form.Item>
               <Form.Item label="Инкотермс" name="incoterms">
                 <Input style={{ width: 120 }} />
@@ -392,9 +387,6 @@ export default function PurchaseOrdersPage() {
                 </Form.Item>
                 <Form.Item label="Цена" name="price">
                   <InputNumber style={{ width: 120 }} min={0} />
-                </Form.Item>
-                <Form.Item label="Валюта" name="currency">
-                  <Input style={{ width: 90 }} />
                 </Form.Item>
                 <Form.Item label="Срок, дней" name="lead_time_days">
                   <InputNumber style={{ width: 120 }} min={0} />

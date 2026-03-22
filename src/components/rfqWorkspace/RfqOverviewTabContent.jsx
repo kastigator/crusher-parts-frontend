@@ -1,6 +1,7 @@
 import React from "react"
 import { Space, Table, Tag, Typography } from "antd"
 import { formatUomLabel } from "@/utils/uom"
+import { getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
 
 const { Text } = Typography
 
@@ -18,7 +19,7 @@ export default function RfqOverviewTabContent({
       dataIndex: "item",
       render: (_, record) => {
         if (record.type === "DEMAND") {
-          const cat = record.original_cat_number || record.client_part_number || "-"
+          const cat = getClientFacingPartNumber(record, "-")
           return (
             <Space>
               <Tag>{record.line_number}</Tag>
@@ -59,6 +60,15 @@ export default function RfqOverviewTabContent({
               Комплект
             </Tag>
           )
+        }
+        const hasPresentationProfile = Boolean(
+          record.presentation_profile?.supplier_visible_part_number ||
+            record.presentation_profile?.internal_part_number ||
+            record.presentation_profile?.supplier_visible_description ||
+            record.presentation_profile?.internal_part_name
+        )
+        if (hasPresentationProfile) {
+          tags.push(<Tag key="profile" color="gold">Наш номер</Tag>)
         }
         const altCount =
           record.original_part_id && altPartsMap[record.original_part_id]
@@ -116,7 +126,7 @@ export default function RfqOverviewTabContent({
       <Space wrap align="center">
         <Tag color="blue">Структура (обзор)</Tag>
         <Text type="secondary">
-          Показываем состав заявки и признаки сборок/комплектов.
+          Показываем состав заявки и признаки сборок, комплектов и наших внутренних замен для поставщика.
         </Text>
       </Space>
       <Table

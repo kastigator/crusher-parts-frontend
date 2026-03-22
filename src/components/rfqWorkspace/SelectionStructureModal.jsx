@@ -48,6 +48,7 @@ export default function SelectionStructureModal({
           <Space wrap size={8} align="center">
             <Text type="secondary">Легенда:</Text>
             <Tag>Оригинал/BOM</Tag>
+            <Tag color="gold">Наш номер</Tag>
             <Tag color="orange">Подмена</Tag>
             <Tag color="green">Роль комплекта</Tag>
             <Tag color="blue">Есть связь</Tag>

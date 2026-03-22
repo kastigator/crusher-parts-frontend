@@ -24,10 +24,10 @@ export default function ContractsTabContent({ contracts, formatDate, onCommercia
         showIcon
         message={
           executionReadyCount > 0
-            ? "Есть контракт, открытый к исполнению: PO можно оформлять по утвержденной ревизии КП"
-            : "До подписанного контракта PO создавать нельзя"
+            ? "Есть контракт, открытый к исполнению: заказы поставщикам можно оформлять по утвержденной ревизии коммерческого предложения"
+            : "До подписанного контракта заказы поставщикам создавать нельзя"
         }
-        description="Контракт создаётся и согласуется на стороне продавца в Client Request Workspace. После статуса «Подписан» первый PO переводит контракт в «В исполнении». Закупщик должен ориентироваться на утвержденную коммерческую ревизию, а не на весь исходный выбор закупки."
+        description="Контракт создаётся и согласуется на стороне продавца в разделе заявок клиента. После статуса «Подписан» первый заказ поставщику переводит контракт в «В исполнении». Закупщик должен ориентироваться на утвержденную коммерческую ревизию, а не на весь исходный выбор закупки."
       />
 
       <Card
@@ -50,8 +50,12 @@ export default function ContractsTabContent({ contracts, formatDate, onCommercia
           pagination={{ pageSize: 10, hideOnSinglePage: true }}
           columns={[
             { title: "Контракт", dataIndex: "contract_number", width: 160 },
-            { title: "КП", width: 90, render: (_, row) => `#${row.sales_quote_id}` },
-            { title: "Rev КП", width: 90, render: (_, row) => (row.sales_quote_revision_number ? `Rev ${row.sales_quote_revision_number}` : "—") },
+            { title: "Предложение", width: 110, render: (_, row) => `#${row.sales_quote_id}` },
+            {
+              title: "Ревизия предложения",
+              width: 150,
+              render: (_, row) => (row.sales_quote_revision_number ? `Ревизия ${row.sales_quote_revision_number}` : "—"),
+            },
             {
               title: "Статус",
               dataIndex: "status",
@@ -61,7 +65,7 @@ export default function ContractsTabContent({ contracts, formatDate, onCommercia
                 return <Tag color={meta?.color || "default"}>{meta?.label || value || "Черновик"}</Tag>
               },
             },
-            { title: "PO", width: 80, render: (_, row) => `${Number(row.po_confirmed || 0)}/${Number(row.po_total || 0)}` },
+            { title: "Заказы пост.", width: 110, render: (_, row) => `${Number(row.po_confirmed || 0)}/${Number(row.po_total || 0)}` },
             {
               title: "Открытые отклонения",
               width: 140,
@@ -83,6 +87,21 @@ export default function ContractsTabContent({ contracts, formatDate, onCommercia
               width: 140,
               render: (_, row) => formatPriceWithCurrency(row.amount, row.currency || "USD"),
             },
+            {
+              title: "Особенности",
+              width: 210,
+              render: (_, row) =>
+                Number(row.procurement_substitution_count || 0) > 0 ? (
+                  <Space direction="vertical" size={2}>
+                    <Tag color="orange">Подмена в закупке</Tag>
+                    <span style={{ color: "#ad6800", fontSize: 12 }}>
+                      Позиций с внутренним номером: {Number(row.procurement_substitution_count || 0)}
+                    </span>
+                  </Space>
+                ) : (
+                  "—"
+                ),
+            },
             { title: "Комментарий", dataIndex: "note" },
           ]}
         />
@@ -97,15 +116,15 @@ export default function ContractsTabContent({ contracts, formatDate, onCommercia
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Typography.Paragraph>
-            Контракт фиксирует уже не закупочный выбор сам по себе, а конкретную коммерческую ревизию КП,
+            Контракт фиксирует уже не закупочный выбор сам по себе, а конкретную ревизию коммерческого предложения,
             которую согласовал клиент.
           </Typography.Paragraph>
           <Typography.Paragraph>
-            После статуса <strong>«Подписан»</strong> закупщик может переходить к созданию PO поставщикам.
-            Первый PO переводит контракт в статус <strong>«В исполнении»</strong>.
+            После статуса <strong>«Подписан»</strong> закупщик может переходить к созданию заказов поставщикам.
+            Первый заказ поставщику переводит контракт в статус <strong>«В исполнении»</strong>.
           </Typography.Paragraph>
           <Typography.Paragraph style={{ marginBottom: 0 }}>
-            Контракт нельзя переводить в <strong>«Исполнен»</strong>, пока не подтверждены все PO и пока есть
+            Контракт нельзя переводить в <strong>«Исполнен»</strong>, пока не подтверждены все заказы поставщикам и пока есть
             открытые события качества. Если исполнение завершилось с проблемами, используется статус
             <strong>«Закрыт с проблемами»</strong>.
           </Typography.Paragraph>

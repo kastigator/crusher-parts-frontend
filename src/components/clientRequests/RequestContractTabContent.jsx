@@ -30,11 +30,19 @@ const CONTRACT_STATUS_META = {
   closed_with_issues: { label: "Закрыт с проблемами", next: [] },
 }
 
+const CONTRACT_STATUS_COLORS = {
+  draft: "default",
+  sent_to_client: "gold",
+  signed: "green",
+  in_execution: "blue",
+  completed: "success",
+  closed_with_issues: "red",
+}
+
 export default function RequestContractTabContent({ requestId }) {
   const { can } = useCapabilities()
   const canManageContracts = can("workflow.contracts.manage")
   const [quotes, setQuotes] = useState([])
-  const [quoteRevisions, setQuoteRevisions] = useState([])
   const [contracts, setContracts] = useState([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -42,12 +50,6 @@ export default function RequestContractTabContent({ requestId }) {
   const [updatingContractId, setUpdatingContractId] = useState(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const [form] = Form.useForm()
-  const selectedQuoteId = Form.useWatch("sales_quote_id", form)
-  const createContractStatusOptions = [
-    { value: "draft", label: "Черновик" },
-    { value: "sent_to_client", label: "Отправлен клиенту" },
-    { value: "signed", label: "Подписан" },
-  ]
   const quoteStatusLabel = (value) =>
     ({
       draft: "Черновик",
@@ -56,6 +58,8 @@ export default function RequestContractTabContent({ requestId }) {
       client_approved: "Согласовано клиентом",
       contract_signed: "Контракт подписан",
     }[String(value || "").trim()] || value || "—")
+  const contractStatusLabel = (value) =>
+    CONTRACT_STATUS_META[String(value || "draft").trim().toLowerCase()]?.label || value || "—"
 
   const loadData = async () => {
     if (!requestId) return
@@ -83,9 +87,11 @@ export default function RequestContractTabContent({ requestId }) {
 
   const quoteOptions = useMemo(
     () =>
-      quotes.map((row) => ({
+      quotes
+        .filter((row) => String(row.status || "").trim().toLowerCase() === "client_approved")
+        .map((row) => ({
         value: Number(row.id),
-        label: `КП #${row.id} · ${quoteStatusLabel(row.status)} · ${formatPriceWithCurrency(row.total_sell, row.currency || "USD")}`,
+        label: `Коммерческое предложение #${row.id} · ${quoteStatusLabel(row.status)} · ${formatPriceWithCurrency(row.total_sell, row.currency || "USD")}`,
       })),
     [quotes]
   )
@@ -93,9 +99,14 @@ export default function RequestContractTabContent({ requestId }) {
     () => parseSnapshot(contracts?.[0]?.company_legal_snapshot_json),
     [contracts]
   )
+  const selectedCreateQuoteId = Form.useWatch("sales_quote_id", form)
   const selectedQuoteMap = useMemo(
     () => new Map(quotes.map((row) => [Number(row.id), row])),
     [quotes]
+  )
+  const selectedCreateQuote = useMemo(
+    () => selectedQuoteMap.get(Number(selectedCreateQuoteId || 0)) || null,
+    [selectedCreateQuoteId, selectedQuoteMap]
   )
   const getContractStatusOptions = (status) => {
     const normalized = String(status || "draft").trim().toLowerCase()
@@ -109,46 +120,15 @@ export default function RequestContractTabContent({ requestId }) {
     ]
   }
 
-  useEffect(() => {
-    const quoteId = Number(selectedQuoteId || 0) || null
-    if (!quoteId) {
-      setQuoteRevisions([])
-      form.setFieldsValue({ sales_quote_revision_id: undefined })
-      return
-    }
-    let cancelled = false
-    const loadQuoteRevisions = async () => {
-      try {
-        const { data } = await axios.get(`/sales-quotes/${quoteId}/revisions`)
-        if (cancelled) return
-        const rows = Array.isArray(data) ? data : []
-        setQuoteRevisions(rows)
-        form.setFieldsValue({
-          sales_quote_revision_id: Number(rows?.[0]?.id || 0) || selectedQuoteMap.get(quoteId)?.latest_revision_id || undefined,
-        })
-      } catch (e) {
-        if (cancelled) return
-        setQuoteRevisions([])
-        message.error(e?.response?.data?.message || "Не удалось загрузить ревизии КП")
-      }
-    }
-    loadQuoteRevisions()
-    return () => {
-      cancelled = true
-    }
-  }, [form, selectedQuoteId, selectedQuoteMap])
-
   const handleCreateContract = async (values) => {
     setSaving(true)
     try {
       await axios.post("/contracts", {
         sales_quote_id: values.sales_quote_id,
-        sales_quote_revision_id: values.sales_quote_revision_id || selectedQuoteMap.get(Number(values.sales_quote_id || 0))?.latest_revision_id || null,
+        sales_quote_revision_id: selectedQuoteMap.get(Number(values.sales_quote_id || 0))?.latest_revision_id || null,
         contract_number: values.contract_number,
         contract_date: values.contract_date?.format("YYYY-MM-DD"),
         amount: values.amount,
-        currency: values.currency,
-        status: values.status,
         note: values.note,
       })
       message.success("Контракт создан")
@@ -202,8 +182,8 @@ export default function RequestContractTabContent({ requestId }) {
       <Alert
         type="info"
         showIcon
-        message="Контракт закрывает коммерческий цикл и открывает PO"
-        description="Контракт должен фиксировать конкретную коммерческую ревизию КП. После статуса «Подписан» закупщик получает право оформлять PO по утвержденной ревизии, первый PO переводит контракт в «В исполнении», а «Исполнен» возможен только после подтвержденных PO и без открытых событий качества."
+        message="Контракт закрывает коммерческий цикл и открывает заказы поставщикам"
+        description="Контракт должен фиксировать последнюю согласованную ревизию коммерческого предложения. Поэтому новый контракт можно создать только из предложения со статусом «Согласовано клиентом». После статуса «Подписан» закупщик получает право оформлять заказы поставщикам по утвержденной ревизии, первый заказ поставщику переводит контракт в «В исполнении», а статус «Исполнен» возможен только после подтвержденных заказов и без открытых событий качества."
       />
 
       <Card
@@ -215,21 +195,10 @@ export default function RequestContractTabContent({ requestId }) {
           </Button>
         }
       >
-        <Form form={form} layout="vertical" onFinish={handleCreateContract} initialValues={{ status: "draft", currency: "USD" }}>
+        <Form form={form} layout="vertical" onFinish={handleCreateContract}>
           <Space wrap align="start">
-            <Form.Item name="sales_quote_id" label="КП" rules={[{ required: true }]}>
+            <Form.Item name="sales_quote_id" label="Коммерческое предложение" rules={[{ required: true }]}>
               <Select style={{ width: 360 }} options={quoteOptions} />
-            </Form.Item>
-            <Form.Item name="sales_quote_revision_id" label="Ревизия КП">
-              <Select
-                style={{ width: 200 }}
-                allowClear
-                disabled={!selectedQuoteId}
-                options={quoteRevisions.map((row) => ({
-                  value: Number(row.id),
-                  label: `Ревизия ${row.rev_number} · ${formatPriceWithCurrency(row.total_sell, selectedQuoteMap.get(Number(selectedQuoteId || 0))?.currency || "USD")}`,
-                }))}
-              />
             </Form.Item>
             <Form.Item name="contract_number" label="Номер" rules={[{ required: true }]}>
               <Input style={{ width: 180 }} />
@@ -240,23 +209,12 @@ export default function RequestContractTabContent({ requestId }) {
             <Form.Item name="amount" label="Сумма">
               <InputNumber style={{ width: 160 }} min={0} />
             </Form.Item>
-            <Form.Item name="currency" label="Валюта">
-              <Select
-                style={{ width: 120 }}
-                options={[
-                  { value: "USD", label: "USD" },
-                  { value: "EUR", label: "EUR" },
-                  { value: "RUB", label: "RUB" },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item name="status" label="Статус">
-              <Select
-                style={{ width: 160 }}
-                options={createContractStatusOptions}
-              />
-            </Form.Item>
           </Space>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+            При создании контракт автоматически получает статус «Черновик» и фиксирует последнюю согласованную ревизию выбранного коммерческого предложения.
+            Валюта наследуется от выбранного коммерческого предложения
+            {selectedCreateQuote?.currency ? `: ${selectedCreateQuote.currency}.` : "."}
+          </Typography.Paragraph>
           <Form.Item name="note" label="Комментарий">
             <Input.TextArea rows={3} />
           </Form.Item>
@@ -278,22 +236,31 @@ export default function RequestContractTabContent({ requestId }) {
               title: "Статус",
               width: 180,
               render: (_, row) => (
-                <Select
-                  size="small"
-                  style={{ width: 190 }}
-                  value={row.status || "draft"}
-                  loading={updatingContractId === Number(row.id)}
-                  disabled={!canManageContracts}
-                  onChange={(value) => handleUpdateContractStatus(row.id, value)}
-                  options={getContractStatusOptions(row.status)}
-                />
+                <Space wrap>
+                  <Tag color={CONTRACT_STATUS_COLORS[String(row.status || "draft").trim().toLowerCase()] || "default"}>
+                    {contractStatusLabel(row.status)}
+                  </Tag>
+                  {getContractStatusOptions(row.status)
+                    .filter((option) => option.value !== String(row.status || "draft").trim().toLowerCase())
+                    .map((option) => (
+                      <Button
+                        key={option.value}
+                        size="small"
+                        loading={updatingContractId === Number(row.id)}
+                        disabled={!canManageContracts}
+                        onClick={() => handleUpdateContractStatus(row.id, option.value)}
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                </Space>
               ),
             },
             { title: "Дата", dataIndex: "contract_date", width: 120, render: formatDate },
             { title: "Сумма", width: 140, render: (_, row) => formatPriceWithCurrency(row.amount, row.currency || "USD") },
-            { title: "КП", width: 90, render: (_, row) => `#${row.sales_quote_id}` },
+            { title: "Предложение", width: 120, render: (_, row) => `#${row.sales_quote_id}` },
             {
-              title: "Ревизия КП",
+              title: "Ревизия предложения",
               width: 120,
               render: (_, row) =>
                 row.sales_quote_revision_number ? `Ревизия ${row.sales_quote_revision_number}` : "актуальная",
@@ -348,12 +315,12 @@ export default function RequestContractTabContent({ requestId }) {
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Typography.Paragraph>
-            Контракт должен ссылаться на конкретную ревизию КП, а не просто на коммерческое предложение в
+            Контракт должен ссылаться на конкретную ревизию коммерческого предложения, а не просто на предложение в
             целом. Это фиксирует именно тот состав, который клиент согласовал.
           </Typography.Paragraph>
           <Typography.Paragraph>
             После статуса <strong>«Подписан»</strong> закупщик получает право выпускать заказы поставщикам уже по
-            этой коммерческой ревизии. Первый PO переводит контракт в статус <strong>«В исполнении»</strong>.
+            этой коммерческой ревизии. Первый заказ поставщику переводит контракт в статус <strong>«В исполнении»</strong>.
           </Typography.Paragraph>
           <Typography.Paragraph style={{ marginBottom: 0 }}>
             Контракт можно перевести в <strong>«Исполнен»</strong> только когда все заказы поставщикам подтверждены и нет

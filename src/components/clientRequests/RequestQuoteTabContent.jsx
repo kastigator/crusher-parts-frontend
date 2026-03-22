@@ -42,13 +42,30 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
       client_approved: "Согласовано клиентом",
       contract_signed: "Контракт подписан",
     }[String(value || "").trim()] || value || "—")
-  const quoteStatusOptions = [
-    { value: "draft", label: "Черновик" },
-    { value: "internal_review", label: "Внутреннее согласование" },
-    { value: "sent_to_client", label: "Отправлено клиенту" },
-    { value: "client_approved", label: "Согласовано клиентом" },
-    { value: "contract_signed", label: "Контракт подписан" },
-  ]
+  const quoteStatusMeta = {
+    draft: { color: "default", label: "Черновик" },
+    internal_review: { color: "blue", label: "Внутреннее согласование" },
+    sent_to_client: { color: "gold", label: "Отправлено клиенту" },
+    client_approved: { color: "green", label: "Согласовано клиентом" },
+    contract_signed: { color: "success", label: "Контракт подписан" },
+  }
+  const canonicalQuoteStatus = (value) => (String(value || "").trim().toLowerCase() === "draft" ? "internal_review" : String(value || "").trim().toLowerCase())
+  const quoteStatusActions = (value) => {
+    const status = canonicalQuoteStatus(value)
+    if (status === "internal_review") {
+      return [{ key: "sent_to_client", label: "Отправить клиенту", type: "primary" }]
+    }
+    if (status === "sent_to_client") {
+      return [
+        { key: "internal_review", label: "Вернуть в работу" },
+        { key: "client_approved", label: "Клиент согласовал", type: "primary" },
+      ]
+    }
+    if (status === "client_approved") {
+      return [{ key: "internal_review", label: "Вернуть в работу" }]
+    }
+    return []
+  }
 
   const loadData = async () => {
     if (!requestId) return
@@ -64,7 +81,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
       setSelections(selectionRows)
       setSelectedQuoteId((prev) => prev || Number(quoteRows?.[0]?.id || 0) || null)
     } catch (e) {
-      message.error(e?.response?.data?.message || "Не удалось загрузить данные по КП")
+      message.error(e?.response?.data?.message || "Не удалось загрузить данные по коммерческим предложениям")
       setQuotes([])
       setSelections([])
     } finally {
@@ -83,7 +100,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
       setQuoteRevisions(Array.isArray(data) ? data : [])
     } catch (e) {
       setQuoteRevisions([])
-      message.error(e?.response?.data?.message || "Не удалось загрузить ревизии КП")
+      message.error(e?.response?.data?.message || "Не удалось загрузить ревизии коммерческого предложения")
     }
   }
 
@@ -112,6 +129,11 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
     () => quotes.find((row) => Number(row.id) === Number(selectedQuoteId || 0)) || null,
     [quotes, selectedQuoteId]
   )
+  const selectedCreateSelectionId = Form.useWatch("selection_id", form)
+  const selectedCreateSelection = useMemo(
+    () => selections.find((row) => Number(row.id) === Number(selectedCreateSelectionId || 0)) || null,
+    [selections, selectedCreateSelectionId]
+  )
   const selectedQuoteProfile = parseSnapshot(selectedQuote?.company_legal_snapshot_json)
 
   const handleCreateQuote = async (values) => {
@@ -124,16 +146,14 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
       const { data } = await axios.post("/sales-quotes", {
         client_request_revision_id: activeRevisionId,
         selection_id: values.selection_id,
-        status: values.status || "draft",
-        currency: values.currency || "USD",
         auto_create_revision: true,
         autofill_from_selection: true,
       })
-      message.success(data?.message || "КП создано")
+      message.success(data?.message || "Коммерческое предложение создано и передано в работу продавцу")
       form.resetFields()
       await loadData()
     } catch (e) {
-      message.error(e?.response?.data?.message || "Не удалось создать КП")
+      message.error(e?.response?.data?.message || "Не удалось создать коммерческое предложение")
     } finally {
       setSaving(false)
     }
@@ -148,10 +168,10 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
         note: "Новая коммерческая ревизия",
         copy_previous: true,
       })
-      message.success(data?.message || "Ревизия КП создана")
+      message.success(data?.message || "Ревизия коммерческого предложения создана")
       await loadRevisions(quoteId)
     } catch (e) {
-      message.error(e?.response?.data?.message || "Не удалось создать ревизию КП")
+      message.error(e?.response?.data?.message || "Не удалось создать ревизию коммерческого предложения")
     } finally {
       setCreatingRevision(false)
     }
@@ -161,11 +181,11 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
     setUpdatingQuoteId(Number(quoteId))
     try {
       await axios.patch(`/sales-quotes/${quoteId}`, { status })
-      message.success("Статус КП обновлён")
+      message.success("Статус коммерческого предложения обновлён")
       await loadData()
       await loadRevisions(quoteId)
     } catch (e) {
-      message.error(e?.response?.data?.message || "Не удалось обновить статус КП")
+      message.error(e?.response?.data?.message || "Не удалось обновить статус коммерческого предложения")
     } finally {
       setUpdatingQuoteId(null)
     }
@@ -175,10 +195,10 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <CompanyLegalSummary
         profile={selectedQuoteProfile}
-        title={selectedQuoteProfile ? "Реквизиты, зафиксированные в выбранном КП" : "Реквизиты нашего юрлица"}
+        title={selectedQuoteProfile ? "Реквизиты, зафиксированные в выбранном коммерческом предложении" : "Реквизиты нашего юрлица"}
         description={
           selectedQuoteProfile
-            ? `В КП #${selectedQuote?.id} зафиксирована версия реквизитов с ${selectedQuoteProfile.effective_from}.`
+            ? `В коммерческом предложении #${selectedQuote?.id} зафиксирована версия реквизитов с ${selectedQuoteProfile.effective_from}.`
             : undefined
         }
       />
@@ -186,62 +206,58 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
       <Alert
         type="info"
         showIcon
-        message="КП строится от утвержденного выбора закупки"
-        description="После утверждения закупочного выбора продавец создает черновик КП по текущей ревизии заявки и дальше ведет коммерческие ревизии уже в коммерческом контуре."
+        message="Коммерческое предложение строится от утвержденного выбора закупки"
+        description="После утверждения закупочного выбора продавец создает предложение по текущей ревизии заявки. Дальше новые ревизии нужны для торга и изменения состава, а не для свободного выбора этапа процесса."
       />
 
       <Card
         size="small"
-        title="Создать КП из выбора закупки"
+        title="Создать коммерческое предложение из выбора закупки"
         extra={
           <Button size="small" onClick={() => setHelpOpen(true)}>
             Справка
           </Button>
         }
       >
-        <Form form={form} layout="vertical" onFinish={handleCreateQuote} initialValues={{ status: "draft", currency: "USD" }}>
+        <Form form={form} layout="vertical" onFinish={handleCreateQuote}>
           <Space wrap align="start">
             <Form.Item name="selection_id" label="Выбор закупки" rules={[{ required: true }]}>
               <Select style={{ width: 420 }} options={selectionOptions} />
             </Form.Item>
-            <Form.Item name="status" label="Статус">
-              <Select style={{ width: 180 }} options={quoteStatusOptions} />
-            </Form.Item>
-            <Form.Item name="currency" label="Валюта">
-              <Select
-                style={{ width: 120 }}
-                options={[
-                  { value: "USD", label: "USD" },
-                  { value: "EUR", label: "EUR" },
-                  { value: "RUB", label: "RUB" },
-                ]}
-              />
-            </Form.Item>
           </Space>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+            После создания коммерческое предложение автоматически получает статус «Внутреннее согласование».
+            Валюта наследуется от утверждённого выбора закупки
+            {selectedCreateSelection?.calc_currency ? `: ${selectedCreateSelection.calc_currency}.` : "."}
+          </Typography.Paragraph>
           <Button type="primary" htmlType="submit" loading={saving} disabled={!activeRevisionId || !canManageSalesQuotes}>
-            Создать черновик КП
+            Создать коммерческое предложение
           </Button>
         </Form>
       </Card>
 
       <Card
         size="small"
-        title="КП по заявке"
+        title="Коммерческие предложения по заявке"
         extra={
           <Space>
             <Select
               allowClear
               style={{ width: 280 }}
-              placeholder="Выберите КП"
+              placeholder="Выберите коммерческое предложение"
               value={selectedQuoteId || undefined}
               onChange={(value) => setSelectedQuoteId(Number(value || 0) || null)}
               options={quotes.map((row) => ({
                 value: Number(row.id),
-                label: `КП #${row.id} · ревизия заявки ${row.rev_number ?? "?"} · ${quoteStatusLabel(row.status)}`,
+                label: `Предложение #${row.id} · ревизия заявки ${row.rev_number ?? "?"} · ${quoteStatusLabel(row.status)}`,
               }))}
             />
-            <Button onClick={handleCreateRevision} loading={creatingRevision} disabled={!selectedQuoteId || !canManageSalesQuotes}>
-              Новая ревизия КП
+            <Button
+              onClick={handleCreateRevision}
+              loading={creatingRevision}
+              disabled={!selectedQuoteId || !canManageSalesQuotes || canonicalQuoteStatus(selectedQuote?.status) === "contract_signed"}
+            >
+              Новая ревизия предложения
             </Button>
           </Space>
         }
@@ -252,25 +268,43 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
           dataSource={quotes}
           pagination={false}
           columns={[
-            { title: "КП", width: 90, render: (_, row) => `#${row.id}` },
+            { title: "Предложение", width: 110, render: (_, row) => `#${row.id}` },
             {
               title: "Статус",
               width: 200,
               render: (_, row) => (
-                <Select
-                  size="small"
-                  style={{ width: 180 }}
-                  value={row.status || "draft"}
-                  loading={updatingQuoteId === Number(row.id)}
-                  disabled={!canManageSalesQuotes}
-                  onChange={(value) => handleUpdateQuoteStatus(row.id, value)}
-                  options={quoteStatusOptions}
-                />
+                <Tag color={(quoteStatusMeta[canonicalQuoteStatus(row.status)] || quoteStatusMeta.internal_review).color}>
+                  {(quoteStatusMeta[canonicalQuoteStatus(row.status)] || quoteStatusMeta.internal_review).label}
+                </Tag>
               ),
+            },
+            {
+              title: "Действия",
+              width: 280,
+              render: (_, row) => {
+                const actions = quoteStatusActions(row.status)
+                if (!actions.length) return "—"
+                return (
+                  <Space wrap>
+                    {actions.map((action) => (
+                      <Button
+                        key={action.key}
+                        size="small"
+                        type={action.type || "default"}
+                        loading={updatingQuoteId === Number(row.id)}
+                        disabled={!canManageSalesQuotes}
+                        onClick={() => handleUpdateQuoteStatus(row.id, action.key)}
+                      >
+                        {action.label}
+                      </Button>
+                    ))}
+                  </Space>
+                )
+              },
             },
             { title: "Ревизия заявки", dataIndex: "rev_number", width: 120 },
             {
-              title: "Последняя ревизия КП",
+              title: "Последняя ревизия",
               dataIndex: "latest_revision_number",
               width: 150,
               render: (value) => value || "—",
@@ -284,7 +318,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
 
         {selectedQuoteId ? (
           <div style={{ marginTop: 12 }}>
-            <strong>Ревизии выбранного КП</strong>
+            <strong>Ревизии выбранного коммерческого предложения</strong>
             <Table
               size="small"
               style={{ marginTop: 8 }}
@@ -314,7 +348,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
       </Card>
 
       <Drawer
-        title="Справка по вкладке «КП»"
+        title="Справка по вкладке «Коммерческое предложение»"
         placement="right"
         width={440}
         open={helpOpen}
@@ -326,7 +360,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
             текущей ревизии заявки.
           </Typography.Paragraph>
           <Typography.Paragraph>
-            Новые ревизии КП нужны для торга: можно пересматривать цену, состав и условия, не меняя исходный
+            Новые ревизии нужны для торга: можно пересматривать цену, состав и условия, не меняя исходный
             закупочный выбор.
           </Typography.Paragraph>
           <Typography.Paragraph style={{ marginBottom: 0 }}>

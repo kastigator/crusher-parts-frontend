@@ -325,7 +325,7 @@ export default function RfqWorkspaceMainContent({
                 },
                 {
                   key: "sales",
-                  label: "КП",
+                  label: "Коммерческое предложение",
                   disabled: !isStructureConfirmed,
                   children: (
                     <SalesTabContent

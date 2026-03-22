@@ -25,6 +25,7 @@ import {
   formatQtyWithUomLabel,
   formatUomLabel,
 } from "./rfqDisplayUtils"
+import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
 
 const { Text } = Typography
 
@@ -307,7 +308,7 @@ const buildCoverageElementsForItem = (item, workspaceRowsForItem) => {
       key: `WHOLE:${item.rfq_item_id}`,
       path_group: "WHOLE",
       line_type: "DEMAND",
-      label: item.original_cat_number || item.client_part_number || "Позиция клиента",
+      label: getClientFacingPartNumber(item, "Позиция клиента"),
       description: "Целиком",
       original_part_id: Number(item.original_part_id || 0) || null,
       bundle_item_id: null,
@@ -611,7 +612,7 @@ const buildCoverageSlotsForItem = (item, workspaceRowsForItem) => {
   const wholeSlot = allowWhole
     ? {
         key: `WHOLE_SLOT:${item?.rfq_item_id}`,
-        label: item?.original_cat_number || item?.client_part_number || "Позиция клиента",
+        label: getClientFacingPartNumber(item, "Позиция клиента"),
         description: "Целиком",
         required_qty: item?.requested_qty ?? null,
         uom: item?.uom || null,
@@ -725,8 +726,8 @@ export default function CoverageTabContent({
     () =>
       structureItems.map((item) => ({
         value: Number(item.rfq_item_id),
-        label: `${item.line_number || "?"} · ${item.original_cat_number || item.client_part_number || "—"}${
-          item.description ? ` · ${item.description}` : ""
+        label: `${item.line_number || "?"} · ${getClientFacingPartNumber(item)}${
+          getClientFacingDescription(item) ? ` · ${getClientFacingDescription(item)}` : ""
         }`,
       })),
     [structureItems]
@@ -847,7 +848,7 @@ export default function CoverageTabContent({
           local_key: el.key,
           rfq_item_id: itemId,
           line_number: item?.line_number || "?",
-          item_label: item?.original_cat_number || item?.client_part_number || "—",
+          item_label: getClientFacingPartNumber(item),
           item_description: item?.description || "",
           order: idx,
           path_group: el.path_group,

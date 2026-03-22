@@ -44,6 +44,12 @@ import { useAuth } from "@/auth/AuthContext"
 import { useSearchParams } from "react-router-dom"
 import useCapabilities from "@/hooks/useCapabilities"
 
+const CLIENT_WORKSPACE_TABS = new Set(["items", "details", "margin", "quote", "contract"])
+const normalizeWorkspaceTab = (value) => {
+  const key = String(value || "").trim().toLowerCase()
+  return CLIENT_WORKSPACE_TABS.has(key) ? key : null
+}
+
 const STATUS_OPTIONS = [
   { value: "draft", label: "Черновик" },
   { value: "in_progress", label: "В работе" },
@@ -151,6 +157,17 @@ const getStatusStepIndex = (status) => {
   const idx = STATUS_STEPS.findIndex((s) => s.key === status)
   return idx >= 0 ? idx : 0
 }
+
+const getClientRequestPartNumber = (row, fallback = "—") =>
+  String(row?.client_display_part_number || row?.client_part_number || row?.original_cat_number || fallback)
+
+const getClientRequestDescription = (row, fallback = "") =>
+  String(row?.client_display_description || row?.client_description || row?.original_description_ru || row?.original_description_en || fallback)
+
+const getInitialClientPartNumber = (part, overrides = {}) =>
+  overrides.client_part_number ||
+  part?.cat_number ||
+  null
 
 export default function ClientRequestsPage() {
   const { user } = useAuth()
@@ -352,6 +369,25 @@ export default function ClientRequestsPage() {
       cancelled = true
     }
   }, [searchParams, createForm, clients.length])
+
+  useEffect(() => {
+    const requestId = Number(searchParams.get("request_id") || searchParams.get("requestId") || 0) || null
+    const equipmentUnitId = Number(searchParams.get("equipment_unit_id") || 0) || null
+    const desiredTab = normalizeWorkspaceTab(searchParams.get("tab"))
+    if (!requestId || !requests.length) return
+
+    const targetRequest = requests.find((row) => Number(row.id) === Number(requestId)) || null
+    if (!targetRequest) return
+
+    if (Number(activeRequest?.id) !== Number(requestId)) {
+      openWorkspace(targetRequest, { equipmentUnitId, tabKey: desiredTab || undefined })
+      return
+    }
+
+    if (desiredTab && workspaceTabKey !== desiredTab) {
+      setWorkspaceTabKey(desiredTab)
+    }
+  }, [searchParams, requests, activeRequest?.id, workspaceTabKey])
 
   const loadContacts = async (clientId, applyToForm = true) => {
     if (!clientId) {
@@ -792,7 +828,7 @@ export default function ClientRequestsPage() {
     setOriginalResults([])
     setItemEditOpen(false)
     setItemEditRecord(null)
-    setWorkspaceTabKey("items")
+    setWorkspaceTabKey(normalizeWorkspaceTab(options.tabKey) || "items")
     setQuickSearch("")
     setQuickResults([])
     setQuickSelectedPart(null)
@@ -1251,8 +1287,7 @@ export default function ClientRequestsPage() {
       original_cat_number: part?.cat_number || null,
       original_description_ru: part?.description_ru || null,
       original_description_en: part?.description_en || null,
-      client_part_number:
-        overrides.cat_number || part?.cat_number || overrides.client_part_number || null,
+      client_part_number: getInitialClientPartNumber(part, overrides),
       client_description:
         overrides.client_description ||
         part?.description_ru ||
@@ -1302,7 +1337,7 @@ export default function ClientRequestsPage() {
               modelId ||
               null,
             client_part_number:
-              item.client_part_number || item.original_cat_number || null,
+              item.client_part_number || null,
             client_description:
               item.client_description ||
               item.original_description_ru ||
@@ -2208,7 +2243,7 @@ export default function ClientRequestsPage() {
       dataIndex: "original_cat_number",
       width: 160,
       render: (v, record) => {
-        const label = v || record.client_part_number || "—"
+        const label = getClientRequestPartNumber(record)
         const tip = record.original_description_ru || record.original_description_en || ""
         return <span title={tip || undefined}>{label}</span>
       },
@@ -2363,7 +2398,10 @@ export default function ClientRequestsPage() {
           onChange={(e) =>
             updateStagedRow(row.id, {
               cat_number: e.target.value,
-              client_part_number: row.client_part_number || e.target.value,
+              client_part_number:
+                row.client_part_number === row.cat_number || !row.client_part_number
+                  ? e.target.value
+                  : row.client_part_number,
             })
           }
         />

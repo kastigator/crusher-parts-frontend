@@ -6,10 +6,10 @@ import {
   Checkbox,
   Col,
   DatePicker,
+  Modal,
   Empty,
   Form,
   InputNumber,
-  Modal,
   Row,
   Select,
   Space,
@@ -53,58 +53,82 @@ const KPI_CURRENCY_OPTIONS = ["RUB", "USD", "EUR", "CNY"].map((code) => ({
   value: code,
   label: code,
 }))
-const SALES_SERIES = [
+const PROCUREMENT_SERIES = [
   {
-    key: "signed_amount",
-    label: "Сумма контрактов",
+    key: "landed_amount",
+    label: "Сумма выбора",
     color: "#2563eb",
     axis: "left",
   },
   {
-    key: "requests_count",
-    label: "Заявки",
+    key: "rfqs_count",
+    label: "RFQ",
     color: "#16a34a",
     axis: "right",
   },
   {
-    key: "quotes_count",
-    label: "Коммерческие предложения",
+    key: "invites_count",
+    label: "Приглашения",
+    color: "#0ea5e9",
+    axis: "right",
+  },
+  {
+    key: "responses_count",
+    label: "Ответы",
+    color: "#22c55e",
+    axis: "right",
+  },
+  {
+    key: "selections_count",
+    label: "Выборы",
     color: "#f97316",
     axis: "right",
   },
   {
-    key: "contracts_count",
-    label: "Контракты",
+    key: "purchase_orders_count",
+    label: "Заказы",
     color: "#9333ea",
     axis: "right",
   },
+  {
+    key: "quality_events_count",
+    label: "Инциденты",
+    color: "#dc2626",
+    axis: "right",
+  },
 ]
-const SALES_TARGET_FIELD_MAP = {
-  requests_count: "target_requests",
-  quotes_count: "target_quotes",
-  contracts_count: "target_contracts",
-  signed_amount: "target_signed_amount",
+const PROCUREMENT_TARGET_FIELD_MAP = {
+  rfqs_count: "target_rfqs",
+  invites_count: "target_invites",
+  selections_count: "target_selections",
+  purchase_orders_count: "target_purchase_orders",
+  landed_amount: "target_landed_amount",
 }
-const SALES_KPI_HELP_SECTIONS = [
+const PROCUREMENT_KPI_HELP_SECTIONS = [
   {
-    title: "Что считается в коммерческом KPI",
+    title: "Что считается в закупочном KPI",
     body:
-      "Коммерческий KPI считает результативность продавца по его рабочему контуру: заявки клиента, созданные коммерческие предложения и подписанные контракты. Это не закупочная статистика и не логистика исполнения.",
+      "Закупочный KPI отражает воронку работы закупщика: сколько RFQ он открыл, сколько поставщиков пригласил, сколько ответов получил, сколько выборов утвердил и сколько заказов поставщикам оформил.",
   },
   {
-    title: "Как читать сумму контрактов",
+    title: "Как понимать отклик поставщиков",
     body:
-      "Если контракты заключены в разных валютах, система сначала пересчитывает их в выбранную валюту нормировки, а потом суммирует. Поэтому показатель можно смотреть в рублях, долларах, евро или другой поддерживаемой базовой валюте.",
+      "Отклик поставщиков считается как отношение полученных ответов к приглашениям. Это показатель качества работы с базой поставщиков и полноты реакции рынка, а не только скорости самого закупщика.",
   },
   {
-    title: "Что показывают цели KPI",
+    title: "Как считается сумма выбора",
     body:
-      "Цели задаются отдельно по продавцу и периоду. Количественные цели сравниваются напрямую, а денежная цель пересчитывается в текущую валюту нормировки, чтобы план и факт сравнивались в одном масштабе.",
+      "Сумма выбора строится по утвержденным выборам закупки. Если выборы были в разных валютах, они сначала нормируются в выбранную валюту экрана, и только после этого суммируются.",
   },
   {
-    title: "Когда цифры не надо трактовать как успех продаж",
+    title: "Как трактовать скорость",
     body:
-      "Если заявок много, а коммерческих предложений и контрактов мало, это сигнал о провале конверсии. Если контрактов мало, но сумма высокая, это может быть один крупный клиентский кейс, а не стабильный поток.",
+      "Среднее время до выбора показывает, сколько занимает путь от создания RFQ до утвержденного выбора. Среднее время до первого ответа показывает реакцию поставщиков. Если временные метки в данных повреждены, такие строки исключаются из расчета.",
+  },
+  {
+    title: "Что значит инцидент поставщика",
+    body:
+      "Инциденты поставщиков — это негативный показатель: жалобы, задержки и другие quality events, привязанные к выбору или заказу поставщику. Рост этого числа ухудшает оценку закупочного контура, даже если объём высокий.",
   },
 ]
 
@@ -166,6 +190,24 @@ const formatMoney = (value, currency = "RUB") => {
   }
 }
 
+const formatPercent = (value) => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return "—"
+  return `${new Intl.NumberFormat("ru-RU", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(num)}%`
+}
+
+const formatHours = (value) => {
+  const num = Number(value)
+  if (!Number.isFinite(num) || num <= 0) return "—"
+  return `${new Intl.NumberFormat("ru-RU", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(num)} ч`
+}
+
 const SummaryCard = ({ title, value, hint, tone }) => (
   <Card
     size="small"
@@ -189,13 +231,13 @@ const SummaryCard = ({ title, value, hint, tone }) => (
   </Card>
 )
 
-export default function SalesKpiDashboard({
-  lockedSellerId = null,
-  canSelectAnySeller = true,
+export default function ProcurementKpiDashboard({
+  lockedBuyerId = null,
+  canSelectAnyBuyer = true,
 }) {
   const { user } = useAuth()
   const [range, setRange] = useState(DEFAULT_RANGE)
-  const [sellerId, setSellerId] = useState(null)
+  const [buyerId, setBuyerId] = useState(null)
   const [baseCurrency, setBaseCurrency] = useState("RUB")
   const [aggregation, setAggregation] = useState("week")
   const [chartMode, setChartMode] = useState("fact")
@@ -211,12 +253,17 @@ export default function SalesKpiDashboard({
   const [editOpen, setEditOpen] = useState(false)
   const [editingTarget, setEditingTarget] = useState(null)
   const [helpOpen, setHelpOpen] = useState(false)
-  const [visibleSeries, setVisibleSeries] = useState(SALES_SERIES.map((item) => item.key))
+  const [visibleSeries, setVisibleSeries] = useState([
+    "landed_amount",
+    "rfqs_count",
+    "responses_count",
+    "selections_count",
+  ])
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [detailsTitle, setDetailsTitle] = useState("")
   const [detailsRows, setDetailsRows] = useState([])
-  const [detailsType, setDetailsType] = useState("sales")
+  const [detailsType, setDetailsType] = useState("procurement")
 
   const [targetForm] = Form.useForm()
   const [editForm] = Form.useForm()
@@ -226,17 +273,17 @@ export default function SalesKpiDashboard({
     return !!(user && (role === "admin" || user.role_id === 1 || user.is_admin))
   }, [user])
 
-  const effectiveSellerId = lockedSellerId || sellerId || null
+  const effectiveBuyerId = lockedBuyerId || buyerId || null
 
   useEffect(() => {
-    if (lockedSellerId && sellerId !== lockedSellerId) {
-      setSellerId(lockedSellerId)
+    if (lockedBuyerId && buyerId !== lockedBuyerId) {
+      setBuyerId(lockedBuyerId)
     }
-  }, [lockedSellerId, sellerId])
+  }, [lockedBuyerId, buyerId])
 
   const loadUsers = useCallback(async () => {
     try {
-      const { data } = await axios.get("/sales-kpi/sellers")
+      const { data } = await axios.get("/procurement-kpi/buyers")
       const list = Array.isArray(data) ? data : []
       if (list.length) {
         setUsers(list)
@@ -250,7 +297,7 @@ export default function SalesKpiDashboard({
       const { data } = await axios.get("/users")
       setUsers(Array.isArray(data) ? data : [])
     } catch (e) {
-      console.error("Не удалось загрузить пользователей для KPI:", e)
+      console.error("Не удалось загрузить пользователей для закупочного KPI:", e)
     }
   }, [])
 
@@ -263,10 +310,16 @@ export default function SalesKpiDashboard({
       const base = payload.summary || payload.data || payload
       if (base && typeof base === "object") {
         return {
-          requests_count: pickNumber(base, ["requests_count", "requests"]),
-          quotes_count: pickNumber(base, ["quotes_count", "quotes"]),
-          contracts_count: pickNumber(base, ["contracts_count", "contracts"]),
-          signed_amount: pickNumber(base, ["signed_amount", "amount"]),
+          rfqs_count: pickNumber(base, ["rfqs_count"]),
+          invites_count: pickNumber(base, ["invites_count"]),
+          responses_count: pickNumber(base, ["responses_count"]),
+          selections_count: pickNumber(base, ["selections_count"]),
+          purchase_orders_count: pickNumber(base, ["purchase_orders_count"]),
+          quality_events_count: pickNumber(base, ["quality_events_count"]),
+          landed_amount: pickNumber(base, ["landed_amount"]),
+          response_rate_pct: pickNumber(base, ["response_rate_pct"]),
+          avg_hours_to_selection: pickNumber(base, ["avg_hours_to_selection"]),
+          avg_hours_to_first_response: pickNumber(base, ["avg_hours_to_first_response"]),
           currency: base.currency || base.base_currency || "RUB",
         }
       }
@@ -274,22 +327,39 @@ export default function SalesKpiDashboard({
 
     if (!dailyRows.length) return null
 
-    return dailyRows.reduce(
+    const total = dailyRows.reduce(
       (acc, row) => ({
-        requests_count: acc.requests_count + pickNumber(row, ["requests_count"]),
-        quotes_count: acc.quotes_count + pickNumber(row, ["quotes_count"]),
-        contracts_count: acc.contracts_count + pickNumber(row, ["contracts_count"]),
-        signed_amount: acc.signed_amount + pickNumber(row, ["signed_amount"]),
+        rfqs_count: acc.rfqs_count + pickNumber(row, ["rfqs_count"]),
+        invites_count: acc.invites_count + pickNumber(row, ["invites_count"]),
+        responses_count: acc.responses_count + pickNumber(row, ["responses_count"]),
+        selections_count: acc.selections_count + pickNumber(row, ["selections_count"]),
+        purchase_orders_count:
+          acc.purchase_orders_count + pickNumber(row, ["purchase_orders_count"]),
+        quality_events_count:
+          acc.quality_events_count + pickNumber(row, ["quality_events_count"]),
+        landed_amount: acc.landed_amount + pickNumber(row, ["landed_amount"]),
         currency: acc.currency,
       }),
       {
-        requests_count: 0,
-        quotes_count: 0,
-        contracts_count: 0,
-        signed_amount: 0,
+        rfqs_count: 0,
+        invites_count: 0,
+        responses_count: 0,
+        selections_count: 0,
+        purchase_orders_count: 0,
+        quality_events_count: 0,
+        landed_amount: 0,
         currency: "RUB",
       },
     )
+
+    return {
+      ...total,
+      response_rate_pct: total.invites_count
+        ? (total.responses_count / total.invites_count) * 100
+        : 0,
+      avg_hours_to_selection: 0,
+      avg_hours_to_first_response: 0,
+    }
   }, [])
 
   const loadKpi = useCallback(async () => {
@@ -303,12 +373,12 @@ export default function SalesKpiDashboard({
       date_to: to.format("YYYY-MM-DD"),
       base_currency: baseCurrency,
     }
-    if (effectiveSellerId) params.seller_id = effectiveSellerId
+    if (effectiveBuyerId) params.buyer_id = effectiveBuyerId
 
     const requests = [
-      axios.get("/sales-kpi/summary", { params }),
-      axios.get("/sales-kpi/daily", { params }),
-      axios.get("/sales-kpi/targets", { params }),
+      axios.get("/procurement-kpi/summary", { params }),
+      axios.get("/procurement-kpi/daily", { params }),
+      axios.get("/procurement-kpi/targets", { params }),
     ]
 
     try {
@@ -339,10 +409,13 @@ export default function SalesKpiDashboard({
       const dailyRows = extractList(dailyPayload).map((row) => ({
         ...row,
         day: resolveDay(row),
-        requests_count: pickNumber(row, ["requests_count", "requests"]),
-        quotes_count: pickNumber(row, ["quotes_count", "quotes"]),
-        contracts_count: pickNumber(row, ["contracts_count", "contracts"]),
-        signed_amount: pickNumber(row, ["signed_amount", "amount"]),
+        rfqs_count: pickNumber(row, ["rfqs_count"]),
+        invites_count: pickNumber(row, ["invites_count"]),
+        responses_count: pickNumber(row, ["responses_count"]),
+        selections_count: pickNumber(row, ["selections_count"]),
+        purchase_orders_count: pickNumber(row, ["purchase_orders_count"]),
+        quality_events_count: pickNumber(row, ["quality_events_count"]),
+        landed_amount: pickNumber(row, ["landed_amount"]),
       }))
 
       setDaily(dailyRows)
@@ -355,15 +428,15 @@ export default function SalesKpiDashboard({
           ![404, 501].includes(r.reason?.response?.status),
       )
       if (hasErrors) {
-        setError("Часть данных KPI не удалось загрузить.")
+        setError("Часть данных закупочного KPI не удалось загрузить.")
       }
     } catch (e) {
-      console.error("Ошибка загрузки KPI:", e)
-      setError("Не удалось загрузить данные KPI.")
+      console.error("Ошибка загрузки закупочного KPI:", e)
+      setError("Не удалось загрузить данные закупочного KPI.")
     } finally {
       setLoading(false)
     }
-  }, [range, effectiveSellerId, baseCurrency, buildSummary])
+  }, [range, effectiveBuyerId, baseCurrency, buildSummary])
 
   const handleCreateTarget = async (values) => {
     const [start, end] = values.period || []
@@ -373,27 +446,28 @@ export default function SalesKpiDashboard({
     }
 
     const payload = {
-      seller_user_id: values.seller_user_id,
+      buyer_user_id: values.buyer_user_id,
       period_start: start.format("YYYY-MM-DD"),
       period_end: end.format("YYYY-MM-DD"),
-      target_requests: values.target_requests ?? null,
-      target_quotes: values.target_quotes ?? null,
-      target_contracts: values.target_contracts ?? null,
-      target_signed_amount: values.target_signed_amount ?? null,
+      target_rfqs: values.target_rfqs ?? null,
+      target_invites: values.target_invites ?? null,
+      target_selections: values.target_selections ?? null,
+      target_purchase_orders: values.target_purchase_orders ?? null,
+      target_landed_amount: values.target_landed_amount ?? null,
       target_currency: baseCurrency,
     }
 
     setSavingTarget(true)
     try {
-      await axios.post("/sales-kpi/targets", payload)
-      message.success("Цель KPI добавлена")
+      await axios.post("/procurement-kpi/targets", payload)
+      message.success("Цель закупочного KPI добавлена")
       targetForm.resetFields()
       await loadKpi()
     } catch (e) {
       if (e?.response?.status === 409) {
         message.error("Цель на этот период уже существует")
       } else {
-        console.error("Ошибка создания цели KPI:", e)
+        console.error("Ошибка создания цели закупочного KPI:", e)
         message.error("Не удалось добавить цель")
       }
     } finally {
@@ -404,15 +478,16 @@ export default function SalesKpiDashboard({
   const openEditTarget = (row) => {
     setEditingTarget(row)
     editForm.setFieldsValue({
-      seller_user_id: row.seller_user_id,
+      buyer_user_id: row.buyer_user_id,
       period: [
         row.period_start ? dayjs(row.period_start) : null,
         row.period_end ? dayjs(row.period_end) : null,
       ],
-      target_requests: row.target_requests ?? null,
-      target_quotes: row.target_quotes ?? null,
-      target_contracts: row.target_contracts ?? null,
-      target_signed_amount: row.target_signed_amount ?? null,
+      target_rfqs: row.target_rfqs ?? null,
+      target_invites: row.target_invites ?? null,
+      target_selections: row.target_selections ?? null,
+      target_purchase_orders: row.target_purchase_orders ?? null,
+      target_landed_amount: row.target_landed_amount ?? null,
     })
     setEditOpen(true)
   }
@@ -428,19 +503,20 @@ export default function SalesKpiDashboard({
       }
 
       const payload = {
-        seller_user_id: values.seller_user_id,
+        buyer_user_id: values.buyer_user_id,
         period_start: start.format("YYYY-MM-DD"),
         period_end: end.format("YYYY-MM-DD"),
-        target_requests: values.target_requests ?? null,
-        target_quotes: values.target_quotes ?? null,
-        target_contracts: values.target_contracts ?? null,
-        target_signed_amount: values.target_signed_amount ?? null,
+        target_rfqs: values.target_rfqs ?? null,
+        target_invites: values.target_invites ?? null,
+        target_selections: values.target_selections ?? null,
+        target_purchase_orders: values.target_purchase_orders ?? null,
+        target_landed_amount: values.target_landed_amount ?? null,
         target_currency: baseCurrency,
       }
 
       setSavingTarget(true)
-      await axios.put(`/sales-kpi/targets/${editingTarget.id}`, payload)
-      message.success("Цель KPI обновлена")
+      await axios.put(`/procurement-kpi/targets/${editingTarget.id}`, payload)
+      message.success("Цель закупочного KPI обновлена")
       setEditOpen(false)
       setEditingTarget(null)
       await loadKpi()
@@ -448,7 +524,7 @@ export default function SalesKpiDashboard({
       if (e?.response?.status === 409) {
         message.error("Цель на этот период уже существует")
       } else {
-        console.error("Ошибка обновления цели KPI:", e)
+        console.error("Ошибка обновления цели закупочного KPI:", e)
         message.error("Не удалось обновить цель")
       }
     } finally {
@@ -457,14 +533,14 @@ export default function SalesKpiDashboard({
   }
 
   const handleDeleteTarget = async (row) => {
-    const { confirmed } = await confirmAction("Удалить цель KPI?")
+    const { confirmed } = await confirmAction("Удалить цель закупочного KPI?")
     if (!confirmed) return
     try {
-      await axios.delete(`/sales-kpi/targets/${row.id}`)
-      message.success("Цель KPI удалена")
+      await axios.delete(`/procurement-kpi/targets/${row.id}`)
+      message.success("Цель закупочного KPI удалена")
       await loadKpi()
     } catch (e) {
-      console.error("Ошибка удаления цели KPI:", e)
+      console.error("Ошибка удаления цели закупочного KPI:", e)
       message.error("Не удалось удалить цель")
     }
   }
@@ -480,7 +556,7 @@ export default function SalesKpiDashboard({
 
   const currency = summary?.currency || "RUB"
 
-  const sellerOptions = useMemo(
+  const buyerOptions = useMemo(
     () =>
       users.map((u) => ({
         value: u.id,
@@ -492,10 +568,13 @@ export default function SalesKpiDashboard({
   const chartData = useMemo(
     () =>
       aggregateKpiSeries(daily, aggregation, [
-        "requests_count",
-        "quotes_count",
-        "contracts_count",
-        "signed_amount",
+        "rfqs_count",
+        "invites_count",
+        "responses_count",
+        "selections_count",
+        "purchase_orders_count",
+        "quality_events_count",
+        "landed_amount",
       ]),
     [aggregation, daily],
   )
@@ -504,15 +583,15 @@ export default function SalesKpiDashboard({
     () =>
       pickApplicableTarget({
         targets,
-        userId: effectiveSellerId,
+        userId: effectiveBuyerId,
         range,
-        userField: "seller_user_id",
+        userField: "buyer_user_id",
       }),
-    [effectiveSellerId, range, targets],
+    [effectiveBuyerId, range, targets],
   )
 
   const chartSeries = useMemo(
-    () => SALES_SERIES.filter((item) => visibleSeries.includes(item.key)),
+    () => PROCUREMENT_SERIES.filter((item) => visibleSeries.includes(item.key)),
     [visibleSeries],
   )
 
@@ -522,7 +601,7 @@ export default function SalesKpiDashboard({
       rows: chartData,
       visibleSeries,
       target: activeTarget,
-      mapping: SALES_TARGET_FIELD_MAP,
+      mapping: PROCUREMENT_TARGET_FIELD_MAP,
     })
   }, [activeTarget, chartData, chartMode, visibleSeries])
 
@@ -535,9 +614,9 @@ export default function SalesKpiDashboard({
   }, [])
 
   const openDetails = useCallback(
-    async (metric, title, type = "sales") => {
-      if (!effectiveSellerId) {
-        message.info("Сначала выберите продавца")
+    async (metric, title, type = "procurement") => {
+      if (!effectiveBuyerId) {
+        message.info("Сначала выберите закупщика")
         return
       }
       setDetailsOpen(true)
@@ -546,55 +625,53 @@ export default function SalesKpiDashboard({
       setDetailsRows([])
       setDetailsType(type)
       try {
-        const { data } = await axios.get("/sales-kpi/details", {
+        const { data } = await axios.get("/procurement-kpi/details", {
           params: {
-            seller_id: effectiveSellerId,
+            buyer_id: effectiveBuyerId,
             date_from: range?.[0]?.format("YYYY-MM-DD"),
             date_to: range?.[1]?.format("YYYY-MM-DD"),
             metric,
+            base_currency: baseCurrency,
           },
         })
         setDetailsRows(Array.isArray(data?.rows) ? data.rows : [])
       } catch (e) {
-        console.error("Ошибка загрузки деталей KPI:", e)
+        console.error("Ошибка загрузки деталей закупочного KPI:", e)
         message.error("Не удалось загрузить детали показателя")
       } finally {
         setDetailsLoading(false)
       }
     },
-    [effectiveSellerId, range],
+    [baseCurrency, effectiveBuyerId, range],
   )
 
   const targetsData = useMemo(() => {
     const list = Array.isArray(targets) ? targets : []
     return list.slice().sort((a, b) => {
-      const aStart = a.period_start || a.periodStart || ""
-      const bStart = b.period_start || b.periodStart || ""
+      const aStart = a.period_start || ""
+      const bStart = b.period_start || ""
       return String(bStart).localeCompare(String(aStart))
     })
   }, [targets])
 
   const columns = [
     {
-      title: "Продавец",
-      dataIndex: "seller",
-      width: 200,
+      title: "Закупщик",
+      dataIndex: "buyer",
+      width: 220,
       render: (_, row) =>
-        row.seller_name ||
-        row.seller_user_name ||
+        row.buyer_name ||
         row.user_name ||
         row.username ||
-        (row.seller_user_id || row.user_id
-          ? `User #${row.seller_user_id || row.user_id}`
-          : "—"),
+        (row.buyer_user_id ? `User #${row.buyer_user_id}` : "—"),
     },
     {
       title: "Период",
       dataIndex: "period",
       width: 180,
       render: (_, row) => {
-        const from = row.period_start || row.periodStart
-        const to = row.period_end || row.periodEnd
+        const from = row.period_start
+        const to = row.period_end
         if (!from && !to) return "—"
         const left = from ? dayjs(from).format("YYYY-MM-DD") : "?"
         const right = to ? dayjs(to).format("YYYY-MM-DD") : "?"
@@ -602,54 +679,64 @@ export default function SalesKpiDashboard({
       },
     },
     {
-      title: "План, заявки",
-      dataIndex: "target_requests",
+      title: "План, RFQ",
+      dataIndex: "target_rfqs",
       align: "right",
-      render: (v, row) => formatNumber(v ?? row.targetRequests),
+      render: (v) => formatNumber(v),
     },
     {
-      title: "План, КП",
-      dataIndex: "target_quotes",
+      title: "План, приглашения",
+      dataIndex: "target_invites",
       align: "right",
-      render: (v, row) => formatNumber(v ?? row.targetQuotes),
+      render: (v) => formatNumber(v),
     },
     {
-      title: "План, контракты",
-      dataIndex: "target_contracts",
+      title: "План, выборы",
+      dataIndex: "target_selections",
       align: "right",
-      render: (v, row) => formatNumber(v ?? row.targetContracts),
+      render: (v) => formatNumber(v),
     },
     {
-      title: "План, сумма контрактов",
-      dataIndex: "target_signed_amount",
+      title: "План, заказы",
+      dataIndex: "target_purchase_orders",
       align: "right",
-      render: (v, row) =>
-        formatMoney(v ?? row.targetSignedAmount, row.currency || currency),
+      render: (v) => formatNumber(v),
     },
     {
-      title: "Факт, заявки",
-      dataIndex: "actual_requests",
+      title: "План, сумма выбора",
+      dataIndex: "target_landed_amount",
       align: "right",
-      render: (v, row) => formatNumber(v ?? row.actual_requests ?? row.actualRequests),
+      render: (v, row) => formatMoney(v, row.currency || currency),
     },
     {
-      title: "Факт, КП",
-      dataIndex: "actual_quotes",
+      title: "Факт, RFQ",
+      dataIndex: "actual_rfqs",
       align: "right",
-      render: (v, row) => formatNumber(v ?? row.actual_quotes ?? row.actualQuotes),
+      render: (v) => formatNumber(v),
     },
     {
-      title: "Факт, контракты",
-      dataIndex: "actual_contracts",
+      title: "Факт, приглашения",
+      dataIndex: "actual_invites",
       align: "right",
-      render: (v, row) => formatNumber(v ?? row.actual_contracts ?? row.actualContracts),
+      render: (v) => formatNumber(v),
     },
     {
-      title: "Факт, сумма контрактов",
-      dataIndex: "actual_signed_amount",
+      title: "Факт, выборы",
+      dataIndex: "actual_selections",
       align: "right",
-      render: (v, row) =>
-        formatMoney(v ?? row.actualSignedAmount ?? row.actual_signed_amount, row.currency || currency),
+      render: (v) => formatNumber(v),
+    },
+    {
+      title: "Факт, заказы",
+      dataIndex: "actual_purchase_orders",
+      align: "right",
+      render: (v) => formatNumber(v),
+    },
+    {
+      title: "Факт, сумма выбора",
+      dataIndex: "actual_landed_amount",
+      align: "right",
+      render: (v, row) => formatMoney(v, row.currency || currency),
     },
   ]
 
@@ -685,19 +772,19 @@ export default function SalesKpiDashboard({
           </div>
           <div>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              Продавец
+              Закупщик
             </Text>
             <div>
               <Select
                 allowClear
                 placeholder="Все"
                 style={{ minWidth: 220 }}
-                value={effectiveSellerId || undefined}
-                onChange={(value) => setSellerId(value || null)}
-                options={sellerOptions}
+                value={effectiveBuyerId || undefined}
+                onChange={(value) => setBuyerId(value || null)}
+                options={buyerOptions}
                 showSearch
                 optionFilterProp="label"
-                disabled={!canSelectAnySeller}
+                disabled={!canSelectAnyBuyer}
               />
             </div>
           </div>
@@ -737,7 +824,7 @@ export default function SalesKpiDashboard({
                 value={chartMode}
                 onChange={setChartMode}
                 options={KPI_CHART_MODE_OPTIONS}
-                disabled={!effectiveSellerId}
+                disabled={!effectiveBuyerId}
               />
             </div>
           </div>
@@ -756,83 +843,137 @@ export default function SalesKpiDashboard({
         <Alert
           type="warning"
           showIcon
-          message="API KPI пока не подключён"
+          message="API закупочного KPI пока не подключён"
           description="Когда бэкенд будет готов, дашборд автоматически начнёт подгружать данные."
         />
       )}
 
-      {error && (
-        <Alert type="error" showIcon message={error} />
-      )}
+      {error && <Alert type="error" showIcon message={error} />}
 
       <Row gutter={[12, 12]}>
         <Col xs={24} sm={12} lg={6}>
-          <div onClick={() => openDetails("requests_count", "Заявки продавца")} style={{ cursor: "pointer" }}>
+          <div onClick={() => openDetails("rfqs_count", "RFQ закупщика")} style={{ cursor: "pointer" }}>
             <SummaryCard
-              title="Заявки"
-              value={formatNumber(summary?.requests_count)}
+              title="RFQ"
+              value={formatNumber(summary?.rfqs_count)}
               hint="Нажмите, чтобы открыть список"
               tone="#2563eb"
             />
           </div>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <div onClick={() => openDetails("quotes_count", "Коммерческие предложения продавца")} style={{ cursor: "pointer" }}>
+          <div onClick={() => openDetails("invites_count", "Приглашения поставщикам")} style={{ cursor: "pointer" }}>
             <SummaryCard
-              title="Коммерческие предложения"
-              value={formatNumber(summary?.quotes_count)}
+              title="Приглашения поставщикам"
+              value={formatNumber(summary?.invites_count)}
+              hint="Нажмите, чтобы открыть список"
+              tone="#0ea5e9"
+            />
+          </div>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <div onClick={() => openDetails("responses_count", "Ответы поставщиков")} style={{ cursor: "pointer" }}>
+            <SummaryCard
+              title="Ответы поставщиков"
+              value={formatNumber(summary?.responses_count)}
               hint="Нажмите, чтобы открыть список"
               tone="#16a34a"
             />
           </div>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <div onClick={() => openDetails("contracts_count", "Подписанные контракты продавца", "sales_contracts")} style={{ cursor: "pointer" }}>
+          <SummaryCard
+            title="Отклик поставщиков"
+            value={formatPercent(summary?.response_rate_pct)}
+            hint="Ответы / приглашения"
+            tone="#22c55e"
+          />
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <div onClick={() => openDetails("selections_count", "Утверждённые выборы закупки")} style={{ cursor: "pointer" }}>
             <SummaryCard
-              title="Контракты"
-              value={formatNumber(summary?.contracts_count)}
+              title="Утвержденные выборы"
+              value={formatNumber(summary?.selections_count)}
               hint="Нажмите, чтобы открыть список"
               tone="#f97316"
             />
           </div>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <div onClick={() => openDetails("signed_amount", "Сумма подписанных контрактов", "sales_contracts")} style={{ cursor: "pointer" }}>
+          <div onClick={() => openDetails("purchase_orders_count", "Заказы поставщикам")} style={{ cursor: "pointer" }}>
             <SummaryCard
-              title="Сумма контрактов"
-              value={formatMoney(summary?.signed_amount, currency)}
-              hint="Нажмите, чтобы открыть список контрактов"
+              title="Заказы поставщикам"
+              value={formatNumber(summary?.purchase_orders_count)}
+              hint="Нажмите, чтобы открыть список"
               tone="#9333ea"
             />
           </div>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <div onClick={() => openDetails("landed_amount", "Сумма утверждённого выбора", "procurement_landed")} style={{ cursor: "pointer" }}>
+            <SummaryCard
+              title="Сумма выбора"
+              value={formatMoney(summary?.landed_amount, currency)}
+              hint="Нажмите, чтобы открыть список выборов"
+              tone="#7c3aed"
+            />
+          </div>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <div onClick={() => openDetails("quality_events_count", "Инциденты поставщиков", "quality_events")} style={{ cursor: "pointer" }}>
+            <SummaryCard
+              title="Инциденты поставщиков"
+              value={formatNumber(summary?.quality_events_count)}
+              hint="Нажмите, чтобы открыть список"
+              tone="#dc2626"
+            />
+          </div>
+        </Col>
+        <Col xs={24} sm={12} lg={12}>
+          <SummaryCard
+            title="Среднее время до выбора"
+            value={formatHours(summary?.avg_hours_to_selection)}
+            hint="От создания RFQ до утвержденного выбора"
+            tone="#f59e0b"
+          />
+        </Col>
+        <Col xs={24} sm={12} lg={12}>
+          <SummaryCard
+            title="Среднее время до первого ответа"
+            value={formatHours(summary?.avg_hours_to_first_response)}
+            hint="От отправки RFQ до первого ответа поставщика"
+            tone="#14b8a6"
+          />
         </Col>
       </Row>
 
       <Card
         title={getAggregationTitle(aggregation)}
         size="small"
-        bodyStyle={{ height: 320 }}
+        bodyStyle={{ height: 340 }}
         loading={loading}
         extra={
           <Space size={[8, 8]} wrap>
             <Checkbox.Group
               value={visibleSeries}
               onChange={(next) => setVisibleSeries(next)}
-              options={SALES_SERIES.map((item) => ({
+              options={PROCUREMENT_SERIES.map((item) => ({
                 value: item.key,
                 label: item.label,
               }))}
             />
-            <Button size="small" onClick={() => setVisibleSeries(SALES_SERIES.map((item) => item.key))}>
+            <Button size="small" onClick={() => setVisibleSeries(PROCUREMENT_SERIES.map((item) => item.key))}>
               Все линии
             </Button>
             <Button
               size="small"
               onClick={() =>
                 setVisibleSeries([
-                  "requests_count",
-                  "quotes_count",
-                  "contracts_count",
+                  "rfqs_count",
+                  "invites_count",
+                  "responses_count",
+                  "selections_count",
+                  "purchase_orders_count",
                 ])
               }
             >
@@ -840,9 +981,30 @@ export default function SalesKpiDashboard({
             </Button>
             <Button
               size="small"
-              onClick={() => setVisibleSeries(["signed_amount"])}
+              onClick={() =>
+                setVisibleSeries([
+                  "landed_amount",
+                  "rfqs_count",
+                  "responses_count",
+                  "selections_count",
+                ])
+              }
+            >
+              Основные
+            </Button>
+            <Button
+              size="small"
+              onClick={() => setVisibleSeries(["landed_amount"])}
             >
               Деньги
+            </Button>
+            <Button
+              size="small"
+              onClick={() =>
+                setVisibleSeries(["responses_count", "quality_events_count"])
+              }
+            >
+              Качество
             </Button>
           </Space>
         }
@@ -875,7 +1037,7 @@ export default function SalesKpiDashboard({
               />
               <Tooltip
                 formatter={(value, name) => {
-                  if (String(name || "").includes("Сумма контрактов")) {
+                  if (String(name || "").includes("Сумма выбора")) {
                     return formatMoney(value, currency)
                   }
                   return formatNumber(value)
@@ -916,7 +1078,7 @@ export default function SalesKpiDashboard({
         )}
       </Card>
 
-      <Card title="Цели KPI" size="small" loading={loading}>
+      <Card title="Цели закупочного KPI" size="small" loading={loading}>
         {isAdmin && (
           <Form
             form={targetForm}
@@ -925,14 +1087,14 @@ export default function SalesKpiDashboard({
             style={{ marginBottom: 12 }}
           >
             <Form.Item
-              name="seller_user_id"
-              label="Продавец"
-              rules={[{ required: true, message: "Выберите продавца" }]}
+              name="buyer_user_id"
+              label="Закупщик"
+              rules={[{ required: true, message: "Выберите закупщика" }]}
             >
               <Select
                 placeholder="Выберите"
-                style={{ minWidth: 200 }}
-                options={sellerOptions}
+                style={{ minWidth: 220 }}
+                options={buyerOptions}
                 showSearch
                 optionFilterProp="label"
               />
@@ -944,16 +1106,19 @@ export default function SalesKpiDashboard({
             >
               <RangePicker />
             </Form.Item>
-            <Form.Item name="target_requests" label="План, заявки">
+            <Form.Item name="target_rfqs" label="План, RFQ">
+              <InputNumber min={0} precision={0} style={{ width: 130 }} />
+            </Form.Item>
+            <Form.Item name="target_invites" label="План, приглашения">
+              <InputNumber min={0} precision={0} style={{ width: 150 }} />
+            </Form.Item>
+            <Form.Item name="target_selections" label="План, выборы">
               <InputNumber min={0} precision={0} style={{ width: 140 }} />
             </Form.Item>
-            <Form.Item name="target_quotes" label="План, КП">
+            <Form.Item name="target_purchase_orders" label="План, заказы">
               <InputNumber min={0} precision={0} style={{ width: 140 }} />
             </Form.Item>
-            <Form.Item name="target_contracts" label="План, контракты">
-              <InputNumber min={0} precision={0} style={{ width: 140 }} />
-            </Form.Item>
-            <Form.Item name="target_signed_amount" label="План, сумма">
+            <Form.Item name="target_landed_amount" label="План, сумма">
               <InputNumber min={0} style={{ width: 160 }} />
             </Form.Item>
             <Form.Item>
@@ -963,42 +1128,41 @@ export default function SalesKpiDashboard({
             </Form.Item>
           </Form>
         )}
+
         <Table
           rowKey={(row) =>
             row.id ||
-            `${row.seller_user_id || row.user_id || "u"}-${
-              row.period_start || row.periodStart || "p"
-            }`
+            `${row.buyer_user_id || "u"}-${row.period_start || "p"}`
           }
           columns={columns}
           dataSource={targetsData}
           pagination={{ pageSize: 10 }}
           size="small"
-          scroll={{ x: 1200 }}
+          scroll={{ x: 1600 }}
           locale={{
             emptyText: apiReady
-              ? "Нет целей KPI"
-              : "API KPI пока не подключён",
+              ? "Нет целей закупочного KPI"
+              : "API закупочного KPI пока не подключён",
           }}
         />
       </Card>
 
       <Modal
         open={editOpen}
-        title="Редактировать цель KPI"
+        title="Редактировать цель закупочного KPI"
         onCancel={closeEditTarget}
         onOk={handleUpdateTarget}
         confirmLoading={savingTarget}
       >
         <Form form={editForm} layout="vertical">
           <Form.Item
-            name="seller_user_id"
-            label="Продавец"
-            rules={[{ required: true, message: "Выберите продавца" }]}
+            name="buyer_user_id"
+            label="Закупщик"
+            rules={[{ required: true, message: "Выберите закупщика" }]}
           >
             <Select
               placeholder="Выберите"
-              options={sellerOptions}
+              options={buyerOptions}
               showSearch
               optionFilterProp="label"
             />
@@ -1010,16 +1174,19 @@ export default function SalesKpiDashboard({
           >
             <RangePicker style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item name="target_requests" label="План, заявки">
+          <Form.Item name="target_rfqs" label="План, RFQ">
             <InputNumber min={0} precision={0} style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item name="target_quotes" label="План, КП">
+          <Form.Item name="target_invites" label="План, приглашения">
             <InputNumber min={0} precision={0} style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item name="target_contracts" label="План, контракты">
+          <Form.Item name="target_selections" label="План, выборы">
             <InputNumber min={0} precision={0} style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item name="target_signed_amount" label="План, сумма контрактов">
+          <Form.Item name="target_purchase_orders" label="План, заказы">
+            <InputNumber min={0} precision={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="target_landed_amount" label="План, сумма выбора">
             <InputNumber min={0} style={{ width: "100%" }} />
           </Form.Item>
         </Form>
@@ -1028,9 +1195,9 @@ export default function SalesKpiDashboard({
       <KpiHelpDrawer
         open={helpOpen}
         onClose={() => setHelpOpen(false)}
-        title="Справка по коммерческому KPI"
-        intro="Здесь оценивается работа продавца в коммерческом контуре: от заявок клиента до подписанных контрактов. Экран нужен не для операционной закупки, а для оценки конверсии и объёма продаж."
-        sections={SALES_KPI_HELP_SECTIONS}
+        title="Справка по закупочному KPI"
+        intro="Здесь оценивается работа закупщика по его процессной воронке: от RFQ до заказа поставщику. Экран помогает видеть не только объём, но и качество реакции поставщиков и устойчивость исполнения."
+        sections={PROCUREMENT_KPI_HELP_SECTIONS}
       />
       <KpiDetailsDrawer
         open={detailsOpen}

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { Button, Card, Drawer, Empty, Form, Input, Popconfirm, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
+import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
 
 const { Text } = Typography
 
@@ -157,7 +158,7 @@ const SectionHint = ({ children }) => (
 const buildCompositionSummary = (option) => {
   const lines = Array.isArray(option?.lines) ? option.lines : []
   const lineLabels = uniqueNonEmpty(
-    lines.map((line) => line?.note || line?.original_cat_number || line?.client_part_number || line?.line_code)
+    lines.map((line) => line?.note || getClientFacingPartNumber(line, line?.line_code || "Позиция"))
   )
   const trimmed = lineLabels.slice(0, 3)
   const suffix = lineLabels.length > 3 ? ` + ещё ${lineLabels.length - 3}` : ""
@@ -193,7 +194,7 @@ const buildCompositionGroups = (option) => {
     const grouped = new Map()
     lines.forEach((line) => {
       const supplier = line?.supplier_name || "Поставщик не указан"
-      const label = line?.note || line?.original_cat_number || line?.client_part_number || line?.line_code || "Позиция"
+      const label = line?.note || getClientFacingPartNumber(line, line?.line_code || "Позиция")
       const list = grouped.get(supplier) || {
         supplier,
         items: [],
@@ -210,7 +211,7 @@ const buildCompositionGroups = (option) => {
   }
 
   const itemLabels = uniqueNonEmpty(
-    lines.map((line) => line?.note || line?.original_cat_number || line?.client_part_number || line?.line_code)
+    lines.map((line) => line?.note || getClientFacingPartNumber(line, line?.line_code || "Позиция"))
   )
   if (!itemLabels.length) {
     return [{ supplier: "Состав", items: [OPTION_KIND_LABELS[kind] || "Вариант"] }]
@@ -457,11 +458,11 @@ const buildScenarioLineOptionDetail = (line, scenarioMeta = {}) => {
         ? Math.max(...line.option_lines.map((row) => safeNum(row?.lead_time_days)).filter((value) => value !== null))
         : null,
     lines: Array.isArray(line?.option_lines)
-      ? line.option_lines.map((row) => ({
+        ? line.option_lines.map((row) => ({
           supplier_name: row?.supplier_name,
           reliability_rating: row?.reliability_rating,
           risk_level: row?.risk_level,
-          note: row?.note || row?.line_code || row?.original_cat_number || row?.client_part_number,
+          note: row?.note || row?.line_code || getClientFacingPartNumber(row),
           original_cat_number: row?.original_cat_number,
           client_part_number: row?.client_part_number,
           line_code: row?.line_code,
@@ -652,8 +653,8 @@ export default function ScenariosTabContent({ rfqId }) {
       rfq_item_id: rfqItemId,
       line_number: rows[0]?.line_number,
       item_label:
-        rows[0]?.original_cat_number || rows[0]?.client_part_number || `Строка ${rows[0]?.line_number || rfqItemId}`,
-      item_description: rows[0]?.client_description || "",
+        getClientFacingPartNumber(rows[0], `Строка ${rows[0]?.line_number || rfqItemId}`),
+      item_description: getClientFacingDescription(rows[0]),
       rows,
     }))
   }, [coverageOptions])
@@ -883,12 +884,12 @@ export default function ScenariosTabContent({ rfqId }) {
               <Space direction="vertical" size={6} style={{ width: "100%" }}>
                 <div>
                   <Text strong>
-                    {line.line_number} · {line.original_cat_number || line.client_part_number || "Строка"}
+                    {line.line_number} · {getClientFacingPartNumber(line, "Строка")}
                   </Text>
-                  {line.client_description ? (
+                  {getClientFacingDescription(line) ? (
                     <div>
                       <Text type="secondary" style={{ fontSize: 12 }}>
-                        {line.client_description}
+                        {getClientFacingDescription(line)}
                       </Text>
                     </div>
                   ) : null}

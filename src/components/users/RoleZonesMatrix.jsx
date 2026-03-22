@@ -3,12 +3,14 @@ import { Button, Card, Checkbox, Col, Input, Row, Space, Tag, Typography, messag
 import { PlusOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
+import useCapabilities from "@/hooks/useCapabilities"
 
 const { Paragraph, Text } = Typography
 
 const PRIMARY_PATHS = [
   "/client-request-workspace",
   "/rfq-workspace",
+  "/kpi",
   "/catalogs",
   "/users",
 ]
@@ -16,11 +18,13 @@ const PRIMARY_PATHS = [
 const PATH_LABELS = {
   "/client-request-workspace": "Заявки клиентов",
   "/rfq-workspace": "RFQ и закупка",
+  "/kpi": "Показатели",
   "/catalogs": "Каталоги в меню",
   "/users": "Пользователи и роли",
 }
 
 export default function RoleZonesMatrix({ revision = 0, onRolesChanged, onPermissionsChanged, selectedRoleSlug = "" }) {
+  const { can, isAdmin } = useCapabilities()
   const [roles, setRoles] = useState([])
   const [tabs, setTabs] = useState([])
   const [permissions, setPermissions] = useState({})
@@ -28,6 +32,7 @@ export default function RoleZonesMatrix({ revision = 0, onRolesChanged, onPermis
   const [newRole, setNewRole] = useState("")
   const [loading, setLoading] = useState(false)
   const [applyingPreset, setApplyingPreset] = useState("")
+  const canManageUsersRoles = isAdmin || can("admin.users_roles.manage")
 
   useEffect(() => {
     fetchData()
@@ -36,15 +41,18 @@ export default function RoleZonesMatrix({ revision = 0, onRolesChanged, onPermis
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [rolesRes, tabsRes, permsRes, modelRes] = await Promise.all([
+      const [rolesRes, permsRes, modelRes] = await Promise.all([
         axios.get("/roles"),
-        axios.get("/tabs"),
         axios.get("/role-permissions/raw"),
         axios.get("/role-permissions/access-model"),
       ])
 
       setRoles(rolesRes.data || [])
-      setTabs((tabsRes.data || []).filter((tab) => PRIMARY_PATHS.includes(tab.path)))
+      const allZoneTabs = (modelRes.data?.sections || [])
+        .flatMap((section) => section.tabs || [])
+        .filter((tab) => PRIMARY_PATHS.includes(tab.path))
+      const uniqueTabs = Array.from(new Map(allZoneTabs.map((tab) => [tab.id, tab])).values())
+      setTabs(uniqueTabs)
 
       const matrix = {}
       for (const perm of permsRes.data || []) {
@@ -164,8 +172,9 @@ export default function RoleZonesMatrix({ revision = 0, onRolesChanged, onPermis
           onChange={(e) => setNewRole(e.target.value)}
           onPressEnter={handleAddRole}
           style={{ width: 220 }}
+          disabled={!canManageUsersRoles}
         />
-          <Button icon={<PlusOutlined />} type="primary" onClick={handleAddRole}>
+          <Button icon={<PlusOutlined />} type="primary" onClick={handleAddRole} disabled={!canManageUsersRoles}>
             Добавить роль
           </Button>
       </Space>
@@ -183,12 +192,13 @@ export default function RoleZonesMatrix({ revision = 0, onRolesChanged, onPermis
                   size="small"
                   onClick={() => applyPreset(selectedRole.slug)}
                   loading={applyingPreset === selectedRole.slug}
+                  disabled={!canManageUsersRoles}
                 >
                   Применить базовый набор
                 </Button>
               ) : null}
               {String(selectedRole.slug || "").toLowerCase() !== "admin" && !presets[selectedRole.slug] ? (
-                <Button danger size="small" onClick={() => handleDeleteRole(selectedRole)}>
+                <Button danger size="small" onClick={() => handleDeleteRole(selectedRole)} disabled={!canManageUsersRoles}>
                   Удалить роль
                 </Button>
               ) : null}
@@ -216,6 +226,7 @@ export default function RoleZonesMatrix({ revision = 0, onRolesChanged, onPermis
                           <Text type="secondary">
                             {path === "/client-request-workspace" && "Работа с заявками клиента, КП и контрактом."}
                             {path === "/rfq-workspace" && "Работа с RFQ, поставщиками, логистикой и закупкой."}
+                            {path === "/kpi" && "Отчеты, показатели и обзорные метрики."}
                             {path === "/catalogs" && "Отдельный раздел каталогов в меню."}
                             {path === "/users" && "Управление пользователями, ролями и доступом."}
                           </Text>
@@ -224,6 +235,7 @@ export default function RoleZonesMatrix({ revision = 0, onRolesChanged, onPermis
                           <Checkbox
                             checked={!!permissions[`${selectedRole.id}__${tab.id}`]}
                             onChange={() => handleToggle(selectedRole.id, tab.id)}
+                            disabled={!canManageUsersRoles}
                           />
                         ) : (
                           <Text type="secondary">—</Text>

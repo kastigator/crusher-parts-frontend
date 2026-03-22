@@ -132,7 +132,6 @@ export default function SalesQuotesPage() {
         client_request_revision_id: values.client_request_revision_id,
         selection_id: values.selection_id,
         status: values.status || "draft",
-        currency: values.currency || null,
       })
       createForm.resetFields()
       await loadQuotes()
@@ -211,7 +210,6 @@ export default function SalesQuotesPage() {
         cost: values.cost ?? null,
         sell_price: values.sell_price ?? null,
         margin_pct: values.margin_pct ?? null,
-        currency: values.currency || null,
         note: values.note || null,
       })
       lineForm.resetFields()
@@ -280,9 +278,6 @@ export default function SalesQuotesPage() {
                     { value: "approved", label: "Согласовано" },
                   ]}
                 />
-              </Form.Item>
-              <Form.Item label="Валюта" name="currency">
-                <Input style={{ width: 90 }} placeholder="USD" />
               </Form.Item>
               <Form.Item style={{ marginTop: 30 }}>
                 <Button type="primary" htmlType="submit" disabled={LEGACY_READ_ONLY}>
@@ -400,9 +395,6 @@ export default function SalesQuotesPage() {
                         </Form.Item>
                         <Form.Item label="Маржа %" name="margin_pct">
                           <InputNumber style={{ width: 120 }} min={0} />
-                        </Form.Item>
-                        <Form.Item label="Валюта" name="currency">
-                          <Input style={{ width: 90 }} />
                         </Form.Item>
                         <Form.Item label="Комментарий" name="note">
                           <Input style={{ width: 200 }} />

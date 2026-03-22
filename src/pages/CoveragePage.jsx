@@ -3,6 +3,7 @@ import { Button, Card, Drawer, Empty, Select, Space, Table, Tag, Typography, mes
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import { formatUomLabel } from "@/utils/uom"
+import { getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
 
 const { Text } = Typography
 
@@ -184,7 +185,7 @@ export default function CoveragePage() {
         width={980}
         title={
           detailsRecord
-            ? `Покрытие: ${detailsRecord.original_cat_number || detailsRecord.client_part_number || "позиция"}`
+            ? `Покрытие: ${getClientFacingPartNumber(detailsRecord, "позиция")}`
             : "Покрытие"
         }
       >

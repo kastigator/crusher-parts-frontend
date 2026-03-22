@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react"
 import { Alert, Button, Card, Drawer, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
+import { COVERAGE_KIND_LABELS } from "@/components/rfqWorkspace/rfqDisplayUtils"
+import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
 
 const { Paragraph, Text } = Typography
 const SCENARIO_BASIS_LABELS = {
@@ -12,26 +14,22 @@ const SCENARIO_BASIS_LABELS = {
   MANUAL: "Ручной",
 }
 
-const OPTION_KIND_LABELS = {
-  WHOLE: "Целиком",
-  BOM: "По составу",
-  KIT: "Комплект",
-  MIXED: "Комбинированный",
-  MANUAL: "Ручной",
-}
+const OPTION_KIND_LABELS = COVERAGE_KIND_LABELS
 
 const SCENARIO_STATUS_LABELS = {
   draft: "Черновик",
   active: "Активный",
   selected: "Выбран",
   archived: "Архив",
+  calculated: "Рассчитан",
+  approved: "Утвержден",
 }
 
 const SELECTION_HELP_SECTIONS = [
   {
     title: "Зачем нужна вкладка",
     body:
-      "Выбор утверждает один сценарий как финальный план исполнения заказа. После этого именно он становится основой для КП, контракта и PO.",
+      "Выбор утверждает один сценарий как финальный план исполнения заказа. После этого именно он становится основой для коммерческого предложения, контракта и заказа поставщику.",
   },
   {
     title: "Что здесь проверять",
@@ -47,7 +45,10 @@ const SELECTION_HELP_SECTIONS = [
 
 const normalizeOptionNote = (note) => {
   const text = String(note || "").trim()
-  return text.replace(/^Автосохранение покрытия по поставщику\s+/i, "Вариант по поставщику ").trim()
+  return text
+    .replace(/^Автосохранение покрытия по поставщику\s+/i, "Вариант по поставщику ")
+    .replace(/\bwhole supplier\b/gi, "поставщик целиком")
+    .trim()
 }
 
 const buildScenarioOptionLabel = (row) => {
@@ -151,7 +152,7 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
       setSelectionLines(Array.isArray(data) ? data : [])
     } catch (e) {
       setSelectionLines([])
-      message.error(e?.response?.data?.message || "Не удалось загрузить baseline lines")
+      message.error(e?.response?.data?.message || "Не удалось загрузить строки утвержденного выбора")
     } finally {
       setLoadingSelectionLines(false)
     }
@@ -169,7 +170,7 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
         type="info"
         showIcon
         message="Выбор фиксирует сценарий как финальный снимок"
-        description="После утверждения создаётся procurement baseline: supplier mix, себестоимость, origin и supplier public codes фиксируются в selection. Дальше продавец работает уже от этого baseline."
+        description="После утверждения создаётся финальная закупочная база: состав поставщиков, себестоимость, страна происхождения и публичные коды поставщиков фиксируются в выборе. Дальше продавец работает уже от этого утвержденного набора."
       />
 
       <Space wrap>
@@ -210,8 +211,8 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
               title: "Строка RFQ",
               render: (_, row) => (
                 <Space direction="vertical" size={0}>
-                  <span>{row.line_number} · {row.original_cat_number || row.client_part_number || `#${row.rfq_item_id}`}</span>
-                  {row.client_description ? <span style={{ color: "#666", fontSize: 12 }}>{row.client_description}</span> : null}
+                  <span>{row.line_number} · {getClientFacingPartNumber(row, `#${row.rfq_item_id}`)}</span>
+                  {getClientFacingDescription(row) ? <span style={{ color: "#666", fontSize: 12 }}>{getClientFacingDescription(row)}</span> : null}
                 </Space>
               ),
             },
@@ -220,7 +221,12 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
               width: 280,
               render: (_, row) => buildScenarioOptionLabel(row),
             },
-            { title: "Тип", dataIndex: "option_kind", width: 120 },
+            {
+              title: "Тип",
+              dataIndex: "option_kind",
+              width: 140,
+              render: (value) => OPTION_KIND_LABELS[String(value || "").toUpperCase()] || value || "—",
+            },
             { title: "Полнота", dataIndex: "completeness_pct", width: 120, render: (value) => `${value ?? 0}%` },
             { title: "С ценой", dataIndex: "priced_pct", width: 100, render: (value) => `${value ?? 0}%` },
             {
@@ -243,7 +249,7 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
         />
       </Card>
 
-      <Card size="small" title="Уже созданные selection">
+      <Card size="small" title="Уже созданные утвержденные выборы">
         {Array.isArray(selections) && selections.length ? (
           <Space direction="vertical" size={8} style={{ width: "100%" }}>
             {selections.map((selection) => (
@@ -261,8 +267,8 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
 
       <Card
         size="small"
-        title="Baseline для продавца"
-        extra={<span style={{ color: "#666", fontSize: 12 }}>Это snapshot procurement-решения, из которого создаётся КП.</span>}
+        title="База для продавца"
+        extra={<span style={{ color: "#666", fontSize: 12 }}>Это зафиксированный закупочный набор, на основе которого создаётся коммерческое предложение.</span>}
       >
         <Table
           size="small"
@@ -275,23 +281,31 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
               title: "Строка",
               render: (_, row) => (
                 <Space direction="vertical" size={0}>
-                  <span>{row.line_number} · {row.original_cat_number || row.client_part_number || `#${row.rfq_item_id}`}</span>
-                  {row.client_description ? <span style={{ color: "#666", fontSize: 12 }}>{row.client_description}</span> : null}
+                  <Space size={6} wrap>
+                    <span>{row.line_number} · {getClientFacingPartNumber(row, `#${row.rfq_item_id}`)}</span>
+                    {row.has_supplier_display_override ? <Tag color="orange">Подмена в закупке</Tag> : null}
+                  </Space>
+                  {getClientFacingDescription(row) ? <span style={{ color: "#666", fontSize: 12 }}>{getClientFacingDescription(row)}</span> : null}
+                  {row.has_supplier_display_override && row.supplier_display_part_number ? (
+                    <span style={{ color: "#ad6800", fontSize: 12 }}>
+                      Закупка велась по номеру: {row.supplier_display_part_number}
+                    </span>
+                  ) : null}
                 </Space>
               ),
             },
             {
-              title: "Supplier code",
+              title: "Код поставщика",
               width: 160,
               render: (_, row) => row.supplier_public_code ? <Tag color="blue">{row.supplier_public_code}</Tag> : <Tag>—</Tag>,
             },
             {
-              title: "Cost basis",
+              title: "База себестоимости",
               width: 180,
               render: (_, row) => formatPriceWithCurrency(row.landed_amount, row.selection_currency || scenarioMeta?.calc_currency || "USD"),
             },
             {
-              title: "Origin",
+              title: "Страна происхождения",
               dataIndex: "origin_country",
               width: 100,
               render: (value) => value || "—",
