@@ -84,6 +84,7 @@ const matchTypeLabel = {
   WHOLE: "Целиком",
   BOM: "По составу",
   KIT: "Комплект",
+  STANDARD: "По стандартной детали",
 }
 
 export const renderMatchTypes = (value) => {

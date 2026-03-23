@@ -9,6 +9,7 @@ const MATCH_TYPE_LABELS = {
   WHOLE: "Целиком",
   BOM: "По составу",
   KIT: "Комплект",
+  STANDARD: "По стандартной детали",
 }
 
 export default function SuppliersTabContent({
@@ -93,11 +94,21 @@ export default function SuppliersTabContent({
     const left = item.target || item.text || "—"
     const right = item.supplierPartNumber || "без номера"
     const typeLabel = MATCH_TYPE_LABELS[String(item.type || "").toUpperCase()] || item.type
+    const source = String(row?.match_source || "").toUpperCase()
     return (
       <Space key={`match-${idx}-${item.text}`} size={6} wrap align="start">
         <Text style={{ fontSize: 12, maxWidth: 540 }}>
           {left} {"\u2192"} {right}
         </Text>
+        {source === "OEM" ? (
+          <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+            По OEM
+          </Tag>
+        ) : source === "STANDARD" ? (
+          <Tag color="green" style={{ marginInlineEnd: 0 }}>
+            По стандартной детали
+          </Tag>
+        ) : null}
         {typeLabel ? (
           <Tag color="blue" style={{ marginInlineEnd: 0 }}>
             {typeLabel}
@@ -303,10 +314,16 @@ export default function SuppliersTabContent({
                     hasPreferredInPreview(row?.match_preview)
                   const pricedCount = Number(row?.priced_parts_count || 0)
                   const partsCount = Number(row?.parts_count || 0)
+                  const hasOemMatch = Number(row?.has_oem_match || 0) > 0
+                  const hasStandardMatch = Number(row?.has_standard_match || 0) > 0
                   const inRfq = supplierInRfqBySupplierId.has(Number(row?.supplier_id || 0))
                   return (
                     <Space size={4} wrap>
                       {preferred ? <Tag color="gold">Приоритетный</Tag> : null}
+                      {hasOemMatch ? <Tag color="blue">По OEM</Tag> : null}
+                      {!hasOemMatch && hasStandardMatch ? (
+                        <Tag color="green">По стандартной детали</Tag>
+                      ) : null}
                       <Tag color={pricedCount > 0 ? "green" : "default"}>
                         Цена {pricedCount}/{partsCount}
                       </Tag>

@@ -253,9 +253,9 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
       key: `standard:${row.standard_part_id}`,
       link_type: "standard",
       link_id: row.standard_part_id,
-      number_text: row.designation,
+      number_text: row.display_name || row.designation,
       name_text: row.description_ru || row.description_en || "—",
-      context_text: [row.part_type, row.standard_system].filter(Boolean).join(" / "),
+      context_text: [row.class_name, row.designation].filter(Boolean).join(" / "),
     }))
     return [...oemRows, ...stdRows]
   }, [oemLinks, standardLinks])
@@ -297,8 +297,8 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
             )
           ) : (
             <>
-              <Tag color="green">{row.part_type || "—"}</Tag>
-              <Tag>{row.standard_system || "—"}</Tag>
+              <Tag color="green">{row.class_name || "—"}</Tag>
+              <Tag>{row.designation || "—"}</Tag>
             </>
           )}
         </Space>

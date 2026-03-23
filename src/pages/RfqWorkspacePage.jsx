@@ -176,8 +176,11 @@ export default function RfqWorkspacePage() {
         const pb = Number(b?.is_preferred || 0) > 0 ? 1 : 0
         const oa = hintTypeOrder.current[String(a?.part_type || "UNKNOWN")] ?? 99
         const ob = hintTypeOrder.current[String(b?.part_type || "UNKNOWN")] ?? 99
+        const sa = String(a?.match_source || "").toUpperCase() === "OEM" ? 0 : String(a?.match_source || "").toUpperCase() === "STANDARD" ? 1 : 2
+        const sb = String(b?.match_source || "").toUpperCase() === "OEM" ? 0 : String(b?.match_source || "").toUpperCase() === "STANDARD" ? 1 : 2
         return (
           pb - pa ||
+          sa - sb ||
           oa - ob ||
           String(a?.supplier_part_number || "").localeCompare(
             String(b?.supplier_part_number || "")
@@ -330,6 +333,15 @@ export default function RfqWorkspacePage() {
               </div>
             ) : null}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+              {String(h?.match_source || "").toUpperCase() === "OEM" ? (
+                <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                  По OEM
+                </Tag>
+              ) : String(h?.match_source || "").toUpperCase() === "STANDARD" ? (
+                <Tag color="green" style={{ marginInlineEnd: 0 }}>
+                  По стандартной детали
+                </Tag>
+              ) : null}
               <Tag
                 color={Number(h?.latest_price) > 0 ? "green" : "default"}
                 style={{ marginInlineEnd: 0 }}
@@ -400,6 +412,15 @@ export default function RfqWorkspacePage() {
                     Вариант {idx + 1}: {h?.supplier_part_number || "Без номера"}
                   </Text>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {String(h?.match_source || "").toUpperCase() === "OEM" ? (
+                      <Tag color="blue" style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: "16px" }}>
+                        По OEM
+                      </Tag>
+                    ) : String(h?.match_source || "").toUpperCase() === "STANDARD" ? (
+                      <Tag color="green" style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: "16px" }}>
+                        По стандартной детали
+                      </Tag>
+                    ) : null}
                     <Text type="secondary" style={{ fontSize: 12 }}>
                       {h?.part_type || "UNKNOWN"}
                     </Text>

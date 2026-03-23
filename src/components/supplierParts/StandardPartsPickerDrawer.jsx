@@ -22,7 +22,9 @@ export default function StandardPartsPickerDrawer({
   const cancelIfRunning = () => {
     try {
       abortRef.current?.abort?.();
-    } catch {}
+    } catch {
+      // ignore abort errors from stale requests
+    }
     abortRef.current = null;
   };
 
@@ -72,21 +74,21 @@ export default function StandardPartsPickerDrawer({
   const columns = useMemo(
     () => [
       {
-        title: "Тип",
-        dataIndex: "part_type",
+        title: "Класс",
+        dataIndex: "class_name",
         width: 160,
         render: (v) => v || <Text type="secondary">—</Text>,
       },
       {
-        title: "Обозначение",
-        dataIndex: "designation",
+        title: "Название",
+        dataIndex: "display_name",
         width: 220,
         render: (v) => <Text strong>{v || "—"}</Text>,
       },
       {
-        title: "Стандарт",
-        dataIndex: "standard_system",
-        width: 160,
+        title: "Обозначение",
+        dataIndex: "designation",
+        width: 180,
         render: (v) => (v ? <Tag color="processing">{v}</Tag> : <Text type="secondary">—</Text>),
       },
       {
@@ -130,7 +132,7 @@ export default function StandardPartsPickerDrawer({
         <Input
           allowClear
           style={{ width: 360 }}
-          placeholder="Поиск по типу, обозначению, стандарту, описанию"
+          placeholder="Поиск по классу, названию, обозначению, описанию"
           value={q}
           prefix={<SearchOutlined />}
           onChange={(e) => setQ(e.target.value)}

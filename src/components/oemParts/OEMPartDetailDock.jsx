@@ -11,6 +11,8 @@ export default function OEMPartDetailDock({ part, onCreateRequestForUnit }) {
   const standardParts = Array.isArray(part?.standard_parts) ? part.standard_parts : []
   const clientUsage = Array.isArray(part?.client_usage) ? part.client_usage : []
   const stats = part?.stats || {}
+  const primaryStandardPart =
+    standardParts.find((row) => Number(row.is_primary || 0) > 0) || standardParts[0] || null
 
   if (!part?.id) {
     return (
@@ -52,6 +54,39 @@ export default function OEMPartDetailDock({ part, onCreateRequestForUnit }) {
                   </Descriptions.Item>
                   <Descriptions.Item label="Тех. описание" span={2}>
                     {textOrDash(part.tech_description)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Каноническая стандартная деталь" span={2}>
+                    {primaryStandardPart ? (
+                      <Space wrap size={8}>
+                        <Tag color="green">{textOrDash(primaryStandardPart.class_name)}</Tag>
+                        <Typography.Text strong>
+                          {textOrDash(primaryStandardPart.display_name)}
+                        </Typography.Text>
+                        {primaryStandardPart.designation ? (
+                          <Tag>{primaryStandardPart.designation}</Tag>
+                        ) : null}
+                        <Typography.Link
+                          href="/standard-parts"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Открыть каталог стандартных деталей
+                        </Typography.Link>
+                      </Space>
+                    ) : (
+                      <Space wrap size={8}>
+                        <Typography.Text type="secondary">
+                          Стандартная деталь не назначена
+                        </Typography.Text>
+                        <Typography.Link
+                          href="/standard-parts"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Открыть каталог стандартных деталей
+                        </Typography.Link>
+                      </Space>
+                    )}
                   </Descriptions.Item>
                 </Descriptions>
 
@@ -97,47 +132,6 @@ export default function OEMPartDetailDock({ part, onCreateRequestForUnit }) {
                     title: "Классификатор",
                     dataIndex: "classifier_node_name",
                     render: textOrDash,
-                  },
-                ]}
-              />
-            </Card>
-          ),
-        },
-        {
-          key: "standard-parts",
-          label: `Стандартные детали (${standardParts.length})`,
-          children: (
-            <Card>
-              <Table
-                rowKey={(row) => `${row.oem_part_id}:${row.standard_part_id}`}
-                dataSource={standardParts}
-                pagination={false}
-                locale={{ emptyText: "Связанные стандартные детали пока не добавлены" }}
-                columns={[
-                  {
-                    title: "Тип",
-                    dataIndex: "part_type",
-                    render: textOrDash,
-                  },
-                  {
-                    title: "Обозначение",
-                    dataIndex: "designation",
-                    render: (value) => <Typography.Text strong>{textOrDash(value)}</Typography.Text>,
-                  },
-                  {
-                    title: "Стандарт",
-                    dataIndex: "standard_system",
-                    render: textOrDash,
-                  },
-                  {
-                    title: "Описание",
-                    render: (_, row) => textOrDash(row.description_ru || row.description_en),
-                  },
-                  {
-                    title: "Основная",
-                    dataIndex: "is_primary",
-                    align: "center",
-                    render: (value) => (value ? <Tag color="green">Да</Tag> : <Tag>Нет</Tag>),
                   },
                 ]}
               />

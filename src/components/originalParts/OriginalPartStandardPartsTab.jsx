@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react"
-import { Button, Checkbox, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from "antd"
+import { Alert, Table, Tag, message } from "antd"
 import axios from "@/api/axiosInstance"
 
 const textOrDash = (value) => {
@@ -10,10 +10,6 @@ const textOrDash = (value) => {
 export default function OriginalPartStandardPartsTab({ partId }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [options, setOptions] = useState([])
-  const [saving, setSaving] = useState(false)
-  const [form] = Form.useForm()
 
   const load = useCallback(async () => {
     if (!partId) {
@@ -38,85 +34,20 @@ export default function OriginalPartStandardPartsTab({ partId }) {
     load()
   }, [load])
 
-  const fetchStandardParts = async (q = "") => {
-    try {
-      const { data } = await axios.get("/standard-parts", {
-        params: { q, limit: 50 },
-      })
-      setOptions(Array.isArray(data) ? data : [])
-    } catch (err) {
-      console.error("GET /standard-parts error:", err)
-      message.error("Не удалось загрузить каталог стандартных деталей")
-    }
-  }
-
-  const openPicker = () => {
-    form.resetFields()
-    setPickerOpen(true)
-    fetchStandardParts("")
-  }
-
-  const handleCreate = async () => {
-    try {
-      const values = await form.validateFields()
-      setSaving(true)
-      await axios.post("/oem-part-standard-parts", {
-        oem_part_id: partId,
-        standard_part_id: values.standard_part_id,
-        is_primary: values.is_primary ? 1 : 0,
-        note: values.note || null,
-      })
-      message.success("Связь со стандартной деталью добавлена")
-      setPickerOpen(false)
-      await load()
-    } catch (err) {
-      if (err?.errorFields) return
-      console.error("POST /oem-part-standard-parts error:", err)
-      message.error(err?.response?.data?.message || "Не удалось добавить связь")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const makePrimary = async (record) => {
-    try {
-      await axios.put(`/oem-part-standard-parts/${partId}/${record.standard_part_id}`, {
-        is_primary: 1,
-        note: record.note || null,
-      })
-      message.success("Основная стандартная деталь обновлена")
-      await load()
-    } catch (err) {
-      console.error("PUT /oem-part-standard-parts/:ids error:", err)
-      message.error(err?.response?.data?.message || "Не удалось обновить связь")
-    }
-  }
-
-  const removeLink = async (record) => {
-    try {
-      await axios.delete(`/oem-part-standard-parts/${partId}/${record.standard_part_id}`)
-      message.success("Связь удалена")
-      await load()
-    } catch (err) {
-      console.error("DELETE /oem-part-standard-parts/:ids error:", err)
-      message.error(err?.response?.data?.message || "Не удалось удалить связь")
-    }
-  }
-
   const columns = [
     {
-      title: "Тип",
-      dataIndex: "part_type",
+      title: "Класс",
+      dataIndex: "class_name",
       render: textOrDash,
+    },
+    {
+      title: "Название",
+      dataIndex: "display_name",
+      render: (value) => <span style={{ fontWeight: 600 }}>{textOrDash(value)}</span>,
     },
     {
       title: "Обозначение",
       dataIndex: "designation",
-      render: (value) => <span style={{ fontWeight: 600 }}>{textOrDash(value)}</span>,
-    },
-    {
-      title: "Стандарт",
-      dataIndex: "standard_system",
       render: textOrDash,
     },
     {
@@ -135,38 +66,23 @@ export default function OriginalPartStandardPartsTab({ partId }) {
       render: textOrDash,
     },
     {
-      title: "Действия",
-      key: "actions",
+      title: "Статус",
+      key: "status",
       width: 220,
-      render: (_, record) => (
-        <Space>
-          {!record.is_primary ? (
-            <Button size="small" onClick={() => makePrimary(record)}>
-              Сделать основной
-            </Button>
-          ) : null}
-          <Popconfirm
-            title="Удалить связь со стандартной деталью?"
-            okText="Удалить"
-            cancelText="Отмена"
-            onConfirm={() => removeLink(record)}
-          >
-            <Button size="small" danger>
-              Удалить
-            </Button>
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_, record) =>
+        record.is_primary ? <Tag color="green">Основное OEM-представление</Tag> : <Tag>Дополнительная связь</Tag>,
     },
   ]
 
   return (
     <>
-      <Space style={{ marginBottom: 12 }}>
-        <Button type="primary" onClick={openPicker}>
-          Добавить стандартную деталь
-        </Button>
-      </Space>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 12 }}
+        message="Связи со стандартными деталями теперь создаются из каталога стандартных деталей"
+        description="В карточке стандартной детали используйте действие «Создать OEM-представление». Здесь связь показывается только для просмотра."
+      />
 
       <Table
         size="small"
@@ -177,41 +93,6 @@ export default function OriginalPartStandardPartsTab({ partId }) {
         pagination={false}
         locale={{ emptyText: "Стандартные детали ещё не привязаны" }}
       />
-
-      <Modal
-        open={pickerOpen}
-        title="Привязать стандартную деталь"
-        onCancel={() => setPickerOpen(false)}
-        onOk={handleCreate}
-        confirmLoading={saving}
-        destroyOnClose
-      >
-        <Form layout="vertical" form={form}>
-          <Form.Item
-            label="Стандартная деталь"
-            name="standard_part_id"
-            rules={[{ required: true, message: "Выберите стандартную деталь" }]}
-          >
-            <Select
-              showSearch
-              placeholder="Поиск по типу / обозначению / стандарту"
-              filterOption={false}
-              onSearch={fetchStandardParts}
-              onFocus={() => fetchStandardParts("")}
-              options={options.map((row) => ({
-                value: row.id,
-                label: `${row.part_type || "—"} · ${row.designation || "—"}${row.standard_system ? ` · ${row.standard_system}` : ""}`,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item name="is_primary" valuePropName="checked">
-            <Checkbox>Основная стандартная деталь для этой OEM позиции</Checkbox>
-          </Form.Item>
-          <Form.Item label="Комментарий" name="note">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-        </Form>
-      </Modal>
     </>
   )
 }
