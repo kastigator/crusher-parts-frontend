@@ -13,6 +13,7 @@ import {
 } from "antd"
 import { DeleteOutlined, LinkOutlined, PlusOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
+import { resolveAppHref } from "@/utils/resolveAppHref"
 import OriginalsPickerDrawer from "./OriginalsPickerDrawer"
 import StandardPartsPickerDrawer from "./StandardPartsPickerDrawer"
 
@@ -232,7 +233,7 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
       row.link_type === "oem"
         ? `/original-parts/${encodeURIComponent(row.link_id)}`
         : `/standard-parts`
-    window.open(url, "_blank")
+    window.open(resolveAppHref(url), "_blank")
   }
 
   const combinedRows = useMemo(() => {

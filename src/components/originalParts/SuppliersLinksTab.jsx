@@ -4,6 +4,7 @@ import { Empty, Space, Table, Tooltip, Typography, Tag, Button } from "antd"
 import { ArrowUpOutlined, ArrowDownOutlined, LinkOutlined, DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
+import { resolveAppHref } from "@/utils/resolveAppHref"
 
 const { Text } = Typography
 
@@ -115,7 +116,7 @@ export default function SuppliersLinksTab({ originalPartId }) {
   // deep-link в «Детали поставщиков»: передаём supplierId и focus
   const openSupplierPart = (supplierPartId, supplierId) => {
     const url = `/supplier-parts?supplierId=${encodeURIComponent(String(supplierId || ""))}&focus=${encodeURIComponent(String(supplierPartId))}`
-    window.open(url, "_blank")
+    window.open(resolveAppHref(url), "_blank")
   }
 
   // -------- sorting --------

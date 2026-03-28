@@ -1,5 +1,6 @@
 import React from "react"
 import { Button, Card, Descriptions, Empty, Space, Statistic, Table, Tabs, Tag, Typography } from "antd"
+import { resolveAppHref } from "@/utils/resolveAppHref"
 
 const textOrDash = (value) => {
   const v = String(value || "").trim()
@@ -66,7 +67,7 @@ export default function OEMPartDetailDock({ part, onCreateRequestForUnit }) {
                           <Tag>{primaryStandardPart.designation}</Tag>
                         ) : null}
                         <Typography.Link
-                          href="/standard-parts"
+                          href={resolveAppHref("/standard-parts")}
                           target="_blank"
                           rel="noreferrer"
                         >
@@ -79,7 +80,7 @@ export default function OEMPartDetailDock({ part, onCreateRequestForUnit }) {
                           Стандартная деталь не назначена
                         </Typography.Text>
                         <Typography.Link
-                          href="/standard-parts"
+                          href={resolveAppHref("/standard-parts")}
                           target="_blank"
                           rel="noreferrer"
                         >
