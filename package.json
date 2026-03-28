@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "deploy:cloud": "bash ./scripts/deploy-cloud.sh",
     "lint": "eslint .",
     "preview": "vite preview"
   },
