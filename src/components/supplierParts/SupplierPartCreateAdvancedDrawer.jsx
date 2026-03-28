@@ -116,7 +116,7 @@ export default function SupplierPartCreateAdvancedDrawer({
       onClose={onClose}
       title="Расширенные поля"
       width={520}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Space>
           <Button onClick={clear}>Очистить</Button>

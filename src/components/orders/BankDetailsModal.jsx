@@ -42,7 +42,7 @@ export default function BankDetailsModal({ open, onClose, clientId, onCreated })
       onCancel={onClose}
       onOk={handleOk}
       confirmLoading={saving}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form layout="vertical" form={form}>
         <Form.Item

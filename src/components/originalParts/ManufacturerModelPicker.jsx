@@ -383,7 +383,7 @@ export default function ManufacturerModelPicker({
       onClose={onClose}
       width={980}
       title="Контекст каталога OEM деталей"
-      destroyOnClose
+      destroyOnHidden
       extra={<Button type="primary" onClick={handlePick}>Выбрать</Button>}
     >
       <Tabs

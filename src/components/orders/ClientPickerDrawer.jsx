@@ -113,7 +113,7 @@ export default function ClientPickerDrawer({ open, onClose, onPick }) {
       title="Выбрать клиента"
       open={open}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
       width={960}
       extra={
         <Space>

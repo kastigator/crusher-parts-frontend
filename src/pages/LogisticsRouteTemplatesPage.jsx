@@ -304,7 +304,7 @@ export default function LogisticsRouteTemplatesPage() {
         }}
         onOk={save}
         confirmLoading={saving}
-        destroyOnClose
+        destroyOnHidden
         width={760}
       >
         <Form form={form} layout="vertical">

@@ -293,7 +293,7 @@ export default function OriginalsPickerDrawer({
         title={title}
         open={open}
         onClose={handleClose}
-        destroyOnClose
+        destroyOnHidden
         width={1000}
         extra={
           <Space>

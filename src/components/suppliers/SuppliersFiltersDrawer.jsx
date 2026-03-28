@@ -49,7 +49,7 @@ export default function SuppliersFiltersDrawer({ open, onClose, value, onApply }
         </Space>
       }
       width={520}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Space>
           <Button

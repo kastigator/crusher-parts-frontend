@@ -275,7 +275,7 @@ export default function OriginalPartMaterialsTab({ partId }) {
         onCancel={() => setPickerOpen(false)}
         onOk={addMaterial}
         confirmLoading={adding}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form layout="vertical" form={form}>
           <Form.Item
@@ -317,7 +317,7 @@ export default function OriginalPartMaterialsTab({ partId }) {
         }}
         onOk={saveSpec}
         confirmLoading={specSaving}
-        destroyOnClose
+        destroyOnHidden
       >
         <div style={{ color: "#6b7280", marginBottom: 12 }}>
           Эти значения используются как «основные» вес/габариты, когда этот материал выбран по умолчанию.

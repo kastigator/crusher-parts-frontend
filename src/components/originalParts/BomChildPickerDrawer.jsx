@@ -204,7 +204,7 @@ export default function BomChildPickerDrawer({
       onClose={onClose}
       width={920}
       title="Добавить позиции в BOM"
-      destroyOnClose
+      destroyOnHidden
       styles={{ body: { padding: 12 } }}
       footer={null}
     >

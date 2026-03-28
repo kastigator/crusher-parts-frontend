@@ -1,5 +1,5 @@
 import React from "react"
-import { AutoComplete, Button, Card, Checkbox, Input, InputNumber, Modal, Select, Space, Table, Typography } from "antd"
+import { AutoComplete, Button, Card, Checkbox, Input, InputNumber, Modal, Select, Space, Table, Tag, Typography } from "antd"
 
 const { Text } = Typography
 

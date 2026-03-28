@@ -110,7 +110,7 @@ export default function StandardPartsPickerDrawer({
       title={title}
       open={open}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
       width={980}
       extra={
         <Space>

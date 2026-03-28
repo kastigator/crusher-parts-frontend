@@ -5,6 +5,7 @@ import {
   DatePicker,
   Descriptions,
   Divider,
+  Drawer,
   Dropdown,
   Empty,
   Form,
@@ -146,6 +147,7 @@ export default function StandardPartsMain({
   const [detailsData, setDetailsData] = useState(null)
   const [detailsOemRows, setDetailsOemRows] = useState([])
   const [detailsSupplierRows, setDetailsSupplierRows] = useState([])
+  const [helpOpen, setHelpOpen] = useState(false)
   const [form] = Form.useForm()
   const [oemForm] = Form.useForm()
   const [supplierForm] = Form.useForm()
@@ -646,6 +648,7 @@ export default function StandardPartsMain({
               <Switch checked={activeOnly} onChange={setActiveOnly} />
               <Typography.Text>Только активные</Typography.Text>
             </Space>
+            <Button onClick={() => setHelpOpen(true)}>Справка</Button>
           </Space>
 
           <Button type="primary" onClick={openCreate}>
@@ -1198,6 +1201,90 @@ export default function StandardPartsMain({
           </Space>
         )}
       </Modal>
+
+      <Drawer
+        title="Справка по каталогу стандартных деталей"
+        placement="right"
+        width={520}
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+      >
+        <Space direction="vertical" size={16} style={{ width: "100%" }}>
+          <Card size="small" title="Зачем нужен каталог">
+            <Typography.Paragraph style={{ marginBottom: 0 }}>
+              Каталог хранит канонические стандартные изделия: болты, гайки, подшипники,
+              электродвигатели и другие типовые позиции. Здесь вы не работаете с клиентской
+              заявкой, а ведете общий справочник, на основании которого потом создаются OEM- и
+              supplier-представления.
+            </Typography.Paragraph>
+          </Card>
+
+          <Card size="small" title="Как устроены классы">
+            <Typography.Paragraph style={{ marginBottom: 0 }}>
+              Фильтр по классу работает по иерархии. Если выбрать родительский класс, например
+              «Крепеж», каталог покажет позиции из вложенных классов: «Болты», «Гайки», «Шайбы».
+              Если выбрать конкретный подкласс, например «Крепеж / Болты», будут показаны только
+              болты.
+            </Typography.Paragraph>
+          </Card>
+
+          <Card size="small" title="Как читать список">
+            <Typography.Paragraph>
+              В таблице каждая строка показывает одну каноническую стандартную деталь.
+            </Typography.Paragraph>
+            <Typography.Paragraph>
+              Колонка «OEM» показывает, сколько OEM-представлений уже создано на базе этой
+              стандартной детали.
+            </Typography.Paragraph>
+            <Typography.Paragraph style={{ marginBottom: 0 }}>
+              Колонка «Поставщики» показывает, сколько представлений поставщиков связано с этой
+              стандартной деталью.
+            </Typography.Paragraph>
+          </Card>
+
+          <Card size="small" title="Что делает кнопка «Открыть»">
+            <Typography.Paragraph style={{ marginBottom: 0 }}>
+              «Открыть» показывает техническую карточку детали: основные реквизиты, все настроенные
+              параметры класса, связанные OEM-представления и связанные представления поставщиков.
+              Это основной режим просмотра перед изменением или созданием представлений.
+            </Typography.Paragraph>
+          </Card>
+
+          <Card size="small" title="Что находится в меню «Еще»">
+            <Typography.Paragraph>
+              «Изменить» открывает редактирование самой канонической стандартной детали.
+            </Typography.Paragraph>
+            <Typography.Paragraph>
+              «Связанные поставщики» открывает список уже созданных supplier-представлений для этой
+              детали.
+            </Typography.Paragraph>
+            <Typography.Paragraph>
+              «Создать OEM-представление» создает OEM-деталь для конкретного производителя и модели
+              оборудования с OEM-номером.
+            </Typography.Paragraph>
+            <Typography.Paragraph>
+              «Создать представление поставщика» создает supplier part с номером поставщика,
+              упаковкой, MOQ, lead time и ценой.
+            </Typography.Paragraph>
+            <Typography.Paragraph style={{ marginBottom: 0 }}>
+              «Удалить» удаляет каноническую стандартную деталь. Это действие стоит использовать
+              только если позиция заведена ошибочно и не нужна в каталоге.
+            </Typography.Paragraph>
+          </Card>
+
+          <Card size="small" title="Когда создавать новую стандартную деталь">
+            <Typography.Paragraph>
+              Создавайте новую стандартную деталь, когда в каталоге еще нет нужного канонического
+              изделия. Сначала выберите правильный класс, затем заполните поля, которые настроены
+              для этого класса.
+            </Typography.Paragraph>
+            <Typography.Paragraph style={{ marginBottom: 0 }}>
+              Если нужный класс или его поля еще не настроены, сначала перейдите на вкладку
+              «Классификатор», а потом вернитесь в каталог для наполнения.
+            </Typography.Paragraph>
+          </Card>
+        </Space>
+      </Drawer>
     </Card>
   )
 }

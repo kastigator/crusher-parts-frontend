@@ -28,7 +28,7 @@ export default function AdhocRouteModal({
       confirmLoading={confirmLoading}
       okText="Сохранить"
       cancelText="Отмена"
-      destroyOnClose
+      destroyOnHidden
     >
       <Form layout="vertical" form={form}>
         <Form.Item label="Направление">

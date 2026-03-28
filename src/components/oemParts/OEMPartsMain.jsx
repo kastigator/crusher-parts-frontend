@@ -418,7 +418,7 @@ export default function OEMPartsMain() {
         cancelText="Отмена"
         confirmLoading={saving}
         width={860}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" initialValues={EMPTY_FORM}>
           <Space direction="vertical" size={4} style={{ width: "100%" }}>

@@ -179,7 +179,7 @@ export default function TnvedPicker({
         open={open}
         onClose={() => setOpen(false)}
         width={880}
-        destroyOnClose
+        destroyOnHidden
       >
         <Space direction="vertical" style={{ width: "100%" }} size="middle">
           <Space wrap>

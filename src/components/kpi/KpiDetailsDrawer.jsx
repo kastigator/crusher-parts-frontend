@@ -193,7 +193,7 @@ export default function KpiDetailsDrawer({
       width={900}
       open={open}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
     >
       {Array.isArray(rows) && rows.length ? (
         <Table

@@ -183,7 +183,7 @@ export default function SupplierPartMaterialsTab({ supplierPartId }) {
         onCancel={() => setPickerOpen(false)}
         onOk={addMaterial}
         confirmLoading={adding}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form layout="vertical" form={form}>
           <Form.Item

@@ -108,7 +108,7 @@ export default function SupplierPartsFiltersDrawer({
         </Space>
       }
       width={520}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Space>
           <Button onClick={clear}>Очистить</Button>

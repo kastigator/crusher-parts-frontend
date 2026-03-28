@@ -36,7 +36,7 @@ export default function ClientsFiltersDrawer({ open, onClose, value, onApply }) 
         </Space>
       }
       width={420}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Space>
           <Button

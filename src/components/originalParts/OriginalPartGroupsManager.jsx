@@ -204,7 +204,7 @@ export default function OriginalPartGroupsManager({ open, onClose, onChanged }) 
       title="Группы оригинальных деталей"
       footer={null}
       width={800}
-      destroyOnClose
+      destroyOnHidden
     >
       <Space direction="vertical" style={{ width: "100%" }} size={16}>
         {/* Форма создания группы */}

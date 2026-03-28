@@ -124,7 +124,7 @@ export default function MaterialFormModal({
       confirmLoading={loading}
       title={initialData?.id ? "Редактирование материала" : "Новый материал"}
       width={720}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form layout="vertical" form={form}>
         <Form.Item

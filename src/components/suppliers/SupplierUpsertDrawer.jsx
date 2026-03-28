@@ -30,7 +30,7 @@ export default function SupplierUpsertDrawer({
       onClose={onClose}
       title={title}
       width={560}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Space>
           <Button onClick={onClose} disabled={saving}>

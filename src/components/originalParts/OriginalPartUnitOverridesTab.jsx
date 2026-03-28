@@ -494,7 +494,7 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
         }}
         onOk={saveOverride}
         confirmLoading={saving}
-        destroyOnClose
+        destroyOnHidden
         okText="Сохранить"
         cancelText="Отмена"
       >
@@ -589,7 +589,7 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
           </Button>,
         ]}
         width={980}
-        destroyOnClose
+        destroyOnHidden
       >
         <Table
           size="small"
@@ -608,7 +608,7 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
         onCancel={() => setMaterialPickerOpen(false)}
         onOk={saveMaterial}
         confirmLoading={materialSaving}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form layout="vertical" form={materialForm}>
           <Form.Item
@@ -650,7 +650,7 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
         }}
         onOk={saveSpec}
         confirmLoading={specSaving}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form layout="vertical" form={specForm}>
           <Space style={{ width: "100%" }} size={12}>

@@ -79,7 +79,7 @@ export default function ShippingAddressPicker({
       open={open}
       onClose={onClose}
       width={1000}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Space>
           <Button onClick={onClose}>Отмена</Button>

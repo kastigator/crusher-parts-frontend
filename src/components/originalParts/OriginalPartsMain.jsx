@@ -1489,7 +1489,7 @@ export default function OriginalPartsMain() {
           setCreateOpen(false)
         }}
         width={560}
-        destroyOnClose={false}
+        destroyOnHidden={false}
         title="Создать позицию"
         extra={
           <Space>
@@ -1762,7 +1762,7 @@ export default function OriginalPartsMain() {
           setEditingRow(null)
         }}
         width={560}
-        destroyOnClose={false}
+        destroyOnHidden={false}
         title="Редактировать позицию"
         extra={
           <Space>

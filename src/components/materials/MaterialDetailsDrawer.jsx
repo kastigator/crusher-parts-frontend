@@ -129,7 +129,7 @@ export default function MaterialDetailsDrawer({ open, onClose, material }) {
       width={520}
       open={open}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
       styles={{ body: { paddingTop: 8 } }}
     >
       {loading ? (

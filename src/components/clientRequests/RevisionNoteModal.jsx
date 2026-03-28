@@ -16,7 +16,7 @@ export default function RevisionNoteModal({
       onOk={onConfirm}
       okText="Создать ревизию"
       cancelText="Отмена"
-      destroyOnClose
+      destroyOnHidden
     >
       <Input.TextArea
         value={revisionNote}

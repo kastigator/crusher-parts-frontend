@@ -131,7 +131,7 @@ export default function SupplierPartPickerDrawer({
       onClose={onClose}
       placement="right"
       width={920}
-      destroyOnClose
+      destroyOnHidden
       keyboard
       maskClosable
       getContainer={getContainer}

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from "react"
-import { notification, Tag, Space, Button, Typography, message } from "antd"
+import { Tag, Space, Button, Typography } from "antd"
 import { useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
+import { appMessage as message, appNotification as notification } from "@/utils/uiFeedback"
 
 const { Text } = Typography
 

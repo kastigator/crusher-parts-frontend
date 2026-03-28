@@ -75,7 +75,7 @@ export default function OriginalPartsFiltersDrawer({ open, onClose, value, onApp
       onClose={onClose}
       title="Фильтры"
       width={420}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Space>
           <Button

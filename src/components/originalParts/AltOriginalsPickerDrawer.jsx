@@ -156,7 +156,7 @@ export default function AltOriginalsPickerDrawer({
       onClose={onClose}
       placement="right"
       width={900}
-      destroyOnClose
+      destroyOnHidden
       keyboard
       maskClosable
       styles={{ body: { paddingTop: 8 } }}

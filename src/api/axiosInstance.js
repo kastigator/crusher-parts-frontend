@@ -1,7 +1,7 @@
 // src/api/axiosInstance.js
 
 import axios from 'axios'
-import { message } from 'antd'
+import { appMessage as message } from '@/utils/uiFeedback'
 import { logout } from '../auth/authService' // ✅ добавлено
 
 const API_BASE = `${import.meta.env.VITE_API_URL}/api`

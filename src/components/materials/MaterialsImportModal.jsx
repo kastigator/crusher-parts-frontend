@@ -233,7 +233,7 @@ export default function MaterialsImportModal({ open, onClose, onImported }) {
       open={open}
       title="Импорт библиотеки материалов (JSON)"
       onCancel={onClose}
-      destroyOnClose
+      destroyOnHidden
       footer={[
         <Button key="sample" icon={<ReloadOutlined />} onClick={handlePasteSample} disabled={loading}>
           Загрузить пример

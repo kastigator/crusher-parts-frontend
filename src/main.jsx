@@ -9,6 +9,7 @@ import { Toaster } from "react-hot-toast"
 import loadYandexMaps from "@/utils/loadYandexMaps"
 import { ConfigProvider, App as AntdApp } from "antd"
 import { antdTheme } from "@/theme/antdTheme"
+import AntdAppBridge from "@/components/common/AntdAppBridge"
 
 import "@fontsource/inter/300.css"
 import "@fontsource/inter/400.css"
@@ -35,6 +36,7 @@ loadYandexMaps()
               <TabsProvider>
                 <ConfigProvider theme={antdTheme}>
                   <AntdApp>
+                    <AntdAppBridge />
                     <App />
                     <Toaster position="bottom-center" />
                   </AntdApp>
@@ -48,6 +50,7 @@ loadYandexMaps()
               <TabsProvider>
                 <ConfigProvider theme={antdTheme}>
                   <AntdApp>
+                    <AntdAppBridge />
                     <App />
                     <Toaster position="bottom-center" />
                   </AntdApp>

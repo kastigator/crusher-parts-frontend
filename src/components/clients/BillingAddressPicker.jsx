@@ -74,7 +74,7 @@ export default function BillingAddressPicker({ open, onClose, clientId, onPick }
       open={open}
       onClose={onClose}
       width={1000}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Space>
           <Button onClick={onClose}>Отмена</Button>

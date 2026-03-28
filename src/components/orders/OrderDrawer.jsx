@@ -1337,7 +1337,7 @@ export default function OrderDrawer({
         open={open}
         onClose={onClose}
         width={1200}
-        destroyOnClose
+        destroyOnHidden
         extra={
           <Space>
             <Button onClick={onClose}>Закрыть</Button>
@@ -1374,7 +1374,7 @@ export default function OrderDrawer({
         okText={editingContract ? "Сохранить" : "Создать"}
         onOk={handleSaveContract}
         confirmLoading={contractSaving}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form layout="vertical" form={contractForm}>
           <Form.Item

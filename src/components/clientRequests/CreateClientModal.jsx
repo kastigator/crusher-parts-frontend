@@ -17,7 +17,7 @@ export default function CreateClientModal({
       confirmLoading={loading}
       okText="Создать"
       cancelText="Отмена"
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical" onFinish={onFinish}>
         <Form.Item
