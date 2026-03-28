@@ -27,5 +27,28 @@ steps:
         'gs://frontend-parts-site'
       ]
 
+  # 4. index.html не должен кэшироваться, иначе браузер держит старый entrypoint
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      [
+        'gsutil',
+        'setmeta',
+        '-h',
+        'Cache-Control:no-cache, no-store, must-revalidate',
+        'gs://frontend-parts-site/index.html'
+      ]
+
+  # 5. versioned assets можно кэшировать агрессивно
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      [
+        'gsutil',
+        '-m',
+        'setmeta',
+        '-h',
+        'Cache-Control:public, max-age=31536000, immutable',
+        'gs://frontend-parts-site/assets/**'
+      ]
+
 options:
   logging: CLOUD_LOGGING_ONLY
