@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Alert, Button, Card, DatePicker, Drawer, Form, Input, InputNumber, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
+import { resolveAppHref } from "@/utils/resolveAppHref"
 import CompanyLegalSummary from "@/components/common/CompanyLegalSummary"
 import useCapabilities from "@/hooks/useCapabilities"
 
@@ -278,7 +279,7 @@ export default function RequestContractTabContent({ requestId }) {
                 <Space>
                   <Button
                     size="small"
-                    onClick={() => window.open(`/contracts/${row.id}/preview`, "_blank", "noopener")}
+                    onClick={() => window.open(resolveAppHref(`/contracts/${row.id}/preview`), "_blank", "noopener")}
                   >
                     Открыть документ
                   </Button>

@@ -4,6 +4,7 @@ import axios from "@/api/axiosInstance"
 import { formatIncotermsWithPlace } from "./rfqWorkspaceUtils"
 import SupplierQualityEventModal from "@/components/suppliers/SupplierQualityEventModal"
 import useCapabilities from "@/hooks/useCapabilities"
+import { resolveAppHref } from "@/utils/resolveAppHref"
 
 const statusOptions = [
   { value: "draft", label: "Черновик" },
@@ -328,7 +329,7 @@ export default function PurchaseOrdersTabContent({
                 <Space>
                   <Button
                     size="small"
-                    onClick={() => window.open(`/purchase-orders/${row.id}/preview`, "_blank", "noopener")}
+                    onClick={() => window.open(resolveAppHref(`/purchase-orders/${row.id}/preview`), "_blank", "noopener")}
                   >
                     Открыть документ
                   </Button>

@@ -23,6 +23,7 @@ import {
 } from "antd"
 import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
+import { resolveAppHref } from "@/utils/resolveAppHref"
 
 const textOrDash = (value) => {
   const v = String(value || "").trim()
@@ -980,7 +981,12 @@ export default function StandardPartsMain({
               render: (_, row) => (
                 <Button
                   size="small"
-                  onClick={() => window.open(`/supplier-parts/${encodeURIComponent(row.supplier_part_id)}`, "_blank")}
+                  onClick={() =>
+                    window.open(
+                      resolveAppHref(`/supplier-parts/${encodeURIComponent(row.supplier_part_id)}`),
+                      "_blank"
+                    )
+                  }
                 >
                   Открыть
                 </Button>
