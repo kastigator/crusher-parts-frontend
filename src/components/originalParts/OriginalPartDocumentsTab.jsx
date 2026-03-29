@@ -11,7 +11,7 @@ import {
 import { UploadOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import ActionButtons from "@/components/common/ActionButtons"
-import confirmAction from "@/utils/confirmAction"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const bytesToSize = (bytes) => {
   if (!bytes && bytes !== 0) return ""
@@ -87,11 +87,14 @@ export default function OriginalPartDocumentsTab({ partId, onChanged }) {
   }
 
   const handleDelete = async (id) => {
-    const { confirmed } = await confirmAction("Удалить документ?")
-    if (!confirmed) return
     try {
-      await axios.delete(`/original-parts/documents/${id}`)
-      message.success("Документ удалён")
+      const result = await runTrashDeleteFlow({
+        entityType: "oem_part_documents",
+        entityId: id,
+        deleteUrl: `/original-parts/documents/${id}`,
+        successMessage: "Документ перемещён в корзину",
+      })
+      if (!result?.deleted) return
       setRows((prev) => prev.filter((r) => r.id !== id))
       if (editingId === id) {
         setEditingId(null)

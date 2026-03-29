@@ -9,6 +9,7 @@ import MaterialsImportModal from "./MaterialsImportModal"
 import MaterialFormModal from "./MaterialFormModal"
 import createTablePagination from "@/utils/tablePagination"
 import TableToolbar from "@/components/common/TableToolbar"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const MaterialDetailsDrawer = lazy(() => import("./MaterialDetailsDrawer"))
 
@@ -123,6 +124,12 @@ export default function MaterialsMain() {
     return build(0)
   }, [categories])
 
+  const selectedCategoryName = useMemo(() => {
+    if (!selectedCategory) return null
+    const match = categories.find((item) => String(item.id) === String(selectedCategory))
+    return match?.name || null
+  }, [categories, selectedCategory])
+
   const onSelectCategory = (keys) => {
     const key = keys?.[0]
     setSelectedCategory(key || null)
@@ -179,10 +186,16 @@ export default function MaterialsMain() {
 
   const handleDelete = async (record) => {
     try {
-      await axios.delete(`/materials/${record.id}`)
-      message.success("Материал удалён")
-      loadCategories()
-      loadMaterials()
+      const result = await runTrashDeleteFlow({
+        entityType: "materials",
+        entityId: record.id,
+        deleteUrl: `/materials/${record.id}`,
+        successMessage: "Материал перемещён в корзину",
+      })
+      if (result?.deleted) {
+        loadCategories()
+        loadMaterials()
+      }
     } catch (e) {
       console.error("Ошибка удаления материала", e)
       message.error("Не удалось удалить материал")
@@ -224,9 +237,17 @@ export default function MaterialsMain() {
           />
         </div>
 
-        <Space align="start" size={16} style={{ width: "100%" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 16,
+            alignItems: "flex-start",
+            width: "100%",
+            minWidth: 0,
+          }}
+        >
           <Card
-            style={{ width: 280, minHeight: 480 }}
+            style={{ width: 280, flex: "0 0 280px" }}
             bodyStyle={{ padding: 12 }}
             title={
               <Space>
@@ -249,24 +270,53 @@ export default function MaterialsMain() {
               </Tooltip>
             }
           >
-            {treeData.length === 0 ? (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={catLoading ? "Загрузка..." : "Категории не найдены"}
-              />
-            ) : (
-              <Tree
-                selectable
-                selectedKeys={selectedCategory ? [selectedCategory] : []}
-                treeData={treeData}
-                onSelect={onSelectCategory}
-                showIcon={false}
-                defaultExpandAll
-              />
-            )}
+            <div style={{ maxHeight: 560, overflow: "auto" }}>
+              {treeData.length === 0 ? (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={catLoading ? "Загрузка..." : "Категории не найдены"}
+                />
+              ) : (
+                <Tree
+                  selectable
+                  selectedKeys={selectedCategory ? [selectedCategory] : []}
+                  treeData={treeData}
+                  onSelect={onSelectCategory}
+                  showIcon={false}
+                  defaultExpandAll
+                />
+              )}
+            </div>
           </Card>
 
-          <Card style={{ flex: 1 }} bodyStyle={{ padding: 0 }}>
+          <Card style={{ flex: 1, minWidth: 0 }} bodyStyle={{ padding: 0 }}>
+            {selectedCategoryName ? (
+              <div
+                style={{
+                  padding: "12px 16px",
+                  borderBottom: "1px solid #f0f0f0",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <Space size={8} wrap>
+                  <Text type="secondary">Категория:</Text>
+                  <Tag color="blue">{selectedCategoryName}</Tag>
+                </Space>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setSelectedCategory(null)
+                    loadMaterials({ offset: 0 })
+                  }}
+                >
+                  Показать все материалы
+                </Button>
+              </div>
+            ) : null}
             <MaterialsTable
               data={paginatedData}
               loading={loading}
@@ -287,7 +337,7 @@ export default function MaterialsMain() {
               </>
             )}
           </Card>
-        </Space>
+        </div>
       </Card>
 
       <Suspense fallback={null}>

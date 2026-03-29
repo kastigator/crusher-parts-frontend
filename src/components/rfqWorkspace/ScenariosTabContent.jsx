@@ -3,6 +3,7 @@ import { Button, Card, Drawer, Empty, Form, Input, Popconfirm, Select, Space, Ta
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const { Text } = Typography
 
@@ -816,8 +817,14 @@ export default function ScenariosTabContent({ rfqId }) {
     if (!id || !rfqId) return
     setDeletingScenarioId(id)
     try {
-      const { data } = await axios.delete(`/economics/rfq/${rfqId}/scenarios/${id}`)
-      message.success(data?.message || "Сценарий удалён")
+      const result = await runTrashDeleteFlow({
+        entityType: "rfq_scenarios",
+        entityId: id,
+        deleteUrl: `/economics/rfq/${rfqId}/scenarios/${id}`,
+        previewParams: { rfq_id: rfqId },
+        successMessage: "Сценарий перемещён в корзину",
+      })
+      if (!result?.deleted) return
       if (Number(editingScenarioId || 0) === id) setEditingScenarioId(null)
       setScenarioDetailsById((prev) => {
         const next = { ...prev }

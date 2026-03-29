@@ -19,6 +19,7 @@ import { CloseOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, SaveOutl
 import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
 import { formatPrice } from "@/utils/priceFormat"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const STATUS_COLORS = {
   draft: "default",
@@ -289,10 +290,16 @@ export default function SupplierPriceListsDrawer({ open, supplier, onClose }) {
   const deleteLine = async (row) => {
     setLineDeletingId(row.id)
     try {
-      await axios.delete(`/supplier-price-lists/lines/${row.id}`)
-      if (editingLineId === row.id) cancelEditLine()
-      message.success("Строка удалена")
-      await Promise.all([loadLists(), loadLines(activeListId)])
+      const result = await runTrashDeleteFlow({
+        entityType: "supplier_price_list_lines",
+        entityId: row.id,
+        deleteUrl: `/supplier-price-lists/lines/${row.id}`,
+        successMessage: "Строка прайс-листа перемещена в корзину",
+      })
+      if (result?.deleted) {
+        if (editingLineId === row.id) cancelEditLine()
+        await Promise.all([loadLists(), loadLines(activeListId)])
+      }
     } catch (e) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось удалить строку")
@@ -305,13 +312,19 @@ export default function SupplierPriceListsDrawer({ open, supplier, onClose }) {
     if (!activeListId) return
     setListDeleting(true)
     try {
-      await axios.delete(`/supplier-price-lists/${activeListId}`)
-      message.success("Прайс-лист удален")
-      setEditingLineId(null)
-      setEditingLineData(null)
-      setActiveListId(null)
-      setLines([])
-      await loadLists()
+      const result = await runTrashDeleteFlow({
+        entityType: "supplier_price_lists",
+        entityId: activeListId,
+        deleteUrl: `/supplier-price-lists/${activeListId}`,
+        successMessage: "Прайс-лист перемещён в корзину",
+      })
+      if (result?.deleted) {
+        setEditingLineId(null)
+        setEditingLineData(null)
+        setActiveListId(null)
+        setLines([])
+        await loadLists()
+      }
     } catch (e) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось удалить прайс-лист")

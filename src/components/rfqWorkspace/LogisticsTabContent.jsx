@@ -662,6 +662,7 @@ export default function LogisticsTabContent({ rfqId, onNavigateTab }) {
 
       <Card size="small" title="Группы отгрузки" extra={<span style={{ color: "#666", fontSize: 12 }}>Колонки можно перетаскивать мышью за заголовки.</span>}>
         <DraggableColumnsTable
+          columnSizingKey="rfq_logistics_groups_column_widths_v1"
           size="small"
           loading={loadingGroups}
           rowKey="id"
@@ -669,7 +670,6 @@ export default function LogisticsTabContent({ rfqId, onNavigateTab }) {
           pagination={{ pageSize: 10, hideOnSinglePage: true }}
           columns={orderedGroupColumns}
           onColumnOrderChange={({ orderedVisibleKeys }) => setGroupColumnKeys(orderedVisibleKeys)}
-          nonDraggableKeys={["actions"]}
         />
       </Card>
 
@@ -736,6 +736,7 @@ export default function LogisticsTabContent({ rfqId, onNavigateTab }) {
         }
       >
         <DraggableColumnsTable
+          columnSizingKey="rfq_logistics_pool_column_widths_v1"
           size="small"
           rowKey="id"
           loading={loadingPool}

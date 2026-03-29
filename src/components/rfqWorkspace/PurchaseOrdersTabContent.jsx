@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Alert, Button, Card, Drawer, Form, Input, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatIncotermsWithPlace } from "./rfqWorkspaceUtils"
 import SupplierQualityEventModal from "@/components/suppliers/SupplierQualityEventModal"
 import useCapabilities from "@/hooks/useCapabilities"
 import { resolveAppHref } from "@/utils/resolveAppHref"
+import useTableScrollHints from "@/utils/useTableScrollHints"
+import "@/styles/tableStyles.css"
 
 const statusOptions = [
   { value: "draft", label: "Черновик" },
@@ -29,7 +31,9 @@ export default function PurchaseOrdersTabContent({
   const [selectionLines, setSelectionLines] = useState([])
   const [loadingLines, setLoadingLines] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const [form] = Form.useForm()
+  const ordersTableWrapRef = useRef(null)
 
   const signedSelectionIds = useMemo(
     () =>
@@ -64,6 +68,8 @@ export default function PurchaseOrdersTabContent({
     })
     return Array.from(grouped.values())
   }, [selectionLines])
+
+  const ordersScrollHints = useTableScrollHints(ordersTableWrapRef, [purchaseOrders])
 
   const selectedSupplierId = Form.useWatch("supplier_id", form)
 
@@ -173,97 +179,58 @@ export default function PurchaseOrdersTabContent({
 
       <Card
         size="small"
-        title="Создать заказ поставщику"
-        extra={
-          <Button size="small" onClick={() => setHelpOpen(true)}>
-            Справка
-          </Button>
-        }
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ status: "draft" }}
-          onFinish={handleCreatePo}
-        >
-          <Space wrap align="start">
-            <Form.Item
-              name="selection_id"
-              label="Выбор закупки"
-              rules={[{ required: true, message: "Выберите утвержденный выбор" }]}
-            >
-              <Select
-                style={{ width: 320 }}
-                options={selectionOptions}
-                onChange={(value) => {
-                  const id = Number(value || 0) || null
-                  setSelectedSelectionId(id)
-                }}
-              />
-            </Form.Item>
-            <Form.Item
-              name="supplier_id"
-              label="Поставщик"
-              rules={[{ required: true, message: "Выберите поставщика" }]}
-            >
-              <Select style={{ width: 320 }} loading={loadingLines} options={supplierOptions} />
-            </Form.Item>
-            <Form.Item
-              name="shipment_group_id"
-              label="Группа поставки"
-              tooltip="Если у поставщика несколько утвержденных групп/профилей, заказы нужно создавать отдельно по каждой группе."
-            >
-              <Select
-                allowClear
-                style={{ width: 380 }}
-                options={shipmentGroupOptions}
-                placeholder={shipmentGroupOptions.length ? "Выберите конкретную группу поставки" : "Сначала выберите поставщика"}
-              />
-            </Form.Item>
-            <Form.Item name="status" label="Статус">
-              <Select style={{ width: 140 }} options={statusOptions} />
-            </Form.Item>
-            <Form.Item name="incoterms" label="Инкотермс">
-              <Input style={{ width: 120 }} placeholder="EXW" />
-            </Form.Item>
-            <Form.Item name="incoterms_place" label="Пункт Incoterms">
-              <Input style={{ width: 220 }} placeholder="Например: Shanghai Port" />
-            </Form.Item>
-            <Form.Item name="supplier_reference" label="Референс поставщика">
-              <Input style={{ width: 180 }} />
-            </Form.Item>
-          </Space>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-            Валюта заказа поставщику наследуется из утверждённого профиля исполнения и не меняется вручную без нового пересчёта.
-          </Typography.Paragraph>
-          <Button type="primary" htmlType="submit" loading={creating} disabled={!canManagePurchaseOrders}>
-            Создать заказ
-          </Button>
-        </Form>
-      </Card>
-
-      <Card
-        size="small"
-        title="Заказы поставщикам по RFQ"
+        title="Выпущенные заказы поставщикам"
         extra={
           <Button size="small" onClick={onCommercialUpdated}>
             Обновить
           </Button>
         }
       >
-        <Table
-          rowKey="id"
-          dataSource={purchaseOrders}
-          pagination={{ pageSize: 10, hideOnSinglePage: true }}
-          columns={[
-            { title: "Заказ", width: 80, render: (_, row) => `#${row.id}` },
-            { title: "Выбор", dataIndex: "selection_id", width: 100 },
+        <div
+          ref={ordersTableWrapRef}
+          className={`op-table-wrap${ordersScrollHints.left ? " scroll-left" : ""}${
+            ordersScrollHints.right ? " scroll-right" : ""
+          }`}
+        >
+          {ordersScrollHints.right && !ordersScrollHints.left ? (
+            <Typography.Text type="secondary" className="op-table-scroll-note">
+              В таблице есть продолжение вправо
+            </Typography.Text>
+          ) : null}
+          <Table
+            size="small"
+            rowKey="id"
+            dataSource={purchaseOrders}
+            pagination={{ pageSize: 10, hideOnSinglePage: true }}
+            tableLayout="auto"
+            scroll={{ x: "max-content" }}
+            columns={[
+            {
+              title: "Заказ",
+              width: 180,
+              render: (_, row) => (
+                <Space direction="vertical" size={2}>
+                  <span>{`#${row.id}`}</span>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {`Выбор ${row.selection_id || "—"}`}
+                  </Typography.Text>
+                  <Tag style={{ width: "fit-content" }}>
+                    {statusOptions.find((item) => item.value === row.status)?.label || row.status || "Черновик"}
+                  </Tag>
+                </Space>
+              ),
+            },
             {
               title: "Поставщик",
-              width: 220,
+              width: 240,
               render: (_, row) => (
                 <Space direction="vertical" size={2}>
                   <span>{row.supplier_name || row.supplier_public_code || `#${row.supplier_id}`}</span>
+                  {row.supplier_reference ? (
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {`Референс: ${row.supplier_reference}`}
+                    </Typography.Text>
+                  ) : null}
                   {Number(row.substitution_lines_total || 0) > 0 ? (
                     <Tag color="orange">Подмена в закупке</Tag>
                   ) : null}
@@ -271,20 +238,13 @@ export default function PurchaseOrdersTabContent({
               ),
             },
             {
-              title: "Статус",
-              dataIndex: "status",
-              width: 120,
-              render: (value) => <Tag>{statusOptions.find((item) => item.value === value)?.label || value || "Черновик"}</Tag>,
-            },
-            { title: "Референс поставщика", dataIndex: "supplier_reference", width: 180 },
-            {
               title: "Incoterms",
-              width: 180,
+              width: 160,
               render: (_, row) => formatIncotermsWithPlace(row.incoterms, row.incoterms_place),
             },
             {
               title: "Основание",
-              width: 240,
+              width: 220,
               render: (_, row) => (
                 <>
                   <div>{signedSelectionIds.has(Number(row.selection_id || 0)) ? "Контракт открыт к исполнению" : "Только выбор"}</div>
@@ -299,61 +259,138 @@ export default function PurchaseOrdersTabContent({
             },
             {
               title: "Строки",
-              width: 120,
+              width: 90,
               render: (_, row) =>
                 Number(row.substitution_lines_total || 0) > 0
                   ? `${Number(row.substitution_lines_total || 0)}/${Number(row.lines_total || 0)}`
                   : `${Number(row.lines_total || 0)}`
             },
+            { title: "Создано", dataIndex: "created_at", width: 110, render: formatDate },
             {
-              title: "Качество",
-              width: 160,
+              title: "Действия",
+              width: 300,
               render: (_, row) => (
-                <Button
-                  size="small"
-                  disabled={!canManagePurchaseOrders}
-                  onClick={() => {
-                    setQualityOrder(row)
-                    setQualityModalOpen(true)
-                  }}
-                >
-                  Добавить событие
-                </Button>
-              ),
-            },
-            { title: "Создано", dataIndex: "created_at", width: 120, render: formatDate },
-            {
-              title: "Документ",
-              width: 340,
-              render: (_, row) => (
-                <Space>
+                <Space wrap size={[8, 8]}>
                   <Button
                     size="small"
                     onClick={() => window.open(resolveAppHref(`/purchase-orders/${row.id}/preview`), "_blank", "noopener")}
                   >
-                    Открыть документ
+                    Открыть
                   </Button>
                   {row.file_url ? (
                     <Button
                       size="small"
                       onClick={() => window.open(row.file_url, "_blank", "noopener")}
                     >
-                      Скачать DOCX
+                      DOCX
                     </Button>
                   ) : null}
+                  <Button
+                    size="small"
+                    disabled={!canManagePurchaseOrders}
+                    onClick={() => {
+                      setQualityOrder(row)
+                      setQualityModalOpen(true)
+                    }}
+                  >
+                    Качество
+                  </Button>
                   <Button
                     size="small"
                     loading={generatingOrderId === Number(row.id)}
                     onClick={() => handleGenerateOrderPdf(row.id)}
                     disabled={!canManagePurchaseOrders}
                   >
-                    Пересобрать DOCX
+                    Пересобрать
                   </Button>
                 </Space>
               ),
             },
-          ]}
-        />
+            ]}
+          />
+        </div>
+      </Card>
+
+      <Card
+        size="small"
+        title="Создание нового заказа поставщику"
+        extra={
+          <Space>
+            <Button size="small" onClick={() => setCreateOpen((prev) => !prev)}>
+              {createOpen ? "Скрыть форму" : "Показать форму"}
+            </Button>
+            <Button size="small" onClick={() => setHelpOpen(true)}>
+              Справка
+            </Button>
+          </Space>
+        }
+      >
+        {createOpen ? (
+          <Form
+            form={form}
+            layout="vertical"
+            initialValues={{ status: "draft" }}
+            onFinish={handleCreatePo}
+          >
+            <Space wrap align="start" style={{ width: "100%" }}>
+              <Form.Item
+                name="selection_id"
+                label="Выбор закупки"
+                rules={[{ required: true, message: "Выберите утвержденный выбор" }]}
+              >
+                <Select
+                  style={{ width: 300, maxWidth: "100%" }}
+                  options={selectionOptions}
+                  onChange={(value) => {
+                    const id = Number(value || 0) || null
+                    setSelectedSelectionId(id)
+                  }}
+                />
+              </Form.Item>
+              <Form.Item
+                name="supplier_id"
+                label="Поставщик"
+                rules={[{ required: true, message: "Выберите поставщика" }]}
+              >
+                <Select style={{ width: 300, maxWidth: "100%" }} loading={loadingLines} options={supplierOptions} />
+              </Form.Item>
+              <Form.Item
+                name="shipment_group_id"
+                label="Группа поставки"
+                tooltip="Если у поставщика несколько утвержденных групп/профилей, заказы нужно создавать отдельно по каждой группе."
+              >
+                <Select
+                  allowClear
+                  style={{ width: 340, maxWidth: "100%" }}
+                  options={shipmentGroupOptions}
+                  placeholder={shipmentGroupOptions.length ? "Выберите конкретную группу поставки" : "Сначала выберите поставщика"}
+                />
+              </Form.Item>
+              <Form.Item name="status" label="Статус">
+                <Select style={{ width: 120 }} options={statusOptions} />
+              </Form.Item>
+              <Form.Item name="incoterms" label="Инкотермс">
+                <Input style={{ width: 100 }} placeholder="EXW" />
+              </Form.Item>
+              <Form.Item name="incoterms_place" label="Пункт Incoterms">
+                <Input style={{ width: 220 }} placeholder="Например: Shanghai Port" />
+              </Form.Item>
+              <Form.Item name="supplier_reference" label="Референс поставщика">
+                <Input style={{ width: 180 }} />
+              </Form.Item>
+            </Space>
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+              Валюта заказа поставщику наследуется из утверждённого профиля исполнения и не меняется вручную без нового пересчёта.
+            </Typography.Paragraph>
+            <Button type="primary" htmlType="submit" loading={creating} disabled={!canManagePurchaseOrders}>
+              Создать заказ
+            </Button>
+          </Form>
+        ) : (
+          <Typography.Text type="secondary">
+            Форма создания скрыта, чтобы обзор выпущенных заказов оставался главным рабочим режимом экрана.
+          </Typography.Text>
+        )}
       </Card>
 
       <Drawer

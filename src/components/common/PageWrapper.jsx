@@ -1,7 +1,5 @@
 import React from "react"
-import { Typography } from "antd"
-
-const { Title, Text } = Typography
+import AppPageHeader from "@/components/common/AppPageHeader"
 
 /**
  * Унифицированная оболочка страницы.
@@ -12,7 +10,17 @@ const { Title, Text } = Typography
  *  - helpText?: string     — подсказка под заголовком (горячие клавиши и т.п.)
  *  - children: ReactNode   — контент страницы
  */
-export default function PageWrapper({ title, extra, helpText, children }) {
+export default function PageWrapper({
+  title,
+  subtitle,
+  status,
+  extra,
+  primaryActions,
+  secondaryActions,
+  helpText,
+  helpSummary,
+  children,
+}) {
   return (
     <div
       style={{
@@ -26,41 +34,14 @@ export default function PageWrapper({ title, extra, helpText, children }) {
       }}
     >
       {/* === Заголовок страницы === */}
-      {(title || extra) && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: helpText ? 4 : 16,
-          }}
-        >
-          {title && (
-            <Title
-              level={3}
-              style={{
-                margin: 0,
-                fontWeight: 600,
-                lineHeight: 1.2,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {title}
-            </Title>
-          )}
-
-          {extra && <div>{extra}</div>}
-        </div>
-      )}
-
-      {/* === Подсказка под заголовком === */}
-      {helpText && (
-        <div style={{ marginBottom: 16 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {helpText}
-          </Text>
-        </div>
-      )}
+      <AppPageHeader
+        title={title}
+        subtitle={subtitle}
+        status={status}
+        secondaryActions={secondaryActions || extra}
+        primaryActions={primaryActions}
+        helpSummary={helpSummary || helpText}
+      />
 
       {/* === Контент страницы === */}
       {children}

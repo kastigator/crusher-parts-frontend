@@ -28,16 +28,17 @@ const CATALOG_CHILD_PATHS = new Set([
 ])
 
 const ADMIN_PATH = "/admin"
+const TRASH_PATH = "/trash"
 const CATALOG_ICON_BY_PATH = {
   "/clients": "clients",
   "/suppliers": "suppliers",
   "/supplier-parts": "supplier-parts",
   "/original-parts": "original-parts",
-  "/standard-parts": "materials",
-  "/equipment-classifier": "catalogs",
+  "/standard-parts": "standard-parts",
+  "/equipment-classifier": "equipment-classifier",
   "/materials": "materials",
   "/tnved-codes": "tnved-codes",
-  "/logistics-route-templates": "coverage",
+  "/logistics-route-templates": "logistics-route-templates",
 }
 const CATALOG_LABEL_BY_PATH = {
   "/original-parts": "OEM детали",
@@ -107,6 +108,10 @@ export default function Sidebar() {
         usersTab = tab
       }
 
+      if (tab.path === TRASH_PATH) {
+        return
+      }
+
       if (tab.path === ADMIN_PATH) {
         adminTab = tab
         return
@@ -157,6 +162,18 @@ export default function Sidebar() {
 
       const insertAt = catalogInsertIndex ?? items.length
       items.splice(insertAt, 0, groupItem)
+    }
+
+    const trashItem = buildMenuItem({
+      path: TRASH_PATH,
+      icon: "trash",
+      name: "Корзина",
+    })
+    const adminInsertIndex = items.findIndex((item) => item?.key === ADMIN_PATH)
+    if (adminInsertIndex >= 0) {
+      items.splice(adminInsertIndex, 0, trashItem)
+    } else {
+      items.push(trashItem)
     }
 
     if (adminTab && !usersTab) {

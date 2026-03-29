@@ -23,6 +23,7 @@ import {
   message,
 } from "antd"
 import axios from "@/api/axiosInstance"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const NODE_TYPE_OPTIONS = [
   { value: "ROOT", label: "Корень" },
@@ -238,8 +239,13 @@ export default function EquipmentClassifierMain() {
   const handleDelete = async () => {
     if (!selectedNode?.id) return
     try {
-      await axios.delete(`/equipment-classifier-nodes/${selectedNode.id}`)
-      message.success("Узел классификатора удалён")
+      const result = await runTrashDeleteFlow({
+        entityType: "equipment_classifier_nodes",
+        entityId: selectedNode.id,
+        deleteUrl: `/equipment-classifier-nodes/${selectedNode.id}`,
+        successMessage: "Узел классификатора перемещён в корзину",
+      })
+      if (!result?.deleted) return
       setSelectedId(null)
       await loadTree()
     } catch (err) {

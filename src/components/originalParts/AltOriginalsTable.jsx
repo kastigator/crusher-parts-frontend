@@ -15,6 +15,7 @@ import { PlusOutlined, DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import AltOriginalsPickerDrawer from "./AltOriginalsPickerDrawer"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const { Text } = Typography
 
@@ -111,9 +112,15 @@ export default function AltOriginalsTable({ originalPartId }) {
     )
     if (!confirmed) return
     try {
-      await axios.delete(`/original-part-alt/${group.id}`)
-      setGroups((prev) => prev.filter((g) => g.id !== group.id))
-      message.success("Группа удалена")
+      const result = await runTrashDeleteFlow({
+        entityType: "oem_part_alt_groups",
+        entityId: group.id,
+        deleteUrl: `/original-part-alt/${group.id}`,
+        successMessage: "Группа альтернатив удалена",
+      })
+      if (result?.deleted) {
+        setGroups((prev) => prev.filter((g) => g.id !== group.id))
+      }
     } catch (e) {
       console.error(e)
       const msg = e?.response?.data?.message || "Не удалось удалить группу"
@@ -126,22 +133,28 @@ export default function AltOriginalsTable({ originalPartId }) {
     const { confirmed } = await confirmAction("Удалить деталь из группы?")
     if (!confirmed) return
     try {
-      await axios.delete(`/original-part-alt/${groupId}/items`, {
-        data: { alt_part_id: altPartId },
+      const result = await runTrashDeleteFlow({
+        entityType: "oem_part_alt_items",
+        entityId: groupId,
+        previewParams: { alt_part_id: altPartId },
+        deleteUrl: `/original-part-alt/${groupId}/items`,
+        deleteParams: { alt_part_id: altPartId },
+        successMessage: "Альтернатива удалена из группы",
       })
-      setGroups((prev) =>
-        prev.map((g) =>
-          g.id === groupId
-            ? {
-                ...g,
-                items: (g.items || []).filter(
-                  (i) => i.alt_part_id !== altPartId,
-                ),
-              }
-            : g,
-        ),
-      )
-      message.success("Удалено из группы")
+      if (result?.deleted) {
+        setGroups((prev) =>
+          prev.map((g) =>
+            g.id === groupId
+              ? {
+                  ...g,
+                  items: (g.items || []).filter(
+                    (i) => i.alt_part_id !== altPartId,
+                  ),
+                }
+              : g,
+          ),
+        )
+      }
     } catch (e) {
       console.error(e)
       const msg = e?.response?.data?.message || "Не удалось удалить позицию"

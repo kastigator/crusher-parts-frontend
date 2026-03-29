@@ -7,6 +7,7 @@ import ShippingAddressesTable from "./ShippingAddressesTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import { isSameByFields, mergeConflictDraft } from "@/utils/versionConflict"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 export default function ShippingAddressesMain({ clientId, onChanged }) {
   const [data, setData] = useState([])
@@ -175,13 +176,17 @@ export default function ShippingAddressesMain({ clientId, onChanged }) {
   // ---------------------------
   const handleDelete = async (row) => {
     try {
-      await axios.delete(`/client-shipping-addresses/${row.id}`, {
-        params: { version: row.version },
+      const result = await runTrashDeleteFlow({
+        entityType: "client_shipping_addresses",
+        entityId: row.id,
+        deleteUrl: `/client-shipping-addresses/${row.id}`,
+        deleteParams: { version: row.version },
+        successMessage: "Адрес доставки перемещён в корзину",
       })
-
-      removeRow(row.id)
-      message.success("Адрес доставки удалён")
-      onChanged?.()
+      if (result?.deleted) {
+        removeRow(row.id)
+        onChanged?.()
+      }
     } catch (err) {
       const res = err?.response
       if (res?.status === 409 && res?.data?.current) {

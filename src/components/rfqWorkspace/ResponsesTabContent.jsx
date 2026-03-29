@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import {
   Alert,
   Button,
@@ -26,6 +26,8 @@ import { formatIncotermsWithPlace } from "./rfqWorkspaceUtils"
 import { formatQtyWithUomLabel } from "./rfqDisplayUtils"
 import { useNavigate } from "react-router-dom"
 import useCapabilities from "@/hooks/useCapabilities"
+import useTableScrollHints from "@/utils/useTableScrollHints"
+import "@/styles/tableStyles.css"
 import {
   SUPPLIER_DEFAULT_CURRENCY_OPTIONS,
   SUPPLIER_DEFAULT_PAYMENT_TERMS_OPTIONS,
@@ -64,6 +66,7 @@ const normalizeSupplierReplyStatus = (value) => {
   const normalized = String(value || "").trim().toUpperCase()
   return SUPPLIER_REPLY_STATUS_META[normalized] ? normalized : "QUOTED"
 }
+
 
 const supplierReplyStatusRequiresPrice = (value) =>
   SUPPLIER_REPLY_STATUS_META[normalizeSupplierReplyStatus(value)]?.requiresPrice === true
@@ -683,6 +686,7 @@ export default function ResponsesTabContent({
   const manualReplyStatus = Form.useWatch("supplier_reply_status", manualForm)
   const negotiationReplyStatus = Form.useWatch("supplier_reply_status", negotiationForm)
   const manualSelectionLocked = Boolean(String(manualLineLock?.selectionKey || "").trim())
+  const mainTableWrapRef = useRef(null)
 
   const itemByRfqItemId = useMemo(() => {
     const map = new Map()
@@ -715,6 +719,17 @@ export default function ResponsesTabContent({
       })),
     [items]
   )
+
+  const mainTableScrollHints = useTableScrollHints(mainTableWrapRef, [
+    viewMode,
+    workspaceRows,
+    responseLines,
+    visibleSupplierColumnKeys,
+    visibleOriginalColumnKeys,
+    responseSupplierFilter,
+    responseOriginalFilter,
+    onlyWaiting,
+  ])
 
   const supplierOptions = useMemo(
     () =>
@@ -1319,14 +1334,13 @@ export default function ResponsesTabContent({
       key: "supplier",
       title: "Поставщик",
       dataIndex: "supplier_name",
-      width: 260,
+      width: 220,
       ellipsis: true,
-      fixed: "left",
     },
     {
       key: "description",
       title: "Описание",
-      width: 280,
+      width: 240,
       ellipsis: true,
       render: (_, r) => getRowDescriptionText(r),
     },
@@ -1442,7 +1456,7 @@ export default function ResponsesTabContent({
       key: "supplier_description",
       title: "Описание поставщика",
       dataIndex: "latest_supplier_part_description",
-      width: 240,
+      width: 200,
       ellipsis: true,
       render: (_, r) => renderSupplierPartMeta(r),
     },
@@ -1455,8 +1469,7 @@ export default function ResponsesTabContent({
     {
       key: "actions",
       title: "Действия",
-      width: 220,
-      fixed: "right",
+      width: 180,
       render: (_, r) => (
         <Space size={6}>
           <Button
@@ -1554,9 +1567,8 @@ export default function ResponsesTabContent({
       key: "supplier",
       title: "Поставщик",
       dataIndex: "supplier_name",
-      width: 260,
+      width: 220,
       ellipsis: true,
-      fixed: "left",
     },
     {
       key: "status",
@@ -1639,7 +1651,7 @@ export default function ResponsesTabContent({
       key: "supplier_description",
       title: "Описание поставщика",
       dataIndex: "latest_supplier_part_description",
-      width: 240,
+      width: 200,
       ellipsis: true,
       render: (_, r) => renderSupplierPartMeta(r),
     },
@@ -1647,8 +1659,7 @@ export default function ResponsesTabContent({
     {
       key: "actions",
       title: "Действия",
-      width: 220,
-      fixed: "right",
+      width: 180,
       render: (_, r) => (
         <Space size={6}>
           <Button
@@ -1923,24 +1934,37 @@ export default function ResponsesTabContent({
         </Button>
       </Space>
 
-      <DraggableColumnsTable
-        className="op-table"
-        rowKey={(row) =>
-          `${row.rfq_supplier_id}-${row.rfq_item_id}-${
-            row.selected_selection_key || row.selection_key || "no-selection"
-          }`
-        }
-        dataSource={viewMode === "supplier" ? visibleWorkspaceRows : byOriginalRows}
-        pagination={false}
-        size="small"
-        tableLayout="auto"
-        scroll={{ x: "max-content" }}
-        columns={viewMode === "supplier" ? visibleCommonColumns : visibleOriginalViewColumns}
-        nonDraggableKeys={viewMode === "supplier" ? requiredSupplierColumns : requiredOriginalColumns}
-        onColumnOrderChange={
-          viewMode === "supplier" ? handleSupplierColumnOrderChange : handleOriginalColumnOrderChange
-        }
-      />
+      <div
+        ref={mainTableWrapRef}
+        className={`op-table-wrap${mainTableScrollHints.left ? " scroll-left" : ""}${
+          mainTableScrollHints.right ? " scroll-right" : ""
+        }`}
+      >
+        {mainTableScrollHints.right && !mainTableScrollHints.left ? (
+          <Text type="secondary" className="op-table-scroll-note">
+            В таблице есть продолжение вправо
+          </Text>
+        ) : null}
+        <DraggableColumnsTable
+          columnSizingKey={viewMode === "supplier" ? "rfq_responses_supplier_view_column_widths_v1" : "rfq_responses_original_view_column_widths_v1"}
+          className="op-table"
+          rowKey={(row) =>
+            `${row.rfq_supplier_id}-${row.rfq_item_id}-${
+              row.selected_selection_key || row.selection_key || "no-selection"
+            }`
+          }
+          dataSource={viewMode === "supplier" ? visibleWorkspaceRows : byOriginalRows}
+          pagination={false}
+          size="small"
+          tableLayout="auto"
+          scroll={{ x: "max-content" }}
+          columns={viewMode === "supplier" ? visibleCommonColumns : visibleOriginalViewColumns}
+          nonDraggableKeys={viewMode === "supplier" ? requiredSupplierColumns : requiredOriginalColumns}
+          onColumnOrderChange={
+            viewMode === "supplier" ? handleSupplierColumnOrderChange : handleOriginalColumnOrderChange
+          }
+        />
+      </div>
 
       <Card size="small" title="Таймлайн по строкам (ревизии ответов)">
         {[...responseTimeline.entries()].map(([key, list]) => (

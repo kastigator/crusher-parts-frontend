@@ -9,7 +9,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Select,
   Space,
   Table,
@@ -18,6 +17,7 @@ import {
   message,
 } from "antd"
 import axios from "@/api/axiosInstance"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const STATUS_OPTIONS = [
   { value: "active", label: "Активна" },
@@ -200,10 +200,16 @@ export default function ClientEquipmentUnitsMain({ clientId, onChanged }) {
 
   const handleDelete = async (row) => {
     try {
-      await axios.delete(`/client-equipment-units/${row.id}`)
-      message.success("Единица оборудования удалена")
-      await loadRows()
-      onChanged?.()
+      const result = await runTrashDeleteFlow({
+        entityType: "client_equipment_units",
+        entityId: row.id,
+        deleteUrl: `/client-equipment-units/${row.id}`,
+        successMessage: "Единица оборудования перемещена в корзину",
+      })
+      if (result?.deleted) {
+        await loadRows()
+        onChanged?.()
+      }
     } catch (err) {
       console.error("delete client equipment unit error:", err)
       message.error(err?.response?.data?.message || "Не удалось удалить единицу оборудования")
@@ -303,17 +309,9 @@ export default function ClientEquipmentUnitsMain({ clientId, onChanged }) {
           <Button size="small" onClick={() => openEdit(row)}>
             Изменить
           </Button>
-          <Popconfirm
-            title="Удалить единицу оборудования?"
-            description={`${row.manufacturer_name || ""} ${row.model_name || ""}`.trim()}
-            okText="Удалить"
-            cancelText="Отмена"
-            onConfirm={() => handleDelete(row)}
-          >
-            <Button size="small" danger>
-              Удалить
-            </Button>
-          </Popconfirm>
+          <Button size="small" danger onClick={() => handleDelete(row)}>
+            Удалить
+          </Button>
         </Space>
       ),
     },

@@ -24,7 +24,7 @@ export default function RequestMarginTabContent({ requestId }) {
   const [selectedRevisionId, setSelectedRevisionId] = useState(null)
   const [lines, setLines] = useState([])
   const [loading, setLoading] = useState(false)
-  const [savingLineId, setSavingLineId] = useState(null)
+  const [savingAll, setSavingAll] = useState(false)
   const [drafts, setDrafts] = useState({})
   const [helpOpen, setHelpOpen] = useState(false)
   const quoteStatusLabel = (value) =>
@@ -156,6 +156,26 @@ export default function RequestMarginTabContent({ requestId }) {
     }
   }, [drafts, lines])
 
+  const dirtyLineIds = useMemo(
+    () =>
+      lines
+        .filter((row) => {
+          const draft = drafts[row.id]
+          if (!draft) return false
+          return (
+            Number(draft.qty ?? 0) !== Number(row.qty ?? 0) ||
+            Number(draft.cost ?? 0) !== Number(row.cost ?? 0) ||
+            Number(draft.sell_price ?? 0) !== Number(row.sell_price ?? 0) ||
+            Number(draft.margin_pct ?? 0) !== Number(row.margin_pct ?? 0) ||
+            String(draft.currency || "USD") !== String(row.currency || "USD") ||
+            String(draft.line_status || "active") !== String(row.line_status || "active")
+          )
+        })
+        .map((row) => row.id),
+    [drafts, lines]
+  )
+  const dirtyLineIdSet = useMemo(() => new Set(dirtyLineIds), [dirtyLineIds])
+
   const handleDraftChange = (lineId, patch) => {
     setDrafts((prev) => {
       const next = { ...(prev[lineId] || {}), ...patch }
@@ -168,20 +188,23 @@ export default function RequestMarginTabContent({ requestId }) {
     })
   }
 
-  const saveLine = async (lineId) => {
-    const payload = drafts[lineId]
-    if (!payload) return
-    setSavingLineId(lineId)
+  const saveDirtyLines = async () => {
+    if (!dirtyLineIds.length) return
+    setSavingAll(true)
     try {
-      await axios.patch(`/sales-quotes/lines/${lineId}`, payload)
-      message.success("Строка коммерческого предложения обновлена")
+      for (const lineId of dirtyLineIds) {
+        const payload = drafts[lineId]
+        if (!payload) continue
+        await axios.patch(`/sales-quotes/lines/${lineId}`, payload)
+      }
+      message.success(`Сохранено строк: ${dirtyLineIds.length}`)
       await loadLines()
       await loadQuotes()
       await loadRevisions()
     } catch (e) {
-      message.error(e?.response?.data?.message || "Не удалось обновить строку коммерческого предложения")
+      message.error(e?.response?.data?.message || "Не удалось сохранить изменения по строкам предложения")
     } finally {
-      setSavingLineId(null)
+      setSavingAll(false)
     }
   }
 
@@ -207,75 +230,116 @@ export default function RequestMarginTabContent({ requestId }) {
         />
       ) : null}
 
-      <Button size="small" onClick={() => setHelpOpen(true)} style={{ alignSelf: "flex-start" }}>
-        Справка
-      </Button>
+      <Card
+        size="small"
+        title="Контекст ревизии"
+        extra={
+          <Space wrap>
+            <Button
+              type="primary"
+              onClick={saveDirtyLines}
+              loading={savingAll}
+              disabled={!canEditRevision || !dirtyLineIds.length}
+            >
+              {dirtyLineIds.length ? `Сохранить изменения (${dirtyLineIds.length})` : "Нет изменений"}
+            </Button>
+            <Button size="small" onClick={() => setHelpOpen(true)}>
+              Справка
+            </Button>
+          </Space>
+        }
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Space wrap size={[12, 12]}>
+            <Select
+              style={{ width: 320, maxWidth: "100%" }}
+              allowClear
+              placeholder="Коммерческое предложение"
+              value={selectedQuoteId || undefined}
+              onChange={(value) => setSelectedQuoteId(Number(value || 0) || null)}
+              options={quotes.map((row) => ({
+                value: Number(row.id),
+                label: `Коммерческое предложение #${row.id} · ${quoteStatusLabel(row.status)} · ${formatPriceWithCurrency(row.total_sell, row.currency || "USD")}`,
+              }))}
+            />
+            <Select
+              style={{ width: 220, maxWidth: "100%" }}
+              allowClear
+              placeholder="Ревизия предложения"
+              value={selectedRevisionId || undefined}
+              onChange={(value) => setSelectedRevisionId(Number(value || 0) || null)}
+              options={revisions.map((row) => ({
+                value: Number(row.id),
+                label: `Ревизия ${row.rev_number}`,
+              }))}
+            />
+          </Space>
 
-      <Space wrap size={[12, 12]}>
-        <Select
-          style={{ width: 320 }}
-          allowClear
-          placeholder="Коммерческое предложение"
-          value={selectedQuoteId || undefined}
-          onChange={(value) => setSelectedQuoteId(Number(value || 0) || null)}
-          options={quotes.map((row) => ({
-            value: Number(row.id),
-            label: `Коммерческое предложение #${row.id} · ${quoteStatusLabel(row.status)} · ${formatPriceWithCurrency(row.total_sell, row.currency || "USD")}`,
-          }))}
-        />
-        <Select
-          style={{ width: 220 }}
-          allowClear
-          placeholder="Ревизия предложения"
-          value={selectedRevisionId || undefined}
-          onChange={(value) => setSelectedRevisionId(Number(value || 0) || null)}
-          options={revisions.map((row) => ({
-            value: Number(row.id),
-            label: `Ревизия ${row.rev_number}`,
-          }))}
-        />
-      </Space>
+          <Space wrap size={[8, 8]}>
+            <Tag color="blue">Себестоимость: {formatPriceWithCurrency(totals.cost, quoteCurrency)}</Tag>
+            <Tag color="green">Продажа: {formatPriceWithCurrency(totals.sell, quoteCurrency)}</Tag>
+            <Tag color="gold">Прибыль: {formatPriceWithCurrency(totals.profit, quoteCurrency)}</Tag>
+            <Tag color="purple">Валовая маржа: {totals.marginPct.toFixed(1)}%</Tag>
+            <Tag color="cyan">Наценка: {totals.markupPct.toFixed(1)}%</Tag>
+            <Tag color={dirtyLineIds.length ? "orange" : "default"}>
+              Изменено строк: {dirtyLineIds.length}
+            </Tag>
+          </Space>
+        </Space>
+      </Card>
 
-      <Space wrap size={[8, 8]}>
-        <Tag color="blue">Себестоимость: {formatPriceWithCurrency(totals.cost, quoteCurrency)}</Tag>
-        <Tag color="green">Продажа: {formatPriceWithCurrency(totals.sell, quoteCurrency)}</Tag>
-        <Tag color="gold">Прибыль: {formatPriceWithCurrency(totals.profit, quoteCurrency)}</Tag>
-        <Tag color="purple">Валовая маржа: {totals.marginPct.toFixed(1)}%</Tag>
-        <Tag color="cyan">Наценка: {totals.markupPct.toFixed(1)}%</Tag>
-      </Space>
-
-      <Card size="small" title="Коммерческая экономика по строкам предложения">
+      <Card
+        size="small"
+        title="Коммерческая экономика по строкам предложения"
+        extra={
+          <Typography.Text type="secondary">
+            Правьте продажу или наценку, итоговые метрики пересчитываются автоматически.
+          </Typography.Text>
+        }
+      >
         <Table
           size="small"
           rowKey="id"
           loading={loading}
           dataSource={lines}
           pagination={false}
-          scroll={{ x: 1650 }}
+          tableLayout="auto"
+          scroll={{ x: "max-content" }}
           columns={[
             {
               title: "Позиция клиента",
-              width: 260,
+              width: 280,
               render: (_, row) => (
                 <Space direction="vertical" size={0}>
                   <span>{getClientFacingPartNumber(row, `#${row.client_request_revision_item_id}`)}</span>
                   {getClientFacingDescription(row) ? <span style={{ color: "#666", fontSize: 12 }}>{getClientFacingDescription(row)}</span> : null}
+                  <Space wrap size={[6, 6]} style={{ marginTop: 4 }}>
+                    <Tag color={(pricingStatusMeta[row.pricing_status] || { color: "default" }).color}>
+                      {(pricingStatusMeta[row.pricing_status] || { label: row.pricing_status || "—" }).label}
+                    </Tag>
+                    {dirtyLineIdSet.has(row.id) ? <Tag color="orange">Есть изменения</Tag> : null}
+                  </Space>
+                  {row.pricing_note ? (
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {row.pricing_note}
+                    </Typography.Text>
+                  ) : null}
                 </Space>
               ),
             },
             {
               title: "Коды поставщиков",
               dataIndex: "supplier_public_codes",
-              width: 170,
+              width: 150,
               render: (value) => value || "—",
             },
             {
               title: "Статус строки",
-              width: 140,
+              width: 130,
               render: (_, row) => (
                 <Select
                   size="small"
-                  style={{ width: 120 }}
+                  style={{ width: 110 }}
                   value={drafts[row.id]?.line_status || "active"}
                   onChange={(value) => handleDraftChange(row.id, { line_status: value })}
                   options={lineStatusOptions}
@@ -284,138 +348,111 @@ export default function RequestMarginTabContent({ requestId }) {
               ),
             },
             {
-              title: "Кол-во",
-              width: 100,
+              title: "Коммерческие параметры",
+              width: 320,
               render: (_, row) => (
-                <InputNumber
-                  min={0}
-                  style={{ width: "100%" }}
-                  value={drafts[row.id]?.qty}
-                  onChange={(value) => handleDraftChange(row.id, { qty: value })}
-                  disabled={!canEditRevision}
-                />
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(120px, 1fr))",
+                    gap: 8,
+                    minWidth: 280,
+                  }}
+                >
+                  <div>
+                    <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+                      Кол-во
+                    </Typography.Text>
+                    <InputNumber
+                      min={0}
+                      style={{ width: "100%" }}
+                      value={drafts[row.id]?.qty}
+                      onChange={(value) => handleDraftChange(row.id, { qty: value })}
+                      disabled={!canEditRevision}
+                    />
+                  </div>
+                  <div>
+                    <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+                      Себестоимость
+                    </Typography.Text>
+                    <InputNumber
+                      min={0}
+                      style={{ width: "100%" }}
+                      value={drafts[row.id]?.cost}
+                      onChange={(value) =>
+                        handleDraftChange(row.id, {
+                          cost: value,
+                          margin_pct: drafts[row.id]?.margin_pct,
+                        })
+                      }
+                      disabled={!canEditRevision}
+                    />
+                  </div>
+                  <div>
+                    <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+                      Продажа
+                    </Typography.Text>
+                    <InputNumber
+                      min={0}
+                      style={{ width: "100%" }}
+                      value={drafts[row.id]?.sell_price}
+                      onChange={(value) =>
+                        handleDraftChange(row.id, {
+                          sell_price: value,
+                          cost: drafts[row.id]?.cost,
+                        })
+                      }
+                      disabled={!canEditRevision}
+                    />
+                  </div>
+                  <div>
+                    <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+                      Маржа %
+                    </Typography.Text>
+                    <InputNumber
+                      min={0}
+                      style={{ width: "100%" }}
+                      value={drafts[row.id]?.margin_pct}
+                      onChange={(value) =>
+                        handleDraftChange(row.id, {
+                          margin_pct: value,
+                          cost: drafts[row.id]?.cost,
+                        })
+                      }
+                      disabled={!canEditRevision}
+                    />
+                  </div>
+                </div>
               ),
             },
             {
-              title: "Себестоимость",
-              width: 140,
-              render: (_, row) => (
-                <InputNumber
-                  min={0}
-                  style={{ width: "100%" }}
-                  value={drafts[row.id]?.cost}
-                  onChange={(value) =>
-                    handleDraftChange(row.id, {
-                      cost: value,
-                      margin_pct: drafts[row.id]?.margin_pct,
-                    })
-                  }
-                  disabled={!canEditRevision}
-                />
-              ),
-            },
-            {
-              title: "Продажа",
-              width: 140,
-              render: (_, row) => (
-                <InputNumber
-                  min={0}
-                  style={{ width: "100%" }}
-                  value={drafts[row.id]?.sell_price}
-                  onChange={(value) =>
-                    handleDraftChange(row.id, {
-                      sell_price: value,
-                      cost: drafts[row.id]?.cost,
-                    })
-                  }
-                  disabled={!canEditRevision}
-                />
-              ),
-            },
-            {
-              title: "Маржа %",
-              width: 110,
-              render: (_, row) => (
-                <InputNumber
-                  min={0}
-                  style={{ width: "100%" }}
-                  value={drafts[row.id]?.margin_pct}
-                  onChange={(value) =>
-                    handleDraftChange(row.id, {
-                      margin_pct: value,
-                      cost: drafts[row.id]?.cost,
-                    })
-                  }
-                  disabled={!canEditRevision}
-                />
-              ),
-            },
-            {
-              title: "Валовая маржа, %",
-              width: 120,
-              render: (_, row) => {
-                const draft = drafts[row.id] || row
-                const cost = Number(draft.cost || 0)
-                const sell = Number(draft.sell_price || 0)
-                const grossMarginPct = sell > 0 ? ((sell - cost) / sell) * 100 : 0
-                return `${grossMarginPct.toFixed(1)}%`
-              },
-            },
-            {
-              title: "Наценка, %",
-              width: 110,
-              render: (_, row) => {
-                const draft = drafts[row.id] || row
-                const cost = Number(draft.cost || 0)
-                const sell = Number(draft.sell_price || 0)
-                const markupPct = cost > 0 ? ((sell - cost) / cost) * 100 : 0
-                return `${markupPct.toFixed(1)}%`
-              },
-            },
-            {
-              title: "Прибыль по строке",
-              width: 150,
+              title: "Результат",
+              width: 190,
               render: (_, row) => {
                 const draft = drafts[row.id] || row
                 const qty = Number(draft.qty || 0)
                 const cost = Number(draft.cost || 0)
                 const sell = Number(draft.sell_price || 0)
-                const profit = String(draft.line_status || row.line_status || "active") === "active" ? (sell - cost) * qty : 0
-                return formatPriceWithCurrency(profit, draft.currency || row.currency || "USD")
-              },
-            },
-            {
-              title: "Правило",
-              width: 210,
-              render: (_, row) => {
-                const meta = pricingStatusMeta[row.pricing_status] || { color: "default", label: row.pricing_status || "—" }
+                const grossMarginPct = sell > 0 ? ((sell - cost) / sell) * 100 : 0
+                const markupPct = cost > 0 ? ((sell - cost) / cost) * 100 : 0
+                const profit =
+                  String(draft.line_status || row.line_status || "active") === "active"
+                    ? (sell - cost) * qty
+                    : 0
                 return (
                   <Space direction="vertical" size={0}>
-                    <Tag color={meta.color}>{meta.label}</Tag>
-                    {row.pricing_note ? (
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {row.pricing_note}
-                      </Typography.Text>
-                    ) : null}
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      {`Валовая маржа: ${grossMarginPct.toFixed(1)}%`}
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      {`Наценка: ${markupPct.toFixed(1)}%`}
+                    </Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {`Прибыль: ${formatPriceWithCurrency(profit, draft.currency || row.currency || "USD")}`}
+                    </Typography.Text>
                   </Space>
                 )
               },
-            },
-            {
-              title: "Сохранить",
-              width: 120,
-              fixed: "right",
-              render: (_, row) => (
-                <Button
-                  size="small"
-                  type="primary"
-                  onClick={() => saveLine(row.id)}
-                  loading={savingLineId === row.id}
-                  disabled={!canEditRevision}
-                >
-                  Сохранить
-                </Button>
-              ),
             },
           ]}
         />

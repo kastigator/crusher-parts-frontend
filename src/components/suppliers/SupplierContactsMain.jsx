@@ -5,6 +5,7 @@ import axios from "@/api/axiosInstance"
 import SupplierContactsTable from "./SupplierContactsTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import { isSameByFields } from "@/utils/versionConflict"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const trimOrNull = (v) => {
   if (v === undefined || v === null) return null
@@ -138,11 +139,17 @@ export default function SupplierContactsMain({ supplierId, onChanged }) {
 
   const handleDelete = async (record) => {
     try {
-      await axios.delete(`/supplier-contacts/${record.id}`, {
-        params: { version: record.version },
+      const result = await runTrashDeleteFlow({
+        entityType: "supplier_contacts",
+        entityId: record.id,
+        deleteUrl: `/supplier-contacts/${record.id}`,
+        deleteParams: { version: record.version },
+        successMessage: "Контакт поставщика перемещён в корзину",
       })
-      removeRow(record.id)
-      onChanged?.()
+      if (result?.deleted) {
+        removeRow(record.id)
+        onChanged?.()
+      }
     } catch (e) {
       if (e?.response?.status === 409) {
         const current =

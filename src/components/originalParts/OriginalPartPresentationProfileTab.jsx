@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react"
 import { Button, Card, Checkbox, Form, Input, Space, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const { Text } = Typography
 
@@ -72,6 +73,23 @@ export default function OriginalPartPresentationProfileTab({ partId }) {
     }
   }
 
+  const removeProfile = async () => {
+    if (!partId || !loaded?.id) return
+    try {
+      const result = await runTrashDeleteFlow({
+        entityType: "oem_part_presentation_profiles",
+        entityId: partId,
+        deleteUrl: `/original-parts/${partId}/presentation-profile`,
+        successMessage: "Профиль представления перемещён в корзину",
+      })
+      if (!result?.deleted) return
+      await load()
+    } catch (err) {
+      console.error("DELETE /original-parts/:id/presentation-profile error:", err)
+      message.error(err?.response?.data?.message || "Не удалось удалить профиль представления")
+    }
+  }
+
   return (
     <Card size="small" loading={loading}>
       <Space direction="vertical" style={{ width: "100%" }} size={12}>
@@ -116,6 +134,9 @@ export default function OriginalPartPresentationProfileTab({ partId }) {
           </Button>
           <Button onClick={load} disabled={saving}>
             Обновить
+          </Button>
+          <Button danger onClick={removeProfile} disabled={saving || !loaded?.id}>
+            Удалить профиль
           </Button>
         </Space>
       </Space>

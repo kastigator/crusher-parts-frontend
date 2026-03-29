@@ -110,7 +110,7 @@ export default function TnvedCodesTable({
         { key: "duty_rate", label: "Пошлина (%)" },
         { key: "notes", label: "Примечание" },
       ],
-      defaultVisible: ["description", "duty_rate", "notes"],
+      defaultVisible: ["description", "duty_rate"],
       lockedKeys: ["code", "actions"],
     }),
     [],
@@ -143,8 +143,10 @@ export default function TnvedCodesTable({
       dataIndex: "code",
       key: "code",
       width: 140,
-      fixed: "left",
-      ellipsis: true,
+      minWidth: 100,
+      maxWidth: 220,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (_, record) =>
         isEditing(record) ? (
           <Input
@@ -166,7 +168,10 @@ export default function TnvedCodesTable({
       dataIndex: "description",
       key: "description",
       width: 360,
-      ellipsis: true,
+      minWidth: 180,
+      maxWidth: 520,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (_, record) =>
         isEditing(record) ? (
           <TextArea
@@ -214,7 +219,10 @@ export default function TnvedCodesTable({
       dataIndex: "notes",
       key: "notes",
       width: 260,
-      ellipsis: true,
+      minWidth: 140,
+      maxWidth: 420,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (_, record) =>
         isEditing(record) ? (
           <TextArea
@@ -235,7 +243,7 @@ export default function TnvedCodesTable({
       title: "Действия",
       dataIndex: "actions",
       key: "actions",
-      width: 220,
+      width: 160,
       render: (_, record) => {
         const editing = isEditing(record)
         return (
@@ -268,6 +276,14 @@ export default function TnvedCodesTable({
     })
   }, [filteredColumns, effectiveOrderKeys])
 
+  const nonDraggableKeys = useMemo(
+    () =>
+      Array.isArray(columnsMeta.lockedKeys)
+        ? columnsMeta.lockedKeys.filter((key) => key !== "actions")
+        : [],
+    [columnsMeta.lockedKeys]
+  )
+
   const pagination = useMemo(
     () =>
       createTablePagination({
@@ -290,9 +306,10 @@ export default function TnvedCodesTable({
       >
         <DraggableColumnsTable
           className="op-table"
+          columnSizingKey="tnved_codes_column_widths_v1"
           dataSource={data}
           columns={orderedColumns}
-          nonDraggableKeys={columnsMeta.lockedKeys}
+          nonDraggableKeys={nonDraggableKeys}
           onColumnOrderChange={({ activeKey, overKey }) => {
             if (typeof onColumnOrderKeysChange !== "function") return
             const nextFull = [...effectiveOrderKeys]

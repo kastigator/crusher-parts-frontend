@@ -24,11 +24,15 @@ export default function MaterialsTable({
         title: "Название",
         dataIndex: "name",
         key: "name",
-        fixed: "left",
+        width: 260,
+        minWidth: 160,
+        maxWidth: 420,
+        ellipsis: { showTitle: false },
+        onCell: () => ({ style: { overflow: "hidden" } }),
         render: (text, record) => (
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <span style={{ fontWeight: 600 }}>{text}</span>
-            <span style={{ fontSize: 12, color: "#6b7280" }}>
+          <div style={{ display: "flex", flexDirection: "column", width: "100%", minWidth: 0 }}>
+            <span className="cell-ellipsis" style={{ fontWeight: 600 }}>{text}</span>
+            <span className="cell-ellipsis" style={{ fontSize: 12, color: "#6b7280" }}>
               {record.category_name || "Без категории"}
             </span>
           </div>
@@ -52,7 +56,11 @@ export default function MaterialsTable({
         title: "Описание",
         dataIndex: "description",
         key: "description",
-        ellipsis: true,
+        width: 280,
+        minWidth: 160,
+        maxWidth: 460,
+        ellipsis: { showTitle: false },
+        onCell: () => ({ style: { overflow: "hidden" } }),
         render: (v) =>
           v ? (
             <Tooltip title={v}>
@@ -65,7 +73,7 @@ export default function MaterialsTable({
       {
         title: "Действие",
         key: "actions",
-        width: 110,
+        width: 88,
         align: "center",
         render: (_, record) => (
           <Space size={4}>
@@ -106,7 +114,13 @@ export default function MaterialsTable({
     ],
     [onDelete, onEdit],
   )
-  const defaultOrder = useMemo(() => columns.map((c) => c.key), [columns])
+  const defaultOrder = useMemo(
+    () => [
+      ...columns.map((c) => c.key).filter((key) => key !== "actions"),
+      "actions",
+    ],
+    [columns]
+  )
   const effectiveOrderKeys = useMemo(
     () => getOrderedKeys(columnOrderKeys, defaultOrder),
     [columnOrderKeys, defaultOrder],
@@ -119,8 +133,6 @@ export default function MaterialsTable({
       return ai - bi
     })
   }, [columns, effectiveOrderKeys])
-  const nonDraggableKeys = ["actions"]
-
   return (
     <div
       ref={wrapRef}
@@ -130,10 +142,10 @@ export default function MaterialsTable({
     >
       <DraggableColumnsTable
         className="op-table"
+        columnSizingKey="materials_column_widths_v1"
         size="small"
         rowKey="id"
         columns={orderedColumns}
-        nonDraggableKeys={nonDraggableKeys}
         onColumnOrderChange={({ activeKey, overKey }) => {
           if (typeof onColumnOrderKeysChange !== "function") return
           const nextFull = [...effectiveOrderKeys]
@@ -148,7 +160,7 @@ export default function MaterialsTable({
         loading={loading}
         pagination={pagination}
         tableLayout="fixed"
-        scroll={{ x: true }}
+        scroll={{ x: "max-content" }}
         onRow={(record) => ({
           onClick: () => onRowClick?.(record),
         })}

@@ -1,12 +1,12 @@
 // src/pages/OriginalPartDetailPage.jsx
 import React, { useEffect, useState } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
-import { Button, Card, Empty, Modal, Space, Tag, Typography, message } from "antd"
+import { Button, Card, Empty, Space, Tag, Typography, message } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import TabRendererPage from "@/components/common/TabRendererPage"
 import DetailDock from "@/components/originalParts/DetailDock"
-import confirmAction from "@/utils/confirmAction"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const { Text } = Typography
 
@@ -69,18 +69,24 @@ export default function OriginalPartDetailPage() {
   }, [partId])
 
   const handleDeleteCurrentModel = async () => {
-    if (!part?.id) return
-    const { confirmed } = await confirmAction(
-      `Удалить деталь ${part.cat_number || ""} только из текущей модели?`
-    )
-    if (!confirmed) return
+    if (!part?.id || !currentModelId) {
+      message.error("Не удалось определить текущую модель")
+      return
+    }
     try {
-      await axios.delete(`/original-parts/${part.id}`, {
-        data: {
+      const result = await runTrashDeleteFlow({
+        entityType: "oem_part_model_fitments",
+        entityId: part.id,
+        deleteUrl: `/original-parts/${part.id}`,
+        deleteParams: {
           equipment_model_id: currentModelId,
         },
+        previewParams: {
+          equipment_model_id: currentModelId,
+        },
+        successMessage: "Удаление связи с моделью выполнено",
       })
-      message.success("Удалено из текущей модели")
+      if (!result?.deleted) return
       goBackToList()
     } catch (e) {
       console.error(e)
@@ -90,41 +96,14 @@ export default function OriginalPartDetailPage() {
 
   const handleDeleteEverywhere = async () => {
     if (!part?.id) return
-    const modelNames = Array.isArray(part?.application_models)
-      ? part.application_models.map((m) => m?.model_name).filter(Boolean)
-      : []
-    const confirmed = await new Promise((resolve) => {
-      Modal.confirm({
-        title: `Удалить ${part.cat_number || "деталь"} полностью?`,
-        okText: "Удалить полностью",
-        cancelText: "Отмена",
-        okButtonProps: { danger: true },
-        content: (
-          <Space direction="vertical" size={8}>
-            <div>Деталь будет удалена из всех моделей производителя.</div>
-            <div style={{ fontWeight: 600 }}>Модели, из которых удалится:</div>
-            <Space wrap>
-              {modelNames.length ? (
-                modelNames.map((name) => <Tag key={name}>{name}</Tag>)
-              ) : (
-                <Tag>{part?.model_name || "—"}</Tag>
-              )}
-            </Space>
-          </Space>
-        ),
-        onOk: () => resolve(true),
-        onCancel: () => resolve(false),
-      })
-    })
-    if (!confirmed) return
     try {
-      const { data } = await axios.post(`/original-parts/${part.id}/delete-all`)
-      const cnt = Number(data?.deleted_count || 0)
-      message.success(
-        cnt > 0
-          ? `Полное удаление выполнено (моделей: ${cnt})`
-          : "Полное удаление выполнено"
-      )
+      const result = await runTrashDeleteFlow({
+        entityType: "oem_parts",
+        entityId: part.id,
+        deleteUrl: `/oem-parts/${part.id}`,
+        successMessage: "OEM деталь перемещена в корзину",
+      })
+      if (!result?.deleted) return
       goBackToList()
     } catch (e) {
       console.error(e)

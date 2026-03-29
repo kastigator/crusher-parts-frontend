@@ -7,7 +7,7 @@ import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
 import { getOrderedKeys } from "@/utils/columnOrder"
-import confirmAction from "@/utils/confirmAction"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 import useTableScrollHints from "@/utils/useTableScrollHints"
 import { formatPrice } from "@/utils/priceFormat"
 
@@ -105,6 +105,8 @@ export default function SupplierPartsTable({
   onColumnsMeta = null,
   columnOrderKeys = null,
   onColumnOrderKeysChange = null,
+  columnWidths = null,
+  onColumnWidthsChange = null,
 }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -231,14 +233,18 @@ export default function SupplierPartsTable({
   }, [load, version, page, pageSize])
 
   const handleDelete = useCallback(async (id) => {
-    const { confirmed } = await confirmAction("Удалить деталь?")
-    if (!confirmed) return
     try {
-      await axios.delete(`/supplier-parts/${id}`)
-      setRows((prev) => prev.filter((r) => r.id !== id))
-      setTotal((t) => Math.max(0, t - 1))
-      message.success("Деталь удалена")
-      onReload?.()
+      const result = await runTrashDeleteFlow({
+        entityType: "supplier_parts",
+        entityId: id,
+        deleteUrl: `/supplier-parts/${id}`,
+        successMessage: "Деталь поставщика перемещена в корзину",
+      })
+      if (result?.deleted) {
+        setRows((prev) => prev.filter((r) => r.id !== id))
+        setTotal((t) => Math.max(0, t - 1))
+        onReload?.()
+      }
     } catch (_e) {
       message.error("Не удалось удалить деталь")
     }
@@ -318,6 +324,14 @@ export default function SupplierPartsTable({
     return renderPriceSource(sourceType)
   }, [renderPriceSource])
 
+  const getColumnWidth = useCallback(
+    (key, fallback) => {
+      const value = columnWidths?.[key]
+      return Number.isFinite(Number(value)) ? Number(value) : fallback
+    },
+    [columnWidths]
+  )
+
   const columnDefs = useMemo(() => {
     const cols = []
 
@@ -326,10 +340,14 @@ export default function SupplierPartsTable({
         key: "supplier_name",
         title: "Поставщик",
         dataIndex: "supplier_name",
-        width: 180,
-        fixed: "left",
+        width: getColumnWidth("supplier_name", 220),
+        minWidth: 100,
+        maxWidth: 420,
         ellipsis: true,
-        render: (v) => <ValueDisplay value={v} />,
+        onCell: () => ({
+          style: { overflow: "hidden" },
+        }),
+        render: (v) => <ValueDisplay value={v} maxLength={120} />,
       })
     }
 
@@ -337,19 +355,27 @@ export default function SupplierPartsTable({
       key: "supplier_part_number",
       title: "Номер у поставщика",
       dataIndex: "supplier_part_number",
-      width: 160,
-      fixed: "left",
+      width: getColumnWidth("supplier_part_number", 260),
+      minWidth: 110,
+      maxWidth: 520,
       ellipsis: true,
-      lock: true,
-      render: (value) => <ValueDisplay value={value} />,
+      onCell: () => ({
+        style: { overflow: "hidden" },
+      }),
+      render: (value) => <ValueDisplay value={value} maxLength={160} />,
     })
 
     cols.push({
       key: "description_ru",
       title: "Описание (RU)",
       dataIndex: "description_ru",
-      width: 220,
+      width: getColumnWidth("description_ru", 220),
+      minWidth: 120,
+      maxWidth: 420,
       ellipsis: true,
+      onCell: () => ({
+        style: { overflow: "hidden" },
+      }),
       render: (value) => <ValueDisplay value={value} />,
     })
 
@@ -357,8 +383,13 @@ export default function SupplierPartsTable({
       key: "description_en",
       title: "Описание (EN)",
       dataIndex: "description_en",
-      width: 220,
+      width: getColumnWidth("description_en", 220),
+      minWidth: 120,
+      maxWidth: 420,
       ellipsis: true,
+      onCell: () => ({
+        style: { overflow: "hidden" },
+      }),
       render: (value) => <ValueDisplay value={value} />,
     })
 
@@ -366,8 +397,13 @@ export default function SupplierPartsTable({
       key: "comment",
       title: "Комментарий",
       dataIndex: "comment",
-      width: 200,
+      width: getColumnWidth("comment", 220),
+      minWidth: 120,
+      maxWidth: 420,
       ellipsis: true,
+      onCell: () => ({
+        style: { overflow: "hidden" },
+      }),
       render: (value) => <ValueDisplay value={value} />,
     })
 
@@ -375,7 +411,9 @@ export default function SupplierPartsTable({
       key: "part_type",
       title: "OEM",
       dataIndex: "part_type",
-      width: 110,
+      width: getColumnWidth("part_type", 90),
+      minWidth: 80,
+      maxWidth: 120,
       render: (_, record) => renderOemCell(record),
     })
 
@@ -383,7 +421,9 @@ export default function SupplierPartsTable({
       key: "uom",
       title: "Ед. изм.",
       dataIndex: "uom",
-      width: 100,
+      width: getColumnWidth("uom", 90),
+      minWidth: 80,
+      maxWidth: 120,
       render: (value) => renderUomTag(value),
     })
 
@@ -391,17 +431,45 @@ export default function SupplierPartsTable({
       key: "latest_price",
       title: "Цена",
       dataIndex: "latest_price",
-      width: 220,
-      align: "right",
+      width: getColumnWidth("latest_price", 220),
+      minWidth: 72,
+      maxWidth: 320,
+      ellipsis: { showTitle: false },
+      onCell: () => ({
+        style: {
+          overflow: "hidden",
+        },
+      }),
       render: (_, record) => {
         if (record?.latest_price == null) return <ValueDisplay value={null} />
         const priceText = `${formatPrice(record.latest_price)}${record?.latest_currency ? ` ${record.latest_currency}` : ""}`
         const sourceText = renderPriceSourceDetails(record)
-        const text = sourceText ? `${priceText} · ${sourceText}` : priceText
-        if (!record?.latest_price_date) return <span>{text}</span>
+        const title = [
+          priceText,
+          sourceText,
+          record?.latest_price_date ? `Дата цены: ${String(record.latest_price_date).slice(0, 10)}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n")
         return (
-          <Tooltip title={`Дата цены: ${String(record.latest_price_date).slice(0, 10)}`}>
-            <span>{text}</span>
+          <Tooltip title={<div style={{ whiteSpace: "pre-line", maxWidth: 360 }}>{title}</div>}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+                gap: 2,
+                width: "100%",
+                minWidth: 0,
+              }}
+            >
+              <span
+                className="cell-ellipsis"
+                style={{ display: "block", width: "100%", maxWidth: "100%", fontWeight: 500, textAlign: "right" }}
+              >
+                {priceText}
+              </span>
+            </div>
           </Tooltip>
         )
       },
@@ -411,7 +479,9 @@ export default function SupplierPartsTable({
       key: "weight_kg",
       title: "Вес, кг",
       dataIndex: "weight_kg",
-      width: 110,
+      width: getColumnWidth("weight_kg", 110),
+      minWidth: 90,
+      maxWidth: 140,
       align: "right",
       render: (value) => <ValueDisplay value={value} />,
     })
@@ -420,7 +490,9 @@ export default function SupplierPartsTable({
       key: "length_cm",
       title: "Дл., см",
       dataIndex: "length_cm",
-      width: 100,
+      width: getColumnWidth("length_cm", 100),
+      minWidth: 90,
+      maxWidth: 130,
       align: "right",
       render: (value) => <ValueDisplay value={value} />,
     })
@@ -429,7 +501,9 @@ export default function SupplierPartsTable({
       key: "width_cm",
       title: "Шир., см",
       dataIndex: "width_cm",
-      width: 100,
+      width: getColumnWidth("width_cm", 100),
+      minWidth: 90,
+      maxWidth: 130,
       align: "right",
       render: (value) => <ValueDisplay value={value} />,
     })
@@ -438,7 +512,9 @@ export default function SupplierPartsTable({
       key: "height_cm",
       title: "Выс., см",
       dataIndex: "height_cm",
-      width: 100,
+      width: getColumnWidth("height_cm", 100),
+      minWidth: 90,
+      maxWidth: 130,
       align: "right",
       render: (value) => <ValueDisplay value={value} />,
     })
@@ -447,7 +523,9 @@ export default function SupplierPartsTable({
       key: "is_oversize",
       title: "Негабарит",
       dataIndex: "is_oversize",
-      width: 110,
+      width: getColumnWidth("is_oversize", 110),
+      minWidth: 100,
+      maxWidth: 140,
       render: (_, record) => renderBoolTag(!!record?.is_oversize),
     })
 
@@ -455,7 +533,9 @@ export default function SupplierPartsTable({
       key: "is_overweight",
       title: "Тяжелая",
       dataIndex: "is_overweight",
-      width: 120,
+      width: getColumnWidth("is_overweight", 120),
+      minWidth: 100,
+      maxWidth: 140,
       render: (_, record) => renderBoolTag(!!record?.is_overweight),
     })
 
@@ -463,7 +543,9 @@ export default function SupplierPartsTable({
       key: "default_material_name",
       title: "Материалы",
       dataIndex: "default_material_name",
-      width: 180,
+      width: getColumnWidth("default_material_name", 180),
+      minWidth: 140,
+      maxWidth: 300,
       render: (_, record) => {
         const cnt = record.materials_count || 0
         if (record.default_material_name) {
@@ -480,7 +562,9 @@ export default function SupplierPartsTable({
       key: "lead_time_days",
       title: "Срок поставки, дн",
       dataIndex: "lead_time_days",
-      width: 130,
+      width: getColumnWidth("lead_time_days", 130),
+      minWidth: 110,
+      maxWidth: 170,
       align: "right",
       render: (_, record) => <ValueDisplay value={record.lead_time_days} />,
     })
@@ -489,7 +573,9 @@ export default function SupplierPartsTable({
       key: "min_order_qty",
       title: "MOQ",
       dataIndex: "min_order_qty",
-      width: 90,
+      width: getColumnWidth("min_order_qty", 90),
+      minWidth: 80,
+      maxWidth: 120,
       align: "right",
       render: (value) => <ValueDisplay value={value} />,
     })
@@ -498,8 +584,13 @@ export default function SupplierPartsTable({
       key: "packaging",
       title: "Упаковка",
       dataIndex: "packaging",
-      width: 140,
+      width: getColumnWidth("packaging", 140),
+      minWidth: 100,
+      maxWidth: 240,
       ellipsis: true,
+      onCell: () => ({
+        style: { overflow: "hidden" },
+      }),
       render: (value) => <ValueDisplay value={value} />,
     })
 
@@ -507,15 +598,22 @@ export default function SupplierPartsTable({
       key: "original_links",
       title: "Привязки",
       dataIndex: "id",
-      width: 160,
+      width: getColumnWidth("original_links", 180),
+      minWidth: 120,
+      maxWidth: 320,
+      onCell: () => ({
+        style: { overflow: "hidden" },
+      }),
       render: (_, row) => <OriginalsCell row={row} />,
     })
 
     cols.push({
       key: "actions",
       title: "Действия",
-      width: 180,
-      lock: true,
+      width: getColumnWidth("actions", 120),
+      minWidth: 96,
+      maxWidth: 140,
+      resizable: false,
       render: (_, row) => {
         return (
           <ActionButtons
@@ -529,10 +627,27 @@ export default function SupplierPartsTable({
     })
 
     return cols
-  }, [showAll, handleDelete, onEditRecord, renderPriceSourceDetails])
+  }, [showAll, handleDelete, onEditRecord, renderPriceSourceDetails, getColumnWidth])
 
-  const defaultVisible = useMemo(() => columnDefs.map((c) => c.key), [columnDefs])
-  const defaultOrder = defaultVisible
+  const defaultVisible = useMemo(
+    () =>
+      [
+        ...(showAll ? ["supplier_name"] : []),
+        "supplier_part_number",
+        "description_ru",
+        "part_type",
+        "latest_price",
+        "lead_time_days",
+        "min_order_qty",
+        "original_links",
+        "actions",
+      ].filter((key) => columnDefs.some((column) => column.key === key)),
+    [columnDefs, showAll],
+  )
+  const defaultOrder = [
+    ...defaultVisible.filter((key) => key !== "actions"),
+    ...(defaultVisible.includes("actions") ? ["actions"] : []),
+  ]
   const effectiveVisibleKeys =
     Array.isArray(visibleColumnKeys) && visibleColumnKeys.length
       ? visibleColumnKeys
@@ -555,6 +670,15 @@ export default function SupplierPartsTable({
     const visible = new Set(effectiveVisibleKeys)
     return orderedColumnDefs.filter((c) => c.lock || visible.has(c.key))
   }, [orderedColumnDefs, effectiveVisibleKeys])
+
+  const scrollX = useMemo(
+    () =>
+      columns.reduce((sum, column) => {
+        const width = Number(column?.width)
+        return sum + (Number.isFinite(width) ? width : 160)
+      }, 0),
+    [columns]
+  )
 
   const columnOptions = useMemo(
     () =>
@@ -618,6 +742,7 @@ export default function SupplierPartsTable({
         <DraggableColumnsTable
           rowKey="id"
           className="op-table parts-table"
+          style={{ "--op-table-resizable-width": `${scrollX}px` }}
           dataSource={rows}
           columns={columns}
           nonDraggableKeys={lockedKeys}
@@ -631,11 +756,19 @@ export default function SupplierPartsTable({
             nextFull.splice(to, 0, item)
             onColumnOrderKeysChange(nextFull)
           }}
+          onColumnResize={(columnKey, nextWidth) => {
+            if (typeof onColumnWidthsChange !== "function") return
+            onColumnWidthsChange({
+              ...(columnWidths || {}),
+              [columnKey]: nextWidth,
+            })
+          }}
           loading={loading}
           pagination={pagination}
           size="middle"
+          sticky
           tableLayout="fixed"
-          scroll={{ x: true }}
+          scroll={{ x: scrollX }}
           onRow={(record) => ({
             onDoubleClick: (e) => {
               if (!onOpenDetail) return

@@ -6,6 +6,7 @@ import SupplierBankDetailsTable from "./SupplierBankDetailsTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import CurrencySelect from "@/components/inputs/CurrencySelect"
 import { isSameByFields } from "@/utils/versionConflict"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const trimOrNull = (v) => {
   if (v === undefined || v === null) return null
@@ -158,12 +159,17 @@ export default function SupplierBankDetailsMain({ supplierId, onChanged }) {
 
   const handleDelete = async (record) => {
     try {
-      await axios.delete(`/supplier-bank-details/${record.id}`, {
-        params: { version: record.version },
+      const result = await runTrashDeleteFlow({
+        entityType: "supplier_bank_details",
+        entityId: record.id,
+        deleteUrl: `/supplier-bank-details/${record.id}`,
+        deleteParams: { version: record.version },
+        successMessage: "Банковские реквизиты поставщика перемещены в корзину",
       })
-      removeRow(record.id)
-      message.success("Банковские реквизиты удалены")
-      onChanged?.()
+      if (result?.deleted) {
+        removeRow(record.id)
+        onChanged?.()
+      }
     } catch (e) {
       if (e?.response?.status === 409) {
         const current =

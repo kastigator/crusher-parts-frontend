@@ -1,16 +1,16 @@
 // src/components/clients/ClientsMain.jsx
 import React, { useCallback, useEffect, useRef, useState } from "react"
 import { Badge, Button, Card, Checkbox, Form, Popover, Space, message } from "antd"
-import { DeleteOutlined, FilterOutlined, PlusOutlined } from "@ant-design/icons"
+import { FilterOutlined, InboxOutlined, PlusOutlined } from "@ant-design/icons"
 import { useLocation, useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 
 import TableToolbar from "@/components/common/TableToolbar"
-import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import ClientsTable from "./ClientsTable"
 import ClientsFiltersDrawer from "./ClientsFiltersDrawer"
 import { countActiveFilters } from "./clientsFiltersUtils"
 import ClientUpsertDrawer from "./ClientUpsertDrawer"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const trimOrNull = (v) => {
   const s = (v ?? "").toString().trim()
@@ -27,7 +27,6 @@ export default function ClientsMain() {
   const [search, setSearch] = useState("")
   const [filters, setFilters] = useState({})
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const [showDeleted, setShowDeleted] = useState(false)
 
   const [createForm] = Form.useForm()
   const [editForm] = Form.useForm()
@@ -89,7 +88,7 @@ export default function ClientsMain() {
 
       const allToggleKeys = meta.options.map((o) => o.key)
       const pick = (keys) => keys.filter((k) => allToggleKeys.includes(k))
-      const recommended = pick(["phone", "email", "website", "notes"])
+      const recommended = pick(["contact_person", "phone", "email"])
 
       setColumnsByView((prev) => ({ ...(prev || {}), [columnsViewKey]: recommended }))
     },
@@ -281,9 +280,16 @@ export default function ClientsMain() {
     try {
       const params = {}
       if (client?.version !== undefined && client?.version !== null) params.version = client.version
-      await axios.delete(`/clients/${client.id}`, { params })
-      message.success("Клиент удалён")
-      await fetchClients()
+      const result = await runTrashDeleteFlow({
+        entityType: "clients",
+        entityId: client.id,
+        deleteUrl: `/clients/${client.id}`,
+        deleteParams: params,
+        successMessage: "Клиент перемещён в корзину",
+      })
+      if (result?.deleted) {
+        await fetchClients()
+      }
     } catch (e) {
       console.error(e)
       if (e?.response?.status === 409) {
@@ -298,23 +304,12 @@ export default function ClientsMain() {
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Card bodyStyle={{ paddingTop: 8 }}>
-        {/* Row A: service actions */}
-        <div className="table-section" style={{ display: "flex", justifyContent: "flex-end" }}>
-          <Space size={12} wrap>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
-              Создать клиента
-            </Button>
-            <Button danger icon={<DeleteOutlined />} onClick={() => setShowDeleted(true)}>
-              Удалённые
-            </Button>
-          </Space>
-        </div>
-
-        {/* Row B: search + view controls */}
         <TableToolbar
           placeholder="Поиск по клиентам (компания, контакт, телефон, e-mail)…"
           search={search}
           onSearch={setSearch}
+          onAdd={openCreateDrawer}
+          onShowDeleted={() => navigate("/trash")}
           searchWidth="clamp(280px, 42vw, 620px)"
           searchEnterButton="Найти"
           extraActions={
@@ -414,14 +409,6 @@ export default function ClientsMain() {
           />
         </div>
       </Card>
-
-      {showDeleted && (
-        <FullHistoryDialog
-          onlyDeleted
-          endpoint="/clients/logs/deleted"
-          onClose={() => setShowDeleted(false)}
-        />
-      )}
 
       <ClientUpsertDrawer
         open={createOpen}

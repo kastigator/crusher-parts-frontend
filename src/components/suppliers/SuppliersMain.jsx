@@ -11,16 +11,16 @@ import {
   Space,
   message,
 } from "antd"
-import { DeleteOutlined, FilterOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons"
+import { FilterOutlined, InboxOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons"
 import { useLocation, useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 import TableToolbar from "@/components/common/TableToolbar"
 import ImportModal from "@/components/common/ImportModal"
-import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import SuppliersTable from "./SuppliersTable"
 import SuppliersFiltersDrawer from "./SuppliersFiltersDrawer"
 import { countActiveFilters } from "./suppliersFiltersUtils"
 import SupplierUpsertDrawer from "./SupplierUpsertDrawer"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const trimOrNull = (v) => {
   const s = (v ?? "").toString().trim()
@@ -39,7 +39,6 @@ export default function SuppliersMain() {
   const [filtersOpen, setFiltersOpen] = useState(false)
 
   const [importOpen, setImportOpen] = useState(false)
-  const [showDeleted, setShowDeleted] = useState(false)
 
   const [createForm] = Form.useForm()
   const [editForm] = Form.useForm()
@@ -107,16 +106,12 @@ export default function SuppliersMain() {
       const pick = (keys) => keys.filter((k) => allToggleKeys.includes(k))
 
       const recommended = pick([
-        "country",
-        "contact_person",
         "phone",
         "email",
         "can_oem",
         "can_analog",
         "risk_level",
-        "reliability_rating",
         "default_lead_time_days",
-        "notes",
       ])
 
       setColumnsByView((prev) => ({ ...(prev || {}), [columnsViewKey]: recommended }))
@@ -350,11 +345,16 @@ export default function SuppliersMain() {
 
   const handleDelete = async (supplier) => {
     try {
-      await axios.delete(`/suppliers/${supplier.id}`, {
-        params: { version: supplier.version },
+      const result = await runTrashDeleteFlow({
+        entityType: "part_suppliers",
+        entityId: supplier.id,
+        deleteUrl: `/suppliers/${supplier.id}`,
+        deleteParams: { version: supplier.version },
+        successMessage: "Поставщик перемещён в корзину",
       })
-      message.success("Поставщик удален")
-      await fetchSuppliers()
+      if (result?.deleted) {
+        await fetchSuppliers()
+      }
     } catch (e) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось удалить поставщика")
@@ -367,140 +367,124 @@ export default function SuppliersMain() {
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Card bodyStyle={{ paddingTop: 8 }}>
-        {/* Row A: service actions (consistent placement across catalogs) */}
-        <div className="table-section" style={{ display: "flex", justifyContent: "flex-end" }}>
-          <Space size={12} wrap>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
-              Создать поставщика
-            </Button>
-            <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>
-              Импорт
-            </Button>
-            <Button danger icon={<DeleteOutlined />} onClick={() => setShowDeleted(true)}>
-              Удалённые
-            </Button>
-          </Space>
-        </div>
-
         <TableToolbar
           placeholder="Поиск по поставщикам (название, код, VAT, контакт)…"
           search={search}
           onSearch={setSearch}
+          onAdd={openCreateDrawer}
+          onImport={() => setImportOpen(true)}
+          onShowDeleted={() => navigate("/trash")}
           searchWidth="clamp(280px, 42vw, 620px)"
           searchEnterButton="Найти"
           extraActions={
-            <Space direction="vertical" size={8} style={{ alignItems: "flex-end" }}>
-              <Space size={12} wrap>
-                <Segmented
-                  size="small"
-                  value={quickCapabilities}
-                  options={[
-                    { label: "Все", value: "all" },
-                    { label: "OEM", value: "oem" },
-                    { label: "Аналоги", value: "analog" },
-                  ]}
-                  onChange={(v) => {
-                    const next = String(v)
-                    setFilters((prev) => {
-                      const base = { ...(prev || {}) }
-                      base.cap_mode = next
-                      if (next === "oem") {
-                        base.can_oem = true
-                        base.can_analog = false
-                      } else if (next === "analog") {
-                        base.can_oem = false
-                        base.can_analog = true
-                      } else {
-                        base.can_oem = false
-                        base.can_analog = false
-                      }
-                      return base
-                    })
-                  }}
-                />
+            <Space size={12} wrap style={{ justifyContent: "flex-end" }}>
+              <Segmented
+                size="small"
+                value={quickCapabilities}
+                options={[
+                  { label: "Все", value: "all" },
+                  { label: "OEM", value: "oem" },
+                  { label: "Аналоги", value: "analog" },
+                ]}
+                onChange={(v) => {
+                  const next = String(v)
+                  setFilters((prev) => {
+                    const base = { ...(prev || {}) }
+                    base.cap_mode = next
+                    if (next === "oem") {
+                      base.can_oem = true
+                      base.can_analog = false
+                    } else if (next === "analog") {
+                      base.can_oem = false
+                      base.can_analog = true
+                    } else {
+                      base.can_oem = false
+                      base.can_analog = false
+                    }
+                    return base
+                  })
+                }}
+              />
 
-                <Segmented
-                  size="small"
-                  value={quickRisk === "" ? "all" : quickRisk}
-                  options={[
-                    { label: "Риск: все", value: "all" },
-                    { label: "низкий", value: "low" },
-                    { label: "средний", value: "medium" },
-                    { label: "высокий", value: "high" },
-                  ]}
-                  onChange={(v) => {
-                    const next = String(v)
-                    setFilters((prev) => ({
-                      ...(prev || {}),
-                      risk_level: next === "all" ? "" : next,
-                    }))
-                  }}
-                />
-              </Space>
+              <Segmented
+                size="small"
+                value={quickRisk === "" ? "all" : quickRisk}
+                options={[
+                  { label: "Риск: все", value: "all" },
+                  { label: "низкий", value: "low" },
+                  { label: "средний", value: "medium" },
+                  { label: "высокий", value: "high" },
+                ]}
+                onChange={(v) => {
+                  const next = String(v)
+                  setFilters((prev) => ({
+                    ...(prev || {}),
+                    risk_level: next === "all" ? "" : next,
+                  }))
+                }}
+              />
 
-              <Space size={12} wrap>
-                <Badge count={countActiveFilters(filters)} size="small" offset={[-2, 6]}>
-                  <Button icon={<FilterOutlined />} onClick={() => setFiltersOpen(true)}>
-                    Фильтры
-                  </Button>
-                </Badge>
+              <Badge count={countActiveFilters(filters)} size="small" offset={[-2, 6]}>
+                <Button icon={<FilterOutlined />} onClick={() => setFiltersOpen(true)}>
+                  Фильтры
+                </Button>
+              </Badge>
 
-                <Popover
-                  open={columnsPopoverOpen}
-                  onOpenChange={setColumnsPopoverOpen}
-                  trigger="click"
-                  placement="bottomRight"
-                  content={
-                    <div style={{ width: 260 }}>
-                      <div style={{ fontWeight: 700, marginBottom: 8 }}>Колонки</div>
-                      <Space direction="vertical" size={6} style={{ width: "100%" }}>
-                        {(columnsMeta.options || []).map((opt) => {
-                          const base =
-                            Array.isArray(currentVisibleKeys) && currentVisibleKeys.length
-                              ? currentVisibleKeys
-                              : columnsMeta.defaultVisible
-                          const checked = base?.includes?.(opt.key)
-                          return (
-                            <Checkbox
-                              key={opt.key}
-                              checked={!!checked}
-                              onChange={(e) => {
-                                const next = e.target.checked
-                                  ? [...(base || []), opt.key]
-                                  : (base || []).filter((k) => k !== opt.key)
-                                setColumnsByView((prev) => ({
-                                  ...(prev || {}),
-                                  [columnsViewKey]: next,
-                                }))
-                              }}
-                            >
-                              {opt.label}
-                            </Checkbox>
-                          )
-                        })}
-                        <Space style={{ marginTop: 8 }}>
-                          <Button
-                            size="small"
-                            onClick={() => {
+              <Popover
+                open={columnsPopoverOpen}
+                onOpenChange={setColumnsPopoverOpen}
+                trigger="click"
+                placement="bottomRight"
+                content={
+                  <div style={{ width: 260 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 8 }}>Колонки</div>
+                    <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                      {(columnsMeta.options || []).map((opt) => {
+                        const base =
+                          Array.isArray(currentVisibleKeys) && currentVisibleKeys.length
+                            ? currentVisibleKeys
+                            : columnsMeta.defaultVisible
+                        const checked = base?.includes?.(opt.key)
+                        return (
+                          <Checkbox
+                            key={opt.key}
+                            checked={!!checked}
+                            onChange={(e) => {
+                              const next = e.target.checked
+                                ? [...(base || []), opt.key]
+                                : (base || []).filter((k) => k !== opt.key)
                               setColumnsByView((prev) => ({
                                 ...(prev || {}),
-                                [columnsViewKey]: columnsMeta.defaultVisible || [],
+                                [columnsViewKey]: next,
                               }))
                             }}
                           >
-                            Сбросить
-                          </Button>
-                          <Button size="small" onClick={() => setColumnsPopoverOpen(false)}>
-                            Готово
-                          </Button>
-                        </Space>
+                            {opt.label}
+                          </Checkbox>
+                        )
+                      })}
+                      <Space style={{ marginTop: 8 }}>
+                        <Button
+                          size="small"
+                          onClick={() => {
+                            setColumnsByView((prev) => ({
+                              ...(prev || {}),
+                              [columnsViewKey]: columnsMeta.defaultVisible || [],
+                            }))
+                          }}
+                        >
+                          Сбросить
+                        </Button>
+                        <Button size="small" onClick={() => setColumnsPopoverOpen(false)}>
+                          Готово
+                        </Button>
                       </Space>
-                    </div>
-                  }
-                >
-                  <Button>Колонки</Button>
-                </Popover>
-              </Space>
+                    </Space>
+                  </div>
+                }
+              >
+                <Button>Колонки</Button>
+              </Popover>
             </Space>
           }
         />
@@ -542,10 +526,6 @@ export default function SuppliersMain() {
         type="suppliers"
         onSuccess={fetchSuppliers}
       />
-
-      {showDeleted && (
-        <FullHistoryDialog onlyDeleted entityType="suppliers" onClose={() => setShowDeleted(false)} />
-      )}
 
       <SupplierUpsertDrawer
         open={createOpen}

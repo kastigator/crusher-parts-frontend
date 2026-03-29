@@ -24,6 +24,7 @@ import {
 import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
 import { resolveAppHref } from "@/utils/resolveAppHref"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const textOrDash = (value) => {
   const v = String(value || "").trim()
@@ -340,10 +341,16 @@ export default function StandardPartsMain({
 
   const handleDelete = async (row) => {
     try {
-      await axios.delete(`/standard-parts/${row.id}`)
-      message.success("Стандартная деталь удалена")
-      await loadRows()
-      onChanged()
+      const result = await runTrashDeleteFlow({
+        entityType: "standard_parts",
+        entityId: row.id,
+        deleteUrl: `/standard-parts/${row.id}`,
+        successMessage: "Стандартная деталь перемещена в корзину",
+      })
+      if (result?.deleted) {
+        await loadRows()
+        onChanged()
+      }
     } catch (err) {
       console.error("delete standard part error:", err)
       message.error(err?.response?.data?.message || "Не удалось удалить стандартную деталь")
@@ -563,7 +570,7 @@ export default function StandardPartsMain({
     {
       title: "Действия",
       key: "actions",
-      width: compact ? 250 : 290,
+      width: compact ? 180 : 220,
       fixed: "right",
       render: (_, row) => {
         const moreMenuItems = [
@@ -613,7 +620,7 @@ export default function StandardPartsMain({
               Открыть
             </Button>
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button size="small">Еще</Button>
+              <Button size="small">Ещё</Button>
             </Dropdown>
           </Space>
         )
@@ -664,6 +671,21 @@ export default function StandardPartsMain({
           columns={columns}
           scroll={{ x: 1640 }}
           pagination={{ pageSize: compact ? 20 : 50, showSizeChanger: false }}
+          tableLayout="auto"
+          onRow={(record) => ({
+            onClick: (e) => {
+              const target = e?.target
+              if (
+                target?.closest?.(
+                  "button,a,input,textarea,select,.ant-btn,.ant-select,.ant-input,.ant-input-number,.ant-checkbox"
+                )
+              ) {
+                return
+              }
+              openDetails(record)
+            },
+            style: { cursor: "pointer" },
+          })}
         />
       </Space>
 

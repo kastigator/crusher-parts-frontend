@@ -64,9 +64,11 @@ export const SIDEBAR_ICONS = [
   { key: "suppliers", label: "Поставщики", path: buildIconPath("suppliers") },
   { key: "supplier-parts", label: "Детали поставщиков", path: buildIconPath("supplier-parts") },
   { key: "original-parts", label: "OEM детали", path: buildIconPath("original-parts") },
-  { key: "standard-parts", label: "Стандартные детали", path: buildIconPath("materials") },
-  { key: "equipment-classifier", label: "Классификатор оборудования", path: buildIconPath("catalogs") },
+  { key: "standard-parts", label: "Стандартные детали", path: buildIconPath("standard-parts") },
+  { key: "equipment-classifier", label: "Классификатор оборудования", path: buildIconPath("equipment-classifier") },
   { key: "materials", label: "Материалы", path: buildIconPath("materials") },
   { key: "tnved-codes", label: "Коды ТН ВЭД", path: buildIconPath("tnved-codes") },
+  { key: "logistics-route-templates", label: "Шаблоны доставки", path: buildIconPath("logistics-route-templates") },
+  { key: "trash", label: "Корзина", path: buildIconPath("trash") },
   { key: "admin", label: "Админ", path: buildIconPath("admin") },
 ]

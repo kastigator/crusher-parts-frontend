@@ -17,6 +17,7 @@ import {
   message,
 } from "antd"
 import axios from "@/api/axiosInstance"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const STATUS_OPTIONS = [
   { value: "applies", label: "Базово используется" },
@@ -181,8 +182,14 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
 
   const removeOverride = async (row) => {
     try {
-      await axios.delete(`/original-parts/${partId}/unit-overrides/${row.client_equipment_unit_id}`)
-      message.success("Override удалён")
+      const result = await runTrashDeleteFlow({
+        entityType: "oem_part_unit_overrides",
+        entityId: partId,
+        deleteUrl: `/original-parts/${partId}/unit-overrides/${row.client_equipment_unit_id}`,
+        previewParams: { unit_id: row.client_equipment_unit_id },
+        successMessage: "Override удалён",
+      })
+      if (!result?.deleted) return
       await load()
     } catch (err) {
       console.error("DELETE /original-parts/:id/unit-overrides/:unitId error:", err)
@@ -252,10 +259,17 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
   const removeMaterial = async (record) => {
     if (!editingRow?.client_equipment_unit_id) return
     try {
-      await axios.delete(
-        `/original-parts/${partId}/unit-material-overrides/${editingRow.client_equipment_unit_id}/${record.material_id}`,
-      )
-      message.success("Материал удалён")
+      const result = await runTrashDeleteFlow({
+        entityType: "oem_part_unit_material_overrides",
+        entityId: partId,
+        deleteUrl: `/original-parts/${partId}/unit-material-overrides/${editingRow.client_equipment_unit_id}/${record.material_id}`,
+        previewParams: {
+          unit_id: editingRow.client_equipment_unit_id,
+          material_id: record.material_id,
+        },
+        successMessage: "Материал удалён",
+      })
+      if (!result?.deleted) return
       await loadMaterialOverrides(editingRow.client_equipment_unit_id)
       await load()
     } catch (err) {

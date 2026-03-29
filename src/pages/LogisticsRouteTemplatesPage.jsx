@@ -17,6 +17,7 @@ import axios from "@/api/axiosInstance"
 import PageWrapper from "@/components/common/PageWrapper"
 import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
 import { getOrderedKeys } from "@/utils/columnOrder"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const PRICING_OPTIONS = [
   { value: "fixed", label: "Фиксированная" },
@@ -183,9 +184,15 @@ export default function LogisticsRouteTemplatesPage() {
 
   const remove = async (record) => {
     try {
-      await axios.delete(`/logistics-route-templates/${record.id}`)
-      message.success("Шаблон доставки удален")
-      await fetchAll()
+      const result = await runTrashDeleteFlow({
+        entityType: "logistics_route_templates",
+        entityId: record.id,
+        deleteUrl: `/logistics-route-templates/${record.id}`,
+        successMessage: "Шаблон доставки перемещён в корзину",
+      })
+      if (result?.deleted) {
+        await fetchAll()
+      }
     } catch (e) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось удалить шаблон доставки")
@@ -222,6 +229,7 @@ export default function LogisticsRouteTemplatesPage() {
         </Card>
 
         <DraggableColumnsTable
+          columnSizingKey="logistics_route_templates_column_widths_v1"
           rowKey="id"
           loading={loading}
           dataSource={rows}

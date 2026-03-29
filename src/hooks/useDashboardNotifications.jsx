@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef } from "react"
 import { Tag, Space, Button, Typography } from "antd"
-import { useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 import { appMessage as message, appNotification as notification } from "@/utils/uiFeedback"
 
@@ -16,17 +15,12 @@ const EVENTS_POLL_INTERVAL_MS = 30000
 const CLIENT_ORDERS_ENABLED = false
 
 export default function useDashboardNotifications() {
-  const navigate = useNavigate()
   const lastEventRef = useRef({ at: null, id: 0 })
 
   const openOrderById = useCallback((orderId) => {
     if (!orderId) return
-    if (!CLIENT_ORDERS_ENABLED) {
-      message.info("Модуль заказов клиента сейчас отключён")
-      return
-    }
-    navigate(`/client-orders?orderId=${encodeURIComponent(orderId)}`)
-  }, [navigate])
+    message.info("Легаси-модуль client orders удалён из текущей конфигурации")
+  }, [])
 
   const fetchEvents = useCallback(async () => {
     const last = lastEventRef.current

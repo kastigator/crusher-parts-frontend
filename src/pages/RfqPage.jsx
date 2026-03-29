@@ -21,6 +21,7 @@ import { DeleteOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons"
 import PageWrapper from "@/components/common/PageWrapper"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 import { formatUomLabel } from "@/utils/uom"
 import { useLocation } from "react-router-dom"
 import OriginalsPickerDrawer from "@/components/supplierParts/OriginalsPickerDrawer"
@@ -88,6 +89,7 @@ export default function RfqPage() {
   const [pendingOpenId, setPendingOpenId] = useState(null)
   const [filterClientId, setFilterClientId] = useState(null)
   const [filterRequestNumber, setFilterRequestNumber] = useState("")
+  const [showArchivedRfqs, setShowArchivedRfqs] = useState(false)
 
   const [createForm] = Form.useForm()
   const [itemForm] = Form.useForm()
@@ -96,7 +98,9 @@ export default function RfqPage() {
   const loadRfqs = async () => {
     setLoading(true)
     try {
-      const { data } = await axios.get("/rfqs")
+      const { data } = await axios.get("/rfqs", {
+        params: { include_archived: showArchivedRfqs ? 1 : undefined },
+      })
       setRfqs(Array.isArray(data) ? data : [])
     } catch (e) {
       console.error(e)
@@ -157,7 +161,7 @@ export default function RfqPage() {
     loadRfqs()
     loadRequests()
     loadSuppliers()
-  }, [])
+  }, [showArchivedRfqs])
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -310,19 +314,18 @@ export default function RfqPage() {
 
   const handleDeleteComponent = async (itemId, component) => {
     if (!activeRfq?.id || !component?.rfq_item_component_id) return
-    const { confirmed } = await confirmAction({
-      title: "Удалить компонент?",
-      text: "Компонент будет удален из структуры закупки.",
-      icon: "warning",
-      confirmLabel: "Удалить",
-    })
-    if (!confirmed) return
     const componentId = component.rfq_item_component_id
     setComponentBusy(componentId, true)
     try {
-      await axios.delete(`/rfqs/${activeRfq.id}/items/${itemId}/components/${componentId}`)
-      await loadRfqStructure(activeRfq.id)
-      message.success("Компонент удален")
+      const result = await runTrashDeleteFlow({
+        entityType: "rfq_item_components",
+        entityId: componentId,
+        deleteUrl: `/rfqs/${activeRfq.id}/items/${itemId}/components/${componentId}`,
+        successMessage: "Компонент перемещен в корзину",
+      })
+      if (result?.deleted) {
+        await loadRfqStructure(activeRfq.id)
+      }
     } catch (e) {
       console.error(e)
       message.error("Не удалось удалить компонент")
@@ -747,29 +750,28 @@ export default function RfqPage() {
       width: 110,
       render: (_, record) => (
         <Button
-          danger
           type="text"
           icon={<DeleteOutlined />}
           onClick={async (event) => {
             event.stopPropagation()
             const { confirmed } = await confirmAction({
-              title: "Удалить RFQ?",
-              text: "Будут удалены ответы поставщиков и связанные расчеты.",
+              title: "Архивировать RFQ?",
+              text: "RFQ останется в системе и истории, но будет скрыт из обычного списка.",
               icon: "warning",
-              confirmLabel: "Удалить",
+              confirmLabel: "Архивировать",
             })
             if (!confirmed) return
             try {
-              await axios.delete(`/rfqs/${record.id}`)
+              await axios.post(`/rfqs/${record.id}/archive`)
               if (activeRfq?.id === record.id) {
                 setDrawerOpen(false)
                 setActiveRfq(null)
               }
               await loadRfqs()
-              message.success("RFQ удален")
+              message.success("RFQ перенесен в архив")
             } catch (e) {
               console.error(e)
-              message.error("Не удалось удалить RFQ")
+              message.error(e?.response?.data?.message || "Не удалось архивировать RFQ")
             }
           }}
         />
@@ -860,6 +862,12 @@ export default function RfqPage() {
               value={filterRequestNumber}
               onChange={(event) => setFilterRequestNumber(event.target.value)}
             />
+            <Checkbox
+              checked={showArchivedRfqs}
+              onChange={(event) => setShowArchivedRfqs(event.target.checked)}
+            >
+              Показывать архивные
+            </Checkbox>
           </Space>
           <Table
             rowKey="id"

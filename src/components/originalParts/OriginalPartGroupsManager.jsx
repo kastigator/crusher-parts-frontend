@@ -8,10 +8,9 @@ import {
   Button,
   message,
 } from "antd"
-import { DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
-import confirmAction from "@/utils/confirmAction"
 import ActionButtons from "@/components/common/ActionButtons"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 export default function OriginalPartGroupsManager({ open, onClose, onChanged }) {
   const [rows, setRows] = useState([])
@@ -100,13 +99,14 @@ export default function OriginalPartGroupsManager({ open, onClose, onChanged }) 
   }
 
   const handleDelete = async (record) => {
-    const { confirmed } = await confirmAction(
-      `Удалить группу "${record.name}"?`,
-    )
-    if (!confirmed) return
     try {
-      await axios.delete(`/original-part-groups/${record.id}`)
-      message.success("Группа удалена")
+      const result = await runTrashDeleteFlow({
+        entityType: "original_part_groups",
+        entityId: record.id,
+        deleteUrl: `/original-part-groups/${record.id}`,
+        successMessage: "Группа перемещена в корзину",
+      })
+      if (!result?.deleted) return
       await load()
       if (typeof onChanged === "function") onChanged()
     } catch (e) {

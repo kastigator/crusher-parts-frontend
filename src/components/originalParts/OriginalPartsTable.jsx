@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react"
 import { message } from "antd"
-import axios from "@/api/axiosInstance"
-import confirmAction from "@/utils/confirmAction"
 import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import ValueDisplay from "@/components/common/ValueDisplay"
@@ -10,6 +8,7 @@ import useTableScrollHints from "@/utils/useTableScrollHints"
 import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
 import { getOrderedKeys } from "@/utils/columnOrder"
 import { formatUomLabel } from "@/utils/uom"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 /**
  * Таблица оригинальных деталей.
@@ -152,13 +151,21 @@ export default function OriginalPartsTable({
      Удаление детали
   ----------------------------------------------------------- */
   const handleDelete = async (record) => {
-    const { confirmed } = await confirmAction(
-      `Удалить деталь ${record.cat_number || ""} из текущей модели?`,
-    )
-    if (!confirmed) return
     try {
-      await axios.delete(`/original-parts/${record.id}`)
-      message.success("Деталь удалена")
+      const targetModelId = Number(record?.equipment_model_id || _modelId || 0) || null
+      const entityType = targetModelId ? "oem_part_model_fitments" : "oem_parts"
+      const deleteUrl = targetModelId ? `/original-parts/${record.id}` : `/oem-parts/${record.id}`
+      const result = await runTrashDeleteFlow({
+        entityType,
+        entityId: record.id,
+        deleteUrl,
+        deleteParams: targetModelId ? { equipment_model_id: targetModelId } : undefined,
+        previewParams: targetModelId ? { equipment_model_id: targetModelId } : undefined,
+        successMessage: targetModelId
+          ? "Деталь удалена из модели"
+          : "OEM деталь перемещена в корзину",
+      })
+      if (!result?.deleted) return
       if (typeof onRemove === "function") onRemove(record.id)
       if (typeof onReload === "function") onReload()
     } catch (err) {
@@ -179,8 +186,10 @@ export default function OriginalPartsTable({
             title: "Производитель",
             dataIndex: "manufacturer_name",
             width: 160,
-            fixed: "left",
-            ellipsis: true,
+            minWidth: 110,
+            maxWidth: 260,
+            ellipsis: { showTitle: false },
+            onCell: () => ({ style: { overflow: "hidden" } }),
             filters: manufacturerFilters,
             onFilter: (value, record) =>
               (record.manufacturer_name || "") === value,
@@ -196,8 +205,10 @@ export default function OriginalPartsTable({
             title: "Модель оборудования",
             dataIndex: "model_name",
             width: 160,
-            fixed: "left",
-            ellipsis: true,
+            minWidth: 110,
+            maxWidth: 280,
+            ellipsis: { showTitle: false },
+            onCell: () => ({ style: { overflow: "hidden" } }),
             filters: modelFilters,
             onFilter: (value, record) =>
               (record.model_name || "") === value,
@@ -249,7 +260,10 @@ export default function OriginalPartsTable({
       title: "Part number",
       dataIndex: "cat_number",
       width: 160,
-      fixed: "left",
+      minWidth: 100,
+      maxWidth: 280,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       sorter: (a, b) =>
         (a.cat_number || "").localeCompare(b.cat_number || ""),
       sortDirections: ["ascend", "descend"],
@@ -259,13 +273,12 @@ export default function OriginalPartsTable({
       key: "description_ru",
       title: "Описание (RU)",
       dataIndex: "description_ru",
-      ellipsis: true,
+      ellipsis: { showTitle: false },
       width: 260,
-      onHeaderCell: () => ({
-        style: { width: 260, minWidth: 260, maxWidth: 260 },
-      }),
+      minWidth: 140,
+      maxWidth: 460,
       onCell: () => ({
-        style: { width: 260, minWidth: 260, maxWidth: 260 },
+        style: { overflow: "hidden" },
       }),
       render: (value) => <ValueDisplay value={value} />,
     },
@@ -273,13 +286,12 @@ export default function OriginalPartsTable({
       key: "description_en",
       title: "Description (EN)",
       dataIndex: "description_en",
-      ellipsis: true,
+      ellipsis: { showTitle: false },
       width: 220,
-      onHeaderCell: () => ({
-        style: { width: 220, minWidth: 220, maxWidth: 220 },
-      }),
+      minWidth: 120,
+      maxWidth: 420,
       onCell: () => ({
-        style: { width: 220, minWidth: 220, maxWidth: 220 },
+        style: { overflow: "hidden" },
       }),
       render: (value) => <ValueDisplay value={value} />,
     },
@@ -290,7 +302,10 @@ export default function OriginalPartsTable({
       title: "Группа",
       dataIndex: "group_name",
       width: 160,
-      ellipsis: true,
+      minWidth: 110,
+      maxWidth: 320,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       sorter: (a, b) =>
         (a.group_name || "").localeCompare(b.group_name || ""),
       sortDirections: ["ascend", "descend"],
@@ -306,7 +321,10 @@ export default function OriginalPartsTable({
       title: "ТН ВЭД",
       dataIndex: "tnved_code_text", // приходит из JOIN с tnved_codes
       width: 120,
-      ellipsis: true,
+      minWidth: 90,
+      maxWidth: 220,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       filters: tnvedFilters,
       onFilter: (value, record) =>
         (record.tnved_code_text || record.tnved_code || "") === (value || ""),
@@ -392,8 +410,7 @@ export default function OriginalPartsTable({
     {
       key: "actions",
       title: "Действия",
-      width: 180,
-      lock: true,
+      width: 120,
       render: (_, record) => (
         <ActionButtons
           size="small"
@@ -409,8 +426,21 @@ export default function OriginalPartsTable({
     },
   ]
 
-  const defaultVisible = columnDefs.map((c) => c.key)
-  const defaultOrder = defaultVisible
+  const defaultVisible = [
+    ...(showAll ? ["manufacturer", "model"] : []),
+    "cat_number",
+    "description_ru",
+    "group_name",
+    "tnved_code",
+    "weight_kg",
+    "uom",
+    "is_assembly",
+    "actions",
+  ].filter((key) => columnDefs.some((column) => column.key === key))
+  const defaultOrder = [
+    ...defaultVisible.filter((key) => key !== "actions"),
+    ...(defaultVisible.includes("actions") ? ["actions"] : []),
+  ]
   const effectiveVisibleKeys =
     Array.isArray(visibleColumnKeys) && visibleColumnKeys.length
       ? visibleColumnKeys
@@ -459,6 +489,7 @@ export default function OriginalPartsTable({
       >
         <DraggableColumnsTable
           className="op-table op-table-originals"
+          columnSizingKey="original_parts_column_widths_v1"
           rowKey="id"
           columns={columns}
           nonDraggableKeys={lockedKeys}

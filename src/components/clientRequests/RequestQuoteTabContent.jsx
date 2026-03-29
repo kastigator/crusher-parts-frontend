@@ -129,6 +129,10 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
     () => quotes.find((row) => Number(row.id) === Number(selectedQuoteId || 0)) || null,
     [quotes, selectedQuoteId]
   )
+  const selectedQuoteActions = useMemo(
+    () => quoteStatusActions(selectedQuote?.status),
+    [selectedQuote]
+  )
   const selectedCreateSelectionId = Form.useWatch("selection_id", form)
   const selectedCreateSelection = useMemo(
     () => selections.find((row) => Number(row.id) === Number(selectedCreateSelectionId || 0)) || null,
@@ -220,9 +224,9 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
         }
       >
         <Form form={form} layout="vertical" onFinish={handleCreateQuote}>
-          <Space wrap align="start">
+          <Space wrap align="start" style={{ width: "100%" }}>
             <Form.Item name="selection_id" label="Выбор закупки" rules={[{ required: true }]}>
-              <Select style={{ width: 420 }} options={selectionOptions} />
+              <Select style={{ width: 520, maxWidth: "100%" }} options={selectionOptions} />
             </Form.Item>
           </Space>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
@@ -240,18 +244,24 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
         size="small"
         title="Коммерческие предложения по заявке"
         extra={
-          <Space>
-            <Select
-              allowClear
-              style={{ width: 280 }}
-              placeholder="Выберите коммерческое предложение"
-              value={selectedQuoteId || undefined}
-              onChange={(value) => setSelectedQuoteId(Number(value || 0) || null)}
-              options={quotes.map((row) => ({
-                value: Number(row.id),
-                label: `Предложение #${row.id} · ревизия заявки ${row.rev_number ?? "?"} · ${quoteStatusLabel(row.status)}`,
-              }))}
-            />
+          <Space wrap>
+            {selectedQuote ? (
+              <Typography.Text type="secondary">
+                {`Выбрано КП #${selectedQuote.id} · ${quoteStatusLabel(selectedQuote.status)}`}
+              </Typography.Text>
+            ) : null}
+            {selectedQuoteActions.map((action) => (
+              <Button
+                key={action.key}
+                size="small"
+                type={action.type || "default"}
+                loading={updatingQuoteId === Number(selectedQuote?.id)}
+                disabled={!selectedQuoteId || !canManageSalesQuotes}
+                onClick={() => handleUpdateQuoteStatus(selectedQuote.id, action.key)}
+              >
+                {action.label}
+              </Button>
+            ))}
             <Button
               onClick={handleCreateRevision}
               loading={creatingRevision}
@@ -263,15 +273,34 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
         }
       >
         <Table
+          size="small"
           rowKey="id"
           loading={loading}
           dataSource={quotes}
           pagination={false}
+          onRow={(row) => ({
+            onClick: () => setSelectedQuoteId(Number(row.id) || null),
+            style: { cursor: "pointer" },
+          })}
+          rowClassName={(row) => (Number(row.id) === Number(selectedQuoteId || 0) ? "workspace-selector-row-active" : "")}
+          tableLayout="auto"
+          scroll={{ x: "max-content" }}
           columns={[
-            { title: "Предложение", width: 110, render: (_, row) => `#${row.id}` },
+            {
+              title: "Предложение",
+              width: 160,
+              render: (_, row) => (
+                <Space direction="vertical" size={0}>
+                  <span>{`#${row.id}`}</span>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {`Ревизия заявки ${row.rev_number ?? "?"}`}
+                  </Typography.Text>
+                </Space>
+              ),
+            },
             {
               title: "Статус",
-              width: 200,
+              width: 180,
               render: (_, row) => (
                 <Tag color={(quoteStatusMeta[canonicalQuoteStatus(row.status)] || quoteStatusMeta.internal_review).color}>
                   {(quoteStatusMeta[canonicalQuoteStatus(row.status)] || quoteStatusMeta.internal_review).label}
@@ -279,39 +308,13 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
               ),
             },
             {
-              title: "Действия",
-              width: 280,
-              render: (_, row) => {
-                const actions = quoteStatusActions(row.status)
-                if (!actions.length) return "—"
-                return (
-                  <Space wrap>
-                    {actions.map((action) => (
-                      <Button
-                        key={action.key}
-                        size="small"
-                        type={action.type || "default"}
-                        loading={updatingQuoteId === Number(row.id)}
-                        disabled={!canManageSalesQuotes}
-                        onClick={() => handleUpdateQuoteStatus(row.id, action.key)}
-                      >
-                        {action.label}
-                      </Button>
-                    ))}
-                  </Space>
-                )
-              },
-            },
-            { title: "Ревизия заявки", dataIndex: "rev_number", width: 120 },
-            {
               title: "Последняя ревизия",
-              dataIndex: "latest_revision_number",
-              width: 150,
-              render: (value) => value || "—",
+              width: 130,
+              render: (_, row) => row.latest_revision_number || row.rev_number || "—",
             },
-            { title: "Себестоимость", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_cost, row.currency || "USD") },
-            { title: "Продажа", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_sell, row.currency || "USD") },
-            { title: "Маржа", width: 100, render: (_, row) => `${Number(row.margin_pct_avg || 0).toFixed(1)}%` },
+            { title: "Себестоимость", width: 130, render: (_, row) => formatPriceWithCurrency(row.total_cost, row.currency || "USD") },
+            { title: "Продажа", width: 130, render: (_, row) => formatPriceWithCurrency(row.total_sell, row.currency || "USD") },
+            { title: "Маржа", width: 90, render: (_, row) => `${Number(row.margin_pct_avg || 0).toFixed(1)}%` },
             { title: "Создано", dataIndex: "created_at", width: 120, render: formatDate },
           ]}
         />
@@ -325,11 +328,13 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
               rowKey="id"
               dataSource={quoteRevisions}
               pagination={false}
+              tableLayout="auto"
+              scroll={{ x: "max-content" }}
               columns={[
                 { title: "Ревизия", dataIndex: "rev_number", width: 90 },
-                { title: "Себестоимость", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_cost, selectedQuote?.currency || "USD") },
-                { title: "Продажа", width: 140, render: (_, row) => formatPriceWithCurrency(row.total_sell, selectedQuote?.currency || "USD") },
-                { title: "Маржа", width: 100, render: (_, row) => `${Number(row.margin_pct_avg || 0).toFixed(1)}%` },
+                { title: "Себестоимость", width: 130, render: (_, row) => formatPriceWithCurrency(row.total_cost, selectedQuote?.currency || "USD") },
+                { title: "Продажа", width: 130, render: (_, row) => formatPriceWithCurrency(row.total_sell, selectedQuote?.currency || "USD") },
+                { title: "Маржа", width: 90, render: (_, row) => `${Number(row.margin_pct_avg || 0).toFixed(1)}%` },
                 {
                   title: "Срез",
                   width: 110,

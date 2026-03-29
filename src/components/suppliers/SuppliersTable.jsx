@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Table, message } from "antd"
+import { Space, Table, Typography, message } from "antd"
 
 import ActionButtons from "@/components/common/ActionButtons"
-import confirmAction from "@/utils/confirmAction"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import createTablePagination from "@/utils/tablePagination"
@@ -22,6 +21,7 @@ export default function SuppliersTable({
   columnOrderKeys = null,
   onColumnOrderKeysChange = null,
 }) {
+  const { Text } = Typography
   const [logsSupplierId, setLogsSupplierId] = useState(null)
   const wrapRef = useRef(null)
 
@@ -44,8 +44,6 @@ export default function SuppliersTable({
   )
 
   const handleDelete = useCallback(async (record) => {
-    const { confirmed } = await confirmAction("Удалить поставщика?")
-    if (!confirmed) return
     try {
       await onDelete?.(record)
     } catch (e) {
@@ -54,23 +52,41 @@ export default function SuppliersTable({
     }
   }, [onDelete])
 
+  const supplierMetaText = useCallback((record) => {
+    const parts = [record?.country, record?.contact_person].filter(Boolean)
+    return parts.join(" · ")
+  }, [])
+
   const columns = useMemo(() => [
     {
-      title: "Компания",
+      title: "Поставщик",
       dataIndex: "name",
       key: "name",
-      width: 280,
-      fixed: "left",
-      lock: true,
-      render: (v) => <ValueDisplay value={v} />,
+      width: 300,
+      minWidth: 180,
+      maxWidth: 520,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
+      render: (v, record) => (
+        <Space direction="vertical" size={2} style={{ width: "100%", minWidth: 0 }}>
+          <ValueDisplay value={v} />
+          {supplierMetaText(record) ? (
+            <Text type="secondary" className="cell-ellipsis" style={{ maxWidth: "100%" }}>
+              {supplierMetaText(record)}
+            </Text>
+          ) : null}
+        </Space>
+      ),
     },
     {
       title: "Код",
       dataIndex: "public_code",
       key: "public_code",
       width: 110,
-      fixed: "left",
-      lock: true,
+      minWidth: 90,
+      maxWidth: 220,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} />,
     },
     {
@@ -78,6 +94,10 @@ export default function SuppliersTable({
       dataIndex: "country",
       key: "country",
       width: 200,
+      minWidth: 120,
+      maxWidth: 260,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} />,
     },
     {
@@ -85,6 +105,10 @@ export default function SuppliersTable({
       dataIndex: "vat_number",
       key: "vat_number",
       width: 160,
+      minWidth: 110,
+      maxWidth: 260,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} />,
     },
     {
@@ -92,6 +116,10 @@ export default function SuppliersTable({
       dataIndex: "contact_person",
       key: "contact_person",
       width: 180,
+      minWidth: 120,
+      maxWidth: 320,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} />,
     },
     {
@@ -99,6 +127,10 @@ export default function SuppliersTable({
       dataIndex: "phone",
       key: "phone",
       width: 170,
+      minWidth: 120,
+      maxWidth: 260,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} type="phone" />,
     },
     {
@@ -106,6 +138,10 @@ export default function SuppliersTable({
       dataIndex: "email",
       key: "email",
       width: 220,
+      minWidth: 140,
+      maxWidth: 360,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} type="email" />,
     },
     {
@@ -113,6 +149,10 @@ export default function SuppliersTable({
       dataIndex: "notes",
       key: "notes",
       width: 260,
+      minWidth: 140,
+      maxWidth: 420,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} />,
     },
     {
@@ -167,8 +207,7 @@ export default function SuppliersTable({
     {
       title: "Действия",
       key: "actions",
-      width: 150,
-      lock: true,
+      width: 120,
       render: (_, record) => (
         <ActionButtons
           size="small"
@@ -179,10 +218,16 @@ export default function SuppliersTable({
         />
       ),
     },
-  ], [handleDelete, onEditRecord])
+  ], [handleDelete, onEditRecord, supplierMetaText])
 
-  const defaultVisible = useMemo(() => columns.map((c) => c.key), [columns])
-  const defaultOrder = defaultVisible
+  const defaultVisible = useMemo(
+    () => ["name", "public_code", "phone", "email", "can_oem", "can_analog", "risk_level", "default_lead_time_days"],
+    [],
+  )
+  const defaultOrder = [
+    ...defaultVisible.filter((key) => key !== "actions"),
+    ...(defaultVisible.includes("actions") ? ["actions"] : []),
+  ]
   const effectiveVisibleKeys =
     Array.isArray(visibleColumnKeys) && visibleColumnKeys.length
       ? visibleColumnKeys
@@ -203,21 +248,15 @@ export default function SuppliersTable({
 
   const visibleColumns = useMemo(() => {
     const visible = new Set(effectiveVisibleKeys)
-    return orderedColumns.filter((c) => c.lock || visible.has(c.key))
+    return orderedColumns.filter((c) => visible.has(c.key))
   }, [orderedColumns, effectiveVisibleKeys])
 
   const columnOptions = useMemo(
-    () =>
-      columns
-        .filter((c) => c.key && !c.lock)
-        .map((c) => ({ key: c.key, label: c.title })),
+    () => columns.filter((c) => c.key).map((c) => ({ key: c.key, label: c.title })),
     [columns]
   )
 
-  const lockedKeys = useMemo(
-    () => columns.filter((c) => c.lock).map((c) => c.key),
-    [columns]
-  )
+  const lockedKeys = useMemo(() => [], [])
 
   useEffect(() => {
     onColumnsMeta?.({
@@ -238,6 +277,7 @@ export default function SuppliersTable({
       >
         <DraggableColumnsTable
           className="op-table"
+          columnSizingKey="suppliers_column_widths_v1"
           size="small"
           bordered
           rowKey="id"
@@ -257,7 +297,7 @@ export default function SuppliersTable({
           dataSource={dataSource}
           tableLayout="fixed"
           pagination={pagination}
-          scroll={{ x: true }}
+          scroll={{ x: "max-content" }}
           rowClassName={(record) =>
             Number(record?.id) === Number(highlightRowId) ? "op-row-flash" : ""
           }

@@ -6,6 +6,7 @@ import CurrencySelect from "@/components/inputs/CurrencySelect"
 import BankDetailsTable from "./BankDetailsTable"
 import fetchBankByBic from "@/utils/fetchBankByBic"
 import { isSameByFields } from "@/utils/versionConflict"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const INITIAL_BANK = {
   bank_name: "",
@@ -167,12 +168,17 @@ export default function BankDetailsMain({ clientId, onChanged }) {
     if (!id) return
 
     try {
-      await axios.delete(`/client-bank-details/${id}`, {
-        params: { version },
+      const result = await runTrashDeleteFlow({
+        entityType: "client_bank_details",
+        entityId: id,
+        deleteUrl: `/client-bank-details/${id}`,
+        deleteParams: { version },
+        successMessage: "Банковские реквизиты клиента перемещены в корзину",
       })
-      setData((prev) => prev.filter((row) => row.id !== id))
-      onChanged?.()
-      message.success("Банковские реквизиты удалены")
+      if (result?.deleted) {
+        setData((prev) => prev.filter((row) => row.id !== id))
+        onChanged?.()
+      }
     } catch (e) {
       if (
         e.response?.status === 409 &&

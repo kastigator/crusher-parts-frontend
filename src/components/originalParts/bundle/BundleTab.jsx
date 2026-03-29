@@ -5,7 +5,7 @@ import { StarFilled } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import SupplierPartPickerDrawer from "./SupplierPartPickerDrawer"
 import ActionButtons from "@/components/common/ActionButtons"
-import confirmAction from "@/utils/confirmAction"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const { Text } = Typography
 
@@ -107,15 +107,16 @@ export default function BundleTab({ originalPartId, originalPart }) {
 
   const deleteBundle = async () => {
     if (!bundleId) return
-    const { confirmed } = await confirmAction(
-      "Удалить комплект полностью? Будут удалены роли и варианты в этом комплекте.",
-    )
-    if (!confirmed) return
 
     try {
       setLoading(true)
-      await axios.delete(`/supplier-bundles/${bundleId}`)
-      message.success("Комплект удалён")
+      const result = await runTrashDeleteFlow({
+        entityType: "supplier_bundles",
+        entityId: bundleId,
+        deleteUrl: `/supplier-bundles/${bundleId}`,
+        successMessage: "Комплект перемещён в корзину",
+      })
+      if (!result?.deleted) return
 
       // 🔁 уведомим вкладку "Поставщики" (связи могли измениться)
       window.dispatchEvent(
@@ -202,7 +203,13 @@ export default function BundleTab({ originalPartId, originalPart }) {
 
   const deleteItem = async (itemId) => {
     try {
-      await axios.delete(`/supplier-bundles/items/${itemId}`)
+      const result = await runTrashDeleteFlow({
+        entityType: "supplier_bundle_items",
+        entityId: itemId,
+        deleteUrl: `/supplier-bundles/items/${itemId}`,
+        successMessage: "Роль комплекта удалена",
+      })
+      if (!result?.deleted) return
       await loadData()
     } catch (e) {
       console.error(e)
@@ -304,8 +311,13 @@ export default function BundleTab({ originalPartId, originalPart }) {
 
   const deleteLink = async (linkId) => {
     try {
-      await axios.delete(`/supplier-bundles/links/${linkId}`)
-      message.success("Вариант удалён")
+      const result = await runTrashDeleteFlow({
+        entityType: "supplier_bundle_item_links",
+        entityId: linkId,
+        deleteUrl: `/supplier-bundles/links/${linkId}`,
+        successMessage: "Вариант удалён",
+      })
+      if (!result?.deleted) return
 
       // 🔁 уведомим вкладку "Поставщики"
       window.dispatchEvent(new CustomEvent("supplier-links:refresh", { detail: { original_part_id: originalPartId } }))

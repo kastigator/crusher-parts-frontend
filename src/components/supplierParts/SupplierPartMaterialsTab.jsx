@@ -1,7 +1,8 @@
 // src/components/supplierParts/SupplierPartMaterialsTab.jsx
 import React, { useEffect, useState, useCallback } from "react"
-import { Table, Button, Space, Tag, Popconfirm, Modal, Select, Input, Form, message, Checkbox } from "antd"
+import { Table, Button, Space, Tag, Modal, Select, Input, Form, message, Checkbox } from "antd"
 import axios from "@/api/axiosInstance"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 import "@/styles/tableStyles.css"
 
 export default function SupplierPartMaterialsTab({ supplierPartId }) {
@@ -92,8 +93,16 @@ export default function SupplierPartMaterialsTab({ supplierPartId }) {
 
   const removeMaterial = async (record) => {
     try {
-      await axios.delete(`/supplier-part-materials/${supplierPartId}/${record.material_id}`)
-      await load()
+      const result = await runTrashDeleteFlow({
+        entityType: "supplier_part_materials",
+        entityId: supplierPartId,
+        previewParams: { material_id: record.material_id },
+        deleteUrl: `/supplier-part-materials/${supplierPartId}/${record.material_id}`,
+        successMessage: "Материал отвязан от детали поставщика",
+      })
+      if (result?.deleted) {
+        await load()
+      }
     } catch (e) {
       console.error("Ошибка удаления материала", e)
       message.error("Не удалось удалить материал")
@@ -144,16 +153,9 @@ export default function SupplierPartMaterialsTab({ supplierPartId }) {
               По умолчанию
             </Button>
           )}
-          <Popconfirm
-            title="Удалить материал?"
-            okText="Да"
-            cancelText="Нет"
-            onConfirm={() => removeMaterial(record)}
-          >
-            <Button danger size="small">
-              Удалить
-            </Button>
-          </Popconfirm>
+          <Button danger size="small" onClick={() => removeMaterial(record)}>
+            Удалить
+          </Button>
         </Space>
       ),
     },

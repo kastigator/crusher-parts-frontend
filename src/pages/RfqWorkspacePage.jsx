@@ -69,6 +69,7 @@ export default function RfqWorkspacePage() {
   const [activeRfq, setActiveRfq] = useState(null)
   const [filterClientId, setFilterClientId] = useState(null)
   const [filterRequestNumber, setFilterRequestNumber] = useState("")
+  const [showArchivedRfqs, setShowArchivedRfqs] = useState(false)
 
   const [items, setItems] = useState([])
   const [suppliers, setSuppliers] = useState([])
@@ -676,7 +677,9 @@ export default function RfqWorkspacePage() {
   const loadRfqs = async () => {
     setLoading(true)
     try {
-      const { data } = await axios.get("/rfqs")
+      const { data } = await axios.get("/rfqs", {
+        params: { include_archived: showArchivedRfqs ? 1 : undefined },
+      })
       setRfqs(Array.isArray(data) ? data : [])
     } catch (e) {
       console.error(e)
@@ -696,7 +699,7 @@ export default function RfqWorkspacePage() {
       }
     }
     loadSuppliers()
-  }, [])
+  }, [showArchivedRfqs])
 
   // Подхватываем rfq_id из query/state при переходе из дашборда
   useEffect(() => {
@@ -886,22 +889,22 @@ export default function RfqWorkspacePage() {
 
   const handleDeleteRfq = async (rfqId) => {
     const { confirmed } = await confirmAction({
-      title: "Удалить RFQ?",
-      text: "Будут удалены ответы поставщиков и связанные расчеты.",
+      title: "Архивировать RFQ?",
+      text: "RFQ останется в системе и истории, но будет скрыт из обычного списка.",
       icon: "warning",
-      confirmLabel: "Удалить",
+      confirmLabel: "Архивировать",
     })
     if (!confirmed) return
     try {
-      await axios.delete(`/rfqs/${rfqId}`)
+      await axios.post(`/rfqs/${rfqId}/archive`)
       if (Number(activeRfqId) === Number(rfqId)) {
         setActiveRfqId(null)
       }
       await loadRfqs()
-      message.success("RFQ удален")
+      message.success("RFQ перенесен в архив")
     } catch (e) {
       console.error(e)
-      message.error("Не удалось удалить RFQ")
+      message.error(e?.response?.data?.message || "Не удалось архивировать RFQ")
     }
   }
 
@@ -2889,7 +2892,8 @@ export default function RfqWorkspacePage() {
   return (
     <PageWrapper
       title="Рабочее место RFQ"
-      helpText="Сквозной поток по RFQ: от отправленной в закупку заявки до заказа поставщику."
+      subtitle="Сквозной закупочный workflow: от принятой в работу заявки до заказа поставщику."
+      helpSummary="Последовательность этапов: RFQ → поставщики → ответы → покрытие → сценарии → логистика → экономика → выбор → коммерция → контракт → заказ."
     >
       <RfqWorkspaceMainContent
         clientFilterOptions={clientFilterOptions}
@@ -2897,6 +2901,8 @@ export default function RfqWorkspacePage() {
         setFilterClientId={setFilterClientId}
         filterRequestNumber={filterRequestNumber}
         setFilterRequestNumber={setFilterRequestNumber}
+        showArchivedRfqs={showArchivedRfqs}
+        setShowArchivedRfqs={setShowArchivedRfqs}
         filteredRfqs={filteredRfqs}
         loading={loading}
         setActiveRfqId={setActiveRfqId}

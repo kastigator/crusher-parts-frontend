@@ -15,6 +15,7 @@ import {
 } from "antd"
 import { EditOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 import "@/styles/tableStyles.css"
 
 export default function OriginalPartMaterialsTab({ partId }) {
@@ -156,10 +157,16 @@ export default function OriginalPartMaterialsTab({ partId }) {
 
   const removeMaterial = async (record) => {
     try {
-      await axios.delete(
-        `/original-part-materials/${partId}/${record.material_id}`
-      )
-      await load()
+      const result = await runTrashDeleteFlow({
+        entityType: "oem_part_materials",
+        entityId: partId,
+        previewParams: { material_id: record.material_id },
+        deleteUrl: `/original-part-materials/${partId}/${record.material_id}`,
+        successMessage: "Связь материала удалена",
+      })
+      if (result?.deleted) {
+        await load()
+      }
     } catch (e) {
       console.error("Ошибка удаления материала", e)
       message.error("Не удалось удалить материал")

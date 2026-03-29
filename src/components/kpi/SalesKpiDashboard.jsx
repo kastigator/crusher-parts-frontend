@@ -21,7 +21,7 @@ import { ReloadOutlined } from "@ant-design/icons"
 import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
 import { useAuth } from "@/auth/AuthContext"
-import confirmAction from "@/utils/confirmAction"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 import ActionButtons from "@/components/common/ActionButtons"
 import KpiHelpDrawer from "@/components/kpi/KpiHelpDrawer"
 import KpiDetailsDrawer from "@/components/kpi/KpiDetailsDrawer"
@@ -457,11 +457,14 @@ export default function SalesKpiDashboard({
   }
 
   const handleDeleteTarget = async (row) => {
-    const { confirmed } = await confirmAction("Удалить цель KPI?")
-    if (!confirmed) return
     try {
-      await axios.delete(`/sales-kpi/targets/${row.id}`)
-      message.success("Цель KPI удалена")
+      const result = await runTrashDeleteFlow({
+        entityType: "sales_kpi_targets",
+        entityId: row.id,
+        deleteUrl: `/sales-kpi/targets/${row.id}`,
+        successMessage: "Цель KPI перемещена в корзину",
+      })
+      if (!result?.deleted) return
       await loadKpi()
     } catch (e) {
       console.error("Ошибка удаления цели KPI:", e)

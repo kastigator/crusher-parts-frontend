@@ -36,6 +36,23 @@
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
+}
+
+.op-table.op-table--resizable .ant-table {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+.op-table.op-table--resizable .ant-table-content > table,
+.op-table.op-table--resizable .ant-table-body > table {
+  width: var(--op-table-resizable-width, max-content) !important;
+  min-width: 0 !important;
+  table-layout: fixed !important;
+}
+
+.op-table .ant-table-content > table,
+.op-table .ant-table-body > table {
   table-layout: fixed;
 }
 
@@ -53,11 +70,84 @@
 }
 
 .op-table .op-table-dnd-th {
-  cursor: grab;
+  cursor: default;
 }
 
-.op-table .op-table-dnd-th:active {
+.op-table .op-table-th-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+  padding-right: 8px;
+}
+
+.op-table .op-table-th-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.op-table .op-table-drag-handle {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  border-radius: 4px;
+  opacity: 0.55;
+}
+
+.op-table .op-table-drag-handle:active {
   cursor: grabbing;
+}
+
+.op-table .op-table-drag-handle:hover {
+  background: rgba(148, 163, 184, 0.14);
+  opacity: 1;
+}
+
+.op-table .op-table-drag-handle__dots {
+  width: 3px;
+  height: 12px;
+  border-radius: 999px;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(107, 114, 128, 0.85) 0 2px,
+    transparent 2px 4px
+  );
+}
+
+.op-table .op-table-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  width: 14px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 4;
+}
+
+.op-table .op-table-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 16%;
+  bottom: 16%;
+  left: 6px;
+  width: 2px;
+  border-radius: 2px;
+  background: rgba(148, 163, 184, 0.85);
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
+}
+
+.op-table .ant-table-thead > tr > th:hover .op-table-resize-handle::after,
+.op-table .op-table-resize-handle:hover::after {
+  opacity: 1;
 }
 
 /* ---------------------------------------------------------
@@ -382,6 +472,37 @@
   min-width: 0;
 }
 
+.op-table-scroll-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.16);
+}
+
+.op-table-scroll-note__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.op-table-scroll-note__actions .ant-btn {
+  min-width: 28px;
+  height: 24px;
+  padding: 0 6px;
+}
+
+.op-table-scroll-note::after {
+  content: "→";
+  color: #2563eb;
+  font-weight: 600;
+}
+
 .op-table-wrap.scroll-right::after,
 .op-table-wrap.scroll-left::before {
   content: "";
@@ -395,12 +516,14 @@
 
 .op-table-wrap.scroll-right::after {
   right: 0;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0), #ffffff);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.92) 62%, #ffffff);
+  box-shadow: inset -10px 0 12px rgba(255, 255, 255, 0.88);
 }
 
 .op-table-wrap.scroll-left::before {
   left: 0;
-  background: linear-gradient(270deg, rgba(255, 255, 255, 0), #ffffff);
+  background: linear-gradient(270deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.92) 62%, #ffffff);
+  box-shadow: inset 10px 0 12px rgba(255, 255, 255, 0.88);
 }
 
 /* Небольшие отступы между полями во вложенных формах,

@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Button, Card, Checkbox, Col, Input, Row, Space, Tag, Typography, message } from "antd"
 import { PlusOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
-import confirmAction from "@/utils/confirmAction"
 import useCapabilities from "@/hooks/useCapabilities"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const { Paragraph, Text } = Typography
 
@@ -123,20 +123,16 @@ export default function RoleZonesMatrix({ revision = 0, onRolesChanged, onPermis
       return
     }
 
-    const { confirmed } = await confirmAction(`Удалить роль "${role.name}"?`)
-    if (!confirmed) return
-
     try {
-      const usersRes = await axios.get("/users")
-      const usedBy = (usersRes.data || []).filter((user) => user.role_id === role.id)
-      if (usedBy.length) {
-        message.warning("Сначала переведите пользователей на другую роль")
-        return
-      }
-      await axios.delete(`/roles/${role.id}`)
+      const result = await runTrashDeleteFlow({
+        entityType: "roles",
+        entityId: role.id,
+        deleteUrl: `/roles/${role.id}`,
+        successMessage: "Роль перемещена в корзину",
+      })
+      if (!result?.deleted) return
       await fetchData()
       onRolesChanged?.()
-      message.success("Роль удалена")
     } catch (err) {
       console.error("Ошибка удаления роли:", err)
       message.error(err?.response?.data?.message || "Не удалось удалить роль")

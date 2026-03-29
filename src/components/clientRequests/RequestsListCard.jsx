@@ -6,27 +6,35 @@ export default function RequestsListCard({
   requests,
   listSearch,
   setListSearch,
+  toolbarExtra = null,
   loading,
   openWorkspace,
   activeRequestId,
+  cardless = false,
+  pageSize = 6,
+  maxTableHeight = 300,
+  title = "Список заявок",
 }) {
-  return (
-    <Card title="Список заявок" size="small">
-      <Space style={{ marginBottom: 12 }}>
+  const content = (
+    <>
+      <Space style={{ marginBottom: 12, width: "100%" }} wrap align="start">
         <Input.Search
           allowClear
-          style={{ width: 340 }}
+          style={{ width: 340, maxWidth: "100%" }}
           placeholder="Поиск по клиенту, номеру, референсу, контакту"
           value={listSearch}
           onChange={(event) => setListSearch(event.target.value)}
         />
+        {toolbarExtra}
       </Space>
       <Table
         rowKey="id"
         columns={requestColumns}
         dataSource={requests}
         loading={loading}
-        pagination={{ pageSize: 20 }}
+        size="small"
+        pagination={{ pageSize, size: "small", showSizeChanger: false }}
+        scroll={{ x: true, y: maxTableHeight }}
         onRow={(record) => ({
           onClick: () => openWorkspace(record),
         })}
@@ -34,8 +42,16 @@ export default function RequestsListCard({
           Number(record.id) === Number(activeRequestId)
             ? "ant-table-row-selected"
             : ""
-        }
+          }
       />
+    </>
+  )
+
+  if (cardless) return content
+
+  return (
+    <Card title={title} size="small">
+      {content}
     </Card>
   )
 }

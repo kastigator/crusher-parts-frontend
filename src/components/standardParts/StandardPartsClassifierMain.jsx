@@ -22,6 +22,7 @@ import {
   message,
 } from "antd"
 import axios from "@/api/axiosInstance"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 import StandardPartsMain from "./StandardPartsMain"
 
 const FIELD_TYPE_OPTIONS = [
@@ -310,8 +311,13 @@ export default function StandardPartsClassifierMain() {
   const deleteClass = async () => {
     if (!selectedNode?.id) return
     try {
-      await axios.delete(`/standard-part-classes/${selectedNode.id}`)
-      message.success("Класс удалён")
+      const result = await runTrashDeleteFlow({
+        entityType: "standard_part_classes",
+        entityId: selectedNode.id,
+        deleteUrl: `/standard-part-classes/${selectedNode.id}`,
+        successMessage: "Класс перемещён в корзину",
+      })
+      if (!result?.deleted) return
       setSelectedId(null)
       await loadTree()
     } catch (err) {
@@ -392,8 +398,13 @@ export default function StandardPartsClassifierMain() {
 
   const deleteField = async (field) => {
     try {
-      await axios.delete(`/standard-part-classes/fields/${field.id}`)
-      message.success("Поле удалено")
+      const result = await runTrashDeleteFlow({
+        entityType: "standard_part_class_fields",
+        entityId: field.id,
+        deleteUrl: `/standard-part-classes/fields/${field.id}`,
+        successMessage: "Поле перемещено в корзину",
+      })
+      if (!result?.deleted) return
       await loadWorkspace(selectedNode.id)
     } catch (err) {
       console.error("delete field error:", err)
@@ -432,8 +443,13 @@ export default function StandardPartsClassifierMain() {
 
   const deleteOption = async (option) => {
     try {
-      await axios.delete(`/standard-part-classes/field-options/${option.id}`)
-      message.success("Опция удалена")
+      const result = await runTrashDeleteFlow({
+        entityType: "standard_part_field_options",
+        entityId: option.id,
+        deleteUrl: `/standard-part-classes/field-options/${option.id}`,
+        successMessage: "Опция перемещена в корзину",
+      })
+      if (!result?.deleted) return
       await loadWorkspace(selectedNode.id)
     } catch (err) {
       console.error("delete option error:", err)

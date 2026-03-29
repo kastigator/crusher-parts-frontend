@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Button, Form, Input, Modal, Select, Space, Table, Tag, message } from "antd"
 import { KeyOutlined, PlusOutlined, UserOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
-import confirmAction from "@/utils/confirmAction"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import ActionButtons from "@/components/common/ActionButtons"
 import useCapabilities from "@/hooks/useCapabilities"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
+import { useAuth } from "@/auth/AuthContext"
 
 function UserFormModal({
   open,
@@ -101,6 +102,7 @@ function UserFormModal({
 }
 
 export default function UsersTable({ rolesRevision = 0 }) {
+  const { user: currentUser } = useAuth()
   const { can, isAdmin } = useCapabilities()
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
@@ -177,12 +179,16 @@ export default function UsersTable({ rolesRevision = 0 }) {
   }
 
   const deleteUser = async (user) => {
-    const { confirmed } = await confirmAction(`Удалить пользователя "${user.username}"?`)
-    if (!confirmed) return
     try {
-      await axios.delete(`/users/${user.id}`)
+      const result = await runTrashDeleteFlow({
+        entityType: "users",
+        entityId: user.id,
+        deleteUrl: `/users/${user.id}`,
+        previewParams: { current_user_id: currentUser?.id },
+        successMessage: "Пользователь перемещён в корзину",
+      })
+      if (!result?.deleted) return
       await fetchData()
-      message.success("Пользователь удалён")
     } catch (err) {
       message.error("Ошибка при удалении")
       console.error(err)

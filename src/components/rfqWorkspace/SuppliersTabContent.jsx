@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Alert, Button, Card, Checkbox, Form, Input, Popover, Select, Space, Table, Tag, Typography } from "antd"
 import useCapabilities from "@/hooks/useCapabilities"
+import useTableScrollHints from "@/utils/useTableScrollHints"
+import "@/styles/tableStyles.css"
 
 const { Text } = Typography
 const HINT_FILTER_MODE_KEY = "rfq_workspace_suppliers_hint_filter_mode"
@@ -57,6 +59,9 @@ export default function SuppliersTabContent({
     if (typeof window === "undefined") return false
     return window.localStorage.getItem(HINT_FILTER_HIDE_ADDED_KEY) === "1"
   })
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const dispatchTableWrapRef = useRef(null)
+  const historyTableWrapRef = useRef(null)
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -197,6 +202,9 @@ export default function SuppliersTabContent({
     }
   }, [selectedSupplierRows, dispatchSummaryMap])
 
+  const dispatchScrollHints = useTableScrollHints(dispatchTableWrapRef, [suppliers, selectedSupplierIds, dispatchSummaryMap])
+  const historyScrollHints = useTableScrollHints(historyTableWrapRef, [fileDispatches, docsLoading, historyOpen])
+
   const renderMatchPreview = (value) => {
     const list = Array.isArray(value) ? value.filter(Boolean) : []
     if (!list.length) return <Text type="secondary">—</Text>
@@ -223,7 +231,14 @@ export default function SuppliersTabContent({
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <Card size="small" title="Подсказки по поставщикам">
+      <Space direction="vertical" size={4} style={{ width: "100%" }}>
+        <Text strong>Режим 1. Подбор и состав поставщиков</Text>
+        <Text type="secondary">
+          Здесь вы подбираете кандидатов, вручную добавляете поставщиков и формируете состав RFQ до отправки.
+        </Text>
+      </Space>
+
+      <Card size="small" title="Кандидаты по подсказкам">
         <Space direction="vertical" style={{ width: "100%" }}>
           <Space wrap>
             <Select
@@ -264,12 +279,14 @@ export default function SuppliersTabContent({
             rowKey="supplier_id"
             dataSource={filteredSuggestedSuppliers}
             pagination={false}
+            tableLayout="auto"
+            scroll={{ x: "max-content" }}
             rowSelection={{
               selectedRowKeys: suggestedSelection,
               onChange: setSuggestedSelection,
             }}
             columns={[
-              { title: "Поставщик", dataIndex: "supplier_name" },
+              { title: "Поставщик", dataIndex: "supplier_name", width: 220, ellipsis: true },
               { title: "Совпадений", dataIndex: "parts_count", width: 130 },
               {
                 title: "С ценой",
@@ -280,12 +297,13 @@ export default function SuppliersTabContent({
               {
                 title: "Типы",
                 dataIndex: "match_types",
-                width: 160,
+                width: 130,
                 render: renderMatchTypes,
               },
               {
                 title: "Что совпало",
                 dataIndex: "match_preview",
+                width: 320,
                 render: renderMatchPreview,
               },
               {
@@ -307,7 +325,7 @@ export default function SuppliersTabContent({
               {
                 title: "Сигналы",
                 key: "signals",
-                width: 220,
+                width: 180,
                 render: (_, row) => {
                   const preferred =
                     Number(row?.has_preferred_match || 0) > 0 ||
@@ -344,7 +362,7 @@ export default function SuppliersTabContent({
         </Space>
       </Card>
 
-      <Card size="small" title="Добавить поставщика">
+      <Card size="small" title="Ручное добавление поставщика">
         <Form
           form={supplierForm}
           onFinish={handleAddSupplier}
@@ -381,59 +399,104 @@ export default function SuppliersTabContent({
         </Form>
       </Card>
 
-      <Card size="small" title="Поставщики в RFQ">
+      <Space direction="vertical" size={4} style={{ width: "100%" }}>
+        <Text strong>Режим 2. Отправка и история</Text>
+        <Text type="secondary">
+          Здесь вы настраиваете состав рассылки, отправляете RFQ выбранным поставщикам и проверяете историю файлов.
+        </Text>
+      </Space>
+
+      <Card size="small" title="Состав рассылки RFQ">
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 12 }}
-          message={
-            <Space size={8} wrap>
-              <Text strong>Перед отправкой:</Text>
-              <Tag color="blue" style={{ marginInlineEnd: 0 }}>
-                Выбрано поставщиков: {sendSummary.selectedCount}
-              </Tag>
-              <Tag color="default" style={{ marginInlineEnd: 0 }}>
-                Первая отправка: {sendSummary.firstSendCount}
-              </Tag>
-              <Tag color="cyan" style={{ marginInlineEnd: 0 }}>
-                Уже отправлялось: {sendSummary.previouslySentCount}
-              </Tag>
-              <Tag color={sendSummary.deltaEligibleCount > 0 ? "orange" : "default"} style={{ marginInlineEnd: 0 }}>
-                Только новые доступно: {sendSummary.deltaEligibleCount}
-              </Tag>
-              <Tag color={sendSummary.deltaEmptyCount > 0 ? "red" : "green"} style={{ marginInlineEnd: 0 }}>
-                Без новых строк: {sendSummary.deltaEmptyCount}
-              </Tag>
-              <Tag color="orange" style={{ marginInlineEnd: 0 }}>
-                Новых строк всего: {sendSummary.deltaLinesTotal}
-              </Tag>
-              <Tag color={sendIncludePriced ? "volcano" : "green"} style={{ marginInlineEnd: 0 }}>
-                Переиспользование цен: {sendIncludePriced ? "выкл (включаем строки с уже принятой ценой)" : "вкл (исключаем строки с уже принятой ценой)"}
-              </Tag>
+          message="Перед отправкой"
+          description={
+            <Space direction="vertical" size={6} style={{ width: "100%" }}>
+              <Space size={8} wrap>
+                <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                  Выбрано поставщиков: {sendSummary.selectedCount}
+                </Tag>
+                <Tag color="default" style={{ marginInlineEnd: 0 }}>
+                  Первая отправка: {sendSummary.firstSendCount}
+                </Tag>
+                <Tag color="cyan" style={{ marginInlineEnd: 0 }}>
+                  Уже отправлялось: {sendSummary.previouslySentCount}
+                </Tag>
+                <Tag color={sendSummary.deltaEligibleCount > 0 ? "orange" : "default"} style={{ marginInlineEnd: 0 }}>
+                  Только новые доступно: {sendSummary.deltaEligibleCount}
+                </Tag>
+                <Tag color={sendSummary.deltaEmptyCount > 0 ? "red" : "green"} style={{ marginInlineEnd: 0 }}>
+                  Без новых строк: {sendSummary.deltaEmptyCount}
+                </Tag>
+                <Tag color="default" style={{ marginInlineEnd: 0 }}>
+                  Новых строк всего: {sendSummary.deltaLinesTotal}
+                </Tag>
+                <Tag color={sendIncludePriced ? "green" : "default"} style={{ marginInlineEnd: 0 }}>
+                  {sendIncludePriced ? "Переиспользование цен: вкл" : "Переиспользование цен: выкл"}
+                </Tag>
+              </Space>
             </Space>
           }
         />
+        <Space direction="vertical" size={6} style={{ width: "100%", marginBottom: 12 }}>
+          <Space wrap>
+            <Button
+              type="primary"
+              onClick={handleSendRfq}
+              disabled={!suppliers.length}
+              loading={sending}
+            >
+              Сформировать Excel
+            </Button>
+            <Checkbox
+              checked={sendIncludePriced}
+              onChange={(e) => setSendIncludePriced(e.target.checked)}
+            >
+              Включать строки с уже принятой ценой
+            </Checkbox>
+          </Space>
+          <Text type="secondary">
+            Сначала настраивается состав рассылки, затем формируются файлы RFQ.
+          </Text>
+        </Space>
         {hasAnySupplierSent && totalNewLines > 0 ? (
           <Alert
             type="info"
             showIcon
             style={{ marginBottom: 12 }}
-            message={`Новые позиции в ревизии: ${totalNewLines}. Нажмите «Только новые» у выбранных поставщиков — старые файлы останутся в истории, новые отправятся отдельным Excel.`}
+            message={`Новые позиции в ревизии: ${totalNewLines}`}
+            description="Используйте «Только новые» у выбранных поставщиков, если хотите дослать только добавленные строки без повторной полной рассылки."
           />
         ) : null}
-        <Table
-          rowKey="supplier_id"
-          dataSource={suppliers}
-          pagination={false}
-          rowSelection={{
-            selectedRowKeys: selectedSupplierIds,
-            onChange: setSelectedSupplierIds,
-          }}
-          columns={[
-            { title: "Поставщик", dataIndex: "supplier_name" },
+        <div
+          ref={dispatchTableWrapRef}
+          className={`op-table-wrap${dispatchScrollHints.left ? " scroll-left" : ""}${
+            dispatchScrollHints.right ? " scroll-right" : ""
+          }`}
+        >
+          {dispatchScrollHints.right && !dispatchScrollHints.left ? (
+            <Text type="secondary" className="op-table-scroll-note">
+              В таблице есть продолжение вправо
+            </Text>
+          ) : null}
+          <Table
+            rowKey="supplier_id"
+            dataSource={suppliers}
+            pagination={false}
+            tableLayout="auto"
+            scroll={{ x: "max-content" }}
+            rowSelection={{
+              selectedRowKeys: selectedSupplierIds,
+              onChange: setSelectedSupplierIds,
+            }}
+            columns={[
+            { title: "Поставщик", dataIndex: "supplier_name", width: 220, ellipsis: true },
             {
               title: "Контакт",
               dataIndex: "contact_person",
+              width: 220,
               render: (_, record) => {
                 const parts = [
                   record.contact_person,
@@ -471,7 +534,7 @@ export default function SuppliersTabContent({
             },
             {
               title: "Настройка",
-              width: 130,
+              width: 110,
               render: (_, record) => (
                 <Button size="small" onClick={() => openSelectionModal(record)}>
                   Структура
@@ -480,7 +543,7 @@ export default function SuppliersTabContent({
             },
             {
               title: "Отправка",
-              width: 360,
+              width: 250,
               render: (_, record) => {
                 const summary = dispatchSummaryMap.get(record.supplier_id) || {}
                 const newCount = summary.new_lines_count || 0
@@ -492,12 +555,19 @@ export default function SuppliersTabContent({
                       <Tag color={lastRev ? "blue" : "default"}>
                         {lastRev ? `Отправлено: Rev ${lastRev}` : "Еще не отправляли"}
                       </Tag>
-                      {lastAt ? <Text type="secondary">{lastAt}</Text> : null}
                       <Tag color={newCount > 0 ? "orange" : "green"}>
                         Новых строк: {newCount}
                       </Tag>
-                      {!lastRev ? <Tag>Первичная отправка</Tag> : null}
                     </Space>
+                    {lastAt ? (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Последняя отправка: {lastAt}
+                      </Text>
+                    ) : (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Первичная отправка
+                      </Text>
+                    )}
                     <Space size={8} wrap>
                       <Button
                         size="small"
@@ -525,7 +595,7 @@ export default function SuppliersTabContent({
             {
               title: "Статус",
               dataIndex: "status",
-              width: 120,
+              width: 110,
               render: (value) => (
                 <Tag color={statusToColor(value)}>
                   {supplierStatusLabel(value || "invited")}
@@ -535,102 +605,119 @@ export default function SuppliersTabContent({
             {
               title: "Дата",
               dataIndex: "invited_at",
-              width: 120,
+              width: 110,
               render: formatDate,
             },
-            { title: "Комментарий", dataIndex: "note" },
-          ]}
-        />
+            { title: "Комментарий", dataIndex: "note", width: 220, ellipsis: true },
+            ]}
+          />
+        </div>
       </Card>
 
-      <Card size="small" title="Файлы RFQ">
-        <Space direction="vertical" style={{ width: "100%" }}>
-          <Space wrap align="center">
-            <Button
-              type="primary"
-              onClick={handleSendRfq}
-              disabled={!suppliers.length}
-              loading={sending}
-            >
-              Сформировать Excel
+      <Card
+        size="small"
+        title="История отправок RFQ"
+        extra={
+          <Space>
+            <Button size="small" onClick={() => setHistoryOpen((prev) => !prev)}>
+              {historyOpen ? "Скрыть историю" : "Показать историю"}
             </Button>
-            <Button onClick={() => activeRfqId && loadDocuments(activeRfqId)}>
-              Обновить список
-            </Button>
-            <Checkbox
-              checked={sendIncludePriced}
-              onChange={(e) => setSendIncludePriced(e.target.checked)}
-            >
-              Включать строки с уже принятой ценой
-            </Checkbox>
+            {historyOpen ? (
+              <Button size="small" onClick={() => activeRfqId && loadDocuments(activeRfqId)}>
+                Обновить список
+              </Button>
+            ) : null}
+          </Space>
+        }
+      >
+        {historyOpen ? (
+          <Space direction="vertical" style={{ width: "100%" }}>
             <Text type="secondary">
               Показываются все сформированные файлы RFQ. После формирования статус RFQ станет «отправлен».
             </Text>
-          </Space>
-          <Table
-            rowKey="id"
-            dataSource={fileDispatches}
-            loading={docsLoading}
-            pagination={false}
-            columns={[
-              {
-                title: "Файл",
-                dataIndex: "file_name",
-                render: (value, record) => {
-                  const humanizedValue = value
-                    ? String(value)
-                        .replace(/\bDelta\b/gi, "Только новые")
-                        .replace(/\bFull\b/gi, "Полный")
-                    : null
-                  const fallback =
-                    humanizedValue ||
-                    `${activeRfq?.rfq_number || `RFQ-${activeRfqId || ""}`} Rev ${
-                      record.rfq_revision_number || "-"
-                    } ${record.dispatch_type === "DELTA" ? "Только новые" : "Полный"}`
-                  return record.file_url ? (
-                    <a href={record.file_url} target="_blank" rel="noreferrer">
-                      {fallback}
-                    </a>
-                  ) : (
-                    <Text type="secondary">{fallback}</Text>
-                  )
+            <div
+              ref={historyTableWrapRef}
+              className={`op-table-wrap${historyScrollHints.left ? " scroll-left" : ""}${
+                historyScrollHints.right ? " scroll-right" : ""
+              }`}
+            >
+              {historyScrollHints.right && !historyScrollHints.left ? (
+                <Text type="secondary" className="op-table-scroll-note">
+                  В таблице есть продолжение вправо
+                </Text>
+              ) : null}
+              <Table
+                rowKey="id"
+                dataSource={fileDispatches}
+                loading={docsLoading}
+                pagination={false}
+                tableLayout="auto"
+                scroll={{ x: "max-content" }}
+                columns={[
+                {
+                  title: "Файл",
+                  dataIndex: "file_name",
+                  render: (value, record) => {
+                    const humanizedValue = value
+                      ? String(value)
+                          .replace(/\bDelta\b/gi, "Только новые")
+                          .replace(/\bFull\b/gi, "Полный")
+                      : null
+                    const fallback =
+                      humanizedValue ||
+                      `${activeRfq?.rfq_number || `RFQ-${activeRfqId || ""}`} Rev ${
+                        record.rfq_revision_number || "-"
+                      } ${record.dispatch_type === "DELTA" ? "Только новые" : "Полный"}`
+                    return record.file_url ? (
+                      <a href={record.file_url} target="_blank" rel="noreferrer">
+                        {fallback}
+                      </a>
+                    ) : (
+                      <Text type="secondary">{fallback}</Text>
+                    )
+                  },
                 },
-              },
-              {
-                title: "Rev",
-                dataIndex: "rfq_revision_number",
-                width: 80,
-                render: (v) => v || "—",
-              },
-              {
-                title: "Поставщик",
-                dataIndex: "supplier_name",
-                width: 220,
-              },
-              {
-                title: "Режим",
-                dataIndex: "dispatch_type",
-                width: 100,
-                render: (v) => (
-                  <Tag color={v === "DELTA" ? "orange" : "blue"}>
-                    {v === "DELTA" ? "Только новые" : "Полный"}
-                  </Tag>
-                ),
-              },
-              {
-                title: "Строки",
-                width: 140,
-                render: (_, r) =>
-                  r.rows_total
-                    ? `${r.rows_total}${
-                      r.rows_changed ? ` (новых: ${r.rows_changed})` : ""
-                    }`
-                    : "—",
-              },
-              { title: "Создано", dataIndex: "sent_at", width: 140, render: formatDate },
-            ]}
-          />
-        </Space>
+                {
+                  title: "Rev",
+                  dataIndex: "rfq_revision_number",
+                  width: 80,
+                  render: (v) => v || "—",
+                },
+                {
+                  title: "Поставщик",
+                  dataIndex: "supplier_name",
+                  width: 220,
+                },
+                {
+                  title: "Режим",
+                  dataIndex: "dispatch_type",
+                  width: 100,
+                  render: (v) => (
+                    <Tag color={v === "DELTA" ? "orange" : "blue"}>
+                      {v === "DELTA" ? "Только новые" : "Полный"}
+                    </Tag>
+                  ),
+                },
+                {
+                  title: "Строки",
+                  width: 140,
+                  render: (_, r) =>
+                    r.rows_total
+                      ? `${r.rows_total}${
+                        r.rows_changed ? ` (новых: ${r.rows_changed})` : ""
+                      }`
+                      : "—",
+                },
+                { title: "Создано", dataIndex: "sent_at", width: 140, render: formatDate },
+                ]}
+              />
+            </div>
+          </Space>
+        ) : (
+          <Text type="secondary">
+            История файлов скрыта, чтобы основной фокус оставался на текущем составе рассылки и отправке RFQ.
+          </Text>
+        )}
       </Card>
     </Space>
   )

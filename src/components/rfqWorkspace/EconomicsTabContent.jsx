@@ -557,6 +557,7 @@ export default function EconomicsTabContent({ rfqId, onNavigateTab }) {
         }
       >
         <DraggableColumnsTable
+          columnSizingKey="rfq_economics_rows_column_widths_v1"
           size="small"
           loading={loadingEconomics}
           rowKey="id"

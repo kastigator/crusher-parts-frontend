@@ -37,6 +37,7 @@ const StandardPartsPage = lazy(() => import('@/pages/StandardPartsPage'))
 const EquipmentClassifierPage = lazy(() => import('@/pages/EquipmentClassifierPage'))
 const ContractPreviewPage = lazy(() => import('@/pages/ContractPreviewPage'))
 const PurchaseOrderPreviewPage = lazy(() => import('@/pages/PurchaseOrderPreviewPage'))
+const TrashPage = lazy(() => import('@/pages/TrashPage'))
 
 const AppRouter = () => (
   <Suspense fallback={<div>Загрузка...</div>}>
@@ -82,6 +83,7 @@ const AppRouter = () => (
         <Route path="equipment-classifier" element={<TabAccessRoute path="/equipment-classifier" title="Классификатор оборудования"><EquipmentClassifierPage /></TabAccessRoute>} />
         <Route path="materials" element={<TabAccessRoute path="/materials" title="Материалы"><MaterialsPage /></TabAccessRoute>} />
         <Route path="logistics-route-templates" element={<TabAccessRoute path="/logistics-route-templates" title="Шаблоны доставки"><LogisticsRouteTemplatesPage /></TabAccessRoute>} />
+        <Route path="trash" element={<TabAccessRoute path="/catalogs" title="Корзина"><TrashPage /></TabAccessRoute>} />
         <Route path="*" element={<div style={{ padding: 32 }}>Страница не найдена</div>} />
       </Route>
     </Routes>

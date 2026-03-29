@@ -21,7 +21,7 @@ import { ReloadOutlined } from "@ant-design/icons"
 import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
 import { useAuth } from "@/auth/AuthContext"
-import confirmAction from "@/utils/confirmAction"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 import ActionButtons from "@/components/common/ActionButtons"
 import KpiHelpDrawer from "@/components/kpi/KpiHelpDrawer"
 import KpiDetailsDrawer from "@/components/kpi/KpiDetailsDrawer"
@@ -533,11 +533,14 @@ export default function ProcurementKpiDashboard({
   }
 
   const handleDeleteTarget = async (row) => {
-    const { confirmed } = await confirmAction("Удалить цель закупочного KPI?")
-    if (!confirmed) return
     try {
-      await axios.delete(`/procurement-kpi/targets/${row.id}`)
-      message.success("Цель закупочного KPI удалена")
+      const result = await runTrashDeleteFlow({
+        entityType: "procurement_kpi_targets",
+        entityId: row.id,
+        deleteUrl: `/procurement-kpi/targets/${row.id}`,
+        successMessage: "Цель закупочного KPI перемещена в корзину",
+      })
+      if (!result?.deleted) return
       await loadKpi()
     } catch (e) {
       console.error("Ошибка удаления цели закупочного KPI:", e)

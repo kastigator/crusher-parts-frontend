@@ -5,6 +5,7 @@ import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import SupplierAddressesTable from "./SupplierAddressesTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import { isSameByFields } from "@/utils/versionConflict"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 export default function SupplierAddressesMain({ supplierId, onChanged }) {
   const [data, setData] = useState([])
@@ -195,12 +196,17 @@ export default function SupplierAddressesMain({ supplierId, onChanged }) {
 
   const handleDelete = async (record) => {
     try {
-      await axios.delete(`/supplier-addresses/${record.id}`, {
-        params: { version: record.version },
+      const result = await runTrashDeleteFlow({
+        entityType: "supplier_addresses",
+        entityId: record.id,
+        deleteUrl: `/supplier-addresses/${record.id}`,
+        deleteParams: { version: record.version },
+        successMessage: "Адрес поставщика перемещён в корзину",
       })
-      removeRow(record.id)
-      message.success("Адрес поставщика удален")
-      onChanged?.()
+      if (result?.deleted) {
+        removeRow(record.id)
+        onChanged?.()
+      }
     } catch (err) {
       const res = err?.response
       if (res?.status === 409 && res?.data?.current) {

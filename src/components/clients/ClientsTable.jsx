@@ -1,11 +1,10 @@
 // src/components/clients/ClientsTable.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Table, message } from "antd"
+import { Space, Table, Typography, message } from "antd"
 
 import ActionButtons from "@/components/common/ActionButtons"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import ValueDisplay from "@/components/common/ValueDisplay"
-import confirmAction from "@/utils/confirmAction"
 import createTablePagination from "@/utils/tablePagination"
 import useTableScrollHints from "@/utils/useTableScrollHints"
 import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
@@ -23,6 +22,7 @@ export default function ClientsTable({
   columnOrderKeys = null,
   onColumnOrderKeysChange = null,
 }) {
+  const { Text } = Typography
   const [logsClientId, setLogsClientId] = useState(null)
   const wrapRef = useRef(null)
 
@@ -45,8 +45,6 @@ export default function ClientsTable({
   )
 
   const handleDelete = useCallback(async (record) => {
-    const { confirmed } = await confirmAction("Удалить клиента?")
-    if (!confirmed) return
     try {
       await onDelete?.(record)
     } catch (e) {
@@ -55,21 +53,41 @@ export default function ClientsTable({
     }
   }, [onDelete])
 
+  const companyMetaText = useCallback((record) => {
+    const parts = [record?.contact_person, record?.phone].filter(Boolean)
+    return parts.join(" · ")
+  }, [])
+
   const columns = useMemo(() => [
     {
-      title: "Компания",
+      title: "Клиент",
       dataIndex: "company_name",
       key: "company_name",
-      width: 300,
-      fixed: "left",
-      lock: true,
-      render: (v) => <ValueDisplay value={v} />,
+      width: 320,
+      minWidth: 180,
+      maxWidth: 520,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
+      render: (v, record) => (
+        <Space direction="vertical" size={2} style={{ width: "100%", minWidth: 0 }}>
+          <ValueDisplay value={v} />
+          {companyMetaText(record) ? (
+            <Text type="secondary" className="cell-ellipsis" style={{ maxWidth: "100%" }}>
+              {companyMetaText(record)}
+            </Text>
+          ) : null}
+        </Space>
+      ),
     },
     {
       title: "Контакт",
       dataIndex: "contact_person",
       key: "contact_person",
       width: 220,
+      minWidth: 140,
+      maxWidth: 360,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} />,
     },
     {
@@ -77,6 +95,10 @@ export default function ClientsTable({
       dataIndex: "phone",
       key: "phone",
       width: 170,
+      minWidth: 120,
+      maxWidth: 260,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} type="phone" />,
     },
     {
@@ -84,6 +106,10 @@ export default function ClientsTable({
       dataIndex: "email",
       key: "email",
       width: 240,
+      minWidth: 140,
+      maxWidth: 360,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} type="email" />,
     },
     {
@@ -91,6 +117,10 @@ export default function ClientsTable({
       dataIndex: "website",
       key: "website",
       width: 220,
+      minWidth: 140,
+      maxWidth: 360,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} />,
     },
     {
@@ -98,6 +128,10 @@ export default function ClientsTable({
       dataIndex: "registration_number",
       key: "registration_number",
       width: 200,
+      minWidth: 120,
+      maxWidth: 320,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} />,
     },
     {
@@ -105,6 +139,10 @@ export default function ClientsTable({
       dataIndex: "tax_id",
       key: "tax_id",
       width: 200,
+      minWidth: 120,
+      maxWidth: 320,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} />,
     },
     {
@@ -112,13 +150,16 @@ export default function ClientsTable({
       dataIndex: "notes",
       key: "notes",
       width: 260,
+      minWidth: 140,
+      maxWidth: 420,
+      ellipsis: { showTitle: false },
+      onCell: () => ({ style: { overflow: "hidden" } }),
       render: (v) => <ValueDisplay value={v} />,
     },
     {
       title: "Действия",
       key: "actions",
-      width: 150,
-      lock: true,
+      width: 120,
       render: (_, record) => (
         <ActionButtons
           size="small"
@@ -129,10 +170,13 @@ export default function ClientsTable({
         />
       ),
     },
-  ], [handleDelete, onEditRecord])
+  ], [companyMetaText, handleDelete, onEditRecord])
 
-  const defaultVisible = useMemo(() => columns.map((c) => c.key), [columns])
-  const defaultOrder = defaultVisible
+  const defaultVisible = useMemo(() => ["company_name", "contact_person", "phone", "email"], [])
+  const defaultOrder = [
+    ...defaultVisible.filter((key) => key !== "actions"),
+    ...(defaultVisible.includes("actions") ? ["actions"] : []),
+  ]
   const effectiveVisibleKeys =
     Array.isArray(visibleColumnKeys) && visibleColumnKeys.length ? visibleColumnKeys : defaultVisible
   const effectiveOrderKeys = useMemo(
@@ -151,15 +195,15 @@ export default function ClientsTable({
 
   const visibleColumns = useMemo(() => {
     const visible = new Set(effectiveVisibleKeys)
-    return orderedColumns.filter((c) => c.lock || visible.has(c.key))
+    return orderedColumns.filter((c) => visible.has(c.key))
   }, [orderedColumns, effectiveVisibleKeys])
 
   const columnOptions = useMemo(
-    () => columns.filter((c) => c.key && !c.lock).map((c) => ({ key: c.key, label: c.title })),
+    () => columns.filter((c) => c.key).map((c) => ({ key: c.key, label: c.title })),
     [columns],
   )
 
-  const lockedKeys = useMemo(() => columns.filter((c) => c.lock).map((c) => c.key), [columns])
+  const lockedKeys = useMemo(() => [], [])
 
   useEffect(() => {
     onColumnsMeta?.({
@@ -180,6 +224,7 @@ export default function ClientsTable({
       >
         <DraggableColumnsTable
           className="op-table"
+          columnSizingKey="clients_column_widths_v1"
           size="small"
           bordered
           rowKey="id"
@@ -199,7 +244,7 @@ export default function ClientsTable({
           dataSource={dataSource}
           tableLayout="fixed"
           pagination={pagination}
-          scroll={{ x: true }}
+          scroll={{ x: "max-content" }}
           rowClassName={(record) =>
             Number(record?.id) === Number(highlightRowId) ? "op-row-flash" : ""
           }

@@ -1,5 +1,6 @@
 import React from "react"
 import { AutoComplete, Button, Card, Collapse, DatePicker, Form, Input, Select, Space } from "antd"
+import FormGrid from "@/components/common/FormGrid"
 
 export default function NewRequestCard({
   createForm,
@@ -18,15 +19,16 @@ export default function NewRequestCard({
   equipmentUnitOptions,
   selectedEquipmentUnitId,
   setSelectedEquipmentUnitId,
+  cardless = false,
 }) {
-  return (
-    <Card title="Новая заявка" size="small">
+  const content = (
+    <>
       <Form
         form={createForm}
         layout="vertical"
         onFinish={handleCreate}
       >
-        <Space wrap align="start">
+        <FormGrid>
           <Form.Item
             label="Клиент"
             name="client_id"
@@ -79,14 +81,14 @@ export default function NewRequestCard({
           <Form.Item label="Комментарий (внутр.)" name="comment_internal">
             <Input.TextArea style={{ width: 320 }} rows={2} />
           </Form.Item>
-        </Space>
+        </FormGrid>
         <Collapse
           items={[
             {
               key: "extra",
               label: "Дополнительно",
               children: (
-                <Space wrap align="start">
+                <FormGrid>
                   <Form.Item label="Источник" name="source_type">
                     <Select style={{ width: 200 }} options={sourceOptions} />
                   </Form.Item>
@@ -156,7 +158,7 @@ export default function NewRequestCard({
                   <Form.Item label="Комментарий клиента" name="comment_client">
                     <Input.TextArea style={{ width: 320 }} rows={2} />
                   </Form.Item>
-                </Space>
+                </FormGrid>
               ),
             },
           ]}
@@ -167,6 +169,14 @@ export default function NewRequestCard({
           </Button>
         </div>
       </Form>
+    </>
+  )
+
+  if (cardless) return content
+
+  return (
+    <Card title="Новая заявка" size="small">
+      {content}
     </Card>
   )
 }

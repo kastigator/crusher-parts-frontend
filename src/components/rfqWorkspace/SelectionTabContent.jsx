@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { Alert, Button, Card, Drawer, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
@@ -67,8 +67,52 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
   const [scenarioMeta, setScenarioMeta] = useState(null)
   const [scenarioLines, setScenarioLines] = useState([])
   const [helpOpen, setHelpOpen] = useState(false)
+  const [showScenarioComposition, setShowScenarioComposition] = useState(false)
   const [selectionLines, setSelectionLines] = useState([])
   const [loadingSelectionLines, setLoadingSelectionLines] = useState(false)
+  const latestSelection = useMemo(
+    () => (Array.isArray(selections) && selections.length ? selections[0] : null),
+    [selections]
+  )
+  const selectionHistoryPreview = useMemo(
+    () => (Array.isArray(selections) ? selections.slice(0, 3) : []),
+    [selections]
+  )
+  const scenarioReadiness = useMemo(() => {
+    const totalLines = Array.isArray(scenarioLines) ? scenarioLines.length : 0
+    const incompleteLines = scenarioLines.filter((row) => Number(row?.completeness_pct || 0) < 100).length
+    const unpricedLines = scenarioLines.filter((row) => Number(row?.priced_pct || 0) < 100).length
+    const oemRiskLines = scenarioLines.filter(
+      (row) => Number(row?.is_oem_ok || 0) !== 1 && String(row?.option_kind || "").toUpperCase() === "OEM"
+    ).length
+
+    const blockers = []
+    if (incompleteLines > 0) blockers.push(`Неполных строк: ${incompleteLines}`)
+    if (unpricedLines > 0) blockers.push(`Строк без полной цены: ${unpricedLines}`)
+    if (oemRiskLines > 0) blockers.push(`OEM-рисков: ${oemRiskLines}`)
+
+    return {
+      totalLines,
+      incompleteLines,
+      unpricedLines,
+      oemRiskLines,
+      blockers,
+      ready: totalLines > 0 && blockers.length === 0,
+    }
+  }, [scenarioLines])
+
+  const attentionScenarioLines = useMemo(() => {
+    return (Array.isArray(scenarioLines) ? scenarioLines : [])
+      .filter((row) => {
+        const incomplete = Number(row?.completeness_pct || 0) < 100
+        const unpriced = Number(row?.priced_pct || 0) < 100
+        const oemRisk =
+          Number(row?.is_oem_ok || 0) !== 1 &&
+          String(row?.option_kind || "").toUpperCase() === "OEM"
+        return incomplete || unpriced || oemRisk
+      })
+      .slice(0, 6)
+  }, [scenarioLines])
 
   const loadScenarios = async () => {
     if (!rfqId) return
@@ -173,112 +217,234 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
         description="После утверждения создаётся финальная закупочная база: состав поставщиков, себестоимость, страна происхождения и публичные коды поставщиков фиксируются в выборе. Дальше продавец работает уже от этого утвержденного набора."
       />
 
-      <Space wrap>
-        <Select
-          style={{ minWidth: 360 }}
-          value={selectedScenarioId || undefined}
-          loading={loadingScenarios}
-          placeholder="Выберите сценарий"
-          onChange={(value) => setSelectedScenarioId(Number(value || 0) || null)}
-          options={scenarios.map((row) => ({
-            value: Number(row.id),
-            label: `${row.name} · ${SCENARIO_BASIS_LABELS[String(row.basis || "").toUpperCase()] || row.basis || "Ручной"} · ${SCENARIO_STATUS_LABELS[String(row.status || "").toLowerCase()] || row.status || "—"} · ${formatPriceWithCurrency(row.landed_total, row.calc_currency || "USD")}`,
-          }))}
-        />
-        <Button type="primary" onClick={handleFinalize} loading={saving} disabled={!selectedScenarioId}>
-          Утвердить сценарий
-        </Button>
-        <Button onClick={() => setHelpOpen(true)}>Справка</Button>
-      </Space>
+      <Card
+        size="small"
+        title="Решение по сценарию"
+        extra={<Button size="small" onClick={() => setHelpOpen(true)}>Справка</Button>}
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Space wrap>
+            <Select
+              style={{ minWidth: 360 }}
+              value={selectedScenarioId || undefined}
+              loading={loadingScenarios}
+              placeholder="Выберите сценарий"
+              onChange={(value) => setSelectedScenarioId(Number(value || 0) || null)}
+              options={scenarios.map((row) => ({
+                value: Number(row.id),
+                label: `${row.name} · ${SCENARIO_BASIS_LABELS[String(row.basis || "").toUpperCase()] || row.basis || "Ручной"} · ${SCENARIO_STATUS_LABELS[String(row.status || "").toLowerCase()] || row.status || "—"} · ${formatPriceWithCurrency(row.landed_total, row.calc_currency || "USD")}`,
+              }))}
+            />
+            <Button type="primary" onClick={handleFinalize} loading={saving} disabled={!selectedScenarioId}>
+              Утвердить сценарий
+            </Button>
+          </Space>
 
-      {scenarioMeta ? (
-        <Space wrap>
-          <Tag>Статус: {SCENARIO_STATUS_LABELS[String(scenarioMeta.status || "").toLowerCase()] || scenarioMeta.status}</Tag>
-          <Tag>Режим: {SCENARIO_BASIS_LABELS[String(scenarioMeta.basis || "").toUpperCase()] || scenarioMeta.basis || "Ручной"}</Tag>
-          <Tag color="green">Итог: {formatPriceWithCurrency(scenarioMeta.landed_total, scenarioMeta.calc_currency || "USD")}</Tag>
+          {scenarioMeta ? (
+            <Space wrap size={[8, 8]}>
+              <Tag>Статус: {SCENARIO_STATUS_LABELS[String(scenarioMeta.status || "").toLowerCase()] || scenarioMeta.status}</Tag>
+              <Tag>Режим: {SCENARIO_BASIS_LABELS[String(scenarioMeta.basis || "").toUpperCase()] || scenarioMeta.basis || "Ручной"}</Tag>
+              <Tag color="green">Итог: {formatPriceWithCurrency(scenarioMeta.landed_total, scenarioMeta.calc_currency || "USD")}</Tag>
+              <Tag color={scenarioReadiness.ready ? "green" : "gold"}>
+                {scenarioReadiness.ready ? "Можно утверждать" : "Нужна проверка"}
+              </Tag>
+              {latestSelection ? <Tag color="blue">{`Последний выбор #${latestSelection.id}`}</Tag> : null}
+            </Space>
+          ) : null}
+
+          {scenarioMeta ? (
+            <Space wrap size={[8, 8]}>
+              <Tag>Строк в сценарии: {scenarioReadiness.totalLines}</Tag>
+              <Tag color={scenarioReadiness.incompleteLines > 0 ? "orange" : "green"}>
+                Неполных: {scenarioReadiness.incompleteLines}
+              </Tag>
+              <Tag color={scenarioReadiness.unpricedLines > 0 ? "orange" : "green"}>
+                Без полной цены: {scenarioReadiness.unpricedLines}
+              </Tag>
+              {scenarioReadiness.oemRiskLines > 0 ? (
+                <Tag color="volcano">OEM-риски: {scenarioReadiness.oemRiskLines}</Tag>
+              ) : null}
+            </Space>
+          ) : null}
+
+          {!scenarioReadiness.ready && scenarioReadiness.blockers.length ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="Перед утверждением стоит проверить сценарий"
+              description={scenarioReadiness.blockers.join(" · ")}
+            />
+          ) : null}
         </Space>
-      ) : null}
-
-      <Card size="small" title="Состав утверждаемого сценария">
-        <Table
-          size="small"
-          loading={loadingScenario}
-          rowKey="id"
-          dataSource={scenarioLines}
-          pagination={{ pageSize: 20, hideOnSinglePage: true }}
-          columns={[
-            {
-              title: "Строка RFQ",
-              render: (_, row) => (
-                <Space direction="vertical" size={0}>
-                  <span>{row.line_number} · {getClientFacingPartNumber(row, `#${row.rfq_item_id}`)}</span>
-                  {getClientFacingDescription(row) ? <span style={{ color: "#666", fontSize: 12 }}>{getClientFacingDescription(row)}</span> : null}
-                </Space>
-              ),
-            },
-            {
-              title: "Вариант исполнения",
-              width: 280,
-              render: (_, row) => buildScenarioOptionLabel(row),
-            },
-            {
-              title: "Тип",
-              dataIndex: "option_kind",
-              width: 140,
-              render: (value) => OPTION_KIND_LABELS[String(value || "").toUpperCase()] || value || "—",
-            },
-            { title: "Полнота", dataIndex: "completeness_pct", width: 120, render: (value) => `${value ?? 0}%` },
-            { title: "С ценой", dataIndex: "priced_pct", width: 100, render: (value) => `${value ?? 0}%` },
-            {
-              title: "OEM",
-              dataIndex: "is_oem_ok",
-              width: 90,
-              render: (value) => <Tag color={Number(value || 0) ? "green" : "default"}>{Number(value || 0) ? "OK" : "—"}</Tag>,
-            },
-            {
-              title: "Товар",
-              width: 120,
-              render: (_, row) => formatPriceWithCurrency(row?.costs?.goods_amount || row?.goods_total, row?.costs?.currency || row?.goods_currency || scenarioMeta?.calc_currency || "USD"),
-            },
-            {
-              title: "Себестоимость",
-              width: 120,
-              render: (_, row) => formatPriceWithCurrency(row?.costs?.landed_amount, row?.costs?.currency || scenarioMeta?.calc_currency || "USD"),
-            },
-          ]}
-        />
       </Card>
 
-      <Card size="small" title="Уже созданные утвержденные выборы">
-        {Array.isArray(selections) && selections.length ? (
-          <Space direction="vertical" size={8} style={{ width: "100%" }}>
-            {selections.map((selection) => (
-              <Space key={selection.id} wrap>
-                <Text strong>Выбор #{selection.id}</Text>
-                <Tag>{SCENARIO_STATUS_LABELS[String(selection.status || "").toLowerCase()] || selection.status || "Черновик"}</Tag>
-                <Text type="secondary">{formatDate(selection.created_at)}</Text>
-              </Space>
-            ))}
+      {attentionScenarioLines.length ? (
+        <Card
+          size="small"
+          title="Строки, требующие внимания перед утверждением"
+          extra={<Text type="secondary">{`Показано: ${attentionScenarioLines.length}`}</Text>}
+        >
+          <Table
+            size="small"
+            rowKey="id"
+            dataSource={attentionScenarioLines}
+            pagination={false}
+            tableLayout="auto"
+            scroll={{ x: "max-content" }}
+            columns={[
+              {
+                title: "Строка RFQ",
+                width: 260,
+                render: (_, row) => (
+                  <Space direction="vertical" size={0}>
+                    <span>{row.line_number} · {getClientFacingPartNumber(row, `#${row.rfq_item_id}`)}</span>
+                    {getClientFacingDescription(row) ? (
+                      <span style={{ color: "#666", fontSize: 12 }}>{getClientFacingDescription(row)}</span>
+                    ) : null}
+                  </Space>
+                ),
+              },
+              {
+                title: "Проблема",
+                width: 260,
+                render: (_, row) => (
+                  <Space wrap size={[6, 6]}>
+                    {Number(row?.completeness_pct || 0) < 100 ? (
+                      <Tag color="orange">{`Полнота ${Number(row?.completeness_pct || 0)}%`}</Tag>
+                    ) : null}
+                    {Number(row?.priced_pct || 0) < 100 ? (
+                      <Tag color="gold">{`С ценой ${Number(row?.priced_pct || 0)}%`}</Tag>
+                    ) : null}
+                    {Number(row?.is_oem_ok || 0) !== 1 &&
+                    String(row?.option_kind || "").toUpperCase() === "OEM" ? (
+                      <Tag color="volcano">OEM-риск</Tag>
+                    ) : null}
+                  </Space>
+                ),
+              },
+              {
+                title: "Вариант",
+                width: 280,
+                render: (_, row) => (
+                  <Text type="secondary">{buildScenarioOptionLabel(row)}</Text>
+                ),
+              },
+            ]}
+          />
+        </Card>
+      ) : null}
+
+      <Card
+        size="small"
+        title="Полный состав утверждаемого сценария"
+        extra={
+          <Space>
+            <Text type="secondary">
+              {scenarioReadiness.totalLines ? `Строк: ${scenarioReadiness.totalLines}` : "Нет строк"}
+            </Text>
+            <Button size="small" onClick={() => setShowScenarioComposition((prev) => !prev)}>
+              {showScenarioComposition ? "Скрыть состав" : "Показать состав"}
+            </Button>
           </Space>
+        }
+      >
+        {showScenarioComposition ? (
+          <Table
+            size="small"
+            loading={loadingScenario}
+            rowKey="id"
+            dataSource={scenarioLines}
+            pagination={{ pageSize: 20, hideOnSinglePage: true }}
+            tableLayout="auto"
+            scroll={{ x: "max-content" }}
+            columns={[
+              {
+                title: "Строка RFQ",
+                width: 240,
+                render: (_, row) => (
+                  <Space direction="vertical" size={0}>
+                    <span>{row.line_number} · {getClientFacingPartNumber(row, `#${row.rfq_item_id}`)}</span>
+                    {getClientFacingDescription(row) ? <span style={{ color: "#666", fontSize: 12 }}>{getClientFacingDescription(row)}</span> : null}
+                  </Space>
+                ),
+              },
+              {
+                title: "Вариант исполнения",
+                width: 240,
+                render: (_, row) => buildScenarioOptionLabel(row),
+              },
+              {
+                title: "Тип",
+                dataIndex: "option_kind",
+                width: 140,
+                render: (value) => OPTION_KIND_LABELS[String(value || "").toUpperCase()] || value || "—",
+              },
+              { title: "Полнота", dataIndex: "completeness_pct", width: 120, render: (value) => `${value ?? 0}%` },
+              { title: "С ценой", dataIndex: "priced_pct", width: 100, render: (value) => `${value ?? 0}%` },
+              {
+                title: "OEM",
+                dataIndex: "is_oem_ok",
+                width: 90,
+                render: (value) => <Tag color={Number(value || 0) ? "green" : "default"}>{Number(value || 0) ? "OK" : "—"}</Tag>,
+              },
+              {
+                title: "Товар",
+                width: 120,
+                render: (_, row) => formatPriceWithCurrency(row?.costs?.goods_amount || row?.goods_total, row?.costs?.currency || row?.goods_currency || scenarioMeta?.calc_currency || "USD"),
+              },
+              {
+                title: "Себестоимость",
+                width: 120,
+                render: (_, row) => formatPriceWithCurrency(row?.costs?.landed_amount, row?.costs?.currency || scenarioMeta?.calc_currency || "USD"),
+              },
+            ]}
+          />
         ) : (
-          <Text type="secondary">Финальный выбор ещё не создан.</Text>
+          <Text type="secondary">
+            Полный состав сценария скрыт, чтобы основной фокус оставался на решении и проблемных строках.
+          </Text>
         )}
       </Card>
 
       <Card
         size="small"
-        title="База для продавца"
-        extra={<span style={{ color: "#666", fontSize: 12 }}>Это зафиксированный закупочный набор, на основе которого создаётся коммерческое предложение.</span>}
+        title="Утверждённый выбор для продавца"
+        extra={<span style={{ color: "#666", fontSize: 12 }}>Это downstream-база для КП, контракта и заказа поставщику.</span>}
       >
+        {latestSelection ? (
+          <Space direction="vertical" size={8} style={{ width: "100%", marginBottom: 12 }}>
+            <Space wrap>
+              <Text strong>{`Последний выбор #${latestSelection.id}`}</Text>
+              <Tag>{SCENARIO_STATUS_LABELS[String(latestSelection.status || "").toLowerCase()] || latestSelection.status || "Черновик"}</Tag>
+              <Text type="secondary">{formatDate(latestSelection.created_at)}</Text>
+              <Tag color="blue">{`Всего выборов: ${Array.isArray(selections) ? selections.length : 0}`}</Tag>
+            </Space>
+            <Space wrap size={[8, 8]}>
+              {selectionHistoryPreview.map((selection) => (
+                <Tag key={selection.id}>{`#${selection.id} · ${formatDate(selection.created_at)}`}</Tag>
+              ))}
+              {Array.isArray(selections) && selections.length > selectionHistoryPreview.length ? (
+                <Tag>{`+${selections.length - selectionHistoryPreview.length}`}</Tag>
+              ) : null}
+            </Space>
+          </Space>
+        ) : (
+          <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
+            Финальный выбор ещё не создан.
+          </Text>
+        )}
         <Table
           size="small"
           loading={loadingSelectionLines}
           rowKey="id"
           dataSource={selectionLines}
           pagination={{ pageSize: 10, hideOnSinglePage: true }}
+          tableLayout="auto"
+          scroll={{ x: "max-content" }}
           columns={[
             {
               title: "Строка",
+              width: 260,
               render: (_, row) => (
                 <Space direction="vertical" size={0}>
                   <Space size={6} wrap>

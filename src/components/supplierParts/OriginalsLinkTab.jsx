@@ -14,6 +14,7 @@ import {
 import { DeleteOutlined, LinkOutlined, PlusOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import { resolveAppHref } from "@/utils/resolveAppHref"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 import OriginalsPickerDrawer from "./OriginalsPickerDrawer"
 import StandardPartsPickerDrawer from "./StandardPartsPickerDrawer"
 
@@ -210,16 +211,26 @@ export default function OriginalsLinkTab({ supplierPartId, onChanged = () => {} 
 
   const unlink = async (row) => {
     try {
-      if (row.link_type === "oem") {
-        await axios.delete("/supplier-part-originals", {
-          params: { supplier_part_id: supplierPartId, original_part_id: row.link_id },
-        })
-      } else {
-        await axios.delete("/supplier-part-standard-parts", {
-          params: { supplier_part_id: supplierPartId, standard_part_id: row.link_id },
-        })
-      }
-      message.success("Привязка удалена")
+      const result = await runTrashDeleteFlow(
+        row.link_type === "oem"
+          ? {
+              entityType: "supplier_part_oem_parts",
+              entityId: supplierPartId,
+              deleteUrl: "/supplier-part-originals",
+              deleteParams: { supplier_part_id: supplierPartId, original_part_id: row.link_id },
+              previewParams: { original_part_id: row.link_id },
+              successMessage: "Связь с OEM удалена",
+            }
+          : {
+              entityType: "supplier_part_standard_parts",
+              entityId: supplierPartId,
+              deleteUrl: "/supplier-part-standard-parts",
+              deleteParams: { supplier_part_id: supplierPartId, standard_part_id: row.link_id },
+              previewParams: { standard_part_id: row.link_id },
+              successMessage: "Связь со standard part удалена",
+            }
+      )
+      if (!result?.deleted) return
       await loadLinks()
       onChanged()
     } catch (e) {

@@ -5,6 +5,7 @@ import { PlusOutlined, DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import BomChildPickerDrawer from "./BomChildPickerDrawer"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const { Text } = Typography
 
@@ -113,11 +114,17 @@ export default function BomTable({ part }) {
     const { confirmed } = await confirmAction("Удалить позицию из BOM?")
     if (!confirmed) return
     try {
-      await axios.delete("/original-part-bom", {
-        data: { parent_part_id: parentId, child_part_id: childId },
+      const result = await runTrashDeleteFlow({
+        entityType: "oem_part_model_bom",
+        entityId: parentId,
+        previewParams: { child_part_id: childId },
+        deleteUrl: "/original-part-bom",
+        deleteParams: { parent_part_id: parentId, child_part_id: childId },
+        successMessage: "Строка BOM удалена",
       })
-      message.success("Удалено")
-      load()
+      if (result?.deleted) {
+        load()
+      }
     } catch (e) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось удалить позицию")

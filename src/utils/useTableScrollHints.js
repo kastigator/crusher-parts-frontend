@@ -9,6 +9,16 @@ const getScrollEl = (wrapper) => {
   )
 }
 
+const getInnerTableEl = (wrapper, scrollEl) => {
+  if (!wrapper) return null
+  return (
+    scrollEl?.querySelector?.(".ant-table") ||
+    wrapper.querySelector(".ant-table") ||
+    scrollEl?.firstElementChild ||
+    null
+  )
+}
+
 export default function useTableScrollHints(wrapperRef, deps = []) {
   const [hints, setHints] = useState({ left: false, right: false })
 
@@ -24,6 +34,7 @@ export default function useTableScrollHints(wrapperRef, deps = []) {
       setHints({ left: false, right: false })
       return undefined
     }
+    const innerTableEl = getInnerTableEl(wrapper, scrollEl)
 
     let raf = 0
     const update = () => {
@@ -49,6 +60,8 @@ export default function useTableScrollHints(wrapperRef, deps = []) {
     if (typeof ResizeObserver !== "undefined") {
       resizeObserver = new ResizeObserver(update)
       resizeObserver.observe(scrollEl)
+      resizeObserver.observe(wrapper)
+      if (innerTableEl) resizeObserver.observe(innerTableEl)
     }
 
     return () => {

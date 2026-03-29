@@ -71,6 +71,7 @@ export default function SupplierPartsMain() {
 
   const [columnsByView, setColumnsByView] = useState({})
   const [columnOrderByView, setColumnOrderByView] = useState({})
+  const [columnWidthsByView, setColumnWidthsByView] = useState({})
   const columnsLoadStartedRef = useRef(false)
   const columnsHydratedRef = useRef(false)
   const columnsSaveTimerRef = useRef(null)
@@ -96,6 +97,9 @@ export default function SupplierPartsMain() {
     if (restore.columnOrderByView !== undefined) {
       setColumnOrderByView(restore.columnOrderByView || {})
     }
+    if (restore.columnWidthsByView !== undefined) {
+      setColumnWidthsByView(restore.columnWidthsByView || {})
+    }
     setVersion((v) => v + 1)
   }, [location.state])
 
@@ -115,6 +119,7 @@ export default function SupplierPartsMain() {
   const columnsViewKey = showAll ? "showAll" : "supplier"
   const currentVisibleKeys = columnsByView?.[columnsViewKey] || null
   const currentOrderKeys = columnOrderByView?.[columnsViewKey] || null
+  const currentColumnWidths = columnWidthsByView?.[columnsViewKey] || null
   const quickPartType = filters?.part_type || "all"
   const quickLinksMode = filters?.originals_mode || "any"
   const listDisabled = !supplier && !showAll
@@ -159,12 +164,15 @@ export default function SupplierPartsMain() {
     columnsLoadStartedRef.current = true
     const run = async () => {
       try {
-        const [columnsRes, orderRes] = await Promise.all([
+        const [columnsRes, orderRes, widthsRes] = await Promise.all([
           axios.get("/user-ui-settings", {
             params: { scope: "supplier_parts", key: "columns_v1" },
           }),
           axios.get("/user-ui-settings", {
             params: { scope: "supplier_parts", key: "column_order_v1" },
+          }),
+          axios.get("/user-ui-settings", {
+            params: { scope: "supplier_parts", key: "column_widths_v1" },
           }),
         ])
         const columnsValue = columnsRes?.data?.value_json
@@ -180,6 +188,13 @@ export default function SupplierPartsMain() {
             ? orderValue.configs
             : orderValue
         if (orderCfg && typeof orderCfg === "object") setColumnOrderByView(orderCfg)
+
+        const widthsValue = widthsRes?.data?.value_json
+        const widthsCfg =
+          widthsValue?.configs && typeof widthsValue.configs === "object"
+            ? widthsValue.configs
+            : widthsValue
+        if (widthsCfg && typeof widthsCfg === "object") setColumnWidthsByView(widthsCfg)
       } catch (e) {
         console.warn("Failed to load UI settings (columns)", e?.message || e)
       } finally {
@@ -206,13 +221,18 @@ export default function SupplierPartsMain() {
             key: "column_order_v1",
             value_json: { version: 1, configs: columnOrderByView },
           }),
+          axios.put("/user-ui-settings", {
+            scope: "supplier_parts",
+            key: "column_widths_v1",
+            value_json: { version: 1, configs: columnWidthsByView },
+          }),
         ])
       } catch (e) {
         console.warn("Failed to save UI settings (columns)", e?.message || e)
       }
     }, 500)
     return () => clearTimeout(columnsSaveTimerRef.current)
-  }, [columnsByView, columnOrderByView])
+  }, [columnsByView, columnOrderByView, columnWidthsByView])
 
   const flashRow = useCallback((id) => {
     const n = Number(id)
@@ -621,118 +641,112 @@ export default function SupplierPartsMain() {
             searchWidth="clamp(280px, 42vw, 620px)"
             searchEnterButton="Найти"
             extraActions={
-              <Space direction="vertical" size={8} style={{ alignItems: "flex-end" }}>
-                {/* Row B: quick switches */}
-                <Space size={12} wrap>
-                  <Segmented
-                    size="small"
-                    disabled={listDisabled}
-                    value={quickPartType}
-                    options={[
-                      { label: "Все", value: "all" },
-                      { label: "OEM", value: "OEM" },
-                      { label: "Аналоги", value: "ANALOG" },
-                    ]}
-                    onChange={(v) => {
-                      const next = String(v)
-                      setFilters((prev) => ({
-                        ...(prev || {}),
-                        part_type: next === "all" ? null : next,
-                      }))
-                    }}
-                  />
+              <Space size={12} wrap style={{ justifyContent: "flex-end" }}>
+                <Segmented
+                  size="small"
+                  disabled={listDisabled}
+                  value={quickPartType}
+                  options={[
+                    { label: "Все", value: "all" },
+                    { label: "OEM", value: "OEM" },
+                    { label: "Аналоги", value: "ANALOG" },
+                  ]}
+                  onChange={(v) => {
+                    const next = String(v)
+                    setFilters((prev) => ({
+                      ...(prev || {}),
+                      part_type: next === "all" ? null : next,
+                    }))
+                  }}
+                />
 
-                  <Segmented
-                    size="small"
-                    disabled={listDisabled}
-                    value={quickLinksMode}
-                    options={[
-                      { label: "Все", value: "any" },
-                      { label: "Привязанные", value: "linked" },
-                      { label: "Без привязок", value: "unlinked" },
-                    ]}
-                    onChange={(v) => {
-                      const next = String(v)
-                      setFilters((prev) => ({
-                        ...(prev || {}),
-                        originals_mode: next,
-                      }))
-                    }}
-                  />
-                </Space>
+                <Segmented
+                  size="small"
+                  disabled={listDisabled}
+                  value={quickLinksMode}
+                  options={[
+                    { label: "Все", value: "any" },
+                    { label: "Привязанные", value: "linked" },
+                    { label: "Без привязок", value: "unlinked" },
+                  ]}
+                  onChange={(v) => {
+                    const next = String(v)
+                    setFilters((prev) => ({
+                      ...(prev || {}),
+                      originals_mode: next,
+                    }))
+                  }}
+                />
 
-                {/* Row B: view controls */}
-                <Space size={12} wrap>
-                  <Tooltip title="Фильтры">
-                    <Badge count={countActiveFilters(filters)} size="small" offset={[-2, 6]}>
-                      <Button
-                        icon={<FilterOutlined />}
-                        onClick={() => setFiltersOpen(true)}
-                        disabled={listDisabled}
-                      >
-                        Фильтры
-                      </Button>
-                    </Badge>
-                  </Tooltip>
+                <Tooltip title="Фильтры">
+                  <Badge count={countActiveFilters(filters)} size="small" offset={[-2, 6]}>
+                    <Button
+                      icon={<FilterOutlined />}
+                      onClick={() => setFiltersOpen(true)}
+                      disabled={listDisabled}
+                    >
+                      Фильтры
+                    </Button>
+                  </Badge>
+                </Tooltip>
 
-                  <Popover
-                    open={columnsPopoverOpen}
-                    onOpenChange={setColumnsPopoverOpen}
-                    trigger="click"
-                    placement="bottomRight"
-                    content={
-                      <div style={{ width: 260 }}>
-                        <div style={{ fontWeight: 700, marginBottom: 8 }}>
-                          Колонки ({showAll ? "все поставщики" : "поставщик"})
-                        </div>
-                        <Space direction="vertical" size={6} style={{ width: "100%" }}>
-                          {(columnsMeta.options || []).map((opt) => {
-                            const base =
-                              Array.isArray(currentVisibleKeys) && currentVisibleKeys.length
-                                ? currentVisibleKeys
-                                : columnsMeta.defaultVisible
-                            const checked = base?.includes?.(opt.key)
-                            return (
-                              <Checkbox
-                                key={opt.key}
-                                checked={!!checked}
-                                onChange={(e) => {
-                                  const next = e.target.checked
-                                    ? [...(base || []), opt.key]
-                                    : (base || []).filter((k) => k !== opt.key)
-                                  setColumnsByView((prev) => ({
-                                    ...(prev || {}),
-                                    [columnsViewKey]: next,
-                                  }))
-                                }}
-                              >
-                                {opt.label}
-                              </Checkbox>
-                            )
-                          })}
-                          <Space style={{ marginTop: 8 }}>
-                            <Button
-                              size="small"
-                              onClick={() => {
+                <Popover
+                  open={columnsPopoverOpen}
+                  onOpenChange={setColumnsPopoverOpen}
+                  trigger="click"
+                  placement="bottomRight"
+                  content={
+                    <div style={{ width: 260 }}>
+                      <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                        Колонки ({showAll ? "все поставщики" : "поставщик"})
+                      </div>
+                      <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                        {(columnsMeta.options || []).map((opt) => {
+                          const base =
+                            Array.isArray(currentVisibleKeys) && currentVisibleKeys.length
+                              ? currentVisibleKeys
+                              : columnsMeta.defaultVisible
+                          const checked = base?.includes?.(opt.key)
+                          return (
+                            <Checkbox
+                              key={opt.key}
+                              checked={!!checked}
+                              onChange={(e) => {
+                                const next = e.target.checked
+                                  ? [...(base || []), opt.key]
+                                  : (base || []).filter((k) => k !== opt.key)
                                 setColumnsByView((prev) => ({
                                   ...(prev || {}),
-                                  [columnsViewKey]: columnsMeta.defaultVisible || [],
+                                  [columnsViewKey]: next,
                                 }))
                               }}
                             >
-                              Сбросить
-                            </Button>
-                            <Button size="small" onClick={() => setColumnsPopoverOpen(false)}>
-                              Готово
-                            </Button>
-                          </Space>
+                              {opt.label}
+                            </Checkbox>
+                          )
+                        })}
+                        <Space style={{ marginTop: 8 }}>
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              setColumnsByView((prev) => ({
+                                ...(prev || {}),
+                                [columnsViewKey]: columnsMeta.defaultVisible || [],
+                              }))
+                            }}
+                          >
+                            Сбросить
+                          </Button>
+                          <Button size="small" onClick={() => setColumnsPopoverOpen(false)}>
+                            Готово
+                          </Button>
                         </Space>
-                      </div>
-                    }
-                  >
-                    <Button disabled={listDisabled}>Колонки</Button>
-                  </Popover>
-                </Space>
+                      </Space>
+                    </div>
+                  }
+                >
+                  <Button disabled={listDisabled}>Колонки</Button>
+                </Popover>
               </Space>
             }
           />
@@ -749,10 +763,17 @@ export default function SupplierPartsMain() {
           onFlashRow={flashRow}
           visibleColumnKeys={currentVisibleKeys}
           columnOrderKeys={currentOrderKeys}
+          columnWidths={currentColumnWidths}
           onColumnOrderKeysChange={(next) =>
             setColumnOrderByView((prev) => ({
               ...(prev || {}),
               [columnsViewKey]: Array.isArray(next) ? next : [],
+            }))
+          }
+          onColumnWidthsChange={(next) =>
+            setColumnWidthsByView((prev) => ({
+              ...(prev || {}),
+              [columnsViewKey]: next && typeof next === "object" ? next : {},
             }))
           }
           onColumnsMeta={(meta) =>
@@ -777,6 +798,7 @@ export default function SupplierPartsMain() {
                     filters,
                     columnsByView,
                     columnOrderByView,
+                    columnWidthsByView,
                   },
                 },
               }

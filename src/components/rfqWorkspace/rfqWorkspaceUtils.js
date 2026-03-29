@@ -55,6 +55,8 @@ export const statusToColor = (value) => {
   if (value === "responded") return "green"
   if (value === "structured") return "cyan"
   if (value === "draft") return "default"
+  if (value === "archived") return "default"
+  if (value === "cancelled") return "red"
   return "gold"
 }
 
@@ -65,6 +67,8 @@ export const rfqStatusLabel = (value) => {
     structured: "Структура готова",
     sent: "RFQ отправлен",
     responded: "Ответы получены",
+    archived: "В архиве",
+    cancelled: "Отменен",
   }
   return labels[value] || value
 }

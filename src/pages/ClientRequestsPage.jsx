@@ -20,12 +20,14 @@ import {
   Collapse,
   Tabs,
   Steps,
+  Drawer,
 } from "antd"
 import {
   DeleteOutlined,
   EditOutlined,
   SaveOutlined,
   CloseOutlined,
+  PlusOutlined,
 } from "@ant-design/icons"
 import AddPositionsModal from "@/components/clientRequests/AddPositionsModal"
 import CreateClientModal from "@/components/clientRequests/CreateClientModal"
@@ -34,6 +36,7 @@ import EditItemModal from "@/components/clientRequests/EditItemModal"
 import ImportExcelModal from "@/components/clientRequests/ImportExcelModal"
 import NewRequestCard from "@/components/clientRequests/NewRequestCard"
 import PageWrapper from "@/components/common/PageWrapper"
+import WorkspaceShell from "@/components/common/WorkspaceShell"
 import RevisionNoteModal from "@/components/clientRequests/RevisionNoteModal"
 import RequestsListCard from "@/components/clientRequests/RequestsListCard"
 import axios from "@/api/axiosInstance"
@@ -60,6 +63,7 @@ const STATUS_OPTIONS = [
   { value: "selection_done", label: "Выбор сделан" },
   { value: "quote_prepared", label: "КП подготовлено" },
   { value: "contracted", label: "Контракт" },
+  { value: "archived", label: "В архиве" },
   { value: "cancelled", label: "Отменено" },
 ]
 
@@ -138,6 +142,7 @@ const STATUS_COLORS = {
   selection_done: "cyan",
   quote_prepared: "purple",
   contracted: "green",
+  archived: "default",
   cancelled: "red",
 }
 
@@ -179,6 +184,7 @@ export default function ClientRequestsPage() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [listSearch, setListSearch] = useState("")
+  const [showArchivedRequests, setShowArchivedRequests] = useState(false)
   const [activeRequest, setActiveRequest] = useState(null)
   const [requestEditing, setRequestEditing] = useState(false)
   const [revisions, setRevisions] = useState([])
@@ -247,6 +253,7 @@ export default function ClientRequestsPage() {
   const [contactDropdownOpen, setContactDropdownOpen] = useState(false)
   const [createClientOpen, setCreateClientOpen] = useState(false)
   const [createClientLoading, setCreateClientLoading] = useState(false)
+  const [createRequestOpen, setCreateRequestOpen] = useState(false)
 
   const { Text } = Typography
 
@@ -287,7 +294,9 @@ export default function ClientRequestsPage() {
   const loadRequests = async () => {
     setLoading(true)
     try {
-      const { data } = await axios.get("/client-requests")
+      const { data } = await axios.get("/client-requests", {
+        params: { include_archived: showArchivedRequests ? 1 : undefined },
+      })
       setRequests(Array.isArray(data) ? data : [])
     } catch (e) {
       console.error(e)
@@ -346,7 +355,7 @@ export default function ClientRequestsPage() {
     loadClients()
     loadUsers()
     loadManufacturers()
-  }, [])
+  }, [showArchivedRequests])
 
   useEffect(() => {
     const clientId = Number(searchParams.get("client_id") || 0) || null
@@ -355,6 +364,7 @@ export default function ClientRequestsPage() {
 
     let cancelled = false
     ;(async () => {
+      setCreateRequestOpen(true)
       createForm.setFieldsValue({ client_id: clientId })
       await loadContacts(clientId)
       const units = await loadEquipmentUnits(clientId)
@@ -767,6 +777,7 @@ export default function ClientRequestsPage() {
       createForm.resetFields()
       setCreateEquipmentUnitId(null)
       setCreateEquipmentUnits([])
+      setCreateRequestOpen(false)
       await loadRequests()
       if (data?.id) {
         await openWorkspace(data, { equipmentUnitId: selectedCreateEquipmentUnit?.id || null })
@@ -1997,18 +2008,23 @@ export default function ClientRequestsPage() {
   }
 
   const handleDeleteRequest = async (id) => {
-    const { confirmed } = await confirmAction("Удалить заявку?")
+    const { confirmed } = await confirmAction({
+      title: "Архивировать заявку?",
+      text: "Заявка останется в системе и истории, но будет скрыта из обычного списка.",
+      icon: "warning",
+      confirmLabel: "Архивировать",
+    })
     if (!confirmed) return
     try {
-      await axios.delete(`/client-requests/${id}`)
-      message.success("Заявка удалена")
+      await axios.post(`/client-requests/${id}/archive`)
+      message.success("Заявка перенесена в архив")
       await loadRequests()
       if (activeRequest?.id === id) {
         setActiveRequest(null)
       }
     } catch (e) {
       console.error(e)
-      message.error("Не удалось удалить заявку")
+      message.error(e?.response?.data?.message || "Не удалось архивировать заявку")
     }
   }
 
@@ -2152,14 +2168,17 @@ export default function ClientRequestsPage() {
 
   const requestColumns = [
     {
-      title: "Клиент",
-      dataIndex: "client_name",
-      render: (v) => v || "—",
-    },
-    {
-      title: "Внутр. номер",
-      dataIndex: "internal_number",
-      render: (v) => v || "—",
+      title: "Заявка",
+      width: 460,
+      render: (_, row) => (
+        <Space direction="vertical" size={2}>
+          <span>{row?.internal_number || "—"}</span>
+          <span style={{ color: "#8c8c8c" }}>
+            {row?.client_name || "—"}
+            {row?.client_reference ? ` · ${row.client_reference}` : ""}
+          </span>
+        </Space>
+      ),
     },
     {
       title: "Статус",
@@ -2174,33 +2193,16 @@ export default function ClientRequestsPage() {
         ),
     },
     {
-      title: "Дедлайн",
-      dataIndex: "processing_deadline",
-      render: formatDateTime,
-    },
-    { title: "Референс клиента", dataIndex: "client_reference" },
-    { title: "Контакт", dataIndex: "contact_name" },
-    {
       title: "Создано",
       dataIndex: "created_at",
-      width: 170,
-      render: formatDateTime,
+      width: 140,
+      render: formatDateValue,
     },
     {
-      title: "Действия",
-      dataIndex: "actions",
-      width: 90,
-      render: (_, record) => (
-        <Button
-          type="text"
-          danger
-          icon={<DeleteOutlined />}
-          onClick={(e) => {
-            e.stopPropagation()
-            handleDeleteRequest(record.id)
-          }}
-        />
-      ),
+      title: "Дедлайн",
+      dataIndex: "processing_deadline",
+      width: 140,
+      render: formatDateValue,
     },
   ]
 
@@ -2525,10 +2527,137 @@ export default function ClientRequestsPage() {
   return (
     <PageWrapper
       title="Заявки клиентов"
-      helpText="Статусы: Черновик → В работе → Релиз в закупку → RFQ создан → RFQ отправлен → Ответы → Выбор → КП → Контракт."
+      subtitle="Операционный контур по клиентским заявкам: от первичной регистрации до передачи в закупку и перехода в RFQ."
+      helpSummary="Статусы: Черновик → В работе → Релиз в закупку → RFQ создан → RFQ отправлен → Ответы → Выбор → КП → Контракт."
+      primaryActions={(
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateRequestOpen(true)}>
+          Новая заявка
+        </Button>
+      )}
     >
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
+        <WorkspaceShell
+          mode="stacked"
+          listWidth={380}
+          listPane={(
+            <Card size="small" title={`Список заявок (${filteredRequests.length})`}>
+              <RequestsListCard
+                cardless
+                requestColumns={requestColumns}
+                requests={filteredRequests}
+                listSearch={listSearch}
+                setListSearch={setListSearch}
+                pageSize={6}
+                maxTableHeight={280}
+                toolbarExtra={
+                  <Checkbox
+                    checked={showArchivedRequests}
+                    onChange={(event) => setShowArchivedRequests(event.target.checked)}
+                  >
+                    Показывать архивные
+                  </Checkbox>
+                }
+                loading={loading}
+                openWorkspace={openWorkspace}
+                activeRequestId={activeRequest?.id}
+              />
+            </Card>
+          )}
+          detailPane={(
+            <Card size="small">
+              <ClientRequestWorkspaceCard
+                cardless
+                activeRequest={activeRequest}
+                statusColors={STATUS_COLORS}
+                statusOptions={STATUS_OPTIONS}
+                canRelease={canRelease}
+                isReleasedLocked={isReleasedLocked}
+                isSentToProcurement={isSentToProcurement}
+                rfqSyncStatus={rfqSyncStatus}
+                handleReleaseRequest={handleReleaseRequest}
+                handleSyncRfq={handleSyncRfq}
+                getStatusStepIndex={getStatusStepIndex}
+                statusSteps={STATUS_STEPS}
+                workspaceTabKey={workspaceTabKey}
+                setWorkspaceTabKey={setWorkspaceTabKey}
+                isLatestRevision={isLatestRevision}
+                activeRevisionLabel={activeRevisionLabel}
+                activeRevisionDate={activeRevisionDate}
+                changeDraftActive={changeDraftActive}
+                revisionOptions={revisionOptions}
+                activeRevisionId={activeRevisionId}
+                revisions={revisions}
+                handleSelectRevision={handleSelectRevision}
+                commitChangeDraft={commitChangeDraft}
+                hasDraftChanges={hasDraftChanges}
+                cancelChangeDraft={cancelChangeDraft}
+                createRevisionAndEnterEdit={createRevisionAndEnterEdit}
+                openImportModal={() => {
+                  setImportModalOpen(true)
+                  setStagedRows([])
+                  resetImportState()
+                }}
+                bulkMode={bulkMode}
+                setBulkMode={setBulkMode}
+                setBulkSelectedKeys={setBulkSelectedKeys}
+                setBulkSelectedRows={setBulkSelectedRows}
+                setBulkEdits={setBulkEdits}
+                quickResults={quickResults}
+                formatPartLabel={formatPartLabel}
+                quickSearch={quickSearch}
+                setQuickSearch={setQuickSearch}
+                quickSelectedPart={quickSelectedPart}
+                setQuickSelectedPart={setQuickSelectedPart}
+                quickLoading={quickLoading}
+                handleQuickAdd={handleQuickAdd}
+                quickQty={quickQty}
+                setQuickQty={setQuickQty}
+                quickOemOnly={quickOemOnly}
+                setQuickOemOnly={setQuickOemOnly}
+                setAddModalOpen={setAddModalOpen}
+                hasBulkSelection={hasBulkSelection}
+                hasBulkEditsForSelected={hasBulkEditsForSelected}
+                applyBulkUpdate={applyBulkUpdate}
+                applyBulkDelete={applyBulkDelete}
+                itemsColumns={itemsColumns}
+                items={items}
+                itemsLoading={itemsLoading}
+                bulkSelectedKeys={bulkSelectedKeys}
+                revisionTimelineItems={revisionTimelineItems}
+                revisionColumns={revisionColumns}
+                revisionsLoading={revisionsLoading}
+                requestEditing={requestEditing}
+                setRequestEditing={setRequestEditing}
+                requestForm={requestForm}
+                handleUpdateRequest={handleUpdateRequest}
+                clientOptions={clientOptions}
+                sourceOptions={SOURCE_OPTIONS}
+                userOptions={userOptions}
+                contactOptions={contactOptions}
+                contactDropdownOpen={contactDropdownOpen}
+                setContactDropdownOpen={setContactDropdownOpen}
+                loadContacts={loadContacts}
+                equipmentUnitOptions={activeEquipmentUnitOptions}
+                selectedEquipmentUnitId={activeEquipmentUnitId}
+                setSelectedEquipmentUnitId={handleActiveEquipmentUnitChange}
+                selectedEquipmentUnitLabel={formatEquipmentUnitLabel(selectedActiveEquipmentUnit)}
+                handleDeleteRequest={handleDeleteRequest}
+              />
+            </Card>
+          )}
+        />
+      </Space>
+
+      <Drawer
+        title="Новая заявка"
+        placement="right"
+        width={760}
+        open={createRequestOpen}
+        onClose={() => setCreateRequestOpen(false)}
+        destroyOnHidden={false}
+      >
         <NewRequestCard
+          cardless
           createForm={createForm}
           handleCreate={handleCreate}
           clientSelectOptions={clientSelectOptions}
@@ -2546,94 +2675,7 @@ export default function ClientRequestsPage() {
           selectedEquipmentUnitId={createEquipmentUnitId}
           setSelectedEquipmentUnitId={setCreateEquipmentUnitId}
         />
-
-        <RequestsListCard
-          requestColumns={requestColumns}
-          requests={filteredRequests}
-          listSearch={listSearch}
-          setListSearch={setListSearch}
-          loading={loading}
-          openWorkspace={openWorkspace}
-          activeRequestId={activeRequest?.id}
-        />
-
-        <ClientRequestWorkspaceCard
-          activeRequest={activeRequest}
-          statusColors={STATUS_COLORS}
-          statusOptions={STATUS_OPTIONS}
-          canRelease={canRelease}
-          isReleasedLocked={isReleasedLocked}
-          isSentToProcurement={isSentToProcurement}
-          rfqSyncStatus={rfqSyncStatus}
-          handleReleaseRequest={handleReleaseRequest}
-          handleSyncRfq={handleSyncRfq}
-          getStatusStepIndex={getStatusStepIndex}
-          statusSteps={STATUS_STEPS}
-          workspaceTabKey={workspaceTabKey}
-          setWorkspaceTabKey={setWorkspaceTabKey}
-          isLatestRevision={isLatestRevision}
-          activeRevisionLabel={activeRevisionLabel}
-          activeRevisionDate={activeRevisionDate}
-          changeDraftActive={changeDraftActive}
-          revisionOptions={revisionOptions}
-          activeRevisionId={activeRevisionId}
-          revisions={revisions}
-          handleSelectRevision={handleSelectRevision}
-          commitChangeDraft={commitChangeDraft}
-          hasDraftChanges={hasDraftChanges}
-          cancelChangeDraft={cancelChangeDraft}
-          createRevisionAndEnterEdit={createRevisionAndEnterEdit}
-          openImportModal={() => {
-            setImportModalOpen(true)
-            setStagedRows([])
-            resetImportState()
-          }}
-          bulkMode={bulkMode}
-          setBulkMode={setBulkMode}
-          setBulkSelectedKeys={setBulkSelectedKeys}
-          setBulkSelectedRows={setBulkSelectedRows}
-          setBulkEdits={setBulkEdits}
-          quickResults={quickResults}
-          formatPartLabel={formatPartLabel}
-          quickSearch={quickSearch}
-          setQuickSearch={setQuickSearch}
-          quickSelectedPart={quickSelectedPart}
-          setQuickSelectedPart={setQuickSelectedPart}
-          quickLoading={quickLoading}
-          handleQuickAdd={handleQuickAdd}
-          quickQty={quickQty}
-          setQuickQty={setQuickQty}
-          quickOemOnly={quickOemOnly}
-          setQuickOemOnly={setQuickOemOnly}
-          setAddModalOpen={setAddModalOpen}
-          hasBulkSelection={hasBulkSelection}
-          hasBulkEditsForSelected={hasBulkEditsForSelected}
-          applyBulkUpdate={applyBulkUpdate}
-          applyBulkDelete={applyBulkDelete}
-          itemsColumns={itemsColumns}
-          items={items}
-          itemsLoading={itemsLoading}
-          bulkSelectedKeys={bulkSelectedKeys}
-          revisionTimelineItems={revisionTimelineItems}
-          revisionColumns={revisionColumns}
-          revisionsLoading={revisionsLoading}
-          requestEditing={requestEditing}
-          setRequestEditing={setRequestEditing}
-          requestForm={requestForm}
-          handleUpdateRequest={handleUpdateRequest}
-          clientOptions={clientOptions}
-          sourceOptions={SOURCE_OPTIONS}
-          userOptions={userOptions}
-          contactOptions={contactOptions}
-          contactDropdownOpen={contactDropdownOpen}
-          setContactDropdownOpen={setContactDropdownOpen}
-          loadContacts={loadContacts}
-          equipmentUnitOptions={activeEquipmentUnitOptions}
-          selectedEquipmentUnitId={activeEquipmentUnitId}
-          setSelectedEquipmentUnitId={handleActiveEquipmentUnitChange}
-          selectedEquipmentUnitLabel={formatEquipmentUnitLabel(selectedActiveEquipmentUnit)}
-        />
-      </Space>
+      </Drawer>
 
       <RevisionNoteModal
         open={revisionNoteOpen}

@@ -17,6 +17,7 @@ import {
 import { useNavigate, useSearchParams } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 import { formatUomLabel } from "@/utils/uom"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const UOM_OPTIONS = [
   { value: "pcs", label: "шт" },
@@ -245,9 +246,15 @@ export default function OEMPartsMain() {
 
   const handleDelete = async (row) => {
     try {
-      await axios.delete(`/oem-parts/${row.id}`)
-      message.success("OEM деталь удалена")
-      await loadRows()
+      const result = await runTrashDeleteFlow({
+        entityType: "oem_parts",
+        entityId: row.id,
+        deleteUrl: `/oem-parts/${row.id}`,
+        successMessage: "OEM деталь перемещена в корзину",
+      })
+      if (result?.deleted) {
+        await loadRows()
+      }
     } catch (err) {
       console.error("delete OEM part error:", err)
       message.error(err?.response?.data?.message || "Не удалось удалить OEM деталь")

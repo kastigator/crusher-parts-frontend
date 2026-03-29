@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import {
   Alert,
   Button,
@@ -19,6 +19,8 @@ import {
 } from "antd"
 import axios from "@/api/axiosInstance"
 import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
+import useTableScrollHints from "@/utils/useTableScrollHints"
+import "@/styles/tableStyles.css"
 import {
   COVERAGE_KIND_LABELS,
   COVERAGE_LINE_ROLE_LABELS,
@@ -699,6 +701,7 @@ export default function CoverageTabContent({
   const [selectedRfqItemId, setSelectedRfqItemId] = useState(null)
   const [mode, setMode] = useState("matrix")
   const [supplierVisibilityFilter, setSupplierVisibilityFilter] = useState("all")
+  const [matrixSupplierFocusMode, setMatrixSupplierFocusMode] = useState("focus")
   const [showOnlyGaps, setShowOnlyGaps] = useState(false)
   const [selectedCell, setSelectedCell] = useState(null)
   const [comboRows, setComboRows] = useState([])
@@ -712,6 +715,9 @@ export default function CoverageTabContent({
   const [matrixColumnKeys, setMatrixColumnKeys] = useState([])
   const [supplierSummaryColumnKeys, setSupplierSummaryColumnKeys] = useState([])
   const [comboColumnKeys, setComboColumnKeys] = useState([])
+  const matrixTableWrapRef = useRef(null)
+  const supplierSummaryWrapRef = useRef(null)
+  const combosTableWrapRef = useRef(null)
 
   const structureItems = useMemo(
     () => (Array.isArray(structure?.items) ? structure.items : []),
@@ -754,6 +760,27 @@ export default function CoverageTabContent({
     })
     return codes
   }, [savedCoverageOptions, activeItemId])
+
+  const matrixScrollHints = useTableScrollHints(matrixTableWrapRef, [
+    mode,
+    scopeMode,
+    matrixSupplierFocusMode,
+    supplierVisibilityFilter,
+    showOnlyGaps,
+    workspaceRows,
+    suppliers,
+    matrixColumnKeys,
+  ])
+  const supplierSummaryScrollHints = useTableScrollHints(supplierSummaryWrapRef, [
+    mode,
+    suppliers,
+    supplierSummaryColumnKeys,
+  ])
+  const combosScrollHints = useTableScrollHints(combosTableWrapRef, [
+    mode,
+    comboRows,
+    comboColumnKeys,
+  ])
 
   const itemsById = useMemo(
     () => new Map(structureItems.map((item) => [Number(item.rfq_item_id || 0), item])),
@@ -1266,16 +1293,55 @@ export default function CoverageTabContent({
     return list
   }, [effectiveCoverageModel, supplierVisibilityFilter])
 
+  const matrixVisibleSuppliers = useMemo(() => {
+    if (matrixSupplierFocusMode === "all") return visibleSuppliers
+    if (visibleSuppliers.length <= 6) return visibleSuppliers
+
+    const summaryBySupplierId = new Map(
+      (effectiveCoverageModel?.supplierSummary || []).map((row) => [Number(row.supplier_id || 0), row])
+    )
+
+    const getSupplierScore = (supplier) => {
+      const summary = summaryBySupplierId.get(Number(supplier?.supplier_id || 0)) || {}
+      if (matrixSupplierFocusMode === "priced") {
+        return (
+          safeNum(summary.coverage_priced_pct) * 10000 +
+          safeNum(summary.coverage_goal_pct) * 100 +
+          safeNum(summary.oem_covered) * 10 +
+          (summary.responded_any ? 1 : 0)
+        )
+      }
+      if (matrixSupplierFocusMode === "oem") {
+        return (
+          safeNum(summary.oem_covered) * 10000 +
+          safeNum(summary.coverage_priced_pct) * 100 +
+          safeNum(summary.coverage_goal_pct) * 10 +
+          (summary.responded_any ? 1 : 0)
+        )
+      }
+      return (
+        safeNum(summary.coverage_goal_pct) * 10000 +
+        safeNum(summary.coverage_priced_pct) * 100 +
+        safeNum(summary.oem_covered) * 10 +
+        (summary.responded_any ? 1 : 0)
+      )
+    }
+
+    return [...visibleSuppliers]
+      .sort((a, b) => getSupplierScore(b) - getSupplierScore(a))
+      .slice(0, 6)
+  }, [effectiveCoverageModel, matrixSupplierFocusMode, visibleSuppliers])
+
   const matrixDisplayRows = useMemo(() => {
     const rows = effectiveCoverageModel?.matrixRows || []
     if (!showOnlyGaps) return rows
     return rows.filter((row) =>
-      visibleSuppliers.some((supplier) => {
+      matrixVisibleSuppliers.some((supplier) => {
         const code = row?.supplierCells?.[supplier.supplier_id]?.code
         return !PRICED_STATUSES.has(code)
       })
     )
-  }, [effectiveCoverageModel, visibleSuppliers, showOnlyGaps])
+  }, [effectiveCoverageModel, matrixVisibleSuppliers, showOnlyGaps])
 
   const kpis = useMemo(() => {
     if (!effectiveCoverageModel) {
@@ -1993,7 +2059,7 @@ export default function CoverageTabContent({
               title: "Позиция RFQ",
               dataIndex: "line_number",
               key: "rfq_item",
-              width: 250,
+              width: 220,
               fixed: "left",
               render: (_, row) => (
                 <Space direction="vertical" size={0}>
@@ -2014,7 +2080,7 @@ export default function CoverageTabContent({
         title: "Элемент покрытия",
         dataIndex: "label",
         key: "label",
-        width: 240,
+        width: 220,
         fixed: scopeMode === "rfq" ? undefined : "left",
         render: (_, row) => (
           <Space direction="vertical" size={0}>
@@ -2041,7 +2107,7 @@ export default function CoverageTabContent({
       },
     ]
 
-    const supplierCols = visibleSuppliers.map((supplier) => ({
+    const supplierCols = matrixVisibleSuppliers.map((supplier) => ({
       title: (
         <Space direction="vertical" size={2}>
           <Text strong style={{ fontSize: 12 }}>{supplier.supplier_name || `#${supplier.supplier_id}`}</Text>
@@ -2049,7 +2115,7 @@ export default function CoverageTabContent({
         </Space>
       ),
       key: `supplier-${supplier.supplier_id}`,
-      width: 170,
+      width: 150,
       render: (_, row) => {
         const cell = row?.supplierCells?.[supplier.supplier_id] || { code: "NQ", rows: [] }
         const meta = STATUS_META[cell.code] || STATUS_META.NQ
@@ -2099,7 +2165,7 @@ export default function CoverageTabContent({
     }))
 
     return [...base, ...supplierCols]
-  }, [visibleSuppliers, scopeMode])
+  }, [matrixVisibleSuppliers, scopeMode])
 
   const supplierSummaryColumns = useMemo(
     () => [
@@ -2107,7 +2173,7 @@ export default function CoverageTabContent({
         title: "Поставщик",
         dataIndex: "supplier_name",
         key: "supplier_name",
-        width: 260,
+        width: 220,
         render: (_, row) => (
           <Space direction="vertical" size={2}>
             <Text>{row.supplier_name || "—"}</Text>
@@ -2159,7 +2225,7 @@ export default function CoverageTabContent({
       {
         title: "Потенциал консолидации",
         key: "consolidation",
-        width: 170,
+        width: 140,
         render: (_, row) =>
           row.supplier_country ? (
             <Tag color="cyan">{row.supplier_country}</Tag>
@@ -2173,7 +2239,7 @@ export default function CoverageTabContent({
 
   const comboColumns = useMemo(
     () => [
-      { title: "Комбинация", dataIndex: "supplier_names", key: "supplier_names", width: 340 },
+      { title: "Комбинация", dataIndex: "supplier_names", key: "supplier_names", width: 280 },
       {
         title: "Прогресс структуры",
         dataIndex: "structure_coverage_pct",
@@ -2447,7 +2513,7 @@ export default function CoverageTabContent({
                 }
               />
               <Button type="primary" loading={savingCoverage} onClick={saveCoverageOptions}>
-                Сохранить покрытие RFQ
+                Сохранить варианты покрытия
               </Button>
               <Button onClick={openManualModal} disabled={!rfqId || !activeItemId}>
                 Ручной вариант
@@ -2485,6 +2551,13 @@ export default function CoverageTabContent({
 
           {mode === "matrix" ? (
             <>
+              <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                <Text strong>Режим диагностики покрытия</Text>
+                <Text type="secondary">
+                  Здесь вы смотрите, кто реально закрывает элементы позиции или всего RFQ, где есть цена, где остаются дыры и какие ответы требуют разбирательства.
+                </Text>
+              </Space>
+
               <Space wrap>
                 <Select
                   style={{ minWidth: 220 }}
@@ -2505,20 +2578,54 @@ export default function CoverageTabContent({
                     { value: "gaps", label: "Только дыры/неполные" },
                   ]}
                 />
+                <Select
+                  style={{ minWidth: 260 }}
+                  value={matrixSupplierFocusMode}
+                  onChange={setMatrixSupplierFocusMode}
+                  options={[
+                    { value: "focus", label: "Фокус: лучшее покрытие" },
+                    { value: "priced", label: "Фокус: лучшее покрытие с ценой" },
+                    { value: "oem", label: "Фокус: OEM и критичные" },
+                    { value: "all", label: "Показать всех поставщиков" },
+                  ]}
+                />
+                <Text type="secondary">
+                  {matrixSupplierFocusMode === "all"
+                    ? `В матрице показаны все поставщики: ${visibleSuppliers.length}.`
+                    : matrixSupplierFocusMode === "priced"
+                      ? `В матрице показаны ${matrixVisibleSuppliers.length} поставщиков с лучшим покрытием и ценами из ${visibleSuppliers.length}.`
+                      : matrixSupplierFocusMode === "oem"
+                        ? `В матрице показаны ${matrixVisibleSuppliers.length} поставщиков, наиболее полезных для OEM и критичных строк, из ${visibleSuppliers.length}.`
+                        : `В матрице показаны ${matrixVisibleSuppliers.length} поставщиков с лучшим общим покрытием из ${visibleSuppliers.length}.`}
+                </Text>
                 <Text type="secondary">Колонки можно перетаскивать мышью за заголовки.</Text>
               </Space>
 
-              <DraggableColumnsTable
-                className="op-table"
-                size="small"
-                rowKey="key"
-                dataSource={matrixTableRows}
-                columns={orderedMatrixColumns}
-                pagination={{ pageSize: 100, hideOnSinglePage: true }}
-                scroll={{ x: "max-content" }}
-                nonDraggableKeys={scopeMode === "rfq" ? ["rfq_item"] : []}
-                onColumnOrderChange={({ orderedVisibleKeys }) => setMatrixColumnKeys(orderedVisibleKeys)}
-              />
+              <div
+                ref={matrixTableWrapRef}
+                className={`op-table-wrap${matrixScrollHints.left ? " scroll-left" : ""}${
+                  matrixScrollHints.right ? " scroll-right" : ""
+                }`}
+              >
+                {matrixScrollHints.right && !matrixScrollHints.left ? (
+                  <Text type="secondary" className="op-table-scroll-note">
+                    В таблице есть продолжение вправо
+                  </Text>
+                ) : null}
+                <DraggableColumnsTable
+                  columnSizingKey="rfq_coverage_matrix_column_widths_v1"
+                  className="op-table"
+                  size="small"
+                  rowKey="key"
+                  dataSource={matrixTableRows}
+                  columns={orderedMatrixColumns}
+                  pagination={{ pageSize: 100, hideOnSinglePage: true }}
+                  tableLayout="auto"
+                  scroll={{ x: "max-content" }}
+                  nonDraggableKeys={scopeMode === "rfq" ? ["rfq_item"] : []}
+                  onColumnOrderChange={({ orderedVisibleKeys }) => setMatrixColumnKeys(orderedVisibleKeys)}
+                />
+              </div>
 
               {scopeMode === "item" &&
               Array.isArray(coverageModel?.coverageSlots) &&
@@ -2554,7 +2661,7 @@ export default function CoverageTabContent({
                 </Card>
               ) : null}
 
-              <Card size="small" title="Легенда статусов">
+              <Card size="small" title="Справочник статусов матрицы">
                 <Space wrap>
                   {Object.entries(STATUS_META).map(([code, meta]) => (
                     <Tooltip title={meta.hint} key={code}>
@@ -2626,19 +2733,50 @@ export default function CoverageTabContent({
           ) : null}
 
           {mode === "suppliers" ? (
-            <DraggableColumnsTable
-              className="op-table"
-              size="small"
-              rowKey="supplier_id"
-              dataSource={supplierSummaryRows}
-              pagination={{ pageSize: 50, hideOnSinglePage: true }}
-              columns={orderedSupplierSummaryColumns}
-              onColumnOrderChange={({ orderedVisibleKeys }) => setSupplierSummaryColumnKeys(orderedVisibleKeys)}
-            />
+            <Space direction="vertical" size={12} style={{ width: "100%" }}>
+              <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                <Text strong>Режим обзора по поставщикам</Text>
+                <Text type="secondary">
+                  Здесь удобнее смотреть общую картину по каждому поставщику: прогресс покрытия, цены, OEM-критичность и потенциал консолидации без детализации по ячейкам.
+                </Text>
+              </Space>
+
+              <div
+                ref={supplierSummaryWrapRef}
+                className={`op-table-wrap${supplierSummaryScrollHints.left ? " scroll-left" : ""}${
+                  supplierSummaryScrollHints.right ? " scroll-right" : ""
+                }`}
+              >
+                {supplierSummaryScrollHints.right && !supplierSummaryScrollHints.left ? (
+                  <Text type="secondary" className="op-table-scroll-note">
+                    В таблице есть продолжение вправо
+                  </Text>
+                ) : null}
+                <DraggableColumnsTable
+                  columnSizingKey="rfq_coverage_supplier_summary_column_widths_v1"
+                  className="op-table"
+                  size="small"
+                  rowKey="supplier_id"
+                  dataSource={supplierSummaryRows}
+                  pagination={{ pageSize: 50, hideOnSinglePage: true }}
+                  columns={orderedSupplierSummaryColumns}
+                  tableLayout="auto"
+                  scroll={{ x: "max-content" }}
+                  onColumnOrderChange={({ orderedVisibleKeys }) => setSupplierSummaryColumnKeys(orderedVisibleKeys)}
+                />
+              </div>
+            </Space>
           ) : null}
 
           {mode === "combos" && scopeMode === "item" ? (
             <Space direction="vertical" style={{ width: "100%" }} size={12}>
+              <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                <Text strong>Режим подготовки комбинаций</Text>
+                <Text type="secondary">
+                  Здесь система не диагностирует покрытие, а предлагает конкретные смешанные варианты закрытия выбранной позиции несколькими поставщиками.
+                </Text>
+              </Space>
+
               <Space wrap>
                 <Button type="primary" onClick={buildCombinationSuggestions}>
                   Подсказать комбинации по позиции
@@ -2649,13 +2787,27 @@ export default function CoverageTabContent({
                 Здесь система комбинирует поставщиков только внутри выбранной позиции RFQ. Например, две детали сборки от одного поставщика и две от другого. Комбинации между разными позициями всего заказа формируются на вкладке Сценарии.
               </Text>
 
-              <DraggableColumnsTable
-                className="op-table"
-                size="small"
-                rowKey="key"
-                dataSource={comboRows}
-                pagination={{ pageSize: 20, hideOnSinglePage: true }}
-                expandable={{
+              <div
+                ref={combosTableWrapRef}
+                className={`op-table-wrap${combosScrollHints.left ? " scroll-left" : ""}${
+                  combosScrollHints.right ? " scroll-right" : ""
+                }`}
+              >
+                {combosScrollHints.right && !combosScrollHints.left ? (
+                  <Text type="secondary" className="op-table-scroll-note">
+                    В таблице есть продолжение вправо
+                  </Text>
+                ) : null}
+                <DraggableColumnsTable
+                  columnSizingKey="rfq_coverage_combos_column_widths_v1"
+                  className="op-table"
+                  size="small"
+                  rowKey="key"
+                  dataSource={comboRows}
+                  pagination={{ pageSize: 20, hideOnSinglePage: true }}
+                  tableLayout="auto"
+                  scroll={{ x: "max-content" }}
+                  expandable={{
                   expandedRowRender: (record) => (
                     <Table
                       size="small"
@@ -2685,10 +2837,10 @@ export default function CoverageTabContent({
                     />
                   ),
                 }}
-                columns={orderedComboColumns}
-                onColumnOrderChange={({ orderedVisibleKeys }) => setComboColumnKeys(orderedVisibleKeys)}
-                nonDraggableKeys={["actions"]}
-              />
+                  columns={orderedComboColumns}
+                  onColumnOrderChange={({ orderedVisibleKeys }) => setComboColumnKeys(orderedVisibleKeys)}
+                />
+              </div>
             </Space>
           ) : null}
         </>

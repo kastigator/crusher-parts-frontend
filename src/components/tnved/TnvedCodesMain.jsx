@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from "react"
 import { Button, Card, Checkbox, Form, Input, InputNumber, Popover, Space, message } from "antd"
-import { DeleteOutlined } from "@ant-design/icons"
+import { InboxOutlined } from "@ant-design/icons"
+import { useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 import TnvedCodesTable from "./TnvedCodesTable"
 import ImportModal from "@/components/common/ImportModal"
 import TableToolbar from "@/components/common/TableToolbar"
-import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import { isSameByFields } from "@/utils/versionConflict"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const { TextArea } = Input
 
@@ -18,12 +19,12 @@ const EMPTY_NEW_RECORD = {
 }
 
 export default function TnvedCodesMain() {
+  const navigate = useNavigate()
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [importVisible, setImportVisible] = useState(false)
   const [search, setSearch] = useState("")
   const [newRecord, setNewRecord] = useState(EMPTY_NEW_RECORD)
-  const [logId, setLogId] = useState(null)
 
   const [hasNew, setHasNew] = useState(false)
   const [etag, setEtag] = useState(null)
@@ -256,13 +257,18 @@ export default function TnvedCodesMain() {
   // ---------- delete ----------
   const handleDelete = async (record) => {
     try {
-      await axios.delete(`/tnved-codes/${record.id}`, {
-        params: { version: record.version },
+      const result = await runTrashDeleteFlow({
+        entityType: "tnved_codes",
+        entityId: record.id,
+        deleteUrl: `/tnved-codes/${record.id}`,
+        deleteParams: { version: record.version },
+        successMessage: "Код ТН ВЭД перемещён в корзину",
       })
-      removeRow(record.id)
-      const freshEtag = await fetchEtag()
-      setEtag(freshEtag)
-      message.success("Код удалён")
+      if (result?.deleted) {
+        removeRow(record.id)
+        const freshEtag = await fetchEtag()
+        setEtag(freshEtag)
+      }
     } catch (err) {
       if (err?.isVersionConflict) {
         if (err.currentRecord) replaceRow(err.currentRecord)
@@ -334,22 +340,13 @@ export default function TnvedCodesMain() {
           </div>
         )}
 
-        {/* Row A: service actions */}
-        <div className="table-section" style={{ display: "flex", justifyContent: "flex-end" }}>
-          <Space size={12} wrap>
-            <Button onClick={() => setImportVisible(true)}>Импорт</Button>
-            <Button danger icon={<DeleteOutlined />} onClick={() => setLogId("deleted")}>
-              Удалённые
-            </Button>
-          </Space>
-        </div>
-
-        {/* Row B: search + view controls */}
         <div className="table-section">
           <TableToolbar
             placeholder="Поиск по коду/описанию/примечаниям…"
             search={search}
             onSearch={setSearch}
+            onImport={() => setImportVisible(true)}
+            onShowDeleted={() => navigate("/trash")}
             searchWidth="clamp(280px, 42vw, 620px)"
             searchEnterButton="Найти"
             extraActions={
@@ -515,14 +512,6 @@ export default function TnvedCodesMain() {
         onSuccess={fetchData}
         type="tnved_codes"
       />
-
-      {logId === "deleted" && (
-        <FullHistoryDialog
-          onlyDeleted
-          entityType="tnved_codes"
-          onClose={() => setLogId(null)}
-        />
-      )}
     </Space>
   )
 }

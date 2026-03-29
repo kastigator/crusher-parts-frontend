@@ -21,11 +21,13 @@ import {
   Tooltip,
   Typography,
 } from "antd"
-import { CloseOutlined, EditOutlined, SaveOutlined } from "@ant-design/icons"
+import { CloseOutlined, DeleteOutlined, EditOutlined, SaveOutlined } from "@ant-design/icons"
 import dayjs from "dayjs"
 import RequestMarginTabContent from "@/components/clientRequests/RequestMarginTabContent"
 import RequestQuoteTabContent from "@/components/clientRequests/RequestQuoteTabContent"
 import RequestContractTabContent from "@/components/clientRequests/RequestContractTabContent"
+import EntityHeader from "@/components/common/EntityHeader"
+import WorkspaceProgress from "@/components/common/WorkspaceProgress"
 
 const { Text } = Typography
 
@@ -100,86 +102,99 @@ export default function ClientRequestWorkspaceCard({
   selectedEquipmentUnitId,
   setSelectedEquipmentUnitId,
   selectedEquipmentUnitLabel,
+  handleDeleteRequest,
+  cardless = false,
 }) {
   if (!activeRequest) {
-    return (
+    const emptyState = cardless ? (
+      <Text type="secondary">Выберите заявку в списке, чтобы открыть workspace.</Text>
+    ) : (
       <Card title="Рабочая зона" size="small">
         <Text type="secondary">Выберите заявку в списке, чтобы открыть workspace.</Text>
       </Card>
     )
+    return emptyState
   }
 
-  return (
-    <Card title="Рабочая зона" size="small">
+  const content = (
+    <>
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
-        <Space wrap align="center" style={{ justifyContent: "space-between" }}>
-          <Space wrap align="center">
-            <Text strong>{activeRequest?.internal_number || "Заявка клиента"}</Text>
-            {activeRequest?.status ? (
-              <Tag color={statusColors[activeRequest.status] || "default"}>
+        <EntityHeader
+          title={activeRequest?.internal_number || "Заявка клиента"}
+          status={
+            activeRequest?.status ? (
+              <Tag color={statusColors[activeRequest.status] || "default"} style={{ marginInlineEnd: 0 }}>
                 {statusOptions.find((opt) => opt.value === activeRequest.status)?.label ||
                   activeRequest.status}
               </Tag>
-            ) : null}
-            <Text type="secondary">Клиент: {activeRequest?.client_name || "—"}</Text>
-            {selectedEquipmentUnitLabel ? <Tag color="blue">Оборудование: {selectedEquipmentUnitLabel}</Tag> : null}
-            <Text type="secondary">
-              {activeRevisionLabel} ({activeRevisionDate})
-            </Text>
-            {isSentToProcurement ? <Tag color="green">Заявка отправлена в закупку</Tag> : null}
-            {rfqSyncStatus === "needs_sync" ? (
-              <Tag color="orange">RFQ требует синхронизации</Tag>
-            ) : null}
-            {isReleasedLocked ? (
-              <Tag color="orange">Редактирование временно ограничено</Tag>
-            ) : null}
-          </Space>
-          <Space>
-            {canRelease && !isReleasedLocked && !isSentToProcurement ? (
+            ) : null
+          }
+          meta={[
+            `Клиент: ${activeRequest?.client_name || "—"}`,
+            selectedEquipmentUnitLabel ? `Оборудование: ${selectedEquipmentUnitLabel}` : null,
+            `${activeRevisionLabel} (${activeRevisionDate})`,
+            isSentToProcurement ? "Заявка отправлена в закупку" : null,
+            rfqSyncStatus === "needs_sync" ? "RFQ требует синхронизации" : null,
+            isReleasedLocked ? "Редактирование временно ограничено" : null,
+          ]}
+          primaryActions={
+            canRelease && !isReleasedLocked && !isSentToProcurement ? (
               <Button type="primary" onClick={handleReleaseRequest}>
                 Отправить заявку
               </Button>
-            ) : null}
-            {rfqSyncStatus === "needs_sync" ? (
-              <Button onClick={handleSyncRfq}>Синхронизировать RFQ</Button>
-            ) : null}
-          </Space>
-        </Space>
-
-        <Steps
-          size="small"
-          current={getStatusStepIndex(activeRequest?.status)}
-          items={statusSteps.map((step) => ({ title: step.title }))}
+            ) : null
+          }
+          secondaryActions={
+            <Space>
+              {rfqSyncStatus === "needs_sync" ? (
+                <Button onClick={handleSyncRfq}>Синхронизировать RFQ</Button>
+              ) : null}
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => handleDeleteRequest?.(activeRequest?.id)}
+              >
+                Удалить заявку
+              </Button>
+            </Space>
+          }
         />
+
+        <div className="workspace-process-strip">
+          <WorkspaceProgress
+            current={getStatusStepIndex(activeRequest?.status)}
+            completed={getStatusStepIndex(activeRequest?.status)}
+            items={statusSteps.map((step) => ({
+              label: step.title,
+              shortLabel: step.title,
+            }))}
+          />
+        </div>
 
         <Tabs
           activeKey={workspaceTabKey}
           onChange={setWorkspaceTabKey}
+          size="small"
           items={[
             {
               key: "items",
               label: "Позиции",
               children: (
                 <Space direction="vertical" style={{ width: "100%" }} size="middle">
-                  <Space
-                    align="center"
-                    style={{ width: "100%", justifyContent: "space-between" }}
-                  >
-                    <Space direction="vertical" size={4}>
-                      <Text type="secondary">
-                        Быстрое добавление: строка ниже. Импорт из Excel справа.
-                      </Text>
-                      <Space size="small">
+                  <div className="workspace-toolbar workspace-toolbar--split">
+                    <div className="workspace-toolbar__group workspace-toolbar__group--meta">
+                      <Text type="secondary">Работа ведётся в активной ревизии заявки.</Text>
+                      <Space size="small" wrap>
                         <Tag color={isLatestRevision ? "green" : "orange"}>{activeRevisionLabel}</Tag>
-                        {changeDraftActive && <Tag color="blue">Черновик изменений</Tag>}
-                        {!isLatestRevision && (
+                        {changeDraftActive ? <Tag color="blue">Черновик изменений</Tag> : null}
+                        {!isLatestRevision ? (
                           <Text type="warning">
-                            Просмотр архивной ревизии: редактирование отключено.
+                            Архивная ревизия: редактирование отключено.
                           </Text>
-                        )}
+                        ) : null}
                       </Space>
-                    </Space>
-                    <Space>
+                    </div>
+                    <div className="workspace-toolbar__group workspace-toolbar__group--actions">
                       <Select
                         style={{ width: 240 }}
                         placeholder="Ревизия"
@@ -211,10 +226,16 @@ export default function ClientRequestWorkspaceCard({
                       <Button onClick={openImportModal} disabled={!isLatestRevision}>
                         Импорт из Excel
                       </Button>
-                    </Space>
-                  </Space>
+                    </div>
+                  </div>
 
-                  <Space wrap align="center" style={{ width: "100%" }}>
+                  <div className="workspace-controls-panel">
+                    <div className="workspace-controls-panel__hint">
+                      <Text type="secondary">
+                        Быстрое добавление и массовые изменения доступны ниже.
+                      </Text>
+                    </div>
+                    <Space wrap align="center" style={{ width: "100%" }}>
                     <Select
                       style={{ width: 340 }}
                       placeholder="Контекст оборудования"
@@ -293,10 +314,12 @@ export default function ClientRequestWorkspaceCard({
                     <Button type="link" onClick={() => setAddModalOpen(true)}>
                       Расширенный поиск
                     </Button>
-                  </Space>
+                    </Space>
+                  </div>
 
                   {bulkMode && (
-                    <Space wrap align="center" style={{ width: "100%" }}>
+                    <div className="workspace-inline-banner">
+                      <Space wrap align="center" style={{ width: "100%" }}>
                       <Text type="secondary">
                         Массовые действия применяются только к выбранным строкам.
                       </Text>
@@ -308,7 +331,8 @@ export default function ClientRequestWorkspaceCard({
                           Удалить выбранные
                         </Button>
                       ) : null}
-                    </Space>
+                      </Space>
+                    </div>
                   )}
 
                   <Table
@@ -386,8 +410,8 @@ export default function ClientRequestWorkspaceCard({
                           </Space>
                         ),
                       },
-                    ]}
-                  />
+                  ]}
+                />
                 </Space>
               ),
             },
@@ -604,6 +628,14 @@ export default function ClientRequestWorkspaceCard({
           ]}
         />
       </Space>
+    </>
+  )
+
+  if (cardless) return content
+
+  return (
+    <Card title="Рабочая зона" size="small">
+      {content}
     </Card>
   )
 }

@@ -5,6 +5,7 @@ import { ArrowUpOutlined, ArrowDownOutlined, LinkOutlined, DeleteOutlined } from
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import { resolveAppHref } from "@/utils/resolveAppHref"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const { Text } = Typography
 
@@ -103,10 +104,15 @@ export default function SuppliersLinksTab({ originalPartId }) {
     const { confirmed } = await confirmAction("Удалить связь с поставщиком?")
     if (!confirmed) return
     try {
-      // связь OP↔SP живёт в supplier_part_originals
-      await axios.delete("/supplier-part-originals", {
-        data: { original_part_id: originalPartId, supplier_part_id: supplierPartId }
+      const result = await runTrashDeleteFlow({
+        entityType: "supplier_part_oem_parts",
+        entityId: supplierPartId,
+        deleteUrl: "/supplier-part-originals",
+        deleteParams: { original_part_id: originalPartId, supplier_part_id: supplierPartId },
+        previewParams: { original_part_id: originalPartId },
+        successMessage: "Связь с поставщиком удалена",
       })
+      if (!result?.deleted) return
       await loadDirectOffers()
     } catch (e) {
       console.error(e)

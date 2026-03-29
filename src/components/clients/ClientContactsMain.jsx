@@ -5,6 +5,7 @@ import axios from "@/api/axiosInstance"
 import ClientContactsTable from "./ClientContactsTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import { isSameByFields } from "@/utils/versionConflict"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const trimOrNull = (v) => {
   if (v === undefined || v === null) return null
@@ -131,11 +132,17 @@ export default function ClientContactsMain({ clientId, onChanged }) {
 
   const handleDelete = async (record) => {
     try {
-      await axios.delete(`/client-contacts/${record.id}`, {
-        params: { version: record.version },
+      const result = await runTrashDeleteFlow({
+        entityType: "client_contacts",
+        entityId: record.id,
+        deleteUrl: `/client-contacts/${record.id}`,
+        deleteParams: { version: record.version },
+        successMessage: "Контакт клиента перемещён в корзину",
       })
-      removeRow(record.id)
-      onChanged?.()
+      if (result?.deleted) {
+        removeRow(record.id)
+        onChanged?.()
+      }
     } catch (e) {
       if (e?.response?.status === 409) {
         const current =

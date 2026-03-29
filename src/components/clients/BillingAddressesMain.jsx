@@ -6,6 +6,7 @@ import PlaceAddressInput from "@/components/inputs/PlaceAddressInput"
 import BillingAddressesTable from "./BillingAddressesTable"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
 import { isSameByFields, mergeConflictDraft } from "@/utils/versionConflict"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 export default function BillingAddressesMain({ clientId, onChanged }) {
   const [data, setData] = useState([])
@@ -166,12 +167,17 @@ export default function BillingAddressesMain({ clientId, onChanged }) {
 
   const onDelete = async (record) => {
     try {
-      await axios.delete(`/client-billing-addresses/${record.id}`, {
-        params: { version: record.version },
+      const result = await runTrashDeleteFlow({
+        entityType: "client_billing_addresses",
+        entityId: record.id,
+        deleteUrl: `/client-billing-addresses/${record.id}`,
+        deleteParams: { version: record.version },
+        successMessage: "Юридический адрес перемещён в корзину",
       })
-      removeRow(record.id)
-      onChanged?.()
-      message.success("Адрес удалён")
+      if (result?.deleted) {
+        removeRow(record.id)
+        onChanged?.()
+      }
     } catch (err) {
       const res = err?.response
       if (res?.status === 409 && res?.data?.current) {

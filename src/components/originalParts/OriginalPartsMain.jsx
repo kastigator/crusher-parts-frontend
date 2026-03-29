@@ -1287,15 +1287,14 @@ export default function OriginalPartsMain() {
             searchEnterButton="Найти"
             disabled={!model && !showAll}
             extraActions={
-              <Space direction="vertical" size={8} style={{ alignItems: "flex-end" }}>
-                {/* Row B: quick view switches */}
+              <Space size={12} wrap style={{ justifyContent: "flex-end" }}>
                 <div style={{ maxWidth: "100%", overflowX: "auto" }}>
                   <Segmented
                     size="small"
                     value={viewMode}
                     onChange={(val) => setViewMode(String(val))}
                     options={[
-                  { label: "Узлы (дерево)", value: "roots", disabled: showAll || !model },
+                      { label: "Узлы (дерево)", value: "roots", disabled: showAll || !model },
                       { label: "Сборки", value: "assemblies" },
                       { label: "Детали", value: "parts" },
                       { label: "Все", value: "all" },
@@ -1305,86 +1304,83 @@ export default function OriginalPartsMain() {
                   />
                 </div>
 
-                {/* Row B: view controls */}
-                <Space size={12} wrap>
-                  <Tooltip title="Фильтры">
-                    <Badge count={countActiveFilters(filters)} size="small" offset={[-2, 6]}>
-                      <Button
-                        icon={<FilterOutlined />}
-                        onClick={() => setFiltersOpen(true)}
-                        disabled={!model && !showAll}
-                      >
-                        Фильтры
-                      </Button>
-                    </Badge>
-                  </Tooltip>
+                <Tooltip title="Фильтры">
+                  <Badge count={countActiveFilters(filters)} size="small" offset={[-2, 6]}>
+                    <Button
+                      icon={<FilterOutlined />}
+                      onClick={() => setFiltersOpen(true)}
+                      disabled={!model && !showAll}
+                    >
+                      Фильтры
+                    </Button>
+                  </Badge>
+                </Tooltip>
 
-                  <Popover
-                    open={columnsPopoverOpen}
-                    onOpenChange={setColumnsPopoverOpen}
-                    trigger="click"
-                    placement="bottomRight"
-                    content={
-                      <div style={{ width: 260 }}>
-                        <div style={{ fontWeight: 700, marginBottom: 8 }}>
-                          Колонки ({showAll ? "все модели" : "модель"} • {viewMode})
+                <Popover
+                  open={columnsPopoverOpen}
+                  onOpenChange={setColumnsPopoverOpen}
+                  trigger="click"
+                  placement="bottomRight"
+                  content={
+                    <div style={{ width: 260 }}>
+                      <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                        Колонки ({showAll ? "все модели" : "модель"} • {viewMode})
+                      </div>
+                      {viewMode === "roots" ? (
+                        <div style={{ color: "#6b7280" }}>
+                          Для дерева колонок нет (позже сделаем настройки бейджей).
                         </div>
-                        {viewMode === "roots" ? (
-                          <div style={{ color: "#6b7280" }}>
-                            Для дерева колонок нет (позже сделаем настройки бейджей).
-                          </div>
-                        ) : (
-                          <Space direction="vertical" size={6} style={{ width: "100%" }}>
-                            {(columnsMeta.options || []).map((opt) => {
-                              const base =
-                                Array.isArray(currentVisibleKeys) && currentVisibleKeys.length
-                                  ? currentVisibleKeys
-                                  : columnsMeta.defaultVisible
-                              const checked = base?.includes?.(opt.key)
-                              return (
-                                <Checkbox
-                                  key={opt.key}
-                                  checked={!!checked}
-                                  onChange={(e) => {
-                                    const next = e.target.checked
-                                      ? [...(base || []), opt.key]
-                                      : (base || []).filter((k) => k !== opt.key)
-                                    setColumnsByView((prev) => ({
-                                      ...(prev || {}),
-                                      [columnsViewKey]: next,
-                                    }))
-                                  }}
-                                >
-                                  {opt.label}
-                                </Checkbox>
-                              )
-                            })}
-                            <Space style={{ marginTop: 8 }}>
-                              <Button
-                                size="small"
-                                onClick={() => {
+                      ) : (
+                        <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                          {(columnsMeta.options || []).map((opt) => {
+                            const base =
+                              Array.isArray(currentVisibleKeys) && currentVisibleKeys.length
+                                ? currentVisibleKeys
+                                : columnsMeta.defaultVisible
+                            const checked = base?.includes?.(opt.key)
+                            return (
+                              <Checkbox
+                                key={opt.key}
+                                checked={!!checked}
+                                onChange={(e) => {
+                                  const next = e.target.checked
+                                    ? [...(base || []), opt.key]
+                                    : (base || []).filter((k) => k !== opt.key)
                                   setColumnsByView((prev) => ({
                                     ...(prev || {}),
-                                    [columnsViewKey]: columnsMeta.defaultVisible || [],
+                                    [columnsViewKey]: next,
                                   }))
                                 }}
                               >
-                                Сбросить
-                              </Button>
-                              <Button size="small" onClick={() => setColumnsPopoverOpen(false)}>
-                                Готово
-                              </Button>
-                            </Space>
+                                {opt.label}
+                              </Checkbox>
+                            )
+                          })}
+                          <Space style={{ marginTop: 8 }}>
+                            <Button
+                              size="small"
+                              onClick={() => {
+                                setColumnsByView((prev) => ({
+                                  ...(prev || {}),
+                                  [columnsViewKey]: columnsMeta.defaultVisible || [],
+                                }))
+                              }}
+                            >
+                              Сбросить
+                            </Button>
+                            <Button size="small" onClick={() => setColumnsPopoverOpen(false)}>
+                              Готово
+                            </Button>
                           </Space>
-                        )}
-                      </div>
-                    }
-                  >
-                    <Button disabled={viewMode === "roots" || (!model && !showAll)}>
-                      Колонки
-                    </Button>
-                  </Popover>
-                </Space>
+                        </Space>
+                      )}
+                    </div>
+                  }
+                >
+                  <Button disabled={viewMode === "roots" || (!model && !showAll)}>
+                    Колонки
+                  </Button>
+                </Popover>
               </Space>
             }
           />

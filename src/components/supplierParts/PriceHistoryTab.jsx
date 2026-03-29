@@ -21,6 +21,7 @@ import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
 import cc from "currency-codes"
 import SupplierPartMaterialsTab from "./SupplierPartMaterialsTab"
+import { runTrashDeleteFlow } from "@/utils/trashUi"
 import {
   LineChart,
   Line,
@@ -280,8 +281,13 @@ export default function PriceHistoryTab({ supplierPartId, onChanged = () => {} }
   // ----- удаление -----
   const handleDelete = async (row) => {
     try {
-      await axios.delete(`/supplier-part-prices/${row.id}`)
-      message.success("Запись удалена")
+      const result = await runTrashDeleteFlow({
+        entityType: "supplier_part_prices",
+        entityId: row.id,
+        deleteUrl: `/supplier-part-prices/${row.id}`,
+        successMessage: "Запись цены перемещена в корзину",
+      })
+      if (!result?.deleted) return
       await load(true)
       onChanged()
     } catch (e) {

@@ -1,5 +1,5 @@
 import React from "react"
-import { Button, Card, Input, Select, Space, Table, Tabs, Tag, Typography } from "antd"
+import { Button, Card, Checkbox, Input, Select, Space, Table, Tabs, Tag, Typography } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import RfqOverviewTabContent from "@/components/rfqWorkspace/RfqOverviewTabContent"
 import SuppliersTabContent from "@/components/rfqWorkspace/SuppliersTabContent"
@@ -12,6 +12,8 @@ import EconomicsTabContent from "@/components/rfqWorkspace/EconomicsTabContent"
 import SalesTabContent from "@/components/rfqWorkspace/SalesTabContent"
 import ContractsTabContent from "@/components/rfqWorkspace/ContractsTabContent"
 import PurchaseOrdersTabContent from "@/components/rfqWorkspace/PurchaseOrdersTabContent"
+import WorkspaceShell from "@/components/common/WorkspaceShell"
+import EntityHeader from "@/components/common/EntityHeader"
 
 const { Text } = Typography
 
@@ -21,11 +23,17 @@ export default function RfqWorkspaceMainContent({
   setFilterClientId,
   filterRequestNumber,
   setFilterRequestNumber,
+  showArchivedRfqs,
+  setShowArchivedRfqs,
   filteredRfqs,
   loading,
   setActiveRfqId,
   activeRfqId,
   activeRfq,
+  activeStep,
+  handleStepChange,
+  flowStatus,
+  stepLabels,
   activeTabKey,
   setActiveTabKey,
   isStructureConfirmed,
@@ -86,27 +94,29 @@ export default function RfqWorkspaceMainContent({
   handleDeleteRfq,
 }) {
   const rfqColumns = [
-    { title: "Клиент", dataIndex: "client_name", width: 220 },
     {
-      title: "Заявка",
-      dataIndex: "client_request_number",
-      width: 160,
-      render: (value, record) =>
-        value || record.client_reference || `#${record.client_request_id}`,
+      title: "RFQ",
+      width: 420,
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          <span>{record.rfq_number || `RFQ-${record.id}`}</span>
+          <span style={{ color: "#8c8c8c" }}>
+            {record.client_name || "Клиент"} · {record.client_request_number || record.client_reference || `#${record.client_request_id}`}
+          </span>
+        </Space>
+      ),
     },
     {
       title: "Ответственный",
       dataIndex: "assigned_user_name",
-      width: 180,
-      render: (value) => value || "—",
+      width: 170,
+      render: (value, record) => (
+        <Space direction="vertical" size={2}>
+          <span>{value || "—"}</span>
+          <span style={{ color: "#8c8c8c" }}>Rev {record.rev_number || 1}</span>
+        </Space>
+      ),
     },
-    {
-      title: "RFQ",
-      dataIndex: "rfq_number",
-      width: 140,
-      render: (value, record) => value || `RFQ-${record.id}`,
-    },
-    { title: "Rev", dataIndex: "rev_number", width: 70 },
     {
       title: "Статус",
       dataIndex: "status",
@@ -119,77 +129,92 @@ export default function RfqWorkspaceMainContent({
       width: 120,
       render: formatDate,
     },
-    {
-      title: "Действия",
-      dataIndex: "actions",
-      width: 90,
-      render: (_, record) => (
-        <Button
-          danger
-          type="text"
-          icon={<DeleteOutlined />}
-          onClick={(event) => {
-            event.stopPropagation()
-            handleDeleteRfq(record.id)
-          }}
-        />
-      ),
-    },
   ]
 
   return (
-    <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <Card size="small" title="RFQ список">
-        <Space wrap align="center" style={{ marginBottom: 12 }}>
-          <Select
-            style={{ width: 220 }}
-            options={clientFilterOptions}
-            placeholder="Фильтр по клиенту"
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={filterClientId || undefined}
-            onChange={(value) => setFilterClientId(value || null)}
+    <WorkspaceShell
+      mode="stacked"
+      listWidth={400}
+      listPane={(
+        <Card size="small" title={`RFQ список (${filteredRfqs.length})`}>
+          <Space wrap align="center" style={{ marginBottom: 12 }}>
+            <Select
+              style={{ width: 220 }}
+              options={clientFilterOptions}
+              placeholder="Фильтр по клиенту"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={filterClientId || undefined}
+              onChange={(value) => setFilterClientId(value || null)}
+            />
+            <Input
+              style={{ width: 220 }}
+              placeholder="Номер заявки / RFQ"
+              allowClear
+              value={filterRequestNumber}
+              onChange={(event) => setFilterRequestNumber(event.target.value)}
+            />
+            <Checkbox
+              checked={showArchivedRfqs}
+              onChange={(event) => setShowArchivedRfqs(event.target.checked)}
+            >
+              Показывать архивные
+            </Checkbox>
+          </Space>
+          <Table
+            rowKey="id"
+            columns={rfqColumns}
+            dataSource={filteredRfqs}
+            loading={loading}
+            size="small"
+            pagination={{ pageSize: 6, size: "small", showSizeChanger: false }}
+            scroll={{ x: 820, y: 280 }}
+            onRow={(record) => ({
+              onClick: () => setActiveRfqId(record.id),
+            })}
+            rowClassName={(record) =>
+              Number(record.id) === Number(activeRfqId) ? "ant-table-row-selected" : ""
+            }
           />
-          <Input
-            style={{ width: 220 }}
-            placeholder="Номер заявки / RFQ"
-            allowClear
-            value={filterRequestNumber}
-            onChange={(event) => setFilterRequestNumber(event.target.value)}
-          />
-        </Space>
-        <Table
-          rowKey="id"
-          columns={rfqColumns}
-          dataSource={filteredRfqs}
-          loading={loading}
-          pagination={{ pageSize: 12 }}
-          onRow={(record) => ({
-            onClick: () => setActiveRfqId(record.id),
-          })}
-          rowClassName={(record) =>
-            Number(record.id) === Number(activeRfqId) ? "ant-table-row-selected" : ""
-          }
-        />
-      </Card>
+        </Card>
+      )}
+      detailPane={
+        activeRfq ? (
+          <Card size="small">
+            <Space direction="vertical" size={16} style={{ width: "100%" }}>
+              <EntityHeader
+                title={activeRfq.rfq_number || `RFQ-${activeRfq.id}`}
+                status={
+                  <Tag color={statusToColor(activeRfq.status)} style={{ marginInlineEnd: 0 }}>
+                    {rfqStatusLabel(activeRfq.status)}
+                  </Tag>
+                }
+                meta={[
+                  activeRfq.client_name || "Клиент",
+                  `Rev ${activeRfq.rev_number || "-"}`,
+                  activeRfq.client_request_number
+                    ? `Заявка: ${activeRfq.client_request_number}`
+                    : activeRfq.client_reference
+                      ? `Референс: ${activeRfq.client_reference}`
+                      : null,
+                ]}
+                secondaryActions={(
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() => handleDeleteRfq(activeRfq.id)}
+                  >
+                    Удалить RFQ
+                  </Button>
+                )}
+              />
 
-      {activeRfq ? (
-        <Card size="small" title="Рабочая зона">
-          <Space direction="vertical" size={16} style={{ width: "100%" }}>
-            <Space wrap align="center" style={{ justifyContent: "space-between" }}>
-              <Space wrap align="center">
-                <Text strong>{activeRfq.rfq_number || `RFQ-${activeRfq.id}`}</Text>
-                <Tag color={statusToColor(activeRfq.status)}>{rfqStatusLabel(activeRfq.status)}</Tag>
-                <Text type="secondary">{activeRfq.client_name || "Клиент"}</Text>
-                <Text type="secondary">Rev {activeRfq.rev_number || "-"}</Text>
-              </Space>
-            </Space>
-
-            <Tabs
-              activeKey={activeTabKey}
-              onChange={setActiveTabKey}
-              items={[
+              <Tabs
+                activeKey={activeTabKey}
+                onChange={setActiveTabKey}
+                size="small"
+                items={[
                 {
                   key: "rfq",
                   label: "RFQ",
@@ -363,15 +388,16 @@ export default function RfqWorkspaceMainContent({
                     />
                   ),
                 },
-              ]}
-            />
-          </Space>
-        </Card>
-      ) : (
-        <Card size="small">
-          <Text type="secondary">Выберите RFQ для просмотра рабочего пространства.</Text>
-        </Card>
-      )}
-    </Space>
+                ]}
+              />
+            </Space>
+          </Card>
+        ) : (
+          <Card size="small" title="Рабочая зона RFQ">
+            <Text type="secondary">Выберите RFQ для просмотра рабочего пространства.</Text>
+          </Card>
+        )
+      }
+    />
   )
 }

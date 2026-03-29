@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Drawer, Row, Col, Card, Input, Button, List, Space, message, Modal, Typography, Tabs, Empty, Tree, Tag } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import axios from "@/api/axiosInstance";
+import { runTrashDeleteFlow } from "@/utils/trashUi";
 
 const { Text } = Typography;
 
@@ -201,16 +202,21 @@ export default function ManufacturerModelPicker({
   const deleteManufacturer = (id) => {
     Modal.confirm({
       title: "Удалить производителя?",
-      content: "Связанные модели и детали будут удалены каскадом.",
+      content: "Система сначала проверит, нет ли связанных моделей и OEM деталей.",
       okType: "danger",
       onOk: async () => {
         try {
-          await axios.delete(`/equipment-manufacturers/${id}`);
+          const result = await runTrashDeleteFlow({
+            entityType: "equipment_manufacturers",
+            entityId: id,
+            deleteUrl: `/equipment-manufacturers/${id}`,
+            successMessage: "Производитель перемещён в корзину",
+          });
+          if (!result?.deleted) return;
           setManufacturers(prev => prev.filter(x => x.id !== id));
           if (mfId === id) { setMfId(null); setModels([]); setMdId(null); }
-          message.success("Производитель удалён");
         } catch (e) {
-          if (e?.response?.status === 409) message.error("Нельзя удалить: есть связанные записи");
+          if (e?.response?.status === 409) message.error(e?.response?.data?.message || "Нельзя удалить: есть связанные записи");
           else { console.error(e); message.error("Не удалось удалить производителя"); }
         }
       }
@@ -236,16 +242,21 @@ export default function ManufacturerModelPicker({
   const deleteModel = (id) => {
     Modal.confirm({
       title: "Удалить модель?",
-      content: "Все детали этой модели будут удалены каскадом.",
+      content: "Система сначала проверит, нет ли связанных fitments, BOM и единиц оборудования.",
       okType: "danger",
       onOk: async () => {
         try {
-          await axios.delete(`/equipment-models/${id}`);
+          const result = await runTrashDeleteFlow({
+            entityType: "equipment_models",
+            entityId: id,
+            deleteUrl: `/equipment-models/${id}`,
+            successMessage: "Модель перемещена в корзину",
+          });
+          if (!result?.deleted) return;
           setModels(prev => prev.filter(x => x.id !== id));
           if (mdId === id) setMdId(null);
-          message.success("Модель удалена");
         } catch (e) {
-          if (e?.response?.status === 409) message.error("Нельзя удалить: есть связанные записи");
+          if (e?.response?.status === 409) message.error(e?.response?.data?.message || "Нельзя удалить: есть связанные записи");
           else { console.error(e); message.error("Не удалось удалить модель"); }
         }
       }
