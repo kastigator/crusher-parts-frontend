@@ -5,11 +5,13 @@ import ActiveUsersPanel from "./ActiveUsersPanel"
 import CapabilityMatrix from "./CapabilityMatrix"
 import RoleResponsibilityGuide, { ROLE_GUIDE } from "./RoleResponsibilityGuide"
 import RoleZonesMatrix from "./RoleZonesMatrix"
+import UserActivityPanel from "./UserActivityPanel"
 
 export default function UsersMain() {
   const [rolesRevision, setRolesRevision] = useState(0)
   const [permissionsRevision, setPermissionsRevision] = useState(0)
   const [selectedRoleSlug, setSelectedRoleSlug] = useState(ROLE_GUIDE[0]?.slug || "prodavec")
+  const [usersSnapshot, setUsersSnapshot] = useState([])
 
   const handleRolesChanged = () => {
     setRolesRevision(prev => prev + 1)
@@ -35,7 +37,7 @@ export default function UsersMain() {
             <h2 style={{ fontWeight: 600, fontSize: 16, marginBottom: 12 }}>
               Пользователи
             </h2>
-            <UsersTable rolesRevision={rolesRevision} />
+            <UsersTable rolesRevision={rolesRevision} onUsersLoaded={setUsersSnapshot} />
           </section>
         </Col>
         <Col xs={24} xxl={10}>
@@ -50,6 +52,13 @@ export default function UsersMain() {
           </section>
         </Col>
       </Row>
+
+      <section>
+        <h2 style={{ fontWeight: 600, fontSize: 16, marginBottom: 12 }}>
+          История активности пользователей
+        </h2>
+        <UserActivityPanel users={usersSnapshot} />
+      </section>
 
       <section>
         <h2 style={{ fontWeight: 600, fontSize: 16, marginBottom: 12 }}>

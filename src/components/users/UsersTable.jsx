@@ -101,7 +101,7 @@ function UserFormModal({
   )
 }
 
-export default function UsersTable({ rolesRevision = 0 }) {
+export default function UsersTable({ rolesRevision = 0, onUsersLoaded = null }) {
   const { user: currentUser } = useAuth()
   const { can, isAdmin } = useCapabilities()
   const [users, setUsers] = useState([])
@@ -123,6 +123,9 @@ export default function UsersTable({ rolesRevision = 0 }) {
         axios.get("/roles"),
       ])
       setUsers(usersRes.data || [])
+      if (typeof onUsersLoaded === "function") {
+        onUsersLoaded(usersRes.data || [])
+      }
       setRoles(rolesRes.data || [])
     } catch (err) {
       message.error("Ошибка загрузки данных")

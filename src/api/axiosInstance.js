@@ -3,6 +3,7 @@
 import axios from 'axios'
 import { appMessage as message } from '@/utils/uiFeedback'
 import { logout } from '../auth/authService' // ✅ добавлено
+import { readPresenceSessionId } from '@/utils/presenceSession'
 
 const API_BASE = `${import.meta.env.VITE_API_URL}/api`
 
@@ -14,8 +15,21 @@ const instance = axios.create({
 // ✅ Добавляем access-token в каждый запрос
 instance.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
+  let userId = null
+  try {
+    const rawUser = localStorage.getItem('userData')
+    if (rawUser) {
+      userId = JSON.parse(rawUser)?.id || null
+    }
+  } catch {
+    userId = null
+  }
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  const sessionId = readPresenceSessionId(userId)
+  if (sessionId) {
+    config.headers['x-session-id'] = sessionId
   }
   return config
 })

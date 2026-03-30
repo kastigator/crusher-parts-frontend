@@ -1,6 +1,7 @@
 const SESSION_PREFIX = "crusher.session"
 
 const getSessionKey = (userId) => `${SESSION_PREFIX}.${userId || "anon"}`
+const getLegacySessionKey = getSessionKey
 
 const createSessionId = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -14,7 +15,17 @@ const createSessionId = () => {
 export const readPresenceSessionId = (userId) => {
   if (!userId) return null
   try {
-    return localStorage.getItem(getSessionKey(userId))
+    const storageKey = getSessionKey(userId)
+    const current = sessionStorage.getItem(storageKey)
+    if (current) return current
+
+    const legacy = localStorage.getItem(getLegacySessionKey(userId))
+    if (legacy) {
+      sessionStorage.setItem(storageKey, legacy)
+      localStorage.removeItem(getLegacySessionKey(userId))
+      return legacy
+    }
+    return null
   } catch {
     return null
   }
@@ -26,7 +37,7 @@ export const ensurePresenceSessionId = (userId) => {
   if (!sessionId) {
     sessionId = createSessionId()
     try {
-      localStorage.setItem(getSessionKey(userId), sessionId)
+      sessionStorage.setItem(getSessionKey(userId), sessionId)
     } catch {
       // ignore storage errors
     }
@@ -37,7 +48,8 @@ export const ensurePresenceSessionId = (userId) => {
 export const clearPresenceSessionId = (userId) => {
   if (!userId) return
   try {
-    localStorage.removeItem(getSessionKey(userId))
+    sessionStorage.removeItem(getSessionKey(userId))
+    localStorage.removeItem(getLegacySessionKey(userId))
   } catch {
     // ignore storage errors
   }
