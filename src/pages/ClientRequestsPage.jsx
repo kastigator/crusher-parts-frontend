@@ -46,6 +46,7 @@ import { formatUomLabel } from "@/utils/uom"
 import { useAuth } from "@/auth/AuthContext"
 import { useSearchParams } from "react-router-dom"
 import useCapabilities from "@/hooks/useCapabilities"
+import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 
 const CLIENT_WORKSPACE_TABS = new Set(["items", "details", "margin", "quote", "contract"])
 const normalizeWorkspaceTab = (value) => {
@@ -72,12 +73,6 @@ const SOURCE_OPTIONS = [
   { value: "whatsapp", label: "WhatsApp" },
   { value: "phone", label: "Телефон" },
   { value: "portal", label: "Портал" },
-]
-
-const UOM_OPTIONS = [
-  { value: "pcs", label: "шт" },
-  { value: "kg", label: "кг" },
-  { value: "set", label: "компл." },
 ]
 
 const CLIENT_REQUEST_TEMPLATE_REQUEST_URL = "/client-requests/import-template/items"
@@ -177,6 +172,7 @@ const getInitialClientPartNumber = (part, overrides = {}) =>
 export default function ClientRequestsPage() {
   const { user } = useAuth()
   const { can } = useCapabilities()
+  const { options: uomOptions } = useMeasurementUnits()
   const canWriteClientMasterData = can("workflow.client.master_data.write", "catalogs.edit")
   const [searchParams, setSearchParams] = useSearchParams()
   const [requests, setRequests] = useState([])
@@ -2453,7 +2449,7 @@ export default function ClientRequestsPage() {
       render: (_, row) => (
         <Select
           value={row.uom}
-          options={UOM_OPTIONS}
+          options={uomOptions}
           style={{ width: 80 }}
           onChange={(value) => updateStagedRow(row.id, { uom: value })}
         />
@@ -2712,7 +2708,7 @@ export default function ClientRequestsPage() {
         setOriginalSearch={setOriginalSearch}
         originalLoading={originalLoading}
         originalOptions={originalOptions}
-        uomOptions={UOM_OPTIONS}
+        uomOptions={uomOptions}
         equipmentContextLabel={formatEquipmentUnitLabel(selectedActiveEquipmentUnit)}
       />
 

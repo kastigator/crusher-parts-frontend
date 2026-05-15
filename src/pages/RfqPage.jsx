@@ -25,12 +25,7 @@ import { runTrashDeleteFlow } from "@/utils/trashUi"
 import { formatUomLabel } from "@/utils/uom"
 import { useLocation } from "react-router-dom"
 import OriginalsPickerDrawer from "@/components/supplierParts/OriginalsPickerDrawer"
-
-const UOM_OPTIONS = [
-  { value: "pcs", label: "шт" },
-  { value: "kg", label: "кг" },
-  { value: "set", label: "компл." },
-]
+import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 
 const { Text } = Typography
 
@@ -58,6 +53,7 @@ const formatStrategyMode = (mode) => STRATEGY_LABELS[mode] || "—"
 
 export default function RfqPage() {
   const location = useLocation()
+  const { options: uomOptions, loading: uomLoading } = useMeasurementUnits()
   const [rfqs, setRfqs] = useState([])
   const [requests, setRequests] = useState([])
   const [revisions, setRevisions] = useState([])
@@ -948,7 +944,7 @@ export default function RfqPage() {
                           <InputNumber style={{ width: 120 }} min={0} />
                         </Form.Item>
                         <Form.Item label="Ед." name="uom" initialValue="pcs">
-                          <Select style={{ width: 100 }} options={UOM_OPTIONS} />
+                          <Select style={{ width: 100 }} options={uomOptions} loading={uomLoading} />
                         </Form.Item>
                         <Form.Item name="oem_only" valuePropName="checked">
                           <Checkbox>OEM только</Checkbox>

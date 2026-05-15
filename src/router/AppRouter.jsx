@@ -31,6 +31,7 @@ const OriginalPartDetailPage = lazy(() => import('../pages/OriginalPartDetailPag
 const SupplierPartsPage = lazy(() => import('@/pages/SupplierPartsPage'))
 const SupplierPartDetailPage = lazy(() => import('@/pages/SupplierPartDetailPage'))
 const MaterialsPage = lazy(() => import('@/pages/MaterialsPage'))
+const MeasurementUnitsPage = lazy(() => import('@/pages/MeasurementUnitsPage'))
 const LogisticsRouteTemplatesPage = lazy(() => import('@/pages/LogisticsRouteTemplatesPage'))
 const KpiPage = lazy(() => import('@/pages/KpiPage'))
 const StandardPartsPage = lazy(() => import('@/pages/StandardPartsPage'))
@@ -82,6 +83,7 @@ const AppRouter = () => (
         <Route path="standard-parts" element={<TabAccessRoute path="/standard-parts" title="Стандартные детали"><StandardPartsPage /></TabAccessRoute>} />
         <Route path="equipment-classifier" element={<TabAccessRoute path="/equipment-classifier" title="Классификатор оборудования"><EquipmentClassifierPage /></TabAccessRoute>} />
         <Route path="materials" element={<TabAccessRoute path="/materials" title="Материалы"><MaterialsPage /></TabAccessRoute>} />
+        <Route path="measurement-units" element={<TabAccessRoute path="/measurement-units" title="Единицы измерения"><MeasurementUnitsPage /></TabAccessRoute>} />
         <Route path="logistics-route-templates" element={<TabAccessRoute path="/logistics-route-templates" title="Шаблоны доставки"><LogisticsRouteTemplatesPage /></TabAccessRoute>} />
         <Route path="trash" element={<TabAccessRoute path="/catalogs" title="Корзина"><TrashPage /></TabAccessRoute>} />
         <Route path="*" element={<div style={{ padding: 32 }}>Страница не найдена</div>} />

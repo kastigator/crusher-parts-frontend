@@ -28,6 +28,7 @@ import {
   formatUomLabel,
 } from "./rfqDisplayUtils"
 import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
+import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 
 const { Text } = Typography
 
@@ -133,12 +134,6 @@ const STRATEGY_MODE_LABELS = {
   BOM: "По составу",
   MIXED: "Комбинированно",
 }
-
-const UOM_OPTIONS = [
-  { value: "pcs", label: "шт" },
-  { value: "kg", label: "кг" },
-  { value: "set", label: "компл." },
-]
 
 const riskLabel = (value) =>
   ({
@@ -697,6 +692,7 @@ export default function CoverageTabContent({
   workspaceRows,
   suppliers,
 }) {
+  const { options: uomOptions, loading: uomLoading } = useMeasurementUnits()
   const [scopeMode, setScopeMode] = useState("item")
   const [selectedRfqItemId, setSelectedRfqItemId] = useState(null)
   const [mode, setMode] = useState("matrix")
@@ -2936,7 +2932,7 @@ export default function CoverageTabContent({
                         <InputNumber style={{ width: 120 }} min={0} />
                       </Form.Item>
                       <Form.Item {...field} name={[field.name, "uom"]} label="Ед.">
-                        <Select style={{ width: 100 }} options={UOM_OPTIONS} allowClear />
+                        <Select style={{ width: 100 }} options={uomOptions} loading={uomLoading} allowClear />
                       </Form.Item>
                       <Form.Item {...field} name={[field.name, "unit_price"]} label="Цена">
                         <InputNumber style={{ width: 140 }} min={0} />

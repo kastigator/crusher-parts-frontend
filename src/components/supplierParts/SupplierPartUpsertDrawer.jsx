@@ -13,12 +13,7 @@ import {
   Divider,
   Typography,
 } from "antd"
-
-const UOM_OPTIONS = [
-  { value: "pcs", label: "шт" },
-  { value: "kg", label: "кг" },
-  { value: "set", label: "компл." },
-]
+import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 
 const { Text } = Typography
 
@@ -37,6 +32,8 @@ export default function SupplierPartUpsertDrawer({
   onSearchMaterials,
   onFocusMaterials,
 }) {
+  const { options: uomOptions, loading: uomLoading } = useMeasurementUnits()
+
   return (
     <Drawer
       open={open}
@@ -88,7 +85,7 @@ export default function SupplierPartUpsertDrawer({
         <Row gutter={12}>
           <Col span={8}>
             <Form.Item name="uom" label="Ед. изм.">
-              <Select options={UOM_OPTIONS} />
+              <Select options={uomOptions} loading={uomLoading} />
             </Form.Item>
           </Col>
           <Col span={16}>

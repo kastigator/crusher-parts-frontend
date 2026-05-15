@@ -41,12 +41,7 @@ import { countActiveFilters } from "./originalPartsFiltersUtils"
 import ManufacturerModelPicker from "@/components/originalParts/ManufacturerModelPicker"
 import OriginalPartGroupsManager from "@/components/originalParts/OriginalPartGroupsManager"
 import TnvedPicker from "@/components/fields/TnvedPicker"
-
-const UOM_OPTIONS = [
-  { value: "pcs", label: "шт" },
-  { value: "kg", label: "кг" },
-  { value: "set", label: "компл." },
-]
+import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 const { Text } = Typography
 
 const normalizePartNumber = (v) =>
@@ -100,6 +95,7 @@ export default function OriginalPartsMain() {
   })
 
   const navigate = useNavigate()
+  const { options: uomOptions, loading: uomLoading } = useMeasurementUnits()
 
   const partsAbortRef = useRef(null)
 
@@ -1633,7 +1629,7 @@ export default function OriginalPartsMain() {
 
             <Space style={{ width: "100%" }} size={12} align="start" wrap>
               <Form.Item name="uom" label="Ед. изм." style={{ minWidth: 140 }}>
-                <Select style={{ width: 140 }} options={UOM_OPTIONS} />
+                <Select style={{ width: 140 }} options={uomOptions} loading={uomLoading} />
               </Form.Item>
               <Form.Item label="Группа" style={{ minWidth: 280, flex: 1 }}>
                 <Space.Compact style={{ width: "100%" }}>
@@ -1851,7 +1847,7 @@ export default function OriginalPartsMain() {
 
             <Space style={{ width: "100%" }} size={12} align="start" wrap>
               <Form.Item name="uom" label="Ед. изм." style={{ minWidth: 140 }}>
-                <Select style={{ width: 140 }} options={UOM_OPTIONS} />
+                <Select style={{ width: 140 }} options={uomOptions} loading={uomLoading} />
               </Form.Item>
               <Form.Item label="Группа" style={{ minWidth: 280, flex: 1 }}>
                 <Space.Compact style={{ width: "100%" }}>

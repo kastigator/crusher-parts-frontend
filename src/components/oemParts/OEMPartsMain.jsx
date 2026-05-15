@@ -18,12 +18,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 import { formatUomLabel } from "@/utils/uom"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
-
-const UOM_OPTIONS = [
-  { value: "pcs", label: "шт" },
-  { value: "kg", label: "кг" },
-  { value: "set", label: "компл." },
-]
+import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 
 const EMPTY_FORM = {
   manufacturer_id: undefined,
@@ -48,6 +43,7 @@ const textOrDash = (value) => {
 export default function OEMPartsMain() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { options: uomOptions, loading: uomLoading } = useMeasurementUnits()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -469,7 +465,7 @@ export default function OEMPartsMain() {
               <Input placeholder="Например, 123-4567" />
             </Form.Item>
             <Form.Item label="Ед. изм." name="uom" style={{ width: 140 }}>
-              <Select options={UOM_OPTIONS} />
+              <Select options={uomOptions} loading={uomLoading} />
             </Form.Item>
             <Form.Item label="Группа" name="group_id" style={{ minWidth: 220, flex: 1 }}>
               <Select allowClear options={groupOptions} placeholder="Группа каталога" />

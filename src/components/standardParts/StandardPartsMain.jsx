@@ -25,6 +25,7 @@ import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
 import { resolveAppHref } from "@/utils/resolveAppHref"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
+import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 
 const textOrDash = (value) => {
   const v = String(value || "").trim()
@@ -120,6 +121,7 @@ export default function StandardPartsMain({
   compact = false,
   onChanged = () => {},
 }) {
+  const { options: uomOptions, loading: uomLoading } = useMeasurementUnits()
   const [rows, setRows] = useState([])
   const [classes, setClasses] = useState([])
   const [loading, setLoading] = useState(false)
@@ -719,7 +721,7 @@ export default function StandardPartsMain({
               <Input placeholder="Опционально" />
             </Form.Item>
             <Form.Item label="Ед. изм." name="uom" style={{ width: 120 }}>
-              <Input placeholder="шт" />
+              <Select options={uomOptions} loading={uomLoading} />
             </Form.Item>
           </Space>
 
@@ -800,7 +802,7 @@ export default function StandardPartsMain({
               <Input />
             </Form.Item>
             <Form.Item label="Ед. изм." name="uom" style={{ width: 120 }}>
-              <Input />
+              <Select options={uomOptions} loading={uomLoading} />
             </Form.Item>
           </Space>
 
@@ -864,7 +866,7 @@ export default function StandardPartsMain({
               />
             </Form.Item>
             <Form.Item label="Ед. изм." name="uom" style={{ width: 120 }}>
-              <Input />
+              <Select options={uomOptions} loading={uomLoading} />
             </Form.Item>
           </Space>
 
