@@ -962,6 +962,10 @@ export default function OriginalPartsMain() {
           ? null
           : Number(values.group_id),
       tnved_code_id: values.tnved?.id ?? null,
+      equipment_model_id:
+        editingRow.equipment_model_id === undefined || editingRow.equipment_model_id === null
+          ? undefined
+          : Number(editingRow.equipment_model_id),
       weight_kg: toNum(values.weight_kg),
       length_cm: toNum(values.length_cm),
       width_cm: toNum(values.width_cm),
