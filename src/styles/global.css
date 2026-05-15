@@ -168,6 +168,34 @@ body,
   border-radius: 6px;
 }
 
+/* Collapsed sidebar flyout for the nested Catalogs menu.
+   AntD renders this submenu as a separate popup, so it needs its own layer and row metrics. */
+.sidebar-catalog-popup {
+  z-index: 9998 !important;
+}
+
+.sidebar-catalog-popup .ant-menu {
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+
+.sidebar-catalog-popup .ant-menu-item {
+  display: flex !important;
+  align-items: center;
+  height: 40px !important;
+  line-height: 40px !important;
+  margin-block: 4px !important;
+}
+
+.sidebar-catalog-popup .ant-menu-item-icon {
+  flex: 0 0 auto;
+}
+
+.sidebar-catalog-popup .ant-menu-title-content {
+  min-width: 0;
+  line-height: 1.4;
+}
+
 /* ==========================================================
    Утилиты
    ========================================================== */

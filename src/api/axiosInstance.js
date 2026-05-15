@@ -70,6 +70,16 @@ instance.interceptors.response.use(
 
     // --- 401: пробуем refresh-токена (как было) ---
     if (status === 401 && !originalRequest?._retry) {
+      const refreshToken = localStorage.getItem('refreshToken')
+      const requestUrl = String(originalRequest?.url || '')
+
+      if (!refreshToken || requestUrl.includes('/auth/refresh')) {
+        localStorage.removeItem('token')
+        localStorage.removeItem('refreshToken')
+        logout()
+        return Promise.reject(error)
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({
@@ -88,12 +98,22 @@ instance.interceptors.response.use(
       try {
         const { data: refreshData } = await axios.post(
           `${import.meta.env.VITE_API_URL}/api/auth/refresh`,
-          {},
+          { refreshToken },
           { withCredentials: true }
         )
 
         const newToken = refreshData.token
+        const newRefreshToken = refreshData.refreshToken
+
+        if (!newToken || !newRefreshToken) {
+          throw new Error('Некорректный ответ refresh-token')
+        }
+
         localStorage.setItem('token', newToken)
+        localStorage.setItem('refreshToken', newRefreshToken)
+        if (refreshData.user) {
+          localStorage.setItem('userData', JSON.stringify(refreshData.user))
+        }
 
         instance.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
         processQueue(null, newToken)
@@ -103,6 +123,7 @@ instance.interceptors.response.use(
       } catch (err) {
         processQueue(err, null)
         localStorage.removeItem('token')
+        localStorage.removeItem('refreshToken')
         logout() // ✅ корректный сброс без перезагрузки
         return Promise.reject(err)
       } finally {

@@ -5,6 +5,7 @@ import { AuthContext } from "./AuthContext"
 
 export default function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem("token"))
+  const [refreshToken, setRefreshToken] = useState(() => localStorage.getItem("refreshToken"))
   const [user, setUser] = useState(() => {
     try {
       const data = localStorage.getItem("userData")
@@ -24,6 +25,14 @@ export default function AuthProvider({ children }) {
   }, [token])
 
   useEffect(() => {
+    if (refreshToken) {
+      localStorage.setItem("refreshToken", refreshToken)
+    } else {
+      localStorage.removeItem("refreshToken")
+    }
+  }, [refreshToken])
+
+  useEffect(() => {
     if (user) {
       try {
         localStorage.setItem("userData", JSON.stringify(user))
@@ -35,9 +44,10 @@ export default function AuthProvider({ children }) {
     }
   }, [user])
 
-  const login = (newToken, userData) => {
+  const login = (newToken, userData, newRefreshToken) => {
     setToken(newToken)
     setUser(userData)
+    setRefreshToken(newRefreshToken || null)
   }
 
   const notifySessionLogout = useCallback(async (sessionId) => {
@@ -70,6 +80,7 @@ export default function AuthProvider({ children }) {
       clearPresenceSessionId(currentUser?.id)
     }
     setToken(null)
+    setRefreshToken(null)
     setUser(null)
   }, [user, notifySessionLogout])
 
@@ -77,5 +88,5 @@ export default function AuthProvider({ children }) {
     setLogoutHandler(logout)
   }, [logout])
 
-  return <AuthContext.Provider value={{ token, user, login, logout }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ token, refreshToken, user, login, logout }}>{children}</AuthContext.Provider>
 }

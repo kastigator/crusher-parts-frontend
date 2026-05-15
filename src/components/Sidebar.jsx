@@ -153,6 +153,7 @@ export default function Sidebar() {
         key: "catalogs-group",
         icon: buildMenuItem(catalogIconTab).icon,
         label: <span title={catalogLabel}>{catalogLabel}</span>,
+        popupClassName: "sidebar-catalog-popup",
         children: childItems,
       }
 

@@ -25,7 +25,7 @@ const LoginPage = () => {
     try {
       const res = await axios.post('/auth/login', { username, password })
 
-      const { token, userData, user } = res.data
+      const { token, refreshToken, userData, user } = res.data
       const payload = userData || user
 
       if (!token || !payload) {
@@ -35,7 +35,7 @@ const LoginPage = () => {
       }
 
       // сохраняем токен и пользователя в AuthContext
-      login(token, payload)
+      login(token, payload, refreshToken)
 
       navigate('/')
     } catch (err) {
