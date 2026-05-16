@@ -16,7 +16,7 @@ import {
 import { EditOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
-import { formatCompactNumber, toNumberOrNull } from "@/utils/numberFormat"
+import { compactInputNumberProps, formatCompactNumber, toNumberOrNull } from "@/utils/numberFormat"
 import "@/styles/tableStyles.css"
 
 export default function OriginalPartMaterialsTab({ partId }) {
@@ -327,17 +327,17 @@ export default function OriginalPartMaterialsTab({ partId }) {
         </div>
         <Form layout="vertical" form={specForm}>
           <Form.Item label="Вес, кг" name="weight_kg">
-            <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+            <InputNumber min={0} step={0.01} style={{ width: "100%" }} {...compactInputNumberProps} />
           </Form.Item>
           <Space style={{ width: "100%" }} size={10}>
             <Form.Item label="Длина, см" name="length_cm" style={{ flex: 1 }}>
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
             <Form.Item label="Ширина, см" name="width_cm" style={{ flex: 1 }}>
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
             <Form.Item label="Высота, см" name="height_cm" style={{ flex: 1 }}>
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
           </Space>
           <Button

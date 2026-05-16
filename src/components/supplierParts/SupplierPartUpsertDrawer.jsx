@@ -14,6 +14,7 @@ import {
   Typography,
 } from "antd"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
+import { compactInputNumberProps } from "@/utils/numberFormat"
 
 const { Text } = Typography
 
@@ -146,22 +147,22 @@ export default function SupplierPartUpsertDrawer({
         <Divider style={{ margin: "8px 0 12px" }} />
         <div style={{ fontWeight: 600, marginBottom: 8 }}>Логистика</div>
         <Form.Item name="weight_kg" label="Вес, кг">
-          <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+          <InputNumber min={0} step={0.01} style={{ width: "100%" }} {...compactInputNumberProps} />
         </Form.Item>
         <Row gutter={12}>
           <Col span={8}>
             <Form.Item name="length_cm" label="Длина, см">
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
           </Col>
           <Col span={8}>
             <Form.Item name="width_cm" label="Ширина, см">
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
           </Col>
           <Col span={8}>
             <Form.Item name="height_cm" label="Высота, см">
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
           </Col>
         </Row>

@@ -27,6 +27,7 @@ import { formatQtyWithUomLabel } from "./rfqDisplayUtils"
 import { useNavigate } from "react-router-dom"
 import useCapabilities from "@/hooks/useCapabilities"
 import useTableScrollHints from "@/utils/useTableScrollHints"
+import { compactInputNumberProps } from "@/utils/numberFormat"
 import "@/styles/tableStyles.css"
 import {
   SUPPLIER_DEFAULT_CURRENCY_OPTIONS,
@@ -2254,16 +2255,16 @@ export default function ResponsesTabContent({
               </Space>
               <Space style={{ display: "flex" }} align="start">
                 <Form.Item name="new_supplier_part_weight_kg" label="Вес, кг">
-                  <InputNumber min={0} step={0.01} />
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
                 </Form.Item>
                 <Form.Item name="new_supplier_part_length_cm" label="Длина, см">
-                  <InputNumber min={0} step={0.01} />
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
                 </Form.Item>
                 <Form.Item name="new_supplier_part_width_cm" label="Ширина, см">
-                  <InputNumber min={0} step={0.01} />
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
                 </Form.Item>
                 <Form.Item name="new_supplier_part_height_cm" label="Высота, см">
-                  <InputNumber min={0} step={0.01} />
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
                 </Form.Item>
               </Space>
             </>

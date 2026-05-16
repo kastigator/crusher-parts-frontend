@@ -17,3 +17,19 @@ export const toNumberOrNull = (value) => {
   const number = Number(String(value).replace(",", "."))
   return Number.isFinite(number) ? number : null
 }
+
+export const formatInputNumberValue = (value) => {
+  if (value === null || value === undefined || value === "") return ""
+  const str = String(value).replace(",", ".")
+  return str.replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "").replace(/\.$/, "")
+}
+
+export const parseInputNumberValue = (value) => {
+  if (value === null || value === undefined || value === "") return ""
+  return String(value).replace(",", ".")
+}
+
+export const compactInputNumberProps = {
+  formatter: formatInputNumberValue,
+  parser: parseInputNumberValue,
+}

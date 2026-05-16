@@ -18,7 +18,7 @@ import {
 } from "antd"
 import axios from "@/api/axiosInstance"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
-import { formatCompactNumber } from "@/utils/numberFormat"
+import { compactInputNumberProps, formatCompactNumber } from "@/utils/numberFormat"
 
 const STATUS_OPTIONS = [
   { value: "applies", label: "Базово используется" },
@@ -668,18 +668,18 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
         <Form layout="vertical" form={specForm}>
           <Space style={{ width: "100%" }} size={12}>
             <Form.Item label="Вес, кг" name="weight_kg" style={{ flex: 1 }}>
-              <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.01} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
             <Form.Item label="Длина, см" name="length_cm" style={{ flex: 1 }}>
-              <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.01} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
           </Space>
           <Space style={{ width: "100%" }} size={12}>
             <Form.Item label="Ширина, см" name="width_cm" style={{ flex: 1 }}>
-              <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.01} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
             <Form.Item label="Высота, см" name="height_cm" style={{ flex: 1 }}>
-              <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.01} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
           </Space>
         </Form>

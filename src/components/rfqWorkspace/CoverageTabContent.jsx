@@ -29,6 +29,7 @@ import {
 } from "./rfqDisplayUtils"
 import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
+import { compactInputNumberProps } from "@/utils/numberFormat"
 
 const { Text } = Typography
 
@@ -2972,7 +2973,7 @@ export default function CoverageTabContent({
                         <InputNumber style={{ width: 120 }} min={0} />
                       </Form.Item>
                       <Form.Item {...field} name={[field.name, "weight_kg"]} label="Вес, кг">
-                        <InputNumber style={{ width: 120 }} min={0} />
+                        <InputNumber style={{ width: 120 }} min={0} {...compactInputNumberProps} />
                       </Form.Item>
                       <Form.Item {...field} name={[field.name, "origin_country"]} label="Страна происхождения">
                         <Input style={{ width: 140 }} placeholder="Например: Китай" />

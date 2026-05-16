@@ -42,6 +42,7 @@ import ManufacturerModelPicker from "@/components/originalParts/ManufacturerMode
 import OriginalPartGroupsManager from "@/components/originalParts/OriginalPartGroupsManager"
 import TnvedPicker from "@/components/fields/TnvedPicker"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
+import { compactInputNumberProps } from "@/utils/numberFormat"
 const { Text } = Typography
 
 const normalizePartNumber = (v) =>
@@ -1698,17 +1699,17 @@ export default function OriginalPartsMain() {
             <Divider style={{ margin: "6px 0 12px" }} />
             <Text strong>Логистика</Text>
             <Form.Item name="weight_kg" label="Вес, кг" style={{ marginTop: 8 }}>
-              <InputNumber style={{ width: "100%" }} min={0} step={0.01} />
+              <InputNumber style={{ width: "100%" }} min={0} step={0.01} {...compactInputNumberProps} />
             </Form.Item>
             <Space style={{ width: "100%" }} size={10}>
               <Form.Item name="length_cm" label="Длина, см" style={{ flex: 1 }}>
-                <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+                <InputNumber style={{ width: "100%" }} min={0} step={0.1} {...compactInputNumberProps} />
               </Form.Item>
               <Form.Item name="width_cm" label="Ширина, см" style={{ flex: 1 }}>
-                <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+                <InputNumber style={{ width: "100%" }} min={0} step={0.1} {...compactInputNumberProps} />
               </Form.Item>
               <Form.Item name="height_cm" label="Высота, см" style={{ flex: 1 }}>
-                <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+                <InputNumber style={{ width: "100%" }} min={0} step={0.1} {...compactInputNumberProps} />
               </Form.Item>
             </Space>
 
@@ -1883,17 +1884,17 @@ export default function OriginalPartsMain() {
             <Divider style={{ margin: "6px 0 12px" }} />
             <Text strong>Логистика</Text>
             <Form.Item name="weight_kg" label="Вес, кг" style={{ marginTop: 8 }}>
-              <InputNumber style={{ width: "100%" }} min={0} step={0.01} />
+              <InputNumber style={{ width: "100%" }} min={0} step={0.01} {...compactInputNumberProps} />
             </Form.Item>
             <Space style={{ width: "100%" }} size={10}>
               <Form.Item name="length_cm" label="Длина, см" style={{ flex: 1 }}>
-                <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+                <InputNumber style={{ width: "100%" }} min={0} step={0.1} {...compactInputNumberProps} />
               </Form.Item>
               <Form.Item name="width_cm" label="Ширина, см" style={{ flex: 1 }}>
-                <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+                <InputNumber style={{ width: "100%" }} min={0} step={0.1} {...compactInputNumberProps} />
               </Form.Item>
               <Form.Item name="height_cm" label="Высота, см" style={{ flex: 1 }}>
-                <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+                <InputNumber style={{ width: "100%" }} min={0} step={0.1} {...compactInputNumberProps} />
               </Form.Item>
             </Space>
 

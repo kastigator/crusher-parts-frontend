@@ -26,6 +26,7 @@ import axios from "@/api/axiosInstance"
 import { resolveAppHref } from "@/utils/resolveAppHref"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
+import { compactInputNumberProps } from "@/utils/numberFormat"
 
 const textOrDash = (value) => {
   const v = String(value || "").trim()
@@ -894,16 +895,16 @@ export default function StandardPartsMain({
 
           <Space wrap style={{ width: "100%" }} size={16}>
             <Form.Item label="Вес, кг" name="weight_kg" style={{ width: 140 }}>
-              <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.01} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
             <Form.Item label="Длина, см" name="length_cm" style={{ width: 140 }}>
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
             <Form.Item label="Ширина, см" name="width_cm" style={{ width: 140 }}>
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
             <Form.Item label="Высота, см" name="height_cm" style={{ width: 140 }}>
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
           </Space>
 

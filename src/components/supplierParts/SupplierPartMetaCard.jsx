@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Button, Card, Checkbox, Input, InputNumber, Space, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
-import { toNumberOrNull } from "@/utils/numberFormat"
+import { compactInputNumberProps, toNumberOrNull } from "@/utils/numberFormat"
 
 const { Text } = Typography
 
@@ -209,6 +209,7 @@ export default function SupplierPartMetaCard({ part, onSaved }) {
               style={{ width: "100%" }}
               min={0}
               step={0.01}
+              {...compactInputNumberProps}
               value={meta.weight_kg}
               onChange={(v) => setField("weight_kg", v)}
             />
@@ -219,6 +220,7 @@ export default function SupplierPartMetaCard({ part, onSaved }) {
               style={{ width: "100%" }}
               min={0}
               step={0.1}
+              {...compactInputNumberProps}
               value={meta.length_cm}
               onChange={(v) => setField("length_cm", v)}
             />
@@ -229,6 +231,7 @@ export default function SupplierPartMetaCard({ part, onSaved }) {
               style={{ width: "100%" }}
               min={0}
               step={0.1}
+              {...compactInputNumberProps}
               value={meta.width_cm}
               onChange={(v) => setField("width_cm", v)}
             />
@@ -239,6 +242,7 @@ export default function SupplierPartMetaCard({ part, onSaved }) {
               style={{ width: "100%" }}
               min={0}
               step={0.1}
+              {...compactInputNumberProps}
               value={meta.height_cm}
               onChange={(v) => setField("height_cm", v)}
             />

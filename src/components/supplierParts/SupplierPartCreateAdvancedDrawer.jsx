@@ -12,6 +12,7 @@ import {
   Divider,
 } from "antd"
 import axios from "@/api/axiosInstance"
+import { compactInputNumberProps } from "@/utils/numberFormat"
 
 const { Text } = Typography
 
@@ -202,21 +203,20 @@ export default function SupplierPartCreateAdvancedDrawer({
         <Divider style={{ margin: "14px 0 10px" }} />
         <div style={{ fontWeight: 700 }}>Логистика</div>
         <Form.Item name="weight_kg" label="Вес, кг" style={{ marginTop: 6 }}>
-          <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+          <InputNumber min={0} step={0.01} style={{ width: "100%" }} {...compactInputNumberProps} />
         </Form.Item>
         <Space style={{ width: "100%" }} size={10}>
           <Form.Item name="length_cm" label="Длина, см" style={{ flex: 1 }}>
-            <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+            <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
           </Form.Item>
           <Form.Item name="width_cm" label="Ширина, см" style={{ flex: 1 }}>
-            <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+            <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
           </Form.Item>
           <Form.Item name="height_cm" label="Высота, см" style={{ flex: 1 }}>
-            <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+            <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
           </Form.Item>
         </Space>
       </Form>
     </Drawer>
   )
 }
-

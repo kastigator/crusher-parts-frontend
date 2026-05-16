@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react"
 import { Drawer, Form, Space, Button, Input, InputNumber, Checkbox, Typography, Select, Divider } from "antd"
 import TnvedPicker from "@/components/fields/TnvedPicker"
 import axios from "@/api/axiosInstance"
+import { compactInputNumberProps } from "@/utils/numberFormat"
 
 const { Text } = Typography
 
@@ -176,18 +177,18 @@ export default function OriginalPartCreateAdvancedDrawer({
 
         <div style={{ marginTop: 14, fontWeight: 700 }}>Логистика</div>
         <Form.Item name="weight_kg" label="Вес, кг" style={{ marginTop: 6 }}>
-          <InputNumber style={{ width: "100%" }} min={0} step={0.01} />
+          <InputNumber style={{ width: "100%" }} min={0} step={0.01} {...compactInputNumberProps} />
         </Form.Item>
 
         <Space style={{ width: "100%" }} size={10}>
           <Form.Item name="length_cm" label="Длина, см" style={{ flex: 1 }}>
-            <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+            <InputNumber style={{ width: "100%" }} min={0} step={0.1} {...compactInputNumberProps} />
           </Form.Item>
           <Form.Item name="width_cm" label="Ширина, см" style={{ flex: 1 }}>
-            <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+            <InputNumber style={{ width: "100%" }} min={0} step={0.1} {...compactInputNumberProps} />
           </Form.Item>
           <Form.Item name="height_cm" label="Высота, см" style={{ flex: 1 }}>
-            <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+            <InputNumber style={{ width: "100%" }} min={0} step={0.1} {...compactInputNumberProps} />
           </Form.Item>
         </Space>
       </Form>
