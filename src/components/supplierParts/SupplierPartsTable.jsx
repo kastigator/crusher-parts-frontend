@@ -10,6 +10,7 @@ import { getOrderedKeys } from "@/utils/columnOrder"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
 import useTableScrollHints from "@/utils/useTableScrollHints"
 import { formatPrice } from "@/utils/priceFormat"
+import { formatUomLabel } from "@/utils/uom"
 
 function OriginalsCell({ row }) {
   const [items, setItems] = useState(null)
@@ -261,10 +262,7 @@ export default function SupplierPartsTable({
     <Tag color={v ? "green" : "default"}>{v ? "да" : "нет"}</Tag>
   )
   const renderUomTag = (raw) => {
-    const uom = String(raw || "").toLowerCase()
-    if (uom === "kg") return <Tag>кг</Tag>
-    if (uom === "set") return <Tag>компл.</Tag>
-    return <Tag>шт</Tag>
+    return <Tag>{formatUomLabel(raw) || "шт"}</Tag>
   }
 
   const renderPriceSource = useCallback((raw) => {

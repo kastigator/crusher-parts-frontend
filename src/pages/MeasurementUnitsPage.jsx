@@ -152,10 +152,9 @@ export default function MeasurementUnitsPage() {
     {
       title: "Название",
       dataIndex: "name_ru",
-      render: (value, row) => (
+      render: (value) => (
         <Space direction="vertical" size={0}>
           <Text>{value}</Text>
-          {row.name_en ? <Text type="secondary">{row.name_en}</Text> : null}
         </Space>
       ),
     },
@@ -310,7 +309,7 @@ export default function MeasurementUnitsPage() {
             <Input placeholder="Штука" />
           </Form.Item>
           <Form.Item name="name_en" label="Название EN">
-            <Input placeholder="Piece" />
+            <Input placeholder="Не обязательно" />
           </Form.Item>
           <Form.Item name="symbol" label="Символ">
             <Input placeholder="шт" />
