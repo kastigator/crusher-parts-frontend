@@ -313,7 +313,7 @@ export default function SupplierPartsMain() {
       description_ru: "",
       description_en: "",
       comment: "",
-      uom: "pcs",
+      uom: "шт",
       lead_time_days: null,
       min_order_qty: null,
       packaging: "",
@@ -339,7 +339,7 @@ export default function SupplierPartsMain() {
       description_ru: row.description_ru || "",
       description_en: row.description_en || "",
       comment: row.comment || "",
-      uom: row.uom ? String(row.uom).toLowerCase() : "pcs",
+      uom: row.uom ? String(row.uom).toLowerCase() : "шт",
       lead_time_days:
         row.lead_time_days === undefined || row.lead_time_days === null
           ? null
@@ -372,7 +372,7 @@ export default function SupplierPartsMain() {
     description_ru: String(values.description_ru || "").trim() || null,
     description_en: String(values.description_en || "").trim() || null,
     comment: String(values.comment || "").trim() || null,
-    uom: values.uom || "pcs",
+    uom: values.uom || "шт",
     lead_time_days: values.lead_time_days ?? null,
     min_order_qty: values.min_order_qty ?? null,
     packaging: String(values.packaging || "").trim() || null,

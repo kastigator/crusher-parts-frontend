@@ -85,7 +85,7 @@ const normalizeCatalogPart = (part) => {
     original_part_id: part.original_part_id || part.oem_part_id || part.id || null,
     description_ru: part.description_ru || null,
     description_en: part.description_en || null,
-    uom: part.uom || "pcs",
+    uom: part.uom || "шт",
   }
 }
 
@@ -1024,7 +1024,7 @@ export default function ClientRequestsPage() {
     client_part_number: data.client_part_number || data.cat_number || "",
     client_description: data.client_description || "",
     requested_qty: data.requested_qty ?? null,
-    uom: data.uom || "pcs",
+    uom: data.uom || "шт",
     required_date: data.required_date || null,
     priority: data.priority || null,
     oem_only: data.oem_only || false,
@@ -1067,7 +1067,7 @@ export default function ClientRequestsPage() {
       client_part_number: row.client_part_number || row.cat_number?.trim() || null,
       client_description: row.client_description || null,
       requested_qty: row.requested_qty ?? null,
-      uom: row.uom || "pcs",
+      uom: row.uom || "шт",
       required_date: formatDateValue(row.required_date),
       priority: row.priority || null,
       oem_only: row.oem_only ? 1 : 0,
@@ -1127,7 +1127,7 @@ export default function ClientRequestsPage() {
           client_part_number: row.client_part_number || row.cat_number,
           client_description: row.client_description || null,
           requested_qty: row.requested_qty ?? null,
-          uom: row.uom || "pcs",
+          uom: row.uom || "шт",
           oem_only: row.oem_only ? 1 : 0,
         })
       })
@@ -1249,7 +1249,7 @@ export default function ClientRequestsPage() {
             obj.requested_qty !== undefined && obj.requested_qty !== null
               ? Number(String(obj.requested_qty).replace(",", "."))
               : null,
-          uom: obj.uom || "pcs",
+          uom: obj.uom || "шт",
           required_date: obj.required_date ? dayjs(obj.required_date) : null,
           priority: obj.priority || null,
           oem_only: ["1", "да", "yes", "true"].includes(
@@ -1301,7 +1301,7 @@ export default function ClientRequestsPage() {
         part?.description_en ||
         null,
       requested_qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
-      uom: overrides.uom || part?.uom || "pcs",
+      uom: overrides.uom || part?.uom || "шт",
       oem_only: overrides.oem_only ? 1 : 0,
       equipment_model_id:
         overrides.equipment_model_id ||
@@ -1351,7 +1351,7 @@ export default function ClientRequestsPage() {
               item.original_description_en ||
               null,
             requested_qty: item.requested_qty ?? null,
-            uom: item.uom || "pcs",
+            uom: item.uom || "шт",
             oem_only: item.oem_only ? 1 : 0,
           }),
         ),
@@ -1581,7 +1581,7 @@ export default function ClientRequestsPage() {
       client_part_number: payload.client_part_number || null,
       client_description: payload.client_description || null,
       requested_qty: payload.requested_qty || null,
-      uom: payload.uom || "pcs",
+      uom: payload.uom || "шт",
       oem_only: payload.oem_only ? 1 : 0,
       equipment_model_id:
         payload.equipment_model_id ||
@@ -1649,7 +1649,7 @@ export default function ClientRequestsPage() {
             patch.requested_qty !== undefined
               ? patch.requested_qty
               : target.requested_qty,
-          uom: target.uom || "pcs",
+          uom: target.uom || "шт",
           required_date: target.required_date || null,
           priority: target.priority || null,
           oem_only:
@@ -1676,7 +1676,7 @@ export default function ClientRequestsPage() {
           client_part_number: row.client_part_number || null,
           client_description: row.client_description || null,
           requested_qty: row.requested_qty ?? null,
-          uom: row.uom || "pcs",
+          uom: row.uom || "шт",
           oem_only: row.oem_only ? 1 : 0,
         }
         await axios.post(
@@ -1739,7 +1739,7 @@ export default function ClientRequestsPage() {
           client_description: values.client_description || null,
           client_line_text: values.client_line_text || null,
           requested_qty: values.requested_qty ?? null,
-          uom: values.uom || "pcs",
+          uom: values.uom || "шт",
           required_date: formatDateValue(values.required_date),
           priority: values.priority || null,
           oem_only: values.oem_only ? 1 : 0,
@@ -1784,7 +1784,7 @@ export default function ClientRequestsPage() {
           quickSelectedPart?.description_en ||
           null,
         requested_qty: quickQty || 1,
-        uom: quickSelectedPart?.uom || "pcs",
+        uom: quickSelectedPart?.uom || "шт",
         oem_only: quickOemOnly ? 1 : 0,
         equipment_model_id: selectedActiveEquipmentUnit?.equipment_model_id || modelId || null,
         model_name: selectedActiveEquipmentUnit?.model_name || null,
@@ -1808,7 +1808,7 @@ export default function ClientRequestsPage() {
         quickSelectedPart?.description_en ||
         null,
       requested_qty: quickQty || 1,
-      uom: quickSelectedPart?.uom || "pcs",
+      uom: quickSelectedPart?.uom || "шт",
       oem_only: quickOemOnly ? 1 : 0,
     }
     try {
@@ -1842,7 +1842,7 @@ export default function ClientRequestsPage() {
           client_part_number: modalSearch.trim(),
           client_description: "",
           requested_qty: modalQty || 1,
-          uom: "pcs",
+          uom: "шт",
           oem_only: modalOemOnly ? 1 : 0,
         }
     await addItemsToRequest([item])
@@ -2355,7 +2355,7 @@ export default function ClientRequestsPage() {
                   client_description: record.client_description || null,
                   client_line_text: record.client_line_text || null,
                   requested_qty: record.requested_qty ?? null,
-                  uom: record.uom || "pcs",
+                  uom: record.uom || "шт",
                   required_date: record.required_date ? dayjs(record.required_date) : null,
                   priority: record.priority || null,
                   oem_only: !!record.oem_only,

@@ -707,7 +707,7 @@ export default function OriginalPartsMain() {
             : defaultMaterialId
             ? null
             : values.weight_kg ?? null,
-          uom: isReuse ? reuseSourceRow.uom || "pcs" : values.uom || "pcs",
+          uom: isReuse ? reuseSourceRow.uom || "шт" : values.uom || "шт",
           tnved_code_id: isReuse ? reuseSourceRow.tnved_code_id ?? null : values.tnved?.id ?? null,
           group_id: isReuse ? reuseSourceRow.group_id ?? null : values.group_id ?? null,
           length_cm: isReuse
@@ -888,7 +888,7 @@ export default function OriginalPartsMain() {
       description_ru: record.description_ru || "",
       description_en: record.description_en || "",
       tech_description: record.tech_description || "",
-      uom: record.uom ? String(record.uom).toLowerCase() : "pcs",
+      uom: record.uom ? String(record.uom).toLowerCase() : "шт",
       group_id:
         record.group_id === undefined || record.group_id === null
           ? null
@@ -952,7 +952,7 @@ export default function OriginalPartsMain() {
       description_ru: values.description_ru?.trim() ? values.description_ru.trim() : null,
       description_en: values.description_en?.trim() ? values.description_en.trim() : null,
       tech_description: values.tech_description?.trim() ? values.tech_description.trim() : null,
-      uom: values.uom || "pcs",
+      uom: values.uom || "шт",
       group_id:
         values.group_id === undefined || values.group_id === null || values.group_id === ""
           ? null
@@ -1246,7 +1246,7 @@ export default function OriginalPartsMain() {
                   return
                 }
                 if (!addForm.getFieldValue("uom")) {
-                  addForm.setFieldsValue({ uom: "pcs" })
+                  addForm.setFieldsValue({ uom: "шт" })
                 }
                 setCreateOpen(true)
               }}
@@ -1535,7 +1535,7 @@ export default function OriginalPartsMain() {
               createSubmitModeRef.current = "create_close"
             }}
             disabled={!model}
-            initialValues={{ uom: "pcs", application_model_ids: model?.id ? [model.id] : [] }}
+            initialValues={{ uom: "шт", application_model_ids: model?.id ? [model.id] : [] }}
           >
             <Card size="small" bodyStyle={{ padding: 12 }} style={{ marginBottom: 12 }}>
               <Space direction="vertical" style={{ width: "100%" }} size={8}>
@@ -1823,7 +1823,7 @@ export default function OriginalPartsMain() {
             form={editForm}
             layout="vertical"
             onFinish={submitEditPart}
-            initialValues={{ uom: "pcs" }}
+            initialValues={{ uom: "шт" }}
           >
             <Form.Item
               name="cat_number"

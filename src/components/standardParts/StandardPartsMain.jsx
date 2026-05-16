@@ -254,7 +254,7 @@ export default function StandardPartsMain({
     const nextClassId = embeddedClassId || classId
     form.setFieldsValue({
       class_id: nextClassId || undefined,
-      uom: "pcs",
+      uom: "шт",
       is_active: true,
     })
     await loadFields(nextClassId)
@@ -275,7 +275,7 @@ export default function StandardPartsMain({
     form.setFieldsValue({
       class_id: nextClassId,
       designation: data?.designation || "",
-      uom: data?.uom || "pcs",
+      uom: data?.uom || "шт",
       description_ru: data?.description_ru || "",
       description_en: data?.description_en || "",
       notes: data?.notes || "",
@@ -313,7 +313,7 @@ export default function StandardPartsMain({
       const payload = {
         class_id: values.class_id,
         designation: values.designation || null,
-        uom: values.uom || "pcs",
+        uom: values.uom || "шт",
         description_ru: values.description_ru || null,
         description_en: values.description_en || null,
         notes: values.notes || null,
@@ -363,7 +363,7 @@ export default function StandardPartsMain({
     setOemTargetRow(row)
     setModels([])
     oemForm.resetFields()
-    oemForm.setFieldsValue({ uom: row.uom || "pcs" })
+    oemForm.setFieldsValue({ uom: row.uom || "шт" })
     setOemModalOpen(true)
     try {
       const [{ data: manufacturersData }] = await Promise.all([
@@ -402,7 +402,7 @@ export default function StandardPartsMain({
         description_ru: values.description_ru || null,
         description_en: values.description_en || null,
         tech_description: values.tech_description || null,
-        uom: values.uom || "pcs",
+        uom: values.uom || "шт",
       })
       message.success("OEM-представление создано")
       setOemModalOpen(false)
@@ -420,7 +420,7 @@ export default function StandardPartsMain({
     setSupplierTargetRow(row)
     supplierForm.resetFields()
     supplierForm.setFieldsValue({
-      uom: row.uom || "pcs",
+      uom: row.uom || "шт",
       part_type: "ANALOG",
       is_preferred: true,
     })
@@ -445,7 +445,7 @@ export default function StandardPartsMain({
         description_ru: values.description_ru || null,
         description_en: values.description_en || null,
         comment: values.comment || null,
-        uom: values.uom || "pcs",
+        uom: values.uom || "шт",
         lead_time_days: values.lead_time_days ?? null,
         min_order_qty: values.min_order_qty ?? null,
         packaging: values.packaging || null,
@@ -702,7 +702,7 @@ export default function StandardPartsMain({
         width={900}
         destroyOnHidden
       >
-        <Form form={form} layout="vertical" initialValues={{ uom: "pcs", is_active: true }}>
+        <Form form={form} layout="vertical" initialValues={{ uom: "шт", is_active: true }}>
           <Space wrap style={{ width: "100%" }} size={16}>
               <Form.Item
                 label="Класс"
@@ -765,7 +765,7 @@ export default function StandardPartsMain({
         width={760}
         destroyOnHidden
       >
-        <Form form={oemForm} layout="vertical" initialValues={{ uom: oemTargetRow?.uom || "pcs" }}>
+        <Form form={oemForm} layout="vertical" initialValues={{ uom: oemTargetRow?.uom || "шт" }}>
           <Form.Item
             label="Производитель оборудования"
             name="manufacturer_id"
@@ -833,7 +833,7 @@ export default function StandardPartsMain({
         width={840}
         destroyOnHidden
       >
-        <Form form={supplierForm} layout="vertical" initialValues={{ uom: supplierTargetRow?.uom || "pcs", part_type: "ANALOG", is_preferred: true }}>
+        <Form form={supplierForm} layout="vertical" initialValues={{ uom: supplierTargetRow?.uom || "шт", part_type: "ANALOG", is_preferred: true }}>
           <Form.Item
             label="Поставщик"
             name="supplier_id"

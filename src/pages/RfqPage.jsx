@@ -200,7 +200,7 @@ export default function RfqPage() {
     () =>
       revisionItems.map((item) => ({
         value: item.id,
-        label: `${item.original_cat_number || "Без номера"} · ${item.client_description || ""} · ${item.requested_qty || 0} ${formatUomLabel(item.uom || "pcs")}`.trim(),
+        label: `${item.original_cat_number || "Без номера"} · ${item.client_description || ""} · ${item.requested_qty || 0} ${formatUomLabel(item.uom || "шт")}`.trim(),
       })),
     [revisionItems],
   )
@@ -924,7 +924,7 @@ export default function RfqPage() {
                               if (item) {
                                 itemForm.setFieldsValue({
                                   requested_qty: item.requested_qty,
-                                  uom: item.uom || "pcs",
+                                  uom: item.uom || "шт",
                                   oem_only: Boolean(item.oem_only),
                                 })
                               }
@@ -943,7 +943,7 @@ export default function RfqPage() {
                         >
                           <InputNumber style={{ width: 120 }} min={0} />
                         </Form.Item>
-                        <Form.Item label="Ед." name="uom" initialValue="pcs">
+                        <Form.Item label="Ед." name="uom" initialValue="шт">
                           <Select style={{ width: 100 }} options={uomOptions} loading={uomLoading} />
                         </Form.Item>
                         <Form.Item name="oem_only" valuePropName="checked">

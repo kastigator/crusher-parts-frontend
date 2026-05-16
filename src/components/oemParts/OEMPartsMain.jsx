@@ -27,7 +27,7 @@ const EMPTY_FORM = {
   description_ru: "",
   description_en: "",
   tech_description: "",
-  uom: "pcs",
+  uom: "шт",
   tnved_code_id: undefined,
   group_id: undefined,
   has_drawing: false,

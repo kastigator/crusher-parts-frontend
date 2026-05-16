@@ -237,7 +237,7 @@ export default function SupplierResponsesPage() {
     () =>
       rfqItems.map((item) => ({
         value: item.id,
-        label: `${item.original_cat_number || "Без номера"} · ${item.client_description || ""} · ${item.requested_qty || 0} ${formatUomLabel(item.uom || "pcs")}`.trim(),
+        label: `${item.original_cat_number || "Без номера"} · ${item.client_description || ""} · ${item.requested_qty || 0} ${formatUomLabel(item.uom || "шт")}`.trim(),
       })),
     [rfqItems],
   )

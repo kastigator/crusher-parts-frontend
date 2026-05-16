@@ -1965,7 +1965,7 @@ export default function CoverageTabContent({
           supplier_id: undefined,
           line_role: "MANUAL",
           qty: activeItem?.requested_qty || 1,
-          uom: activeItem?.uom || "pcs",
+          uom: activeItem?.uom || "шт",
           unit_price: null,
           goods_currency: "USD",
           lead_time_days: null,
@@ -1999,7 +1999,7 @@ export default function CoverageTabContent({
           line_code: line?.line_code || `MANUAL-${index + 1}`,
           line_role: line?.line_role || "MANUAL",
           qty,
-          uom: line?.uom || activeItem?.uom || "pcs",
+          uom: line?.uom || activeItem?.uom || "шт",
           unit_price: unitPrice,
           goods_amount: unitPrice === null ? null : qty * unitPrice,
           goods_currency: line?.goods_currency || values?.goods_currency || "USD",
@@ -2994,7 +2994,7 @@ export default function CoverageTabContent({
                     add({
                       line_role: "MANUAL",
                       qty: activeItem?.requested_qty || 1,
-                      uom: activeItem?.uom || "pcs",
+                      uom: activeItem?.uom || "шт",
                       goods_currency: manualForm.getFieldValue("goods_currency") || "USD",
                     })
                   }

@@ -302,9 +302,9 @@ export default function MeasurementUnitsPage() {
             name="code"
             label="Код"
             rules={[{ required: true, message: "Укажите код" }]}
-            extra="Код сохраняется в существующих полях системы: pcs, kg, cm."
+            extra="Код сохраняется в существующих полях системы: шт, кг, см."
           >
-            <Input disabled={!!editingRow?.is_system} placeholder="pcs" />
+            <Input disabled={!!editingRow?.is_system} placeholder="шт" />
           </Form.Item>
           <Form.Item name="name_ru" label="Название RU" rules={[{ required: true, message: "Укажите название" }]}>
             <Input placeholder="Штука" />

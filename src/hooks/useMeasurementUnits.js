@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react"
 import axios from "@/api/axiosInstance"
 
 const FALLBACK_UNITS = [
-  { code: "pcs", symbol: "шт", name_ru: "Штука", dimension_type: "quantity" },
-  { code: "kg", symbol: "кг", name_ru: "Килограмм", dimension_type: "mass" },
-  { code: "set", symbol: "компл.", name_ru: "Комплект", dimension_type: "quantity" },
+  { code: "шт", symbol: "шт", name_ru: "Штука", dimension_type: "quantity" },
+  { code: "кг", symbol: "кг", name_ru: "Килограмм", dimension_type: "mass" },
+  { code: "компл", symbol: "компл.", name_ru: "Комплект", dimension_type: "quantity" },
 ]
 
 const buildLabel = (unit) => {
