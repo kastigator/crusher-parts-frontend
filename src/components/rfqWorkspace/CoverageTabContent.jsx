@@ -67,6 +67,27 @@ const safeNum = (v, fallback = 0) => {
   return Number.isFinite(n) ? n : fallback
 }
 
+const positiveNumOrNull = (v) => {
+  const n = safeNum(v, null)
+  return n !== null && n > 0 ? n : null
+}
+
+const buildLineLogisticsFromLatest = (latest, qty = 1) => {
+  const qtyNum = positiveNumOrNull(qty) || 1
+  const unitWeightKg = positiveNumOrNull(latest?.latest_supplier_part_weight_kg)
+  const lengthCm = positiveNumOrNull(latest?.latest_supplier_part_length_cm)
+  const widthCm = positiveNumOrNull(latest?.latest_supplier_part_width_cm)
+  const heightCm = positiveNumOrNull(latest?.latest_supplier_part_height_cm)
+
+  return {
+    weight_kg: unitWeightKg === null ? null : unitWeightKg * qtyNum,
+    volume_cbm:
+      lengthCm === null || widthCm === null || heightCm === null
+        ? null
+        : (lengthCm * widthCm * heightCm * qtyNum) / 1000000,
+  }
+}
+
 const buildCoverageOptionWarnings = (option, requestedUom) => {
   const optionKind = String(option?.option_kind || "").toUpperCase()
   const lines = Array.isArray(option?.lines) ? option.lines : []
@@ -1496,6 +1517,7 @@ export default function CoverageTabContent({
               safeNum(activeItem?.requested_qty, 1) ??
               1
             const unitPrice = Number.isFinite(Number(latest?.latest_price)) ? Number(latest.latest_price) : null
+            const logistics = buildLineLogisticsFromLatest(latest, qty)
             return {
               rfq_response_line_id: Number(latest?.latest_response_line_id || 0) || null,
               supplier_id: Number(state.supplier_id || 0) || null,
@@ -1519,6 +1541,8 @@ export default function CoverageTabContent({
               unit_price: unitPrice,
               goods_amount: unitPrice === null ? null : unitPrice * qty,
               goods_currency: latest?.latest_currency || null,
+              weight_kg: logistics.weight_kg,
+              volume_cbm: logistics.volume_cbm,
               lead_time_days: latest?.latest_lead_time_days ?? null,
               has_price: PRICED_STATUSES.has(String(state.code || "")) ? 1 : 0,
               is_oem_offer: String(latest?.latest_offer_type || "").toUpperCase() === "OEM" ? 1 : 0,
@@ -1765,6 +1789,7 @@ export default function CoverageTabContent({
           const qty = safeNum(row?.required_qty, safeNum(latest?.latest_offered_qty, 1)) || 1
           const unitPrice = Number.isFinite(Number(latest?.latest_price)) ? Number(latest.latest_price) : null
           const goodsAmount = unitPrice === null ? null : unitPrice * qty
+          const logistics = buildLineLogisticsFromLatest(latest, qty)
           if (goodsAmount !== null) goodsTotal += goodsAmount
           if (latest?.latest_currency) currencies.add(String(latest.latest_currency))
           if (latest?.latest_lead_time_days != null) leadTimes.push(safeNum(latest.latest_lead_time_days, 0))
@@ -1787,6 +1812,8 @@ export default function CoverageTabContent({
             unit_price: unitPrice,
             goods_amount: goodsAmount,
             goods_currency: latest?.latest_currency || null,
+            weight_kg: logistics.weight_kg,
+            volume_cbm: logistics.volume_cbm,
             lead_time_days: latest?.latest_lead_time_days ?? null,
             has_price: PRICED_STATUSES.has(String(cell.code || "")) ? 1 : 0,
             is_oem_offer: String(latest?.latest_offer_type || "").toUpperCase() === "OEM" ? 1 : 0,
@@ -1978,6 +2005,7 @@ export default function CoverageTabContent({
           goods_currency: line?.goods_currency || values?.goods_currency || "USD",
           lead_time_days: line?.lead_time_days ?? null,
           weight_kg: line?.weight_kg ?? null,
+          volume_cbm: line?.volume_cbm ?? null,
           has_price: unitPrice === null ? 0 : 1,
           is_oem_offer: Number(line?.is_oem_offer) ? 1 : 0,
           origin_country: line?.origin_country || null,
