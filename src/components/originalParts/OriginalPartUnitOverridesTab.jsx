@@ -18,6 +18,7 @@ import {
 } from "antd"
 import axios from "@/api/axiosInstance"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
+import { formatCompactNumber } from "@/utils/numberFormat"
 
 const STATUS_OPTIONS = [
   { value: "applies", label: "Базово используется" },
@@ -32,9 +33,7 @@ const textOrDash = (value) => {
 }
 
 const fmtNumber = (value) => {
-  if (value === undefined || value === null || value === "") return "—"
-  const n = Number(value)
-  return Number.isFinite(n) ? String(n) : "—"
+  return formatCompactNumber(value)
 }
 
 function statusTag(value) {

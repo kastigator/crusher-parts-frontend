@@ -18,6 +18,7 @@ import axios from "@/api/axiosInstance"
 import { formatIncotermsWithPlace } from "./rfqWorkspaceUtils"
 import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
 import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
+import { formatCompactNumber } from "@/utils/numberFormat"
 
 const currencyOptions = [
   { value: "USD", label: "USD" },
@@ -51,6 +52,10 @@ const freightModeOptions = [
 ]
 
 const fmt = (value) => (value === null || value === undefined || value === "" ? "—" : value)
+const fmtNumber = (value, maximumFractionDigits = 3) => {
+  const digits = Number.isInteger(maximumFractionDigits) ? maximumFractionDigits : 3
+  return formatCompactNumber(value, { maximumFractionDigits: digits })
+}
 const formatRouteType = (value) => ROUTE_TYPE_LABELS[String(value || "").toUpperCase()] || fmt(value)
 const { Paragraph, Text } = Typography
 
@@ -494,7 +499,7 @@ export default function LogisticsTabContent({ rfqId, onNavigateTab }) {
         width: 180,
         render: (_, row) => formatIncotermsWithPlace(row?.incoterms, row?.incoterms_place),
       },
-      { key: "weight", title: "Вес, кг", dataIndex: "total_weight_kg", width: 120, render: fmt },
+      { key: "weight", title: "Вес, кг", dataIndex: "total_weight_kg", width: 120, render: fmtNumber },
       {
         key: "warnings",
         title: "Проблемы",
@@ -533,7 +538,7 @@ export default function LogisticsTabContent({ rfqId, onNavigateTab }) {
       { key: "supplier", title: "Поставщик", dataIndex: "supplier_name", width: 180, render: fmt },
       { key: "origin_country", title: "Страна происхождения", width: 220, render: (_, row) => renderOriginCell(row) },
       { key: "tnved", title: "ТН ВЭД", width: 140, render: (_, row) => fmt(row?.tnved_code || row?.cost_tnved_code) },
-      { key: "duty_rate", title: "Пошлина, %", width: 110, render: (_, row) => fmt(row?.duty_rate_pct ?? row?.cost_duty_rate_pct) },
+      { key: "duty_rate", title: "Пошлина, %", width: 110, render: (_, row) => fmtNumber(row?.duty_rate_pct ?? row?.cost_duty_rate_pct) },
       {
         key: "incoterms",
         title: "Incoterms",
@@ -541,9 +546,9 @@ export default function LogisticsTabContent({ rfqId, onNavigateTab }) {
         render: (_, row) => formatIncotermsWithPlace(row?.incoterms, row?.incoterms_place),
       },
       { key: "line_role", title: "Роль", dataIndex: "line_role", width: 120, render: fmt },
-      { key: "qty", title: "Кол-во", dataIndex: "qty", width: 90, render: fmt },
-      { key: "weight", title: "Вес, кг", dataIndex: "weight_kg", width: 90, render: fmt },
-      { key: "lead_time_days", title: "Срок, дн", dataIndex: "lead_time_days", width: 100, render: fmt },
+      { key: "qty", title: "Кол-во", dataIndex: "qty", width: 90, render: fmtNumber },
+      { key: "weight", title: "Вес, кг", dataIndex: "weight_kg", width: 90, render: fmtNumber },
+      { key: "lead_time_days", title: "Срок, дн", dataIndex: "lead_time_days", width: 100, render: (_, row) => fmtNumber(row?.lead_time_days, 0) },
       {
         key: "warnings",
         title: "Проблемы",

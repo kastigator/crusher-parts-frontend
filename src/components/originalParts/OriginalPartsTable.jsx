@@ -9,6 +9,7 @@ import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
 import { getOrderedKeys } from "@/utils/columnOrder"
 import { formatUomLabel } from "@/utils/uom"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
+import { formatCompactNumber } from "@/utils/numberFormat"
 
 /**
  * Таблица оригинальных деталей.
@@ -349,7 +350,7 @@ export default function OriginalPartsTable({
       width: 120,
       sorter: (a, b) => (a.weight_kg || 0) - (b.weight_kg || 0),
       sortDirections: ["ascend", "descend"],
-      render: (value) => value,
+      render: (value) => formatCompactNumber(value, { empty: "" }),
     },
 
     {
@@ -371,7 +372,7 @@ export default function OriginalPartsTable({
         if (length_cm == null && width_cm == null && height_cm == null) {
           return ""
         }
-        const fmt = (v) => (v == null ? "-" : Number(v))
+        const fmt = (v) => formatCompactNumber(v, { empty: "-", maximumFractionDigits: 2 })
         return `${fmt(length_cm)} × ${fmt(width_cm)} × ${fmt(height_cm)}`
       },
     },

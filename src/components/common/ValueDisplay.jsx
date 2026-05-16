@@ -10,6 +10,7 @@ import React, {
 } from "react"
 import { Tag, Tooltip, Typography } from "antd"
 import { parsePhoneNumberFromString } from "libphonenumber-js"
+import { formatCompactNumber } from "@/utils/numberFormat"
 
 const STATUS_MAP = {
   new: { label: "Новый", color: "blue" },
@@ -168,6 +169,7 @@ export default function ValueDisplay({
   currency,
   href,
   maxLength,
+  maximumFractionDigits = 3,
   onDoubleClick,
   copyable = false,
 }) {
@@ -214,7 +216,7 @@ export default function ValueDisplay({
       )
 
     case "number":
-      return isNaN(Number(value)) ? emptySymbol : value
+      return formatCompactNumber(value, { empty: emptySymbol, maximumFractionDigits })
 
     case "status": {
       const key = safeStr(value).toLowerCase()

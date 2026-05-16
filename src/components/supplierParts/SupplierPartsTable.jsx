@@ -481,7 +481,7 @@ export default function SupplierPartsTable({
       minWidth: 90,
       maxWidth: 140,
       align: "right",
-      render: (value) => <ValueDisplay value={value} />,
+      render: (value) => <ValueDisplay value={value} type="number" maximumFractionDigits={3} />,
     })
 
     cols.push({
@@ -492,7 +492,7 @@ export default function SupplierPartsTable({
       minWidth: 90,
       maxWidth: 130,
       align: "right",
-      render: (value) => <ValueDisplay value={value} />,
+      render: (value) => <ValueDisplay value={value} type="number" maximumFractionDigits={2} />,
     })
 
     cols.push({
@@ -503,7 +503,7 @@ export default function SupplierPartsTable({
       minWidth: 90,
       maxWidth: 130,
       align: "right",
-      render: (value) => <ValueDisplay value={value} />,
+      render: (value) => <ValueDisplay value={value} type="number" maximumFractionDigits={2} />,
     })
 
     cols.push({
@@ -514,7 +514,7 @@ export default function SupplierPartsTable({
       minWidth: 90,
       maxWidth: 130,
       align: "right",
-      render: (value) => <ValueDisplay value={value} />,
+      render: (value) => <ValueDisplay value={value} type="number" maximumFractionDigits={2} />,
     })
 
     cols.push({

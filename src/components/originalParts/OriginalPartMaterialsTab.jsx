@@ -16,6 +16,7 @@ import {
 import { EditOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
+import { formatCompactNumber, toNumberOrNull } from "@/utils/numberFormat"
 import "@/styles/tableStyles.css"
 
 export default function OriginalPartMaterialsTab({ partId }) {
@@ -77,10 +78,10 @@ export default function OriginalPartMaterialsTab({ partId }) {
   const openSpec = (record) => {
     setSpecRecord(record)
     specForm.setFieldsValue({
-      weight_kg: record?.spec_weight_kg ?? null,
-      length_cm: record?.spec_length_cm ?? null,
-      width_cm: record?.spec_width_cm ?? null,
-      height_cm: record?.spec_height_cm ?? null,
+      weight_kg: toNumberOrNull(record?.spec_weight_kg),
+      length_cm: toNumberOrNull(record?.spec_length_cm),
+      width_cm: toNumberOrNull(record?.spec_width_cm),
+      height_cm: toNumberOrNull(record?.spec_height_cm),
     })
     setSpecOpen(true)
   }
@@ -111,12 +112,7 @@ export default function OriginalPartMaterialsTab({ partId }) {
     }
   }
 
-  const fmt = (v) => {
-    if (v === undefined || v === null || v === "") return "—"
-    const n = Number(v)
-    if (!Number.isFinite(n)) return "—"
-    return String(n)
-  }
+  const fmt = (v) => formatCompactNumber(v)
 
   const addMaterial = async () => {
     try {

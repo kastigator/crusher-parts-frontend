@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Button, Card, Checkbox, Input, InputNumber, Space, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
+import { toNumberOrNull } from "@/utils/numberFormat"
 
 const { Text } = Typography
 
@@ -21,16 +22,16 @@ const metaFromPart = (part) => ({
   description_ru: part?.description_ru || "",
   description_en: part?.description_en || "",
   comment: part?.comment || "",
-  lead_time_days: part?.lead_time_days ?? null,
-  min_order_qty: part?.min_order_qty ?? null,
+  lead_time_days: toNumberOrNull(part?.lead_time_days),
+  min_order_qty: toNumberOrNull(part?.min_order_qty),
   packaging: part?.packaging || "",
   is_oem: String(part?.part_type || "").toUpperCase() === "OEM",
   is_overweight: !!part?.is_overweight,
   is_oversize: !!part?.is_oversize,
-  weight_kg: part?.weight_kg ?? null,
-  length_cm: part?.length_cm ?? null,
-  width_cm: part?.width_cm ?? null,
-  height_cm: part?.height_cm ?? null,
+  weight_kg: toNumberOrNull(part?.weight_kg),
+  length_cm: toNumberOrNull(part?.length_cm),
+  width_cm: toNumberOrNull(part?.width_cm),
+  height_cm: toNumberOrNull(part?.height_cm),
 })
 
 export default function SupplierPartMetaCard({ part, onSaved }) {
