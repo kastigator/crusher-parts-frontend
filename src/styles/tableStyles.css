@@ -31,6 +31,16 @@
   max-width: 100%;
 }
 
+.op-table .ant-table-header {
+  overflow-x: hidden !important;
+  max-width: 100%;
+}
+
+.op-table .ant-table-sticky-holder {
+  overflow-x: hidden !important;
+  max-width: 100%;
+}
+
 /* Если таблица шире контейнера — горизонтальный скролл внутри самой таблицы */
 .op-table .ant-table {
   width: 100% !important;
@@ -45,6 +55,8 @@
 }
 
 .op-table.op-table--resizable .ant-table-content > table,
+.op-table.op-table--resizable .ant-table-header > table,
+.op-table.op-table--resizable .ant-table-sticky-holder > table,
 .op-table.op-table--resizable .ant-table-body > table {
   width: var(--op-table-resizable-width, max-content) !important;
   min-width: 0 !important;
@@ -52,6 +64,8 @@
 }
 
 .op-table .ant-table-content > table,
+.op-table .ant-table-header > table,
+.op-table .ant-table-sticky-holder > table,
 .op-table .ant-table-body > table {
   table-layout: fixed;
 }
