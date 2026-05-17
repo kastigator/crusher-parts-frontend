@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from "react"
+import ReactMarkdown from "react-markdown"
 import {
   Alert,
   Button,
@@ -21,7 +22,7 @@ import {
 import axios from "@/api/axiosInstance"
 import { appMessage } from "@/utils/uiFeedback"
 
-const { Text, Paragraph } = Typography
+const { Text } = Typography
 
 const ACCEPTED_FILES = [
   ".pdf",
@@ -48,6 +49,20 @@ const formatFileSize = (size) => {
   if (n < 1024) return `${n} Б`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} КБ`
   return `${(n / 1024 / 1024).toFixed(1)} МБ`
+}
+
+function AssistantMarkdown({ children }) {
+  return (
+    <div className="ai-assistant__markdown">
+      <ReactMarkdown
+        components={{
+          a: ({ children: linkChildren }) => <span>{linkChildren}</span>,
+        }}
+      >
+        {children || ""}
+      </ReactMarkdown>
+    </div>
+  )
 }
 
 export default function AIAssistantDrawer() {
@@ -178,9 +193,7 @@ export default function AIAssistantDrawer() {
                     {item.type === "error" ? (
                       <Text type="danger">{item.content}</Text>
                     ) : (
-                      <Paragraph style={{ whiteSpace: "pre-wrap", marginBottom: 0 }}>
-                        {item.content}
-                      </Paragraph>
+                      <AssistantMarkdown>{item.content}</AssistantMarkdown>
                     )}
 
                     {item.files?.length ? (

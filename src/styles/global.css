@@ -242,6 +242,33 @@ body,
   border-color: #bfdbfe;
 }
 
+.ai-assistant__markdown {
+  line-height: 1.45;
+}
+
+.ai-assistant__markdown > :first-child {
+  margin-top: 0;
+}
+
+.ai-assistant__markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.ai-assistant__markdown p,
+.ai-assistant__markdown ul,
+.ai-assistant__markdown ol {
+  margin: 0 0 8px;
+}
+
+.ai-assistant__markdown ul,
+.ai-assistant__markdown ol {
+  padding-left: 18px;
+}
+
+.ai-assistant__markdown li {
+  margin: 2px 0;
+}
+
 .ai-assistant__loading {
   display: flex;
   align-items: center;
