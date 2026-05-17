@@ -197,6 +197,79 @@ body,
 }
 
 /* ==========================================================
+   AI assistant drawer
+   ========================================================== */
+
+.ai-assistant {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+}
+
+.ai-assistant__messages {
+  flex: 1;
+  min-height: 260px;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+
+.ai-assistant__message {
+  display: flex;
+  margin: 10px 0;
+}
+
+.ai-assistant__message--user {
+  justify-content: flex-end;
+}
+
+.ai-assistant__message--assistant {
+  justify-content: flex-start;
+}
+
+.ai-assistant__bubble {
+  max-width: 92%;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #ffffff;
+  overflow-wrap: anywhere;
+}
+
+.ai-assistant__message--user .ai-assistant__bubble {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.ai-assistant__loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 2px;
+}
+
+.ai-assistant__composer {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 12px;
+}
+
+.ai-assistant__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.ai-assistant__actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ==========================================================
    Утилиты
    ========================================================== */
 

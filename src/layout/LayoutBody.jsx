@@ -6,6 +6,7 @@ import Header from "./Header"
 import { useTabs } from "@/context/TabsContext"
 import usePresencePing from "@/hooks/usePresencePing"
 import useDashboardNotifications from "@/hooks/useDashboardNotifications"
+import AIAssistantDrawer from "@/components/ai/AIAssistantDrawer"
 
 const LayoutBody = () => {
   const { loading } = useTabs()
@@ -53,6 +54,7 @@ const LayoutBody = () => {
           )}
         </div>
       </div>
+      <AIAssistantDrawer />
     </div>
   )
 }
