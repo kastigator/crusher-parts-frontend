@@ -30,6 +30,7 @@ const CATALOG_CHILD_PATHS = new Set([
 const ADMIN_PATH = "/admin"
 const TRASH_PATH = "/trash"
 const CATALOG_ICON_BY_PATH = {
+  "/catalogs": "catalogs",
   "/clients": "clients",
   "/suppliers": "suppliers",
   "/supplier-parts": "supplier-parts",
@@ -41,6 +42,7 @@ const CATALOG_ICON_BY_PATH = {
   "/logistics-route-templates": "logistics-route-templates",
 }
 const CATALOG_LABEL_BY_PATH = {
+  "/catalogs": "Обзор и качество",
   "/original-parts": "OEM детали",
   "/logistics-route-templates": "Шаблоны доставки",
 }
@@ -137,6 +139,18 @@ export default function Sidebar() {
       const catalogChildren = catalogTabs.filter((t) => t.path !== CATALOG_ROOT_PATH)
 
       const childItems = []
+      if (catalogRoot) {
+        childItems.push(
+          buildMenuItem(
+            {
+              ...catalogRoot,
+              icon: catalogRoot.icon || CATALOG_ICON_BY_PATH[CATALOG_ROOT_PATH],
+              name: CATALOG_LABEL_BY_PATH[CATALOG_ROOT_PATH],
+            },
+            { withIcon: true }
+          )
+        )
+      }
       catalogChildren.forEach((tab) => {
         const withFallbackIcon = {
           ...tab,
