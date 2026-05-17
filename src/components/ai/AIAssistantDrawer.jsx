@@ -193,15 +193,6 @@ export default function AIAssistantDrawer() {
                       </Space>
                     ) : null}
 
-                    {item.tools?.length ? (
-                      <Space size={[4, 4]} wrap style={{ marginTop: 8 }}>
-                        {item.tools.map((tool, toolIndex) => (
-                          <Tag key={`${tool.name}-${toolIndex}`} color="blue">
-                            {tool.name}
-                          </Tag>
-                        ))}
-                      </Space>
-                    ) : null}
                   </div>
                 </div>
               ))
