@@ -29,8 +29,13 @@ const CATALOG_CHILD_PATHS = new Set([
 
 const ADMIN_PATH = "/admin"
 const TRASH_PATH = "/trash"
-const CATALOG_ICON_BY_PATH = {
-  "/catalogs": "catalogs",
+const ICON_BY_PATH = {
+  "/client-request-workspace": "client-request-workspace",
+  "/client-requests": "client-requests",
+  "/rfq-workspace": "rfq-workspace",
+  "/rfq": "rfq",
+  "/kpi": "kpi",
+  "/catalogs": "catalog-health",
   "/clients": "clients",
   "/suppliers": "suppliers",
   "/supplier-parts": "supplier-parts",
@@ -40,6 +45,10 @@ const CATALOG_ICON_BY_PATH = {
   "/materials": "materials",
   "/tnved-codes": "tnved-codes",
   "/logistics-route-templates": "logistics-route-templates",
+  "/users": "users",
+  "/measurement-units": "measurement-units",
+  [ADMIN_PATH]: "admin",
+  [TRASH_PATH]: "trash",
 }
 const CATALOG_LABEL_BY_PATH = {
   "/catalogs": "Обзор и качество",
@@ -59,10 +68,14 @@ function getIconUrl(iconName) {
   return resolveIconUrl(buildIconPath(name))
 }
 
-function buildMenuItem(tab, { withIcon = true, labelOverride, tooltipOverride } = {}) {
+function buildMenuItem(
+  tab,
+  { withIcon = true, labelOverride, tooltipOverride, iconOverride } = {}
+) {
   const labelText = labelOverride ?? tab?.name ?? ""
   const tooltipText = tooltipOverride ?? tab?.name ?? ""
-  const iconSrc = getIconUrl(tab?.icon)
+  const iconName = iconOverride || ICON_BY_PATH[tab?.path] || tab?.icon
+  const iconSrc = getIconUrl(iconName)
 
   const icon = withIcon ? (
     <img
@@ -144,7 +157,6 @@ export default function Sidebar() {
           buildMenuItem(
             {
               ...catalogRoot,
-              icon: catalogRoot.icon || CATALOG_ICON_BY_PATH[CATALOG_ROOT_PATH],
               name: CATALOG_LABEL_BY_PATH[CATALOG_ROOT_PATH],
             },
             { withIcon: true }
@@ -154,18 +166,17 @@ export default function Sidebar() {
       catalogChildren.forEach((tab) => {
         const withFallbackIcon = {
           ...tab,
-          icon: tab.icon || CATALOG_ICON_BY_PATH[tab.path] || "catalogs",
           name: CATALOG_LABEL_BY_PATH[tab.path] || tab.name,
         }
         childItems.push(buildMenuItem(withFallbackIcon, { withIcon: true }))
       })
 
       const catalogLabel = catalogRoot?.name ?? "Каталоги"
-      const catalogIconTab = catalogRoot ?? { icon: "catalogs", name: catalogLabel }
+      const catalogIconTab = catalogRoot ?? { path: "catalogs-group", name: catalogLabel }
 
       const groupItem = {
         key: "catalogs-group",
-        icon: buildMenuItem(catalogIconTab).icon,
+        icon: buildMenuItem(catalogIconTab, { iconOverride: "catalogs" }).icon,
         label: <span title={catalogLabel}>{catalogLabel}</span>,
         popupClassName: "sidebar-catalog-popup",
         children: childItems,

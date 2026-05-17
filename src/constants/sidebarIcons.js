@@ -60,6 +60,7 @@ export const SIDEBAR_ICONS = [
   { key: "contracts", label: "Контракты", path: buildIconPath("contracts") },
   { key: "purchase-orders", label: "Заказы поставщикам", path: buildIconPath("purchase-orders") },
   { key: "catalogs", label: "Каталоги", path: buildIconPath("catalogs") },
+  { key: "catalog-health", label: "Обзор и качество каталогов", path: buildIconPath("catalog-health") },
   { key: "clients", label: "Клиенты", path: buildIconPath("clients") },
   { key: "suppliers", label: "Поставщики", path: buildIconPath("suppliers") },
   { key: "supplier-parts", label: "Детали поставщиков", path: buildIconPath("supplier-parts") },
@@ -69,6 +70,8 @@ export const SIDEBAR_ICONS = [
   { key: "materials", label: "Материалы", path: buildIconPath("materials") },
   { key: "tnved-codes", label: "Коды ТН ВЭД", path: buildIconPath("tnved-codes") },
   { key: "logistics-route-templates", label: "Шаблоны доставки", path: buildIconPath("logistics-route-templates") },
+  { key: "users", label: "Пользователи и роли", path: buildIconPath("users") },
+  { key: "measurement-units", label: "Единицы измерения", path: buildIconPath("measurement-units") },
   { key: "trash", label: "Корзина", path: buildIconPath("trash") },
   { key: "admin", label: "Админ", path: buildIconPath("admin") },
 ]
