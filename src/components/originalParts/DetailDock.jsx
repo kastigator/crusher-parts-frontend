@@ -16,7 +16,7 @@ const { Text } = Typography
 
 export default function DetailDock({
   part,
-  modelId: _modelId,
+  modelId,
   manufacturerName,
   modelName,
   onOpenPart,
@@ -66,6 +66,7 @@ export default function DetailDock({
             children: (
               <BomTree
                 part={part}
+                modelId={modelId}
                 manufacturerName={manufacturerName}
                 modelName={modelName}
                 onOpenPart={onOpenPart}

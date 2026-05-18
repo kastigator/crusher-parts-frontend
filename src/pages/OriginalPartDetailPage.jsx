@@ -18,9 +18,11 @@ export default function OriginalPartDetailPage() {
 
   const [loading, setLoading] = useState(false)
   const [part, setPart] = useState(null)
+  const queryModelId = Number(new URLSearchParams(location.search).get("equipment_model_id") || 0) || null
 
   const currentModelId =
     Number(location.state?.currentModelId || 0) ||
+    queryModelId ||
     Number(part?.equipment_model_id || 0) ||
     (Array.isArray(part?.application_models) && part.application_models.length === 1
       ? Number(part.application_models[0]?.equipment_model_id || 0) || null
@@ -39,7 +41,8 @@ export default function OriginalPartDetailPage() {
   const openPartCardFromBom = (nextPartId) => {
     const idNum = Number(nextPartId)
     if (!Number.isFinite(idNum) || idNum <= 0) return
-    navigate(`/original-parts/${idNum}`, {
+    const suffix = currentModelId ? `?equipment_model_id=${encodeURIComponent(currentModelId)}` : ""
+    navigate(`/original-parts/${idNum}${suffix}`, {
       state: {
         from: location.pathname,
         currentModelId,
@@ -52,7 +55,10 @@ export default function OriginalPartDetailPage() {
     if (!partId) return
     setLoading(true)
     try {
-      const { data } = await axios.get(`/original-parts/${partId}/full`)
+      const params = {}
+      const modelId = Number(location.state?.currentModelId || 0) || queryModelId
+      if (modelId) params.equipment_model_id = modelId
+      const { data } = await axios.get(`/original-parts/${partId}/full`, { params })
       setPart(data || null)
     } catch (e) {
       console.error(e)
@@ -66,7 +72,7 @@ export default function OriginalPartDetailPage() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partId])
+  }, [partId, queryModelId, location.state?.currentModelId])
 
   const handleDeleteCurrentModel = async () => {
     if (!part?.id || !currentModelId) {

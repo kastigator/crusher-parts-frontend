@@ -1,10 +1,11 @@
 // src/components/originalParts/BomTree.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react"
-import { Card, Empty, Tree, Space, Button, Typography, message, InputNumber, Tooltip, Tag } from "antd"
+import { Card, Empty, Tree, Space, Button, Typography, message, Tooltip, Tag } from "antd"
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import BomChildPickerDrawer from "./BomChildPickerDrawer"
+import BomQuantityInput from "./BomQuantityInput"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const { Text } = Typography
@@ -14,13 +15,14 @@ const { Text } = Typography
  * c полями: node_id, parent_part_id, edge_qty, cat_number,
  *           description_ru, description_en, level, path, mult_qty
  */
-export default function BomTree({ part, manufacturerName, modelName, onOpenPart }) {
+export default function BomTree({ part, modelId: currentModelId, manufacturerName, modelName, onOpenPart }) {
   const rootId = part?.id || null
-  const modelId = part?.equipment_model_id || null
+  const modelId = currentModelId || part?.equipment_model_id || null
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [expandedKeys, setExpandedKeys] = useState([])
   const [selectedKeys, setSelectedKeys] = useState([])
+  const [checkedKeys, setCheckedKeys] = useState([])
   const [pickerOpen, setPickerOpen] = useState(false)
 
   // загрузка дерева
@@ -30,11 +32,13 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
       setRows([])
       setExpandedKeys([])
       setSelectedKeys([])
+      setCheckedKeys([])
       return () => {}
     }
     setLoading(true)
     try {
-      const { data } = await axios.get(`/original-part-bom/tree/${rootId}`)
+      const params = modelId ? { equipment_model_id: modelId } : undefined
+      const { data } = await axios.get(`/original-part-bom/tree/${rootId}`, { params })
       if (!ignore) {
         const arr = Array.isArray(data) ? data : []
         setRows(arr)
@@ -46,7 +50,7 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
       if (!ignore) setLoading(false)
     }
     return () => { ignore = true }
-  }, [rootId])
+  }, [rootId, modelId])
 
   useEffect(() => {
     let cleanup = () => {}
@@ -57,14 +61,15 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
   const updateQty = useCallback(async (parentId, childId, nextQty) => {
     if (!parentId || !childId) return
     const qtyNum = Number(nextQty)
-    if (!(qtyNum > 0)) {
-      message.warning("Количество должно быть > 0")
+    if (!Number.isInteger(qtyNum) || qtyNum <= 0) {
+      message.warning("Количество должно быть целым числом > 0")
       return
     }
     try {
       await axios.put("/original-part-bom", {
         parent_part_id: parentId,
         child_part_id: childId,
+        equipment_model_id: modelId || undefined,
         quantity: qtyNum,
       })
       await load()
@@ -72,7 +77,7 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось обновить количество")
     }
-  }, [load])
+  }, [load, modelId])
 
   const removeRow = useCallback(async (parentId, childId) => {
     const { confirmed } = await confirmAction("Удалить позицию из BOM?")
@@ -81,9 +86,9 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
       const result = await runTrashDeleteFlow({
         entityType: "oem_part_model_bom",
         entityId: parentId,
-        previewParams: { child_part_id: childId },
+        previewParams: { child_part_id: childId, equipment_model_id: modelId || undefined },
         deleteUrl: "/original-part-bom",
-        deleteParams: { parent_part_id: parentId, child_part_id: childId },
+        deleteParams: { parent_part_id: parentId, child_part_id: childId, equipment_model_id: modelId || undefined },
         successMessage: "Строка BOM удалена",
       })
       if (result?.deleted) {
@@ -93,12 +98,55 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось удалить позицию")
     }
-  }, [load])
+  }, [load, modelId])
+
+  const removeCheckedRows = useCallback(async () => {
+    const selectedRows = checkedKeys
+      .map((key) => rows.find((row) => Number(row.node_id) === Number(key)))
+      .filter((row) => row && Number(row.level) > 0 && row.parent_part_id)
+
+    if (!selectedRows.length) {
+      message.warning("Выберите позиции для удаления")
+      return
+    }
+
+    const { confirmed } = await confirmAction(`Удалить выбранные позиции из BOM (${selectedRows.length})?`)
+    if (!confirmed) return
+
+    try {
+      const { data } = await axios.delete("/original-part-bom/bulk", {
+        data: {
+          items: selectedRows.map((row) => ({
+            parent_part_id: row.parent_part_id,
+            child_part_id: row.node_id,
+            equipment_model_id: modelId || undefined,
+          })),
+        },
+      })
+      const deleted = Number(data?.deleted || 0)
+      if (deleted) message.success(`Удалено позиций: ${deleted}`)
+      if (Array.isArray(data?.skipped) && data.skipped.length) {
+        message.warning(`Часть строк не удалена: ${data.skipped.length}`)
+      }
+      setCheckedKeys([])
+      await load()
+    } catch (e) {
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось удалить выбранные позиции")
+    }
+  }, [checkedKeys, rows, load, modelId])
 
   // построение иерархии AntD Tree из плоского списка
-  const { treeData, allKeys, totalCount, rowById, rootRow } = useMemo(() => {
+  const { treeData, allKeys, allDeletableKeys, totalCount, rowById, rootRow } = useMemo(() => {
     if (!Array.isArray(rows) || rows.length === 0) {
-      return { treeData: [], allKeys: [], totalCount: 0, rowById: new Map(), rootRow: null }
+      return {
+        treeData: [],
+        allKeys: [],
+        allDeletableKeys: [],
+        totalCount: 0,
+        rowById: new Map(),
+        rootRow: null,
+      }
     }
 
     // создаём узлы и карта по id
@@ -106,10 +154,12 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
     const childrenMap = new Map() // id -> массив детей
     const rowMap = new Map()
     const keys = []
+    const deletableKeys = []
 
     // подготовка всех узлов
     for (const r of rows) {
       rowMap.set(r.node_id, r)
+      if (Number(r.level) > 0) deletableKeys.push(r.node_id)
       const qty = Number(r.mult_qty ?? 0)
       const desc = r.description_ru || r.description_en || ""
 
@@ -136,15 +186,10 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
             {r.level > 0 ? (
               <Space size={6}>
                 <Text type="secondary">Кол-во:</Text>
-                <InputNumber
-                  min={0.0001}
-                  step={0.0001}
-                  precision={4}
+                <BomQuantityInput
                   size="small"
-                  style={{ width: 120 }}
-                  value={Number(r.edge_qty ?? 1)}
-                  onPressEnter={(e) => updateQty(r.parent_part_id, r.node_id, e.target.value)}
-                  onBlur={(e) => updateQty(r.parent_part_id, r.node_id, e.target.value)}
+                  value={r.edge_qty ?? 1}
+                  onCommit={(nextQty) => updateQty(r.parent_part_id, r.node_id, nextQty)}
                 />
                 <Tooltip title="Удалить позицию">
                   <Button
@@ -159,6 +204,7 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
           </div>
         ),
         isLeaf: false, // решим позже, когда узнаем детей
+        disableCheckbox: Number(r.level) <= 0,
         raw: r,
       }
       nodeMap.set(r.node_id, node)
@@ -194,7 +240,7 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
     const treeData = rootNode ? [rootNode] : []
     const totalCount = rows.length - 1 /* без корня */
 
-    return { treeData, allKeys: keys, totalCount, rowById: rowMap, rootRow }
+    return { treeData, allKeys: keys, allDeletableKeys: deletableKeys, totalCount, rowById: rowMap, rootRow }
   }, [rows, removeRow, updateQty, onOpenPart])
 
   // по умолчанию разворачиваем всё при смене данных
@@ -204,6 +250,11 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
       setSelectedKeys((prev) => (prev?.length ? prev : [rootRow.node_id]))
     }
   }, [allKeys, rootRow?.node_id])
+
+  useEffect(() => {
+    const allowed = new Set(allDeletableKeys.map((key) => Number(key)))
+    setCheckedKeys((prev) => prev.filter((key) => allowed.has(Number(key))))
+  }, [allDeletableKeys])
 
   const selectedId = Number(selectedKeys?.[0] || rootId || 0)
   const selectedRow = rowById.get(selectedId) || rootRow
@@ -217,6 +268,14 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
     [rows, selectedId]
   )
 
+  const selectedChildKeys = useMemo(
+    () =>
+      rows
+        .filter((row) => Number(row.parent_part_id) === Number(selectedId))
+        .map((row) => row.node_id),
+    [rows, selectedId]
+  )
+
   const handlePickParts = async (pickedRows) => {
     if (!selectedId || !Array.isArray(pickedRows) || !pickedRows.length) return
     try {
@@ -226,6 +285,7 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
       }))
       const { data } = await axios.post("/original-part-bom/bulk", {
         parent_part_id: selectedId,
+        equipment_model_id: modelId || undefined,
         items,
       })
       const inserted = Number(data?.inserted || 0)
@@ -271,6 +331,36 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
           >
             Добавить позицию
           </Button>
+          <Button
+            size="small"
+            disabled={!selectedChildKeys.length}
+            onClick={() => setCheckedKeys(selectedChildKeys)}
+          >
+            Выделить дочерние
+          </Button>
+          <Button
+            size="small"
+            disabled={!allDeletableKeys.length}
+            onClick={() => setCheckedKeys(allDeletableKeys)}
+          >
+            Выделить всё
+          </Button>
+          <Button
+            size="small"
+            disabled={!checkedKeys.length}
+            onClick={() => setCheckedKeys([])}
+          >
+            Снять
+          </Button>
+          <Button
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            disabled={!checkedKeys.length}
+            onClick={removeCheckedRows}
+          >
+            Удалить выбранные ({checkedKeys.length})
+          </Button>
           <Button size="small" onClick={() => setExpandedKeys(allKeys)}>
             Развернуть всё
           </Button>
@@ -285,11 +375,15 @@ export default function BomTree({ part, manufacturerName, modelName, onOpenPart 
       ) : (
         <Tree
           showLine
+          checkable
+          checkStrictly
           blockNode
           selectable
           treeData={treeData}
           expandedKeys={expandedKeys}
           onExpand={setExpandedKeys}
+          checkedKeys={checkedKeys}
+          onCheck={(keys) => setCheckedKeys(Array.isArray(keys) ? keys : keys?.checked || [])}
           selectedKeys={selectedKeys}
           onSelect={(keys) => setSelectedKeys(keys)}
         />

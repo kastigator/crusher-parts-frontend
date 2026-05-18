@@ -838,7 +838,8 @@ export default function OriginalPartsMain() {
           ? Number(recordOrId.equipment_model_id || model?.id || 0) || null
           : Number(model?.id || 0) || null
 
-      navigate(`/original-parts/${partId}`, {
+      const suffix = currentModelId ? `?equipment_model_id=${encodeURIComponent(currentModelId)}` : ""
+      navigate(`/original-parts/${partId}${suffix}`, {
         state: {
           from: `${location.pathname}${location.search || ""}`,
           currentModelId,

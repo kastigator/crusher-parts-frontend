@@ -1,10 +1,11 @@
 // /src/components/originalParts/bundle/BundleTab.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react"
-import { Button, Collapse, Empty, Input, InputNumber, message, Space, Tag, Tooltip, Typography } from "antd"
+import { Button, Collapse, Empty, Input, message, Space, Tag, Tooltip, Typography } from "antd"
 import { StarFilled } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import SupplierPartPickerDrawer from "./SupplierPartPickerDrawer"
 import ActionButtons from "@/components/common/ActionButtons"
+import BomQuantityInput from "@/components/originalParts/BomQuantityInput"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const { Text } = Typography
@@ -192,8 +193,13 @@ export default function BundleTab({ originalPartId, originalPart }) {
   }
 
   const updateItemQty = async (itemId, qty) => {
+    const qtyNum = Number(qty)
+    if (!Number.isInteger(qtyNum) || qtyNum <= 0) {
+      message.warning("Количество должно быть целым числом > 0")
+      return
+    }
     try {
-      await axios.put(`/supplier-bundles/items/${itemId}`, { qty })
+      await axios.put(`/supplier-bundles/items/${itemId}`, { qty: qtyNum })
       await loadData()
     } catch (e) {
       console.error(e)
@@ -572,11 +578,9 @@ export default function BundleTab({ originalPartId, originalPart }) {
                           <Text type="secondary" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
                             Кол-во
                           </Text>
-                          <InputNumber
-                            min={0.0001}
-                            step={0.1}
-                            value={Number(r.qty || 1)}
-                            onChange={(val) => updateItemQty(r.id, Number(val || 1))}
+                          <BomQuantityInput
+                            value={r.qty || 1}
+                            onCommit={(nextQty) => updateItemQty(r.id, nextQty)}
                           />
                         </Space>
                       </div>

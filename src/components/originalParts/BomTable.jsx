@@ -1,10 +1,11 @@
 // src/components/originalParts/BomTable.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Button, InputNumber, Space, Table, Typography, Tag, message, Tooltip } from "antd"
+import { Button, Space, Table, Typography, Tag, message, Tooltip } from "antd"
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import BomChildPickerDrawer from "./BomChildPickerDrawer"
+import BomQuantityInput from "./BomQuantityInput"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const { Text } = Typography
@@ -34,7 +35,7 @@ export default function BomTable({ part }) {
     setLoading(true)
     try {
       const { data } = await axios.get("/original-part-bom", {
-        params: { parent_id: parentId },
+        params: { parent_id: parentId, equipment_model_id: modelId || undefined },
         signal: controller.signal,
       })
       setRows(Array.isArray(data) ? data : [])
@@ -47,7 +48,7 @@ export default function BomTable({ part }) {
     } finally {
       setLoading(false)
     }
-  }, [parentId])
+  }, [parentId, modelId])
 
   useEffect(() => {
     const t = setTimeout(load, 100)
@@ -72,6 +73,7 @@ export default function BomTable({ part }) {
 
       const { data } = await axios.post("/original-part-bom/bulk", {
         parent_part_id: parentId,
+        equipment_model_id: modelId || undefined,
         items,
       })
       const inserted = Number(data?.inserted || 0)
@@ -92,14 +94,15 @@ export default function BomTable({ part }) {
   const updateQty = useCallback(async (childId, nextQty) => {
     if (!parentId || !childId) return
     const qtyNum = Number(nextQty)
-    if (!(qtyNum > 0)) {
-      message.warning("Количество должно быть > 0")
+    if (!Number.isInteger(qtyNum) || qtyNum <= 0) {
+      message.warning("Количество должно быть целым числом > 0")
       return
     }
     try {
       await axios.put("/original-part-bom", {
         parent_part_id: parentId,
         child_part_id: childId,
+        equipment_model_id: modelId || undefined,
         quantity: qtyNum,
       })
       load()
@@ -107,7 +110,7 @@ export default function BomTable({ part }) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось обновить количество")
     }
-  }, [parentId, load])
+  }, [parentId, modelId, load])
 
   // ===== Удаление строки =====
   const removeRow = useCallback(async (childId) => {
@@ -117,9 +120,9 @@ export default function BomTable({ part }) {
       const result = await runTrashDeleteFlow({
         entityType: "oem_part_model_bom",
         entityId: parentId,
-        previewParams: { child_part_id: childId },
+        previewParams: { child_part_id: childId, equipment_model_id: modelId || undefined },
         deleteUrl: "/original-part-bom",
-        deleteParams: { parent_part_id: parentId, child_part_id: childId },
+        deleteParams: { parent_part_id: parentId, child_part_id: childId, equipment_model_id: modelId || undefined },
         successMessage: "Строка BOM удалена",
       })
       if (result?.deleted) {
@@ -129,7 +132,7 @@ export default function BomTable({ part }) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось удалить позицию")
     }
-  }, [parentId, load])
+  }, [parentId, modelId, load])
 
   const columns = useMemo(
     () => [
@@ -151,14 +154,9 @@ export default function BomTable({ part }) {
         align: "right",
         width: 160,
         render: (v, r) => (
-          <InputNumber
-            min={0.0001}
-            step={0.0001}
-            precision={4}
-            value={Number(v)}
-            style={{ width: 120 }}
-            onPressEnter={(e) => updateQty(r.child_part_id, e.target.value)}
-            onBlur={(e) => updateQty(r.child_part_id, e.target.value)}
+          <BomQuantityInput
+            value={v}
+            onCommit={(nextQty) => updateQty(r.child_part_id, nextQty)}
           />
         ),
       },
