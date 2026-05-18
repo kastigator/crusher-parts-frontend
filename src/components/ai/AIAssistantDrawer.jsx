@@ -3,12 +3,14 @@ import ReactMarkdown from "react-markdown"
 import {
   Alert,
   Button,
+  Card,
   Drawer,
   Empty,
   FloatButton,
   Input,
   Space,
   Spin,
+  Table,
   Tag,
   Typography,
   Upload,
@@ -19,6 +21,18 @@ import {
   RobotOutlined,
   SendOutlined,
 } from "@ant-design/icons"
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts"
 import axios from "@/api/axiosInstance"
 import { appMessage } from "@/utils/uiFeedback"
 
@@ -62,6 +76,90 @@ function AssistantMarkdown({ children }) {
         {children || ""}
       </ReactMarkdown>
     </div>
+  )
+}
+
+const formatChartValue = (value) => {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return value
+  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(n)
+}
+
+function AIChart({ chart }) {
+  const data = Array.isArray(chart?.data) ? chart.data : []
+  const series = Array.isArray(chart?.series) ? chart.series : []
+  const xKey = chart?.xKey
+  if (!data.length || !series.length || !xKey) return null
+
+  const ChartComponent = chart?.type === "line" ? LineChart : BarChart
+
+  return (
+    <Card
+      size="small"
+      className="ai-assistant__chart-card"
+      title={chart.title || "График"}
+    >
+      {chart.subtitle ? (
+        <Text type="secondary" className="ai-assistant__chart-subtitle">
+          {chart.subtitle}
+        </Text>
+      ) : null}
+      <div className="ai-assistant__chart">
+        <ResponsiveContainer width="100%" height="100%">
+          <ChartComponent data={data} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey={xKey} tick={{ fontSize: 11 }} />
+            <YAxis tickFormatter={formatChartValue} tick={{ fontSize: 11 }} />
+            <Tooltip formatter={(value) => formatChartValue(value)} />
+            <Legend />
+            {series.map((item, index) =>
+              chart?.type === "line" ? (
+                <Line
+                  key={item.key}
+                  type="monotone"
+                  dataKey={item.key}
+                  name={item.label || item.key}
+                  stroke={item.color || ["#2563eb", "#16a34a", "#f97316"][index % 3]}
+                  strokeWidth={2}
+                  dot={false}
+                />
+              ) : (
+                <Bar
+                  key={item.key}
+                  dataKey={item.key}
+                  name={item.label || item.key}
+                  fill={item.color || ["#2563eb", "#16a34a", "#f97316"][index % 3]}
+                  radius={[4, 4, 0, 0]}
+                />
+              )
+            )}
+          </ChartComponent>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  )
+}
+
+function AITablePreview({ table }) {
+  const rows = Array.isArray(table?.rows) ? table.rows : []
+  const columns = Array.isArray(table?.columns) ? table.columns : []
+  if (!rows.length || !columns.length) return null
+
+  return (
+    <Table
+      size="small"
+      className="ai-assistant__table"
+      rowKey={(_, index) => `${table?.id || "table"}-${index}`}
+      pagination={false}
+      columns={columns.map((col) => ({
+        title: col.label || col.key,
+        dataIndex: col.key,
+        key: col.key,
+        render: (value) => formatChartValue(value),
+      }))}
+      dataSource={rows.slice(0, 8)}
+      scroll={{ x: true }}
+    />
   )
 }
 
@@ -122,6 +220,8 @@ export default function AIAssistantDrawer() {
           role: "assistant",
           content: data?.answer || "Агент не вернул ответ.",
           attachments: data?.attachments || [],
+          charts: data?.charts || [],
+          tables: data?.tables || [],
           tools: data?.tools || [],
           model: data?.model,
         },
@@ -204,6 +304,25 @@ export default function AIAssistantDrawer() {
                           </Tag>
                         ))}
                       </Space>
+                    ) : null}
+
+                    {item.charts?.length ? (
+                      <div className="ai-assistant__charts">
+                        {item.charts.map((chart, chartIndex) => (
+                          <AIChart key={`${chart?.id || "chart"}-${chartIndex}`} chart={chart} />
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {item.tables?.length ? (
+                      <div className="ai-assistant__tables">
+                        {item.tables.map((table, tableIndex) => (
+                          <AITablePreview
+                            key={`${table?.id || "table"}-${tableIndex}`}
+                            table={table}
+                          />
+                        ))}
+                      </div>
                     ) : null}
 
                   </div>
