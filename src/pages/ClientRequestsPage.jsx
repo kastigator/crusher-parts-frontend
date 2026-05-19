@@ -42,7 +42,7 @@ import RequestsListCard from "@/components/clientRequests/RequestsListCard"
 import axios from "@/api/axiosInstance"
 import dayjs from "dayjs"
 import confirmAction from "@/utils/confirmAction"
-import { formatUomLabel } from "@/utils/uom"
+import { formatQtyWithUomLabel, formatUomLabel } from "@/utils/uom"
 import { useAuth } from "@/auth/AuthContext"
 import { useSearchParams } from "react-router-dom"
 import useCapabilities from "@/hooks/useCapabilities"
@@ -2267,7 +2267,7 @@ export default function ClientRequestsPage() {
       dataIndex: "requested_qty",
       width: 120,
       render: (v, record) => {
-        if (!bulkMode || !bulkSelectedKeys.includes(record.id)) return v
+        if (!bulkMode || !bulkSelectedKeys.includes(record.id)) return formatQtyWithUomLabel(v, null)
         const edit = bulkEdits[record.line_number] || {}
         return (
           <InputNumber
