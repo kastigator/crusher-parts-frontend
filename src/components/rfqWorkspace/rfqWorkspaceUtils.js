@@ -232,6 +232,17 @@ const resolveHeaderField = (headerValue) => {
     return "incoterms_place"
   }
   if (includes("incoterm")) return "incoterms"
+  if (
+    includes("страна происх") ||
+    includes("происхождение товара") ||
+    includes("origin country") ||
+    includes("country of origin") ||
+    key === "origin" ||
+    key === "origin_country" ||
+    key === "country_of_origin"
+  ) {
+    return "origin_country"
+  }
   if (includes("услов") || includes("payment")) return "payment_terms"
   if (includes("valid") || includes("срок действия")) return "validity_days"
   if (includes("pn") || includes("supplier part")) return "supplier_part_number"
@@ -281,6 +292,9 @@ const parseImportRowByHeaderMap = (cells, headerMap) => {
     incoterms_place: getValue("incoterms_place")
       ? String(getValue("incoterms_place")).trim()
       : null,
+    origin_country: getValue("origin_country")
+      ? String(getValue("origin_country")).trim().toUpperCase().slice(0, 2)
+      : null,
     payment_terms: getValue("payment_terms") ? String(getValue("payment_terms")).trim() : null,
     validity_days: parseNumberOrNull(getValue("validity_days")),
     supplier_part_number: getValue("supplier_part_number")
@@ -326,6 +340,9 @@ export const parseImportRow = (cells) => {
       incoterms_place: row[idx.incotermsPlace]
         ? String(row[idx.incotermsPlace]).trim()
         : null,
+      origin_country: row[idx.originCountry]
+        ? String(row[idx.originCountry]).trim().toUpperCase().slice(0, 2)
+        : null,
       payment_terms: row[idx.paymentTerms] ? String(row[idx.paymentTerms]).trim() : null,
       validity_days: parseNumberOrNull(row[idx.validity]),
       supplier_part_number: row[idx.supplierPartNumber]
@@ -363,11 +380,12 @@ export const parseImportRow = (cells) => {
     packaging: 19,
     incoterms: 20,
     incotermsPlace: 21,
-    paymentTerms: 22,
-    validity: 23,
-    comment: 24,
-    selectionKey: 25,
-    rfqItemId: 26,
+    originCountry: 22,
+    paymentTerms: 23,
+    validity: 24,
+    comment: 25,
+    selectionKey: 26,
+    rfqItemId: 27,
   })
   if (fromTemplateV2) return fromTemplateV2
 
@@ -391,11 +409,12 @@ export const parseImportRow = (cells) => {
     packaging: 20,
     incoterms: 21,
     incotermsPlace: 22,
-    paymentTerms: 23,
-    validity: 24,
-    comment: 25,
-    selectionKey: 26,
-    rfqItemId: 27,
+    originCountry: 23,
+    paymentTerms: 24,
+    validity: 25,
+    comment: 26,
+    selectionKey: 27,
+    rfqItemId: 28,
   })
   if (fromTemplateV1) return fromTemplateV1
 
@@ -422,7 +441,8 @@ export const parseImportRow = (cells) => {
     packaging: row[7] ? String(row[7]).trim() : null,
     incoterms: row[17] ? String(row[17]).trim().toUpperCase() : null,
     incoterms_place: row[18] ? String(row[18]).trim() : null,
-    payment_terms: row[19] ? String(row[19]).trim() : null,
+    origin_country: row[19] ? String(row[19]).trim().toUpperCase().slice(0, 2) : null,
+    payment_terms: row[20] ? String(row[20]).trim() : null,
     validity_days: parseNumberOrNull(row[8]),
     supplier_part_number: row[9] ? String(row[9]).trim() : null,
     supplier_description: row[10] ? String(row[10]).trim() : null,

@@ -29,7 +29,7 @@ const SELECTION_HELP_SECTIONS = [
   {
     title: "Зачем нужна вкладка",
     body:
-      "Выбор утверждает один сценарий как финальный план исполнения заказа. После этого именно он становится основой для коммерческого предложения, контракта и заказа поставщику.",
+      "Выбор утверждает один сценарий как финальный план исполнения текущей ревизии заявки. После этого именно он становится основой для коммерческого предложения, контракта и заказа поставщику.",
   },
   {
     title: "Что здесь проверять",
@@ -39,7 +39,7 @@ const SELECTION_HELP_SECTIONS = [
   {
     title: "Что произойдёт после утверждения",
     body:
-      "Система создаст финальный выбор как снимок на текущий момент. Дальнейшие документы должны опираться уже на этот выбор, а не на черновые сценарии.",
+      "Система создаст финальный выбор как снимок на текущий момент. Если клиент позже меняет состав, количество или условия, создаётся новая ревизия заявки: RFQ синхронизируется заново, а старый выбор остается только историей.",
   },
 ]
 
@@ -58,6 +58,18 @@ const buildScenarioOptionLabel = (row) => {
   return `${source} · ${kindLabel} · ${completeness}`
 }
 
+const buildSelectionLabel = (selection, formatDate) => {
+  if (!selection) return "Выбор"
+  const parts = []
+  const date = formatDate?.(selection.created_at)
+  if (date && date !== "—") parts.push(`Выбор от ${date}`)
+  else parts.push("Выбор")
+  parts.push(SCENARIO_STATUS_LABELS[String(selection.status || "").toLowerCase()] || selection.status || "—")
+  const total = formatPriceWithCurrency(selection.landed_total, selection.calc_currency || "USD")
+  if (total && total !== "—") parts.push(total)
+  return parts.join(" · ")
+}
+
 export default function SelectionTabContent({ rfqId, selections, formatDate, onSelectionFinalized }) {
   const [scenarios, setScenarios] = useState([])
   const [selectedScenarioId, setSelectedScenarioId] = useState(null)
@@ -73,6 +85,10 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
   const latestSelection = useMemo(
     () => (Array.isArray(selections) && selections.length ? selections[0] : null),
     [selections]
+  )
+  const latestSelectionLabel = useMemo(
+    () => buildSelectionLabel(latestSelection, formatDate),
+    [latestSelection, formatDate]
   )
   const selectionHistoryPreview = useMemo(
     () => (Array.isArray(selections) ? selections.slice(0, 3) : []),
@@ -214,7 +230,7 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
         type="info"
         showIcon
         message="Выбор фиксирует сценарий как финальный снимок"
-        description="После утверждения создаётся финальная закупочная база: состав поставщиков, себестоимость, страна происхождения и публичные коды поставщиков фиксируются в выборе. Дальше продавец работает уже от этого утвержденного набора."
+        description="После утверждения создаётся финальная закупочная база активной ревизии: состав поставщиков, себестоимость, страна происхождения и публичные коды поставщиков фиксируются в выборе. При новой ревизии заявки нужен новый синхронизированный RFQ и новый выбор."
       />
 
       <Card
@@ -248,7 +264,7 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
               <Tag color={scenarioReadiness.ready ? "green" : "gold"}>
                 {scenarioReadiness.ready ? "Можно утверждать" : "Нужна проверка"}
               </Tag>
-              {latestSelection ? <Tag color="blue">{`Последний выбор #${latestSelection.id}`}</Tag> : null}
+              {latestSelection ? <Tag color="blue">{`Последний: ${latestSelectionLabel}`}</Tag> : null}
             </Space>
           ) : null}
 
@@ -414,14 +430,14 @@ export default function SelectionTabContent({ rfqId, selections, formatDate, onS
         {latestSelection ? (
           <Space direction="vertical" size={8} style={{ width: "100%", marginBottom: 12 }}>
             <Space wrap>
-              <Text strong>{`Последний выбор #${latestSelection.id}`}</Text>
+              <Text strong>{latestSelectionLabel}</Text>
               <Tag>{SCENARIO_STATUS_LABELS[String(latestSelection.status || "").toLowerCase()] || latestSelection.status || "Черновик"}</Tag>
               <Text type="secondary">{formatDate(latestSelection.created_at)}</Text>
               <Tag color="blue">{`Всего выборов: ${Array.isArray(selections) ? selections.length : 0}`}</Tag>
             </Space>
             <Space wrap size={[8, 8]}>
               {selectionHistoryPreview.map((selection) => (
-                <Tag key={selection.id}>{`#${selection.id} · ${formatDate(selection.created_at)}`}</Tag>
+                <Tag key={selection.id}>{buildSelectionLabel(selection, formatDate)}</Tag>
               ))}
               {Array.isArray(selections) && selections.length > selectionHistoryPreview.length ? (
                 <Tag>{`+${selections.length - selectionHistoryPreview.length}`}</Tag>

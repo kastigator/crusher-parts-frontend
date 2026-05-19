@@ -1,5 +1,5 @@
 import React from "react"
-import { Button, Card, Checkbox, Input, Select, Space, Table, Tabs, Tag, Typography } from "antd"
+import { Alert, Button, Card, Checkbox, Input, Select, Space, Table, Tabs, Tag, Typography } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import RfqOverviewTabContent from "@/components/rfqWorkspace/RfqOverviewTabContent"
 import SuppliersTabContent from "@/components/rfqWorkspace/SuppliersTabContent"
@@ -93,6 +93,7 @@ export default function RfqWorkspaceMainContent({
   rfqStatusLabel,
   handleDeleteRfq,
 }) {
+  const isRfqNeedsSync = String(activeRfq?.rfq_sync_status || "").toLowerCase() === "needs_sync"
   const rfqColumns = [
     {
       title: "RFQ",
@@ -103,6 +104,9 @@ export default function RfqWorkspaceMainContent({
           <span style={{ color: "#8c8c8c" }}>
             {record.client_name || "Клиент"} · {record.client_request_number || record.client_reference || `#${record.client_request_id}`}
           </span>
+          {String(record.rfq_sync_status || "").toLowerCase() === "needs_sync" ? (
+            <Tag color="orange" style={{ width: "fit-content" }}>Требует синхронизации</Tag>
+          ) : null}
         </Space>
       ),
     },
@@ -193,6 +197,7 @@ export default function RfqWorkspaceMainContent({
                 meta={[
                   activeRfq.client_name || "Клиент",
                   `Rev ${activeRfq.rev_number || "-"}`,
+                  isRfqNeedsSync ? "Новая ревизия заявки не синхронизирована" : null,
                   activeRfq.client_request_number
                     ? `Заявка: ${activeRfq.client_request_number}`
                     : activeRfq.client_reference
@@ -209,6 +214,15 @@ export default function RfqWorkspaceMainContent({
                   </Button>
                 )}
               />
+
+              {isRfqNeedsSync ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="RFQ не синхронизирован с текущей ревизией заявки"
+                  description="Отправка поставщикам, ответы, покрытие, сценарии, выбор и коммерческий контур временно закрыты, чтобы не продолжить старый состав. Откройте заявку клиента и выполните «Синхронизировать RFQ»."
+                />
+              ) : null}
 
               <Tabs
                 activeKey={activeTabKey}
@@ -232,7 +246,7 @@ export default function RfqWorkspaceMainContent({
                 {
                   key: "suppliers",
                   label: "Поставщики",
-                  disabled: !isStructureConfirmed,
+                  disabled: !isStructureConfirmed || isRfqNeedsSync,
                   children: (
                     <SuppliersTabContent
                       suggestedSuppliers={suggestedSuppliers}
@@ -272,7 +286,7 @@ export default function RfqWorkspaceMainContent({
                 {
                   key: "responses",
                   label: "Ответы",
-                  disabled: !isStructureConfirmed,
+                  disabled: !isStructureConfirmed || isRfqNeedsSync,
                   children: (
                     <ResponsesTabContent
                       activeRfqId={activeRfqIdForTabs}
@@ -295,7 +309,7 @@ export default function RfqWorkspaceMainContent({
                 {
                   key: "coverage",
                   label: "Покрытие",
-                  disabled: !isStructureConfirmed,
+                  disabled: !isStructureConfirmed || isRfqNeedsSync,
                   children: (
                     <CoverageTabContent
                       rfqId={activeRfqIdForTabs}
@@ -310,13 +324,13 @@ export default function RfqWorkspaceMainContent({
                 {
                   key: "scenarios",
                   label: "Сценарии",
-                  disabled: !isStructureConfirmed,
+                  disabled: !isStructureConfirmed || isRfqNeedsSync,
                   children: <ScenariosTabContent rfqId={activeRfqIdForTabs} />,
                 },
                 {
                   key: "logistics",
                   label: "Логистика",
-                  disabled: !isStructureConfirmed,
+                  disabled: !isStructureConfirmed || isRfqNeedsSync,
                   children: (
                     <LogisticsTabContent
                       rfqId={activeRfqIdForTabs}
@@ -327,7 +341,7 @@ export default function RfqWorkspaceMainContent({
                 {
                   key: "economics",
                   label: "Экономика",
-                  disabled: !isStructureConfirmed,
+                  disabled: !isStructureConfirmed || isRfqNeedsSync,
                   children: (
                     <EconomicsTabContent
                       rfqId={activeRfqIdForTabs}
@@ -338,7 +352,7 @@ export default function RfqWorkspaceMainContent({
                 {
                   key: "selection",
                   label: "Выбор",
-                  disabled: !isStructureConfirmed,
+                  disabled: !isStructureConfirmed || isRfqNeedsSync,
                   children: (
                     <SelectionTabContent
                       rfqId={activeRfqIdForTabs}
@@ -351,7 +365,7 @@ export default function RfqWorkspaceMainContent({
                 {
                   key: "sales",
                   label: "Коммерческое предложение",
-                  disabled: !isStructureConfirmed,
+                  disabled: !isStructureConfirmed || isRfqNeedsSync,
                   children: (
                     <SalesTabContent
                       activeRfq={activeRfq}
@@ -365,7 +379,7 @@ export default function RfqWorkspaceMainContent({
                 {
                   key: "contracts",
                   label: "Контракт",
-                  disabled: !isStructureConfirmed,
+                  disabled: !isStructureConfirmed || isRfqNeedsSync,
                   children: (
                     <ContractsTabContent
                       contracts={contracts}
@@ -377,7 +391,7 @@ export default function RfqWorkspaceMainContent({
                 {
                   key: "po",
                   label: "Заказы",
-                  disabled: !isStructureConfirmed,
+                  disabled: !isStructureConfirmed || isRfqNeedsSync,
                   children: (
                     <PurchaseOrdersTabContent
                       selections={selections}

@@ -30,6 +30,8 @@ import {
 import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 import { compactInputNumberProps } from "@/utils/numberFormat"
+import CountrySelect from "@/components/inputs/CountrySelect"
+import TnvedPicker from "@/components/fields/TnvedPicker"
 
 const { Text } = Typography
 
@@ -122,7 +124,7 @@ const COVERAGE_HELP_SECTIONS = [
   {
     title: "Зачем нужна вкладка",
     body:
-      "Покрытие показывает, как каждая строка RFQ может быть исполнена: целиком, по составу или комбинированно от нескольких поставщиков. Здесь вы не выбираете победителя по всему заказу, а собираете допустимые варианты по каждой строке.",
+      "Покрытие показывает, как каждая строка текущей ревизии RFQ может быть исполнена: целиком, по составу или комбинированно от нескольких поставщиков. Здесь вы не выбираете победителя по всему заказу, а собираете допустимые варианты по каждой строке.",
   },
   {
     title: "Как читать матрицу",
@@ -132,7 +134,7 @@ const COVERAGE_HELP_SECTIONS = [
   {
     title: "Что делает «Сохранить покрытие RFQ»",
     body:
-      "Кнопка сохраняет библиотеку вариантов исполнения по строкам RFQ. Например, для одной строки могут существовать вариант «Поставщик A — узел целиком» и вариант «Поставщик B — по составу». Эти варианты потом используются на вкладке Сценарии.",
+      "Кнопка сохраняет библиотеку вариантов исполнения по строкам активной ревизии RFQ. Например, для одной строки могут существовать вариант «Поставщик A — узел целиком» и вариант «Поставщик B — по составу». Эти варианты потом используются на вкладке Сценарии.",
   },
   {
     title: "Что такое «Комбинации по позиции»",
@@ -1547,7 +1549,9 @@ export default function CoverageTabContent({
               lead_time_days: latest?.latest_lead_time_days ?? null,
               has_price: PRICED_STATUSES.has(String(state.code || "")) ? 1 : 0,
               is_oem_offer: String(latest?.latest_offer_type || "").toUpperCase() === "OEM" ? 1 : 0,
-              origin_country: latest?.origin_country || null,
+              origin_country: latest?.latest_origin_country || latest?.supplier_country || null,
+              incoterms: latest?.latest_incoterms || null,
+              incoterms_place: latest?.latest_incoterms_place || null,
               note: latest?.selected_line_label || atom?.label || null,
             }
           })
@@ -1818,7 +1822,9 @@ export default function CoverageTabContent({
             lead_time_days: latest?.latest_lead_time_days ?? null,
             has_price: PRICED_STATUSES.has(String(cell.code || "")) ? 1 : 0,
             is_oem_offer: String(latest?.latest_offer_type || "").toUpperCase() === "OEM" ? 1 : 0,
-            origin_country: latest?.origin_country || null,
+            origin_country: latest?.latest_origin_country || latest?.supplier_country || null,
+            incoterms: latest?.latest_incoterms || null,
+            incoterms_place: latest?.latest_incoterms_place || null,
             note: latest?.selected_line_label || null,
           })
         })
@@ -2010,6 +2016,8 @@ export default function CoverageTabContent({
           has_price: unitPrice === null ? 0 : 1,
           is_oem_offer: Number(line?.is_oem_offer) ? 1 : 0,
           origin_country: line?.origin_country || null,
+          tnved_code_id:
+            line?.tnved?.id || (Number(line?.tnved_code_id || 0) > 0 ? Number(line.tnved_code_id) : null),
           incoterms: line?.incoterms || null,
           incoterms_place: line?.incoterms_place || null,
           note: line?.note || null,
@@ -2975,8 +2983,11 @@ export default function CoverageTabContent({
                       <Form.Item {...field} name={[field.name, "weight_kg"]} label="Вес, кг">
                         <InputNumber style={{ width: 120 }} min={0} {...compactInputNumberProps} />
                       </Form.Item>
-                      <Form.Item {...field} name={[field.name, "origin_country"]} label="Страна происхождения">
-                        <Input style={{ width: 140 }} placeholder="Например: Китай" />
+                      <Form.Item {...field} name={[field.name, "origin_country"]} label="Страна происхождения товара">
+                        <CountrySelect style={{ width: 190 }} />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, "tnved"]} label="ТН ВЭД">
+                        <TnvedPicker style={{ width: 240 }} />
                       </Form.Item>
                       <Form.Item {...field} name={[field.name, "incoterms"]} label="Incoterms">
                         <Input style={{ width: 120 }} placeholder="FOB" />

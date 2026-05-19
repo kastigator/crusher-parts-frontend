@@ -41,6 +41,10 @@ const buildPreviewKey = (supplierId, rows, newRevision) =>
       currency: String(row?.currency || "").toUpperCase(),
       offered_qty: row?.offered_qty ?? null,
       supplier_reply_status: String(row?.supplier_reply_status || "QUOTED").toUpperCase(),
+      incoterms: String(row?.incoterms || "").toUpperCase(),
+      incoterms_place: String(row?.incoterms_place || "").trim(),
+      origin_country: String(row?.origin_country || row?.country_of_origin || "").toUpperCase(),
+      payment_terms: String(row?.payment_terms || "").trim(),
       supplier_part_number: String(
         row?.supplier_part_number || row?.supplier_pn || row?.part_number || row?.pn || ""
       ).trim(),
@@ -209,7 +213,7 @@ export default function ImportResponsesModal({
           Обязательные поля для строки: «Строка» и либо («Цена» + «Валюта»), либо «Статус ответа» без цены.
           Для сгенерированного Excel «Строка» уже предзаполнена.
           Поле «Срок действия цены (дн.) / Validity» опционально.
-          Остальные колонки (тип, срок, MOQ, упаковка, PN, вес/габариты, инкотермс, пункт Incoterms, условия оплаты) импортируются как дополнительные.
+          Остальные колонки (тип, срок, MOQ, упаковка, PN, вес/габариты, Incoterms, пункт Incoterms, страна происхождения товара, условия оплаты) импортируются как дополнительные.
           TSV можно вставлять как без шапки, так и с шапкой колонок.
         </Text>
         <Select
@@ -255,7 +259,7 @@ export default function ImportResponsesModal({
             )
           }
           placeholder={
-            "Строка\tЦена\tВалюта\tСрок\tКомментарий\tТип\tСтатус ответа\tИнкотермс\tПункт Incoterms\tУсловия оплаты\n1\t100\tEUR\t10\tпо телефону\tANALOG\tQUOTED\tFCA\tShanghai\t100% предоплата"
+            "Строка\tЦена\tВалюта\tСрок\tКомментарий\tТип\tСтатус ответа\tIncoterms\tПункт Incoterms\tСтрана происхождения товара\tУсловия оплаты\n1\t100\tEUR\t10\tпо телефону\tANALOG\tQUOTED\tFCA\tShanghai\tCN\t100% предоплата"
           }
         />
         <Button
@@ -309,6 +313,7 @@ export default function ImportResponsesModal({
                       r.supplier_reply_status || "",
                       r.incoterms || "",
                       r.incoterms_place || "",
+                      r.origin_country || "",
                       r.payment_terms || "",
                     ].join("\t")
                 )

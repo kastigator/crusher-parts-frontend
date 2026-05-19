@@ -14,6 +14,17 @@ const statusOptions = [
   { value: "confirmed", label: "Подтвержден" },
 ]
 
+const buildSelectionLabel = (selection, formatDate) => {
+  if (!selection) return "Выбор закупки"
+  const date = formatDate?.(selection.created_at)
+  const parts = [date && date !== "—" ? `Выбор от ${date}` : "Выбор закупки"]
+  if (selection.status) parts.push(selection.status)
+  if (selection.landed_total != null && selection.calc_currency) {
+    parts.push(`${Number(selection.landed_total || 0).toFixed(2)} ${selection.calc_currency}`)
+  }
+  return parts.join(" · ")
+}
+
 export default function PurchaseOrdersTabContent({
   selections,
   contracts,
@@ -50,10 +61,10 @@ export default function PurchaseOrdersTabContent({
     () =>
       (Array.isArray(selections) ? selections : []).map((row) => ({
         value: Number(row.id),
-        label: `Выбор #${row.id} · ${row.status || "draft"}`,
+        label: buildSelectionLabel(row, formatDate),
         disabled: !signedSelectionIds.has(Number(row.id)),
       })),
-    [selections, signedSelectionIds]
+    [selections, signedSelectionIds, formatDate]
   )
 
   const supplierOptions = useMemo(() => {
@@ -72,6 +83,7 @@ export default function PurchaseOrdersTabContent({
   const ordersScrollHints = useTableScrollHints(ordersTableWrapRef, [purchaseOrders])
 
   const selectedSupplierId = Form.useWatch("supplier_id", form)
+  const selectedShipmentGroupId = Form.useWatch("shipment_group_id", form)
 
   const shipmentGroupOptions = useMemo(() => {
     const grouped = new Map()
@@ -91,6 +103,26 @@ export default function PurchaseOrdersTabContent({
       })
     return Array.from(grouped.values())
   }, [selectionLines, selectedSupplierId])
+
+  const selectedExecutionProfile = useMemo(() => {
+    const rows = selectionLines.filter((row) => {
+      if (Number(row?.supplier_id || 0) !== Number(selectedSupplierId || 0)) return false
+      if (selectedShipmentGroupId && Number(row?.shipment_group_id || 0) !== Number(selectedShipmentGroupId || 0)) return false
+      return true
+    })
+    if (!rows.length) return null
+    const unique = (key) =>
+      Array.from(new Set(rows.map((row) => String(row?.[key] || "").trim()).filter(Boolean)))
+    return {
+      route_type: unique("route_type").length === 1 ? unique("route_type")[0] : null,
+      incoterms: unique("incoterms").length === 1 ? unique("incoterms")[0] : null,
+      incoterms_place: unique("incoterms_place").length === 1 ? unique("incoterms_place")[0] : null,
+      currency: unique("currency").length === 1 ? unique("currency")[0] : null,
+      mixed: unique("route_type").length > 1 || unique("incoterms").length > 1 || unique("incoterms_place").length > 1 || unique("currency").length > 1,
+    }
+  }, [selectionLines, selectedSupplierId, selectedShipmentGroupId])
+
+  const requiresShipmentGroup = Number(selectedSupplierId || 0) > 0 && shipmentGroupOptions.length > 1 && !selectedShipmentGroupId
 
   useEffect(() => {
     form.setFieldValue("supplier_id", undefined)
@@ -129,20 +161,21 @@ export default function PurchaseOrdersTabContent({
       message.warning("Заказ поставщику можно создавать только после контракта, открытого к исполнению")
       return
     }
+    if (shipmentGroupOptions.length > 1 && !values.shipment_group_id) {
+      message.warning("У поставщика несколько групп поставки. Выберите конкретную группу для отдельного заказа.")
+      return
+    }
     setCreating(true)
     try {
       await axios.post("/purchase-orders", {
         supplier_id: values.supplier_id,
         selection_id: values.selection_id,
         shipment_group_id: values.shipment_group_id || null,
-        status: values.status || "draft",
         supplier_reference: values.supplier_reference,
-        incoterms: values.incoterms,
-        incoterms_place: values.incoterms_place || null,
         autofill_from_selection: true,
       })
       message.success("Заказ поставщику создан")
-      form.resetFields(["supplier_id", "supplier_reference", "incoterms", "incoterms_place"])
+      form.resetFields(["supplier_id", "shipment_group_id", "supplier_reference"])
       if (typeof onCommercialUpdated === "function") {
         await onCommercialUpdated()
       }
@@ -329,7 +362,6 @@ export default function PurchaseOrdersTabContent({
           <Form
             form={form}
             layout="vertical"
-            initialValues={{ status: "draft" }}
             onFinish={handleCreatePo}
           >
             <Space wrap align="start" style={{ width: "100%" }}>
@@ -366,23 +398,32 @@ export default function PurchaseOrdersTabContent({
                   placeholder={shipmentGroupOptions.length ? "Выберите конкретную группу поставки" : "Сначала выберите поставщика"}
                 />
               </Form.Item>
-              <Form.Item name="status" label="Статус">
-                <Select style={{ width: 120 }} options={statusOptions} />
-              </Form.Item>
-              <Form.Item name="incoterms" label="Инкотермс">
-                <Input style={{ width: 100 }} placeholder="EXW" />
-              </Form.Item>
-              <Form.Item name="incoterms_place" label="Пункт Incoterms">
-                <Input style={{ width: 220 }} placeholder="Например: Shanghai Port" />
-              </Form.Item>
               <Form.Item name="supplier_reference" label="Референс поставщика">
                 <Input style={{ width: 180 }} />
               </Form.Item>
             </Space>
+            {selectedExecutionProfile ? (
+              <Space wrap size={[8, 8]} style={{ marginBottom: 12 }}>
+                <Tag color={selectedExecutionProfile.mixed ? "orange" : "blue"}>
+                  Incoterms: {formatIncotermsWithPlace(selectedExecutionProfile.incoterms, selectedExecutionProfile.incoterms_place) || "из профиля исполнения"}
+                </Tag>
+                <Tag color="default">Доставка: {selectedExecutionProfile.route_type || "из профиля"}</Tag>
+                <Tag color="default">Валюта: {selectedExecutionProfile.currency || "из профиля"}</Tag>
+              </Space>
+            ) : null}
+            {requiresShipmentGroup ? (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message="У поставщика несколько групп поставки"
+                description="Создайте отдельный заказ по каждой группе, чтобы не смешивать разные Incoterms, валюты или маршруты в одном заказе."
+              />
+            ) : null}
             <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-              Валюта заказа поставщику наследуется из утверждённого профиля исполнения и не меняется вручную без нового пересчёта.
+              Incoterms, пункт Incoterms, тип доставки и валюта наследуются из утверждённого профиля исполнения и не вводятся повторно вручную.
             </Typography.Paragraph>
-            <Button type="primary" htmlType="submit" loading={creating} disabled={!canManagePurchaseOrders}>
+            <Button type="primary" htmlType="submit" loading={creating} disabled={!canManagePurchaseOrders || requiresShipmentGroup}>
               Создать заказ
             </Button>
           </Form>

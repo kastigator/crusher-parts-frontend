@@ -171,6 +171,50 @@ export default function ClientRequestWorkspaceCard({
           />
         </div>
 
+        <Card size="small" title="Состояние активной ревизии">
+          <Space direction="vertical" size={10} style={{ width: "100%" }}>
+            <Text type="secondary">
+              Диагностика ниже относится только к текущей ревизии заявки. История прошлых ревизий остается доступной,
+              но старые RFQ, выборы, КП и контракты не продолжаются задним числом.
+            </Text>
+            <Space wrap size={[8, 8]}>
+              <Tag color={isLatestRevision ? "green" : "orange"}>
+                {isLatestRevision ? "Текущая ревизия" : "Архивная ревизия"}
+              </Tag>
+              <Tag color={isSentToProcurement ? "green" : "default"}>
+                {isSentToProcurement ? "Отправлена в закупку" : "Еще не отправлена"}
+              </Tag>
+              <Tag color={activeRequest?.rfq_id ? (rfqSyncStatus === "needs_sync" ? "orange" : "green") : "default"}>
+                {activeRequest?.rfq_id
+                  ? rfqSyncStatus === "needs_sync"
+                    ? "RFQ требует синхронизации"
+                    : "RFQ синхронизирован"
+                  : "RFQ еще не создан"}
+              </Tag>
+              <Tag color={["responses_received", "selection_done", "quote_prepared", "contracted"].includes(activeRequest?.status) ? "green" : "default"}>
+                Ответы поставщиков
+              </Tag>
+              <Tag color={["selection_done", "quote_prepared", "contracted"].includes(activeRequest?.status) ? "green" : "default"}>
+                Выбор закупки
+              </Tag>
+              <Tag color={["quote_prepared", "contracted"].includes(activeRequest?.status) ? "green" : "default"}>
+                КП клиенту
+              </Tag>
+              <Tag color={activeRequest?.status === "contracted" ? "green" : "default"}>
+                Контракт
+              </Tag>
+            </Space>
+            {rfqSyncStatus === "needs_sync" ? (
+              <Alert
+                type="warning"
+                showIcon
+                message="Новая ревизия заявки ещё не синхронизирована с RFQ"
+                description="Сначала синхронизируйте RFQ. После этого закупка сможет заново собрать ответы, покрытие, сценарий и выбор для этой ревизии."
+              />
+            ) : null}
+          </Space>
+        </Card>
+
         <Tabs
           activeKey={workspaceTabKey}
           onChange={setWorkspaceTabKey}
@@ -622,7 +666,7 @@ export default function ClientRequestWorkspaceCard({
               key: "contract",
               label: "Контракт",
               children: (
-                <RequestContractTabContent requestId={activeRequest?.id} />
+                <RequestContractTabContent requestId={activeRequest?.id} activeRevisionId={activeRevisionId} />
               ),
             },
           ]}

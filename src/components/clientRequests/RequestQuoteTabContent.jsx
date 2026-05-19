@@ -4,12 +4,12 @@ import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import CompanyLegalSummary from "@/components/common/CompanyLegalSummary"
 import useCapabilities from "@/hooks/useCapabilities"
-
-const formatDate = (value) => {
-  if (!value) return "—"
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("ru-RU")
-}
+import {
+  canonicalQuoteStatus,
+  formatDate,
+  formatSalesQuoteLabel,
+  isSalesQuoteCommerciallyReady,
+} from "@/components/clientRequests/salesQuoteDisplay"
 
 const parseSnapshot = (value) => {
   if (!value) return null
@@ -34,14 +34,6 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
   const [quoteRevisions, setQuoteRevisions] = useState([])
   const [helpOpen, setHelpOpen] = useState(false)
   const [form] = Form.useForm()
-  const quoteStatusLabel = (value) =>
-    ({
-      draft: "Черновик",
-      internal_review: "Внутреннее согласование",
-      sent_to_client: "Отправлено клиенту",
-      client_approved: "Согласовано клиентом",
-      contract_signed: "Контракт подписан",
-    }[String(value || "").trim()] || value || "—")
   const quoteStatusMeta = {
     draft: { color: "default", label: "Черновик" },
     internal_review: { color: "blue", label: "Внутреннее согласование" },
@@ -49,7 +41,6 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
     client_approved: { color: "green", label: "Согласовано клиентом" },
     contract_signed: { color: "success", label: "Контракт подписан" },
   }
-  const canonicalQuoteStatus = (value) => (String(value || "").trim().toLowerCase() === "draft" ? "internal_review" : String(value || "").trim().toLowerCase())
   const quoteStatusActions = (value) => {
     const status = canonicalQuoteStatus(value)
     if (status === "internal_review") {
@@ -114,23 +105,46 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedQuoteId])
 
+  const activeRevisionSelections = useMemo(
+    () =>
+      selections.filter(
+        (row) =>
+          Number(row.client_request_revision_id || 0) === Number(activeRevisionId || 0) &&
+          String(row.status || "").toLowerCase() === "approved",
+      ),
+    [selections, activeRevisionId],
+  )
+
   const selectionOptions = useMemo(
     () =>
-      selections.map((row) => ({
+      activeRevisionSelections.map((row) => ({
         value: Number(row.id),
-        label: `Выбор #${row.id} · ${formatDate(row.selected_at || row.created_at)} · ${formatPriceWithCurrency(
+        label: `Rev ${row.client_request_rev_number || "?"} · Выбор от ${formatDate(row.selected_at || row.created_at)} · ${row.status || "утверждён"} · ${formatPriceWithCurrency(
           row.landed_total,
           row.calc_currency || "USD"
         )}`,
       })),
-    [selections]
+    [activeRevisionSelections]
   )
   const selectedQuote = useMemo(
     () => quotes.find((row) => Number(row.id) === Number(selectedQuoteId || 0)) || null,
     [quotes, selectedQuoteId]
   )
+  const commercialCycleClosed = useMemo(
+    () =>
+      quotes.some(
+        (row) =>
+          Number(row.client_request_revision_id || 0) === Number(activeRevisionId || 0) &&
+          canonicalQuoteStatus(row.status) === "contract_signed",
+      ),
+    [quotes, activeRevisionId]
+  )
   const selectedQuoteActions = useMemo(
     () => quoteStatusActions(selectedQuote?.status),
+    [selectedQuote]
+  )
+  const selectedQuoteReady = useMemo(
+    () => isSalesQuoteCommerciallyReady(selectedQuote),
     [selectedQuote]
   )
   const selectedCreateSelectionId = Form.useWatch("selection_id", form)
@@ -202,7 +216,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
         title={selectedQuoteProfile ? "Реквизиты, зафиксированные в выбранном коммерческом предложении" : "Реквизиты нашего юрлица"}
         description={
           selectedQuoteProfile
-            ? `В коммерческом предложении #${selectedQuote?.id} зафиксирована версия реквизитов с ${selectedQuoteProfile.effective_from}.`
+            ? `В выбранном коммерческом предложении зафиксирована версия реквизитов с ${selectedQuoteProfile.effective_from}.`
             : undefined
         }
       />
@@ -211,8 +225,35 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
         type="info"
         showIcon
         message="Коммерческое предложение строится от утвержденного выбора закупки"
-        description="После утверждения закупочного выбора продавец создает предложение по текущей ревизии заявки. Дальше новые ревизии нужны для торга и изменения состава, а не для свободного выбора этапа процесса."
+        description="После утверждения закупочного выбора продавец создает предложение по текущей ревизии заявки. Если клиент меняет состав или количество, создайте новую ревизию заявки, синхронизируйте RFQ и утвердите новый выбор закупки."
       />
+
+      {commercialCycleClosed ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="По этой ревизии уже есть подписанный контракт"
+          description="Новые КП и возврат старых КП в работу заблокированы. Для нового торга нужна новая ревизия заявки и новый закупочный выбор."
+        />
+      ) : null}
+
+      {activeRevisionId && !activeRevisionSelections.length && !commercialCycleClosed ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="Для активной ревизии ещё нет утвержденного выбора закупки"
+          description="Если заявка изменилась, сначала синхронизируйте RFQ по новой ревизии и утвердите новый выбор закупки. Старые выборы остаются в истории, но не используются для нового КП."
+        />
+      ) : null}
+
+      {selectedQuote && !selectedQuoteReady && canonicalQuoteStatus(selectedQuote.status) !== "contract_signed" ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="КП ещё нельзя отправлять клиенту"
+          description="Заполните продажную цену по всем активным строкам на вкладке «Маржа/Экономика». Пустая продажа больше не считается нулевой ценой."
+        />
+      ) : null}
 
       <Card
         size="small"
@@ -234,7 +275,12 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
             Валюта наследуется от утверждённого выбора закупки
             {selectedCreateSelection?.calc_currency ? `: ${selectedCreateSelection.calc_currency}.` : "."}
           </Typography.Paragraph>
-          <Button type="primary" htmlType="submit" loading={saving} disabled={!activeRevisionId || !canManageSalesQuotes}>
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={saving}
+            disabled={!activeRevisionId || !canManageSalesQuotes || commercialCycleClosed || !activeRevisionSelections.length}
+          >
             Создать коммерческое предложение
           </Button>
         </Form>
@@ -247,7 +293,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
           <Space wrap>
             {selectedQuote ? (
               <Typography.Text type="secondary">
-                {`Выбрано КП #${selectedQuote.id} · ${quoteStatusLabel(selectedQuote.status)}`}
+                {`Выбрано: ${formatSalesQuoteLabel(selectedQuote)}`}
               </Typography.Text>
             ) : null}
             {selectedQuoteActions.map((action) => (
@@ -256,7 +302,12 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
                 size="small"
                 type={action.type || "default"}
                 loading={updatingQuoteId === Number(selectedQuote?.id)}
-                disabled={!selectedQuoteId || !canManageSalesQuotes}
+                disabled={
+                  !selectedQuoteId ||
+                  !canManageSalesQuotes ||
+                  commercialCycleClosed ||
+                  (["sent_to_client", "client_approved"].includes(action.key) && !selectedQuoteReady)
+                }
                 onClick={() => handleUpdateQuoteStatus(selectedQuote.id, action.key)}
               >
                 {action.label}
@@ -265,7 +316,7 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
             <Button
               onClick={handleCreateRevision}
               loading={creatingRevision}
-              disabled={!selectedQuoteId || !canManageSalesQuotes || canonicalQuoteStatus(selectedQuote?.status) === "contract_signed"}
+              disabled={!selectedQuoteId || !canManageSalesQuotes || commercialCycleClosed || canonicalQuoteStatus(selectedQuote?.status) === "contract_signed"}
             >
               Новая ревизия предложения
             </Button>
@@ -288,13 +339,18 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
           columns={[
             {
               title: "Предложение",
-              width: 160,
+              width: 260,
               render: (_, row) => (
                 <Space direction="vertical" size={0}>
-                  <span>{`#${row.id}`}</span>
+                  <span>{formatSalesQuoteLabel(row, { includeStatus: false, includeAmount: false })}</span>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {`Ревизия заявки ${row.rev_number ?? "?"}`}
                   </Typography.Text>
+                  {!isSalesQuoteCommerciallyReady(row) ? (
+                    <Tag color="orange" style={{ width: "fit-content", marginTop: 4 }}>
+                      Заполнить продажу
+                    </Tag>
+                  ) : null}
                 </Space>
               ),
             },
@@ -365,12 +421,12 @@ export default function RequestQuoteTabContent({ requestId, activeRevisionId }) 
             текущей ревизии заявки.
           </Typography.Paragraph>
           <Typography.Paragraph>
-            Новые ревизии нужны для торга: можно пересматривать цену, состав и условия, не меняя исходный
-            закупочный выбор.
+            Ревизии коммерческого предложения нужны для торга по цене и условиям внутри той же ревизии заявки.
+            Они не заменяют новую ревизию заявки, если клиент меняет состав, количество или сам предмет запроса.
           </Typography.Paragraph>
           <Typography.Paragraph style={{ marginBottom: 0 }}>
-            После согласования клиента процесс переходит во вкладку контрактов, где фиксируется уже
-            конкретная коммерческая ревизия.
+            После согласования клиента процесс переходит во вкладку контрактов, где фиксируется конкретная
+            коммерческая ревизия. Архивные ревизии заявки нельзя продолжать задним числом.
           </Typography.Paragraph>
         </Space>
       </Drawer>

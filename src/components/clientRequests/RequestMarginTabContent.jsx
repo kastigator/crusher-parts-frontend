@@ -3,6 +3,10 @@ import { Alert, Button, Card, Drawer, InputNumber, Select, Space, Table, Tag, Ty
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
+import {
+  canonicalQuoteStatus,
+  formatSalesQuoteLabel,
+} from "@/components/clientRequests/salesQuoteDisplay"
 
 const pricingStatusMeta = {
   OK: { color: "green", label: "OK" },
@@ -27,17 +31,6 @@ export default function RequestMarginTabContent({ requestId }) {
   const [savingAll, setSavingAll] = useState(false)
   const [drafts, setDrafts] = useState({})
   const [helpOpen, setHelpOpen] = useState(false)
-  const quoteStatusLabel = (value) =>
-    ({
-      draft: "Черновик",
-      internal_review: "Внутреннее согласование",
-      sent_to_client: "Отправлено клиенту",
-      client_approved: "Согласовано клиентом",
-      contract_signed: "Контракт подписан",
-    }[String(value || "").trim()] || value || "—")
-  const canonicalQuoteStatus = (value) =>
-    String(value || "").trim().toLowerCase() === "draft" ? "internal_review" : String(value || "").trim().toLowerCase()
-
   const loadQuotes = async () => {
     if (!requestId) return
     try {
@@ -123,12 +116,18 @@ export default function RequestMarginTabContent({ requestId }) {
     () => quotes.find((row) => Number(row.id) === Number(selectedQuoteId || 0)) || null,
     [quotes, selectedQuoteId]
   )
+  const commercialCycleClosed = useMemo(
+    () => quotes.some((row) => canonicalQuoteStatus(row.status) === "contract_signed"),
+    [quotes]
+  )
   const quoteCurrency = selectedQuote?.currency || "USD"
   const isLatestRevisionSelected =
     Number(selectedRevisionId || 0) > 0 &&
     Number(selectedRevisionId || 0) === Number(selectedQuote?.latest_revision_id || 0)
   const canEditRevision =
-    canonicalQuoteStatus(selectedQuote?.status) === "internal_review" && isLatestRevisionSelected
+    !commercialCycleClosed &&
+    canonicalQuoteStatus(selectedQuote?.status) === "internal_review" &&
+    isLatestRevisionSelected
 
   const totals = useMemo(() => {
     const totalsBase = lines.reduce(
@@ -138,12 +137,17 @@ export default function RequestMarginTabContent({ requestId }) {
         if (!isActive) return acc
         const qty = Number(draft.qty || 0)
         const cost = Number(draft.cost || 0)
-        const sell = Number(draft.sell_price || 0)
+        const sellRaw = draft.sell_price
+        const sell = sellRaw === null || sellRaw === undefined || sellRaw === "" ? null : Number(sellRaw)
         acc.cost += qty * cost
-        acc.sell += qty * sell
+        if (qty <= 0 || sell === null || !Number.isFinite(sell) || sell <= 0) {
+          acc.incomplete += 1
+        } else {
+          acc.sell += qty * sell
+        }
         return acc
       },
-      { cost: 0, sell: 0 }
+      { cost: 0, sell: 0, incomplete: 0 }
     )
     const profit = totalsBase.sell - totalsBase.cost
     const marginPct = totalsBase.sell > 0 ? (profit / totalsBase.sell) * 100 : 0
@@ -223,7 +227,9 @@ export default function RequestMarginTabContent({ requestId }) {
           showIcon
           message="Редактирование этой ревизии закрыто"
           description={
-            canonicalQuoteStatus(selectedQuote?.status) !== "internal_review"
+            commercialCycleClosed
+              ? "По этой ревизии заявки уже есть подписанный контракт. Старые КП нельзя дорабатывать задним числом: для нового торга создайте новую ревизию заявки."
+              : canonicalQuoteStatus(selectedQuote?.status) !== "internal_review"
               ? "Править строки можно только пока коммерческое предложение находится во «Внутреннем согласовании». Чтобы менять отправленное или согласованное предложение, сначала верните его в работу и создайте новую ревизию."
               : "Править можно только последнюю ревизию коммерческого предложения. Исторические ревизии доступны только для просмотра."
           }
@@ -259,7 +265,7 @@ export default function RequestMarginTabContent({ requestId }) {
               onChange={(value) => setSelectedQuoteId(Number(value || 0) || null)}
               options={quotes.map((row) => ({
                 value: Number(row.id),
-                label: `Коммерческое предложение #${row.id} · ${quoteStatusLabel(row.status)} · ${formatPriceWithCurrency(row.total_sell, row.currency || "USD")}`,
+                label: formatSalesQuoteLabel(row),
               }))}
             />
             <Select
@@ -281,6 +287,7 @@ export default function RequestMarginTabContent({ requestId }) {
             <Tag color="gold">Прибыль: {formatPriceWithCurrency(totals.profit, quoteCurrency)}</Tag>
             <Tag color="purple">Валовая маржа: {totals.marginPct.toFixed(1)}%</Tag>
             <Tag color="cyan">Наценка: {totals.markupPct.toFixed(1)}%</Tag>
+            {totals.incomplete > 0 ? <Tag color="orange">Без продажной цены: {totals.incomplete}</Tag> : null}
             <Tag color={dirtyLineIds.length ? "orange" : "default"}>
               Изменено строк: {dirtyLineIds.length}
             </Tag>
@@ -432,24 +439,32 @@ export default function RequestMarginTabContent({ requestId }) {
                 const draft = drafts[row.id] || row
                 const qty = Number(draft.qty || 0)
                 const cost = Number(draft.cost || 0)
-                const sell = Number(draft.sell_price || 0)
+                const sellRaw = draft.sell_price
+                const sell = sellRaw === null || sellRaw === undefined || sellRaw === "" ? null : Number(sellRaw)
+                const hasSell = sell !== null && Number.isFinite(sell) && sell > 0
                 const grossMarginPct = sell > 0 ? ((sell - cost) / sell) * 100 : 0
                 const markupPct = cost > 0 ? ((sell - cost) / cost) * 100 : 0
                 const profit =
-                  String(draft.line_status || row.line_status || "active") === "active"
+                  hasSell && String(draft.line_status || row.line_status || "active") === "active"
                     ? (sell - cost) * qty
                     : 0
                 return (
                   <Space direction="vertical" size={0}>
-                    <Typography.Text style={{ fontSize: 12 }}>
-                      {`Валовая маржа: ${grossMarginPct.toFixed(1)}%`}
-                    </Typography.Text>
-                    <Typography.Text style={{ fontSize: 12 }}>
-                      {`Наценка: ${markupPct.toFixed(1)}%`}
-                    </Typography.Text>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      {`Прибыль: ${formatPriceWithCurrency(profit, draft.currency || row.currency || "USD")}`}
-                    </Typography.Text>
+                    {hasSell ? (
+                      <>
+                        <Typography.Text style={{ fontSize: 12 }}>
+                          {`Валовая маржа: ${grossMarginPct.toFixed(1)}%`}
+                        </Typography.Text>
+                        <Typography.Text style={{ fontSize: 12 }}>
+                          {`Наценка: ${markupPct.toFixed(1)}%`}
+                        </Typography.Text>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {`Прибыль: ${formatPriceWithCurrency(profit, draft.currency || row.currency || "USD")}`}
+                        </Typography.Text>
+                      </>
+                    ) : (
+                      <Tag color="orange" style={{ width: "fit-content" }}>Продажа не заполнена</Tag>
+                    )}
                   </Space>
                 )
               },

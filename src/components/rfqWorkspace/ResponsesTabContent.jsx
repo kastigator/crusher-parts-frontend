@@ -22,6 +22,7 @@ import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import DraggableColumnsTable from "@/components/common/DraggableColumnsTable"
 import IncotermsSelect from "@/components/inputs/IncotermsSelect"
+import CountrySelect from "@/components/inputs/CountrySelect"
 import { formatIncotermsWithPlace } from "./rfqWorkspaceUtils"
 import { formatQtyWithUomLabel } from "./rfqDisplayUtils"
 import { useNavigate } from "react-router-dom"
@@ -956,6 +957,7 @@ export default function ResponsesTabContent({
       offered_qty: defaultOfferedQty,
       incoterms: preset?.latest_incoterms || undefined,
       incoterms_place: preset?.latest_incoterms_place || undefined,
+      origin_country: preset?.latest_origin_country || undefined,
       new_supplier_part_type: "ANALOG",
       new_revision: presetStatus === "RESPONDED",
     })
@@ -1167,6 +1169,7 @@ export default function ResponsesTabContent({
       payment_terms: row.latest_payment_terms,
       incoterms: row.latest_incoterms,
       incoterms_place: row.latest_incoterms_place,
+      origin_country: row.latest_origin_country,
       note: row.latest_note,
     }
   }
@@ -1199,6 +1202,7 @@ export default function ResponsesTabContent({
         payment_terms: values.payment_terms || null,
         incoterms: values.incoterms || null,
         incoterms_place: values.incoterms_place || null,
+        origin_country: values.origin_country || null,
         note: values.note || null,
         change_reason: values.change_reason || null,
         new_revision: values.new_revision === true,
@@ -1268,6 +1272,7 @@ export default function ResponsesTabContent({
       payment_terms: row.payment_terms,
       incoterms: row.incoterms,
       incoterms_place: row.incoterms_place,
+      origin_country: row.origin_country,
       note: row.note,
       reason: "",
       new_revision: true,
@@ -1302,6 +1307,7 @@ export default function ResponsesTabContent({
         payment_terms: values.payment_terms || null,
         incoterms: values.incoterms || null,
         incoterms_place: values.incoterms_place || null,
+        origin_country: values.origin_country || null,
         note: values.note || null,
         reason: values.reason,
         new_revision: values.new_revision !== false,
@@ -1451,6 +1457,13 @@ export default function ResponsesTabContent({
       title: "Инкотермс",
       width: 180,
       render: (_, r) => formatIncotermsWithPlace(r.latest_incoterms, r.latest_incoterms_place),
+    },
+    {
+      key: "origin_country",
+      title: "Происхождение",
+      dataIndex: "latest_origin_country",
+      width: 130,
+      render: (value) => (value ? <Tag color="cyan">{String(value).toUpperCase()}</Tag> : "—"),
     },
     { key: "supplier_part_number", title: "PN поставщика", dataIndex: "latest_supplier_part_number", width: 150 },
     {
@@ -1646,6 +1659,13 @@ export default function ResponsesTabContent({
       title: "Инкотермс",
       width: 180,
       render: (_, r) => formatIncotermsWithPlace(r.latest_incoterms, r.latest_incoterms_place),
+    },
+    {
+      key: "origin_country",
+      title: "Происхождение",
+      dataIndex: "latest_origin_country",
+      width: 130,
+      render: (value) => (value ? <Tag color="cyan">{String(value).toUpperCase()}</Tag> : "—"),
     },
     { key: "supplier_part_number", title: "PN поставщика", dataIndex: "latest_supplier_part_number", width: 150 },
     {
@@ -2165,6 +2185,13 @@ export default function ResponsesTabContent({
           <Form.Item name="incoterms_place" label="Пункт Incoterms">
             <Input placeholder="Например: Shanghai Port" />
           </Form.Item>
+          <Form.Item
+            name="origin_country"
+            label="Страна происхождения товара"
+            tooltip="ISO-код страны, где произведён товар. Это не страна поставщика."
+          >
+            <CountrySelect style={{ width: "100%" }} />
+          </Form.Item>
           <Form.Item name="note" label="Комментарий">
             <Input.TextArea rows={2} />
           </Form.Item>
@@ -2380,6 +2407,13 @@ export default function ResponsesTabContent({
           </Form.Item>
           <Form.Item name="incoterms_place" label="Пункт Incoterms">
             <Input placeholder="Например: Shanghai Port" />
+          </Form.Item>
+          <Form.Item
+            name="origin_country"
+            label="Страна происхождения товара"
+            tooltip="ISO-код страны, где произведён товар. Это не страна поставщика."
+          >
+            <CountrySelect style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item name="note" label="Комментарий">
             <Input.TextArea rows={2} />

@@ -25,6 +25,22 @@ const quoteStatusColor = (value) =>
     contract_signed: "success",
   }[String(value || "").trim()] || "default")
 
+const buildSelectionLabel = (selection, formatDate) => {
+  if (!selection) return "выбора закупки"
+  const date = formatDate?.(selection.created_at)
+  const parts = [date && date !== "—" ? `выбора от ${date}` : "выбора закупки"]
+  parts.push(quoteStatusLabel(selection.status))
+  const total = formatPriceWithCurrency(selection.landed_total, selection.calc_currency || "USD")
+  if (total && total !== "—") parts.push(total)
+  return parts.join(" · ")
+}
+
+const buildQuoteLabel = (quote, formatDate) => {
+  if (!quote) return "Коммерческое предложение"
+  const date = formatDate?.(quote.created_at)
+  return date && date !== "—" ? `КП от ${date}` : "Коммерческое предложение"
+}
+
 export default function SalesTabContent({
   activeRfq,
   selections,
@@ -51,13 +67,17 @@ export default function SalesTabContent({
     () =>
       (Array.isArray(selections) ? selections : []).map((row) => ({
         value: Number(row.id),
-        label: `Выбор #${row.id} · ${quoteStatusLabel(row.status)} · ${formatPriceWithCurrency(
-          row.landed_total,
-          row.calc_currency || "USD"
-        )}`,
+        label: buildSelectionLabel(row, formatDate),
       })),
-    [selections]
+    [selections, formatDate]
   )
+  const selectionById = useMemo(() => {
+    const map = new Map()
+    ;(Array.isArray(selections) ? selections : []).forEach((row) => {
+      map.set(Number(row.id), row)
+    })
+    return map
+  }, [selections])
   const selectedCreateSelection = useMemo(
     () => (Array.isArray(selections) ? selections : []).find((row) => Number(row.id) === Number(selectedCreateSelectionId || 0)) || null,
     [selections, selectedCreateSelectionId]
@@ -199,7 +219,7 @@ export default function SalesTabContent({
         type="info"
         showIcon
         message="Коммерческое предложение создаётся из утверждённого выбора закупки и уходит продавцу"
-        description="Закупщик передаёт продавцу базовую закупочную модель из выбора закупки. Дальше продавец должен работать через ревизии коммерческого предложения: маржа, уступки клиенту и переговоры уже не меняют сам выбор закупки."
+        description="Закупщик передаёт продавцу базовую закупочную модель из выбора закупки активной ревизии заявки. Если клиент меняет состав или количество, нужна новая ревизия заявки, синхронизация RFQ и новый выбор закупки."
       />
 
       <Card
@@ -263,14 +283,19 @@ export default function SalesTabContent({
           dataSource={salesQuotes}
           pagination={{ pageSize: 10, hideOnSinglePage: true }}
           columns={[
-            { title: "Предложение", width: 110, render: (_, row) => `#${row.id}` },
-            { title: "Выбор", dataIndex: "selection_id", width: 100, render: (value) => value || "—" },
+            { title: "Предложение", width: 150, render: (_, row) => buildQuoteLabel(row, formatDate) },
+            {
+              title: "Выбор",
+              dataIndex: "selection_id",
+              width: 220,
+              render: (value) => (value ? buildSelectionLabel(selectionById.get(Number(value)), formatDate) : "—"),
+            },
             {
               title: "База",
               width: 160,
               render: (_, row) => (
                 <Tag color="blue">
-                  {row.selection_id ? `из выбора #${row.selection_id}` : "ручное предложение"}
+                  {row.selection_id ? "из утверждённого выбора" : "ручное предложение"}
                 </Tag>
               ),
             },
@@ -331,7 +356,7 @@ export default function SalesTabContent({
       </Card>
 
       <Drawer
-        title={drawerQuote ? `Коммерческое предложение #${drawerQuote.id}` : "Коммерческое предложение"}
+        title={drawerQuote ? buildQuoteLabel(drawerQuote, formatDate) : "Коммерческое предложение"}
         placement="right"
         width={980}
         open={drawerOpen}
@@ -340,7 +365,9 @@ export default function SalesTabContent({
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
           {drawerQuote ? (
             <Space wrap>
-              <Tag>Выбор: {drawerQuote.selection_id || "—"}</Tag>
+              <Tag>
+                Выбор: {drawerQuote.selection_id ? buildSelectionLabel(selectionById.get(Number(drawerQuote.selection_id)), formatDate) : "—"}
+              </Tag>
               <Tag color="blue">Себестоимость: {formatPriceWithCurrency(drawerQuote.total_cost, drawerQuote.currency || "USD")}</Tag>
               <Tag color="green">Продажа: {formatPriceWithCurrency(drawerQuote.total_sell, drawerQuote.currency || "USD")}</Tag>
               <Tag color="gold">Маржа: {Number(drawerQuote.margin_pct_avg || 0).toFixed(1)}%</Tag>
@@ -475,11 +502,12 @@ export default function SalesTabContent({
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Typography.Paragraph>
             Эта вкладка завершает закупочный контур и передает продавцу базовую закупочную модель из утвержденного выбора
-            закупки.
+            закупки текущей ревизии заявки.
           </Typography.Paragraph>
           <Typography.Paragraph>
             Продавец видит коды поставщиков, себестоимость и ревизии коммерческого предложения, но не должен менять сам
-            утвержденный закупочный набор через этот экран.
+            утвержденный закупочный набор через этот экран. Изменение состава или количества всегда начинается с новой
+            ревизии заявки.
           </Typography.Paragraph>
           <Typography.Paragraph style={{ marginBottom: 0 }}>
             После торга с клиентом именно коммерческая ревизия и ее контракт определяют, что дальше пойдет

@@ -1,16 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { Alert, Button, Card, DatePicker, Drawer, Form, Input, InputNumber, Select, Space, Table, Tag, Typography, message } from "antd"
+import { Alert, Button, Card, DatePicker, Drawer, Form, Input, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import { resolveAppHref } from "@/utils/resolveAppHref"
 import CompanyLegalSummary from "@/components/common/CompanyLegalSummary"
 import useCapabilities from "@/hooks/useCapabilities"
-
-const formatDate = (value) => {
-  if (!value) return "—"
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("ru-RU")
-}
+import { formatIncotermsWithPlace } from "@/components/rfqWorkspace/rfqWorkspaceUtils"
+import {
+  formatDate,
+  formatSalesQuoteLabel,
+  isSalesQuoteCommerciallyReady,
+} from "@/components/clientRequests/salesQuoteDisplay"
 
 const parseSnapshot = (value) => {
   if (!value) return null
@@ -40,7 +40,7 @@ const CONTRACT_STATUS_COLORS = {
   closed_with_issues: "red",
 }
 
-export default function RequestContractTabContent({ requestId }) {
+export default function RequestContractTabContent({ requestId, activeRevisionId }) {
   const { can } = useCapabilities()
   const canManageContracts = can("workflow.contracts.manage")
   const [quotes, setQuotes] = useState([])
@@ -51,14 +51,6 @@ export default function RequestContractTabContent({ requestId }) {
   const [updatingContractId, setUpdatingContractId] = useState(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const [form] = Form.useForm()
-  const quoteStatusLabel = (value) =>
-    ({
-      draft: "Черновик",
-      internal_review: "Внутреннее согласование",
-      sent_to_client: "Отправлено клиенту",
-      client_approved: "Согласовано клиентом",
-      contract_signed: "Контракт подписан",
-    }[String(value || "").trim()] || value || "—")
   const contractStatusLabel = (value) =>
     CONTRACT_STATUS_META[String(value || "draft").trim().toLowerCase()]?.label || value || "—"
 
@@ -89,11 +81,25 @@ export default function RequestContractTabContent({ requestId }) {
   const quoteOptions = useMemo(
     () =>
       quotes
-        .filter((row) => String(row.status || "").trim().toLowerCase() === "client_approved")
+        .filter(
+          (row) =>
+            Number(row.client_request_revision_id || 0) === Number(activeRevisionId || 0) &&
+            String(row.status || "").trim().toLowerCase() === "client_approved" &&
+            isSalesQuoteCommerciallyReady(row)
+        )
         .map((row) => ({
         value: Number(row.id),
-        label: `Коммерческое предложение #${row.id} · ${quoteStatusLabel(row.status)} · ${formatPriceWithCurrency(row.total_sell, row.currency || "USD")}`,
+        label: formatSalesQuoteLabel(row),
       })),
+    [quotes, activeRevisionId]
+  )
+  const hasBlockedApprovedQuotes = useMemo(
+    () =>
+      quotes.some(
+        (row) =>
+          String(row.status || "").trim().toLowerCase() === "client_approved" &&
+          !isSalesQuoteCommerciallyReady(row)
+      ),
     [quotes]
   )
   const latestContractProfile = useMemo(
@@ -129,7 +135,6 @@ export default function RequestContractTabContent({ requestId }) {
         sales_quote_revision_id: selectedQuoteMap.get(Number(values.sales_quote_id || 0))?.latest_revision_id || null,
         contract_number: values.contract_number,
         contract_date: values.contract_date?.format("YYYY-MM-DD"),
-        amount: values.amount,
         note: values.note,
       })
       message.success("Контракт создан")
@@ -184,8 +189,17 @@ export default function RequestContractTabContent({ requestId }) {
         type="info"
         showIcon
         message="Контракт закрывает коммерческий цикл и открывает заказы поставщикам"
-        description="Контракт должен фиксировать последнюю согласованную ревизию коммерческого предложения. Поэтому новый контракт можно создать только из предложения со статусом «Согласовано клиентом». После статуса «Подписан» закупщик получает право оформлять заказы поставщикам по утвержденной ревизии, первый заказ поставщику переводит контракт в «В исполнении», а статус «Исполнен» возможен только после подтвержденных заказов и без открытых событий качества."
+        description="Контракт можно создать только из согласованного КП текущей ревизии заявки. После статуса «Подписан» номер, дата, сумма, валюта и ревизия КП фиксируются, а закупщик получает право оформлять заказы поставщикам по утвержденной коммерческой ревизии."
       />
+
+      {hasBlockedApprovedQuotes ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="Есть согласованное КП без полной продажной цены"
+          description="Такое КП не попадёт в список для нового контракта. Верните его в работу, заполните продажу на вкладке «Маржа/Экономика» и заново согласуйте с клиентом."
+        />
+      ) : null}
 
       <Card
         size="small"
@@ -207,15 +221,24 @@ export default function RequestContractTabContent({ requestId }) {
             <Form.Item name="contract_date" label="Дата" rules={[{ required: true }]}>
               <DatePicker style={{ width: 160 }} format="DD.MM.YYYY" />
             </Form.Item>
-            <Form.Item name="amount" label="Сумма">
-              <InputNumber style={{ width: 160 }} min={0} />
-            </Form.Item>
           </Space>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
             При создании контракт автоматически получает статус «Черновик» и фиксирует последнюю согласованную ревизию выбранного коммерческого предложения.
+            Сумма берётся из продажной суммы КП
+            {selectedCreateQuote ? `: ${formatPriceWithCurrency(selectedCreateQuote.total_sell, selectedCreateQuote.currency || "USD")}.` : "."}
             Валюта наследуется от выбранного коммерческого предложения
             {selectedCreateQuote?.currency ? `: ${selectedCreateQuote.currency}.` : "."}
           </Typography.Paragraph>
+          {selectedCreateQuote ? (
+            <Space wrap size={[8, 8]} style={{ marginBottom: 12 }}>
+              <Tag color="green">
+                Сумма из КП: {formatPriceWithCurrency(selectedCreateQuote.total_sell, selectedCreateQuote.currency || "USD")}
+              </Tag>
+              <Tag color={selectedCreateQuote.mixed_incoterms || selectedCreateQuote.mixed_incoterms_places ? "orange" : "blue"}>
+                Incoterms: {formatIncotermsWithPlace(selectedCreateQuote.incoterms, selectedCreateQuote.incoterms_place) || "смешанные по строкам"}
+              </Tag>
+            </Space>
+          ) : null}
           <Form.Item name="note" label="Комментарий">
             <Input.TextArea rows={3} />
           </Form.Item>
@@ -259,7 +282,22 @@ export default function RequestContractTabContent({ requestId }) {
             },
             { title: "Дата", dataIndex: "contract_date", width: 120, render: formatDate },
             { title: "Сумма", width: 140, render: (_, row) => formatPriceWithCurrency(row.amount, row.currency || "USD") },
-            { title: "Предложение", width: 120, render: (_, row) => `#${row.sales_quote_id}` },
+            {
+              title: "Incoterms",
+              width: 160,
+              render: (_, row) =>
+                row.mixed_incoterms || row.mixed_incoterms_places
+                  ? "по спецификации"
+                  : formatIncotermsWithPlace(row.incoterms, row.incoterms_place) || "—",
+            },
+            {
+              title: "Предложение",
+              width: 260,
+              render: (_, row) => {
+                const quote = selectedQuoteMap.get(Number(row.sales_quote_id || 0))
+                return quote ? formatSalesQuoteLabel(quote, { includeStatus: false }) : "КП из архива"
+              },
+            },
             {
               title: "Ревизия предложения",
               width: 120,
@@ -317,14 +355,15 @@ export default function RequestContractTabContent({ requestId }) {
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Typography.Paragraph>
             Контракт должен ссылаться на конкретную ревизию коммерческого предложения, а не просто на предложение в
-            целом. Это фиксирует именно тот состав, который клиент согласовал.
+            целом. Это фиксирует именно тот состав, который клиент согласовал в текущей ревизии заявки.
           </Typography.Paragraph>
           <Typography.Paragraph>
             После статуса <strong>«Подписан»</strong> закупщик получает право выпускать заказы поставщикам уже по
             этой коммерческой ревизии. Первый заказ поставщику переводит контракт в статус <strong>«В исполнении»</strong>.
           </Typography.Paragraph>
           <Typography.Paragraph style={{ marginBottom: 0 }}>
-            Контракт можно перевести в <strong>«Исполнен»</strong> только когда все заказы поставщикам подтверждены и нет
+            Если клиент меняет состав после подписания, не редактируйте подписанный контракт задним числом: создайте
+            новую ревизию заявки и проведите новый цикл. Контракт можно перевести в <strong>«Исполнен»</strong> только когда все заказы поставщикам подтверждены и нет
             открытых событий качества. Если исполнение завершилось, но остались претензии или отклонения, используется
             статус <strong>«Закрыт с проблемами»</strong>.
           </Typography.Paragraph>
