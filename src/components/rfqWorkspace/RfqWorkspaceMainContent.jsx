@@ -94,6 +94,11 @@ export default function RfqWorkspaceMainContent({
   handleDeleteRfq,
 }) {
   const isRfqNeedsSync = String(activeRfq?.rfq_sync_status || "").toLowerCase() === "needs_sync"
+  const effectiveActiveTabKey = isRfqNeedsSync && activeTabKey !== "rfq" ? "rfq" : activeTabKey
+  const handleTabChange = (key) => {
+    if (isRfqNeedsSync && key !== "rfq") return
+    setActiveTabKey(key)
+  }
   const rfqColumns = [
     {
       title: "RFQ",
@@ -225,8 +230,8 @@ export default function RfqWorkspaceMainContent({
               ) : null}
 
               <Tabs
-                activeKey={activeTabKey}
-                onChange={setActiveTabKey}
+                activeKey={effectiveActiveTabKey}
+                onChange={handleTabChange}
                 size="small"
                 items={[
                 {

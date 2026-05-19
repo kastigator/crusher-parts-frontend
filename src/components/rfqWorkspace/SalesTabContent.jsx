@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { Alert, Button, Card, Drawer, Form, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
@@ -82,6 +82,17 @@ export default function SalesTabContent({
     () => (Array.isArray(selections) ? selections : []).find((row) => Number(row.id) === Number(selectedCreateSelectionId || 0)) || null,
     [selections, selectedCreateSelectionId]
   )
+  const defaultSelectionId = useMemo(() => {
+    const approved = (Array.isArray(selections) ? selections : [])
+      .filter((row) => String(row?.status || "").toLowerCase() === "approved")
+      .sort((a, b) => new Date(b?.selected_at || b?.created_at || 0) - new Date(a?.selected_at || a?.created_at || 0))
+    return Number(approved?.[0]?.id || selections?.[0]?.id || 0) || null
+  }, [selections])
+
+  useEffect(() => {
+    if (!defaultSelectionId || selectedCreateSelectionId) return
+    form.setFieldsValue({ selection_id: defaultSelectionId })
+  }, [defaultSelectionId, selectedCreateSelectionId, form])
 
   const handleCreateQuote = async (values) => {
     const revisionId = Number(activeRfq?.client_request_revision_id || 0) || null
@@ -242,7 +253,11 @@ export default function SalesTabContent({
               label="Выбор закупки"
               rules={[{ required: true, message: "Выберите выбор закупки" }]}
             >
-              <Select style={{ width: 420 }} options={selectionOptions} />
+              <Select
+                style={{ width: 420 }}
+                options={selectionOptions}
+                placeholder="Выберите утверждённый выбор закупки"
+              />
             </Form.Item>
           </Space>
           <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
@@ -250,7 +265,12 @@ export default function SalesTabContent({
             передаётся продавцу. Валюта наследуется от утверждённого выбора закупки
             {selectedCreateSelection?.calc_currency ? `: ${selectedCreateSelection.calc_currency}.` : "."}
           </Text>
-          <Button type="primary" htmlType="submit" loading={creating} disabled={!canManageSalesQuotes}>
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={creating}
+            disabled={!canManageSalesQuotes || !selectedCreateSelectionId}
+          >
             Создать коммерческое предложение и передать продавцу
           </Button>
         </Form>
