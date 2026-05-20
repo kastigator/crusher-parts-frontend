@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
 import {
+  Alert,
   Button,
   Card,
   DatePicker,
@@ -75,6 +76,19 @@ const formatAttributeValue = (attribute) => {
     if (match?.value_label) return match.value_label
   }
   return String(value)
+}
+
+const getAttributeOptionMismatch = (attribute) => {
+  if (!attribute || !["select", "multiselect"].includes(attribute.field_type)) return []
+  if (Array.isArray(attribute.invalid_values) && attribute.invalid_values.length) {
+    return attribute.invalid_values.map(String)
+  }
+  const value = attribute.value
+  if (value === undefined || value === null || value === "") return []
+  const values = Array.isArray(value) ? value : [value]
+  const optionCodes = new Set((attribute.options || []).map((option) => String(option.value_code)))
+  if (!optionCodes.size) return []
+  return values.map(String).filter((item) => item && !optionCodes.has(item))
 }
 
 function DynamicFieldInput({ field }) {
@@ -570,11 +584,36 @@ export default function StandardPartsMain({
           render: (_, row) => {
             const attribute = row?.attributes_by_code?.[field.code]
             const value = formatAttributeValue(attribute)
-            return <Typography.Text ellipsis={{ tooltip: value }}>{value}</Typography.Text>
+            const invalidValues = getAttributeOptionMismatch(attribute)
+            return (
+              <Typography.Text
+                type={invalidValues.length ? "danger" : undefined}
+                ellipsis={{ tooltip: invalidValues.length ? `${value} — значение вне опций поля` : value }}
+              >
+                {value}
+              </Typography.Text>
+            )
           },
         })),
     [listClassFields]
   )
+
+  const optionMismatchRows = useMemo(() => {
+    const result = []
+    ;(rows || []).forEach((row) => {
+      ;(row.attributes || []).forEach((attribute) => {
+        const invalidValues = getAttributeOptionMismatch(attribute)
+        if (!invalidValues.length) return
+        result.push({
+          partId: row.id,
+          partName: row.display_name || row.designation || `#${row.id}`,
+          fieldLabel: attribute.label || attribute.field_code,
+          invalidValues,
+        })
+      })
+    })
+    return result
+  }, [rows])
 
   const columns = [
     {
@@ -725,6 +764,28 @@ export default function StandardPartsMain({
             Создать стандартную деталь
           </Button>
         </Space>
+
+        {optionMismatchRows.length ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="Есть значения вне настроенных опций полей"
+            description={
+              <Space direction="vertical" size={4}>
+                {optionMismatchRows.slice(0, 5).map((item) => (
+                  <Typography.Text key={`${item.partId}:${item.fieldLabel}`}>
+                    {item.partName}: поле «{item.fieldLabel}» содержит {item.invalidValues.join(", ")}
+                  </Typography.Text>
+                ))}
+                {optionMismatchRows.length > 5 ? (
+                  <Typography.Text type="secondary">
+                    И еще {optionMismatchRows.length - 5}. Проверьте опции класса или исправьте значения деталей.
+                  </Typography.Text>
+                ) : null}
+              </Space>
+            }
+          />
+        ) : null}
 
         <Table
           rowKey="id"
