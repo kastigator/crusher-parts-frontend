@@ -59,10 +59,21 @@ const serializeFieldValue = (field, value) => {
 }
 
 const formatAttributeValue = (attribute) => {
+  if (attribute?.display_value !== undefined && attribute?.display_value !== null && attribute?.display_value !== "") {
+    return String(attribute.display_value)
+  }
   const value = attribute?.value
   if (value === undefined || value === null || value === "") return "—"
-  if (Array.isArray(value)) return value.length ? value.join(", ") : "—"
+  if (Array.isArray(value)) {
+    if (!value.length) return "—"
+    const optionMap = new Map((attribute?.options || []).map((option) => [String(option.value_code), option.value_label]))
+    return value.map((item) => optionMap.get(String(item)) || String(item)).join(", ")
+  }
   if (typeof value === "boolean") return value ? "Да" : "Нет"
+  if ((attribute?.field_type === "select" || attribute?.field_type === "multiselect") && Array.isArray(attribute?.options)) {
+    const match = attribute.options.find((option) => String(option.value_code) === String(value))
+    if (match?.value_label) return match.value_label
+  }
   return String(value)
 }
 
@@ -92,10 +103,12 @@ function DynamicFieldInput({ field }) {
       <Select
         allowClear
         placeholder={field.placeholder || "Выберите значение"}
-        options={(field.options || []).map((option) => ({
-          value: option.value_code,
-          label: option.value_label,
-        }))}
+        options={(field.options || [])
+          .filter((option) => Number(option.is_active || 0) === 1)
+          .map((option) => ({
+            value: option.value_code,
+            label: option.value_label,
+          }))}
       />
     )
   }
@@ -106,10 +119,12 @@ function DynamicFieldInput({ field }) {
         mode="multiple"
         allowClear
         placeholder={field.placeholder || "Выберите значения"}
-        options={(field.options || []).map((option) => ({
-          value: option.value_code,
-          label: option.value_label,
-        }))}
+        options={(field.options || [])
+          .filter((option) => Number(option.is_active || 0) === 1)
+          .map((option) => ({
+            value: option.value_code,
+            label: option.value_label,
+          }))}
       />
     )
   }
@@ -133,6 +148,7 @@ export default function StandardPartsMain({
   const [saving, setSaving] = useState(false)
   const [editingRow, setEditingRow] = useState(null)
   const [classFields, setClassFields] = useState([])
+  const [listClassFields, setListClassFields] = useState([])
   const [oemModalOpen, setOemModalOpen] = useState(false)
   const [oemSaving, setOemSaving] = useState(false)
   const [oemTargetRow, setOemTargetRow] = useState(null)
@@ -191,6 +207,7 @@ export default function StandardPartsMain({
         q: query || undefined,
         class_id: embeddedClassId || classId || undefined,
         include_descendants: embeddedClassId || classId ? 1 : undefined,
+        include_attributes: embeddedClassId || classId ? 1 : undefined,
         is_active: activeOnly ? 1 : undefined,
       }
       const { data } = await axios.get("/standard-parts", { params })
@@ -202,6 +219,29 @@ export default function StandardPartsMain({
       setLoading(false)
     }
   }, [activeOnly, classId, embeddedClassId, query])
+
+  useEffect(() => {
+    const nextClassId = embeddedClassId || classId
+    if (!nextClassId) {
+      setListClassFields([])
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await axios.get(`/standard-part-classes/${nextClassId}/fields`)
+        if (!cancelled) setListClassFields(Array.isArray(data) ? data : [])
+      } catch (err) {
+        if (!cancelled) {
+          console.error("GET /standard-part-classes/:id/fields error:", err)
+          setListClassFields([])
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [classId, embeddedClassId])
 
   useEffect(() => {
     loadClasses()
@@ -518,6 +558,24 @@ export default function StandardPartsMain({
     }
   }
 
+  const listAttributeColumns = useMemo(
+    () =>
+      (Array.isArray(listClassFields) ? listClassFields : [])
+        .filter((field) => Number(field.is_active || 0) === 1 && Number(field.is_in_list || 0) === 1)
+        .map((field) => ({
+          title: field.unit ? `${field.label}, ${field.unit}` : field.label,
+          key: `attr_${field.id}`,
+          width: 140,
+          ellipsis: true,
+          render: (_, row) => {
+            const attribute = row?.attributes_by_code?.[field.code]
+            const value = formatAttributeValue(attribute)
+            return <Typography.Text ellipsis={{ tooltip: value }}>{value}</Typography.Text>
+          },
+        })),
+    [listClassFields]
+  )
+
   const columns = [
     {
       title: "Класс",
@@ -539,6 +597,7 @@ export default function StandardPartsMain({
       ellipsis: true,
       render: (value) => <Typography.Text ellipsis={{ tooltip: textOrDash(value) }}>{textOrDash(value)}</Typography.Text>,
     },
+    ...listAttributeColumns,
     {
       title: "Описание",
       key: "description",

@@ -479,7 +479,15 @@ export default function StandardPartsClassifierMain() {
   const fieldExamples =
     fieldExamplesByClass[selectedNode?.code] || fieldExamplesByClass.default
   const nextStepAlert = selectedNode
-    ? fields.length === 0
+    ? fields.length === 0 && Number(selectedNode.children_count || 0) > 0
+      ? {
+          type: "info",
+          message: "Это групповой класс с подклассами",
+          description:
+            "Детали и представления ниже собраны из вложенных классов. Для настройки полей и создания новых standard part выберите конкретный подкласс в дереве.",
+          action: null,
+        }
+      : fields.length === 0
       ? {
           type: "info",
           message: "Сначала настройте поля класса",
