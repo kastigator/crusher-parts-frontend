@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Alert, Button, Card, Drawer, Form, Select, Space, Table, Tag, Typography, message } from "antd"
+import { useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import useCapabilities from "@/hooks/useCapabilities"
@@ -48,6 +49,7 @@ export default function SalesTabContent({
   formatDate,
   onCommercialUpdated,
 }) {
+  const navigate = useNavigate()
   const { can } = useCapabilities()
   const canManageSalesQuotes = can("workflow.sales_quotes.manage")
   const [creating, setCreating] = useState(false)
@@ -62,6 +64,15 @@ export default function SalesTabContent({
   const [helpOpen, setHelpOpen] = useState(false)
   const [form] = Form.useForm()
   const selectedCreateSelectionId = Form.useWatch("selection_id", form)
+
+  const openClientCommercialTab = (tabKey) => {
+    const requestId = Number(activeRfq?.client_request_id || 0) || null
+    if (!requestId) {
+      message.warning("У RFQ нет привязанной заявки клиента")
+      return
+    }
+    navigate(`/client-request-workspace?request_id=${requestId}&tab=${tabKey}`)
+  }
 
   const selectionOptions = useMemo(
     () =>
@@ -298,6 +309,25 @@ export default function SalesTabContent({
           </Button>
         }
         >
+          {Array.isArray(salesQuotes) && salesQuotes.length ? (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="Продажная цена и отправка клиенту выполняются в заявке клиента"
+              description="RFQ зафиксировал закупочную базу и передал КП продавцу. Укажите цену продажи или маржу в «Маржа/Экономика», затем отправьте готовое КП во вкладке «КП»."
+              action={
+                <Space direction="vertical" size={8}>
+                  <Button type="primary" onClick={() => openClientCommercialTab("margin")}>
+                    Указать продажу и маржу
+                  </Button>
+                  <Button onClick={() => openClientCommercialTab("quote")}>
+                    Открыть отправку КП
+                  </Button>
+                </Space>
+              }
+            />
+          ) : null}
           <Table
           rowKey="id"
           dataSource={salesQuotes}

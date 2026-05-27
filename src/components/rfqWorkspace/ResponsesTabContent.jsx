@@ -273,6 +273,29 @@ const formatOfferedQtyValue = (row) => {
   return formatQtyWithUom(qty, row?.uom)
 }
 
+const formatOptionalNumber = (value) => {
+  if (value === null || value === undefined || value === "") return "—"
+  const number = Number(value)
+  if (!Number.isFinite(number)) return "—"
+  return number.toLocaleString("ru-RU", { maximumFractionDigits: 3 })
+}
+
+const hasPositiveDimensionValue = (value) => {
+  if (value === null || value === undefined || value === "") return false
+  const number = Number(value)
+  return Number.isFinite(number) && number > 0
+}
+
+const formatSupplierPartDimensions = (row) => {
+  const values = [
+    row?.latest_supplier_part_length_cm,
+    row?.latest_supplier_part_width_cm,
+    row?.latest_supplier_part_height_cm,
+  ]
+  if (!values.some(hasPositiveDimensionValue)) return "—"
+  return values.map(formatOptionalNumber).join(" × ")
+}
+
 const getRowSelectionEntries = (row) => {
   const keys = splitSelectionMeta(row?.selected_selection_keys)
   const types = splitSelectionMeta(row?.selected_selection_types, true)
@@ -648,6 +671,8 @@ export default function ResponsesTabContent({
     "price",
     "requested",
     "offered",
+    "weight_kg",
+    "dimensions",
     "total",
     "lead_time",
     "actions",
@@ -661,6 +686,8 @@ export default function ResponsesTabContent({
     "price",
     "requested",
     "offered",
+    "weight_kg",
+    "dimensions",
     "total",
     "lead_time",
     "actions",
@@ -1239,6 +1266,28 @@ export default function ResponsesTabContent({
               ? 1
               : values.new_supplier_part_is_oversize === false
                 ? 0
+              : 0,
+        }
+      } else if (payload.supplier_part_id) {
+        payload.supplier_part = {
+          lead_time_days: values.lead_time_days ?? null,
+          min_order_qty: values.moq ?? null,
+          packaging: values.packaging || null,
+          weight_kg: values.supplier_part_weight_kg ?? null,
+          length_cm: values.supplier_part_length_cm ?? null,
+          width_cm: values.supplier_part_width_cm ?? null,
+          height_cm: values.supplier_part_height_cm ?? null,
+          is_overweight:
+            values.supplier_part_is_overweight === true
+              ? 1
+              : values.supplier_part_is_overweight === false
+                ? 0
+                : 0,
+          is_oversize:
+            values.supplier_part_is_oversize === true
+              ? 1
+              : values.supplier_part_is_oversize === false
+                ? 0
                 : 0,
         }
       }
@@ -1453,6 +1502,33 @@ export default function ResponsesTabContent({
     { key: "moq", title: "MOQ", dataIndex: "latest_moq", width: 90 },
     { key: "packaging", title: "Упаковка", dataIndex: "latest_packaging", width: 120 },
     {
+      key: "weight_kg",
+      title: "Вес, кг",
+      dataIndex: "latest_supplier_part_weight_kg",
+      width: 110,
+      render: formatOptionalNumber,
+    },
+    {
+      key: "dimensions",
+      title: "Габариты, см",
+      width: 150,
+      render: (_, r) => formatSupplierPartDimensions(r),
+    },
+    {
+      key: "is_overweight",
+      title: "Тяжелая",
+      dataIndex: "latest_supplier_part_is_overweight",
+      width: 100,
+      render: (value) => (Number(value) === 1 ? <Tag color="orange">Да</Tag> : "—"),
+    },
+    {
+      key: "is_oversize",
+      title: "Негабарит",
+      dataIndex: "latest_supplier_part_is_oversize",
+      width: 110,
+      render: (value) => (Number(value) === 1 ? <Tag color="orange">Да</Tag> : "—"),
+    },
+    {
       key: "incoterms",
       title: "Инкотермс",
       width: 180,
@@ -1654,6 +1730,33 @@ export default function ResponsesTabContent({
     },
     { key: "lead_time", title: "Срок, дн", dataIndex: "latest_lead_time_days", width: 90 },
     { key: "moq", title: "MOQ", dataIndex: "latest_moq", width: 90 },
+    {
+      key: "weight_kg",
+      title: "Вес, кг",
+      dataIndex: "latest_supplier_part_weight_kg",
+      width: 110,
+      render: formatOptionalNumber,
+    },
+    {
+      key: "dimensions",
+      title: "Габариты, см",
+      width: 150,
+      render: (_, r) => formatSupplierPartDimensions(r),
+    },
+    {
+      key: "is_overweight",
+      title: "Тяжелая",
+      dataIndex: "latest_supplier_part_is_overweight",
+      width: 100,
+      render: (value) => (Number(value) === 1 ? <Tag color="orange">Да</Tag> : "—"),
+    },
+    {
+      key: "is_oversize",
+      title: "Негабарит",
+      dataIndex: "latest_supplier_part_is_oversize",
+      width: 110,
+      render: (value) => (Number(value) === 1 ? <Tag color="orange">Да</Tag> : "—"),
+    },
     {
       key: "incoterms",
       title: "Инкотермс",
@@ -2237,14 +2340,66 @@ export default function ResponsesTabContent({
                     : "Введите минимум 2 символа"
                 }
                 onChange={(val, option) => {
-                  if (!val || !option?.meta) return
+                  if (!val || !option?.meta) {
+                    manualForm.setFieldsValue({
+                      supplier_part_weight_kg: null,
+                      supplier_part_length_cm: null,
+                      supplier_part_width_cm: null,
+                      supplier_part_height_cm: null,
+                      supplier_part_is_overweight: false,
+                      supplier_part_is_oversize: false,
+                    })
+                    return
+                  }
                   const partType = String(option.meta.part_type || "").toUpperCase()
                   if (["OEM", "ANALOG", "UNKNOWN"].includes(partType)) {
                     manualForm.setFieldValue("offer_type", partType)
                   }
+                  manualForm.setFieldsValue({
+                    supplier_part_weight_kg: option.meta.weight_kg ?? null,
+                    supplier_part_length_cm: option.meta.length_cm ?? null,
+                    supplier_part_width_cm: option.meta.width_cm ?? null,
+                    supplier_part_height_cm: option.meta.height_cm ?? null,
+                    supplier_part_is_overweight: Number(option.meta.is_overweight) === 1,
+                    supplier_part_is_oversize: Number(option.meta.is_oversize) === 1,
+                  })
                 }}
               />
             </Form.Item>
+          ) : null}
+          {!createSupplierPart ? (
+            <>
+              <Space style={{ display: "flex" }} align="start">
+                <Form.Item
+                  name="supplier_part_is_overweight"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Тяжелая</Checkbox>
+                </Form.Item>
+                <Form.Item
+                  name="supplier_part_is_oversize"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Негабарит</Checkbox>
+                </Form.Item>
+              </Space>
+              <Space style={{ display: "flex" }} align="start">
+                <Form.Item name="supplier_part_weight_kg" label="Вес, кг">
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
+                </Form.Item>
+                <Form.Item name="supplier_part_length_cm" label="Длина, см">
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
+                </Form.Item>
+                <Form.Item name="supplier_part_width_cm" label="Ширина, см">
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
+                </Form.Item>
+                <Form.Item name="supplier_part_height_cm" label="Высота, см">
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
+                </Form.Item>
+              </Space>
+            </>
           ) : null}
           {createSupplierPart ? (
             <>
