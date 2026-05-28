@@ -1,5 +1,6 @@
 import React, { useState } from "react"
 import { Alert, Button, Card, Drawer, Space, Table, Tag, Typography } from "antd"
+import { useNavigate } from "react-router-dom"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 
 const CONTRACT_STATUS_META = {
@@ -11,11 +12,13 @@ const CONTRACT_STATUS_META = {
   closed_with_issues: { color: "volcano", label: "Закрыт с проблемами" },
 }
 
-export default function ContractsTabContent({ contracts, formatDate, onCommercialUpdated }) {
+export default function ContractsTabContent({ activeRfq, contracts, formatDate, onCommercialUpdated }) {
+  const navigate = useNavigate()
   const [helpOpen, setHelpOpen] = useState(false)
   const executionReadyCount = (Array.isArray(contracts) ? contracts : []).filter(
     (row) => ["signed", "in_execution"].includes(String(row?.status || "").toLowerCase())
   ).length
+  const clientRequestId = Number(activeRfq?.client_request_id || 0) || null
 
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
@@ -28,6 +31,15 @@ export default function ContractsTabContent({ contracts, formatDate, onCommercia
             : "До подписанного контракта заказы поставщикам создавать нельзя"
         }
         description="Контракт создаётся и согласуется на стороне продавца в разделе заявок клиента. После статуса «Подписан» первый заказ поставщику переводит контракт в «В исполнении». Закупщик должен ориентироваться на утвержденную коммерческую ревизию, а не на весь исходный выбор закупки."
+        action={
+          <Button
+            type="primary"
+            disabled={!clientRequestId}
+            onClick={() => navigate(`/client-request-workspace?request_id=${clientRequestId}&tab=contract`)}
+          >
+            Открыть создание документа
+          </Button>
+        }
       />
 
       <Card

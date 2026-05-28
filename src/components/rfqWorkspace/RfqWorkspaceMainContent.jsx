@@ -387,6 +387,7 @@ export default function RfqWorkspaceMainContent({
                   disabled: !isStructureConfirmed || isRfqNeedsSync,
                   children: (
                     <ContractsTabContent
+                      activeRfq={activeRfq}
                       contracts={contracts}
                       formatDate={formatDate}
                       onCommercialUpdated={onCommercialUpdated}

@@ -93,6 +93,15 @@ export default function RequestContractTabContent({ requestId, activeRevisionId 
       })),
     [quotes, activeRevisionId]
   )
+  const hasClientApprovedQuotes = useMemo(
+    () =>
+      quotes.some(
+        (row) =>
+          Number(row.client_request_revision_id || 0) === Number(activeRevisionId || 0) &&
+          String(row.status || "").trim().toLowerCase() === "client_approved"
+      ),
+    [quotes, activeRevisionId]
+  )
   const hasBlockedApprovedQuotes = useMemo(
     () =>
       quotes.some(
@@ -201,9 +210,22 @@ export default function RequestContractTabContent({ requestId, activeRevisionId 
         />
       ) : null}
 
+      {!quoteOptions.length ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="Нет КП, из которого можно создать контракт"
+          description={
+            hasClientApprovedQuotes
+              ? "Есть согласованное КП, но в нём не заполнена продажная цена по всем активным строкам. Верните КП в работу, заполните продажу на вкладке «Маржа/Экономика» и заново согласуйте с клиентом."
+              : "Сначала заполните продажные цены, отправьте КП клиенту и переведите его в статус «Согласовано клиентом». После этого КП появится в списке для создания контракта."
+          }
+        />
+      ) : null}
+
       <Card
         size="small"
-        title="Новый контракт"
+        title="Новый контракт и документ"
         extra={
           <Button size="small" onClick={() => setHelpOpen(true)}>
             Справка
@@ -224,6 +246,7 @@ export default function RequestContractTabContent({ requestId, activeRevisionId 
           </Space>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
             При создании контракт автоматически получает статус «Черновик» и фиксирует последнюю согласованную ревизию выбранного коммерческого предложения.
+            DOCX документа формируется автоматически сразу после создания контракта и будет доступен в таблице ниже.
             Сумма берётся из продажной суммы КП
             {selectedCreateQuote ? `: ${formatPriceWithCurrency(selectedCreateQuote.total_sell, selectedCreateQuote.currency || "USD")}.` : "."}
             Валюта наследуется от выбранного коммерческого предложения
@@ -243,7 +266,7 @@ export default function RequestContractTabContent({ requestId, activeRevisionId 
             <Input.TextArea rows={3} />
           </Form.Item>
           <Button type="primary" htmlType="submit" loading={saving} disabled={!canManageContracts}>
-            Создать контракт
+            Создать контракт и документ
           </Button>
         </Form>
       </Card>
@@ -253,6 +276,10 @@ export default function RequestContractTabContent({ requestId, activeRevisionId 
           rowKey="id"
           loading={loading}
           dataSource={contracts}
+          locale={{
+            emptyText:
+              "Контрактов пока нет. Создайте контракт из согласованного КП выше; DOCX документа сформируется автоматически.",
+          }}
           pagination={false}
           columns={[
             { title: "Номер", dataIndex: "contract_number", width: 160 },
@@ -319,7 +346,7 @@ export default function RequestContractTabContent({ requestId, activeRevisionId 
                     size="small"
                     onClick={() => window.open(resolveAppHref(`/contracts/${row.id}/preview`), "_blank", "noopener")}
                   >
-                    Открыть документ
+                    Предпросмотр
                   </Button>
                   {row.file_url ? (
                     <Button
@@ -335,7 +362,7 @@ export default function RequestContractTabContent({ requestId, activeRevisionId 
                     onClick={() => handleGenerateContractPdf(row.id)}
                     disabled={!canManageContracts}
                   >
-                    Пересобрать DOCX
+                    Сформировать DOCX заново
                   </Button>
                 </Space>
               ),
