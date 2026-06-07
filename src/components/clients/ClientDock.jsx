@@ -8,6 +8,7 @@ import BankDetailsMain from "./BankDetailsMain"
 import ClientContactsMain from "./ClientContactsMain"
 import ClientOrdersTab from "./ClientOrdersTab"
 import ClientEquipmentUnitsMain from "./ClientEquipmentUnitsMain"
+import ClientPartsMain from "./ClientPartsMain"
 
 const { Text } = Typography
 
@@ -67,6 +68,11 @@ export default function ClientDock({ client, onChanged }) {
             key: "equipment",
             label: "Оборудование",
             children: <ClientEquipmentUnitsMain clientId={clientId} onChanged={onChanged} />,
+          },
+          {
+            key: "client-parts",
+            label: "Детали по чертежам",
+            children: <ClientPartsMain clientId={clientId} onChanged={onChanged} />,
           },
           {
             key: "orders",

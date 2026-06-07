@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Drawer, Row, Col, Card, Input, Button, List, Space, message, Modal, Typography, Tabs, Empty, Tree, Tag } from "antd";
-import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
+import { DeleteOutlined } from "@ant-design/icons";
 import axios from "@/api/axiosInstance";
 import { runTrashDeleteFlow } from "@/utils/trashUi";
 
@@ -46,10 +46,6 @@ export default function ManufacturerModelPicker({
   const [clientQ, setClientQ] = useState("");
   const [unitQ, setUnitQ] = useState("");
   const [classifierQ, setClassifierQ] = useState("");
-
-  // inputs for create
-  const [mfNew, setMfNew] = useState("");
-  const [mdNew, setMdNew] = useState("");
 
   // loading flags
   const [loadingMf, setLoadingMf] = useState(false);
@@ -184,21 +180,7 @@ export default function ManufacturerModelPicker({
     setClassifierModelId(null);
   }, [open, classifierNodeId, loadClassifierModels]);
 
-  // ====== create / delete manufacturer
-  const createManufacturer = async () => {
-    const name = mfNew.trim();
-    if (!name) return;
-    try {
-      const { data } = await axios.post("/equipment-manufacturers", { name });
-      message.success("Производитель создан");
-      setManufacturers(prev => [data, ...prev]);
-      setMfId(data.id);
-      setMfNew("");
-    } catch (e) {
-      console.error(e); message.error("Не удалось создать производителя");
-    }
-  };
-
+  // ====== delete manufacturer
   const deleteManufacturer = (id) => {
     Modal.confirm({
       title: "Удалить производителя?",
@@ -223,22 +205,7 @@ export default function ManufacturerModelPicker({
     });
   };
 
-  // ====== create / delete model
-  const createModel = async () => {
-    const model_name = mdNew.trim();
-    if (!mfId) { message.warning("Сначала выберите производителя"); return; }
-    if (!model_name) return;
-    try {
-      const { data } = await axios.post("/equipment-models", { manufacturer_id: mfId, model_name });
-      message.success("Модель создана");
-      setModels(prev => [data, ...prev]);
-      setMdId(data.id);
-      setMdNew("");
-    } catch (e) {
-      console.error(e); message.error("Не удалось создать модель");
-    }
-  };
-
+  // ====== delete model
   const deleteModel = (id) => {
     Modal.confirm({
       title: "Удалить модель?",
@@ -416,15 +383,6 @@ export default function ManufacturerModelPicker({
                 allowClear
               />
             </Space.Compact>
-            <Space.Compact style={{ width: "100%", marginBottom: 8 }}>
-              <Input
-                placeholder="Новый производитель"
-                value={mfNew}
-                onChange={(e) => setMfNew(e.target.value)}
-                onPressEnter={createManufacturer}
-              />
-              <Button icon={<PlusOutlined />} onClick={createManufacturer}>Добавить</Button>
-            </Space.Compact>
             <List
               bordered
               loading={loadingMf}
@@ -465,16 +423,6 @@ export default function ManufacturerModelPicker({
                 allowClear
                 disabled={!mfId}
               />
-            </Space.Compact>
-            <Space.Compact style={{ width: "100%", marginBottom: 8 }}>
-              <Input
-                placeholder="Новая модель"
-                value={mdNew}
-                onChange={(e) => setMdNew(e.target.value)}
-                onPressEnter={createModel}
-                disabled={!mfId}
-              />
-              <Button icon={<PlusOutlined />} onClick={createModel} disabled={!mfId}>Добавить</Button>
             </Space.Compact>
             <List
               bordered

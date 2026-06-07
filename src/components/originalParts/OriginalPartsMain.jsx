@@ -78,8 +78,6 @@ export default function OriginalPartsMain() {
   const [addForm] = Form.useForm()
   const [manufacturerModels, setManufacturerModels] = useState([])
   const [manufacturerModelsLoading, setManufacturerModelsLoading] = useState(false)
-  const [creatingModelInline, setCreatingModelInline] = useState(false)
-  const [newModelName, setNewModelName] = useState("")
   const [editOpen, setEditOpen] = useState(false)
   const [editForm] = Form.useForm()
   const [editingRow, setEditingRow] = useState(null)
@@ -1096,40 +1094,6 @@ export default function OriginalPartsMain() {
     addForm.setFieldValue("application_model_ids", [currentId])
   }, [createOpen, model?.id, addForm])
 
-  const createModelInline = async () => {
-    if (!manufacturer?.id) {
-      message.warning("Сначала выберите производителя")
-      return
-    }
-    const name = String(newModelName || "").trim()
-    if (!name) {
-      message.warning("Введите название модели")
-      return
-    }
-    setCreatingModelInline(true)
-    try {
-      const { data } = await axios.post("/equipment-models", {
-        manufacturer_id: manufacturer.id,
-        model_name: name,
-      })
-      await fetchManufacturerModels()
-      if (data?.id) {
-        const current = addForm.getFieldValue("application_model_ids")
-        const base = Array.isArray(current) ? current : []
-        if (!base.includes(data.id)) {
-          addForm.setFieldValue("application_model_ids", [...base, data.id])
-        }
-      }
-      setNewModelName("")
-      message.success("Модель добавлена")
-    } catch (e) {
-      console.error(e)
-      message.error(e?.response?.data?.message || "Не удалось создать модель")
-    } finally {
-      setCreatingModelInline(false)
-    }
-  }
-
   // В режиме showAll "корневые узлы" / "вне структуры" неоднозначны — падаем в "Все".
   useEffect(() => {
     if (showAll && (viewMode === "roots" || viewMode === "orphans")) {
@@ -1566,24 +1530,10 @@ export default function OriginalPartsMain() {
                   </Checkbox.Group>
                 </Form.Item>
                 {!manufacturerModelsLoading && !manufacturerModels.length ? (
-                  <Text type="secondary">У выбранного производителя пока нет моделей.</Text>
+                  <Text type="secondary">
+                    У выбранного производителя пока нет моделей. Создайте модель в НСИ/Справочнике и вернитесь в OEM-каталог.
+                  </Text>
                 ) : null}
-                <Space.Compact style={{ width: "100%" }}>
-                  <Input
-                    value={newModelName}
-                    onChange={(e) => setNewModelName(e.target.value)}
-                    placeholder="Новая модель"
-                    onPressEnter={createModelInline}
-                    disabled={creatingModelInline || !manufacturer?.id}
-                  />
-                  <Button
-                    onClick={createModelInline}
-                    loading={creatingModelInline}
-                    disabled={!manufacturer?.id}
-                  >
-                    + Добавить модель
-                  </Button>
-                </Space.Compact>
               </Space>
             </Card>
             <Form.Item

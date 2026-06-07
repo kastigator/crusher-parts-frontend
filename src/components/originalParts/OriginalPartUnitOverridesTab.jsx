@@ -166,7 +166,7 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
           effective_to: values.effective_to ? values.effective_to.format("YYYY-MM-DD") : null,
         },
       )
-      message.success("Machine-specific override сохранён")
+      message.success("Особенности применения на машине сохранены")
       setOverrideOpen(false)
       setEditingRow(null)
       await load()
@@ -186,7 +186,7 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
         entityId: partId,
         deleteUrl: `/original-parts/${partId}/unit-overrides/${row.client_equipment_unit_id}`,
         previewParams: { unit_id: row.client_equipment_unit_id },
-        successMessage: "Override удалён",
+        successMessage: "Особенности применения сброшены",
       })
       if (!result?.deleted) return
       await load()
@@ -399,11 +399,11 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
       render: (_, row) => (
         <Space wrap>
           <Button size="small" onClick={() => openOverrideModal(row)}>
-            Настроить
+            Особенности
           </Button>
           {row.override_status ? (
             <Popconfirm
-              title="Сбросить отдельную настройку для этой машины?"
+              title="Сбросить особенности применения для этой машины?"
               okText="Удалить"
               cancelText="Отмена"
               onConfirm={() => removeOverride(row)}
@@ -498,8 +498,8 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
         open={overrideOpen}
         title={
           editingRow
-            ? `Настройка для машины: ${textOrDash(editingRow.client_name)} / ${textOrDash(editingRow.serial_number)}`
-            : "Настройка для машины"
+            ? `Особенности применения: ${textOrDash(editingRow.client_name)} / ${textOrDash(editingRow.serial_number)}`
+            : "Особенности применения на машине"
         }
         onCancel={() => {
           setOverrideOpen(false)
@@ -513,7 +513,7 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
       >
         <Form layout="vertical" form={overrideForm}>
           <Form.Item
-            label="Статус детали на этой машине"
+            label="Как эта OEM деталь применяется на машине"
             name="status"
             rules={[{ required: true, message: "Выберите статус" }]}
           >
@@ -564,12 +564,12 @@ export default function OriginalPartUnitOverridesTab({ partId, part }) {
 
         {editingRow ? (
           <div style={{ marginTop: 12, borderTop: "1px solid #f0f0f0", paddingTop: 12 }}>
-            <Typography.Text strong>Дополнительные уточнения по этой машине</Typography.Text>
+            <Typography.Text strong>Чем отличается эта деталь на выбранной машине</Typography.Text>
             <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 12 }}>
-              Если для этой же OEM детали на машине отличаются материалы или характеристики,
-              настройте их отдельно здесь. Для обычного базового применения этот блок не нужен.
+              Если у клиента на этой машине другая замена, материал, вес или габариты,
+              фиксируйте это здесь. Если отличий нет, оставьте базовую применяемость по модели.
             </Typography.Paragraph>
-            <Button onClick={() => openMaterialsModal(editingRow)}>Материалы и характеристики машины</Button>
+            <Button onClick={() => openMaterialsModal(editingRow)}>Материалы, вес и габариты</Button>
           </div>
         ) : null}
       </Modal>
