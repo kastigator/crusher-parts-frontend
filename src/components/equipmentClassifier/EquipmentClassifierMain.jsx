@@ -6,6 +6,7 @@ import {
   Col,
   Descriptions,
   Drawer,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -24,6 +25,7 @@ import {
   message,
 } from "antd"
 import axios from "@/api/axiosInstance"
+import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const CLIENT_PART_TYPE_LABELS = {
@@ -41,7 +43,7 @@ const CLIENT_PART_TYPE_COLORS = {
 }
 
 const SEARCH_TYPE_LABELS = {
-  classifier_node: "Узел НСИ",
+  classifier_node: "Раздел",
   equipment_model: "Модель",
   oem_part: "OEM",
   client_equipment_unit: "Машина клиента",
@@ -100,6 +102,7 @@ const flattenTree = (nodes, map = new Map()) => {
 
 export default function EquipmentClassifierMain() {
   const navigate = useNavigate()
+  const { options: measurementUnitOptions, loading: measurementUnitsLoading } = useMeasurementUnits()
   const [treeRows, setTreeRows] = useState([])
   const [allModels, setAllModels] = useState([])
   const [allUnits, setAllUnits] = useState([])
@@ -192,7 +195,7 @@ export default function EquipmentClassifierMain() {
       setWorkspace(data || null)
     } catch (err) {
       console.error("GET /equipment-classifier-nodes/:id/workspace error:", err)
-      message.error(err?.response?.data?.message || "Не удалось загрузить workspace узла")
+      message.error(err?.response?.data?.message || "Не удалось загрузить выбранный раздел")
       setWorkspace(null)
     } finally {
       setWorkspaceLoading(false)
@@ -242,7 +245,7 @@ export default function EquipmentClassifierMain() {
       setNsiSearchRows(Array.isArray(data) ? data : [])
     } catch (err) {
       console.error("GET /equipment-classifier-nodes/search error:", err)
-      message.error(err?.response?.data?.message || "Не удалось выполнить поиск по НСИ")
+      message.error(err?.response?.data?.message || "Не удалось выполнить поиск по классификатору")
     } finally {
       setNsiSearchLoading(false)
     }
@@ -312,6 +315,34 @@ export default function EquipmentClassifierMain() {
         "Производитель",
     }
   }, [allModels, selectedTreeEntity])
+
+  const measurementUnitLabelByCode = useMemo(
+    () => new Map(measurementUnitOptions.map((option) => [String(option.value), option.label])),
+    [measurementUnitOptions]
+  )
+
+  const formatMeasurementUnit = useCallback(
+    (unit) => {
+      if (!unit) return ""
+      return measurementUnitLabelByCode.get(String(unit)) || unit
+    },
+    [measurementUnitLabelByCode]
+  )
+
+  const attributeUnitOptions = useMemo(() => {
+    const seen = new Set(measurementUnitOptions.map((option) => String(option.value)))
+    const extra = attributes
+      .map((attribute) => attribute.unit)
+      .filter(Boolean)
+      .filter((unit) => {
+        const key = String(unit)
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .map((unit) => ({ value: unit, label: unit }))
+    return [...measurementUnitOptions, ...extra]
+  }, [attributes, measurementUnitOptions])
   const filteredTreeRows = useMemo(() => {
     const q = treeQuery.trim().toLowerCase()
     if (!q) return treeRows
@@ -429,7 +460,7 @@ export default function EquipmentClassifierMain() {
 
   const openCreateChild = () => {
     if (!selectedNode) {
-      message.warning("Сначала выберите родительский узел")
+      message.warning("Сначала выберите родительский раздел")
       return
     }
     setEditingNode(null)
@@ -448,7 +479,7 @@ export default function EquipmentClassifierMain() {
 
   const openEdit = () => {
     if (!selectedNode) {
-      message.warning("Сначала выберите узел")
+      message.warning("Сначала выберите раздел")
       return
     }
     setParentForCreate(null)
@@ -477,17 +508,17 @@ export default function EquipmentClassifierMain() {
       setSaving(true)
       if (editingNode?.id) {
         await axios.put(`/equipment-classifier-nodes/${editingNode.id}`, payload)
-        message.success("Узел классификатора обновлён")
+        message.success("Раздел классификатора обновлён")
       } else {
         await axios.post("/equipment-classifier-nodes", payload)
-        message.success("Узел классификатора создан")
+        message.success("Раздел классификатора создан")
       }
       setModalOpen(false)
       await loadTree()
     } catch (err) {
       if (err?.errorFields) return
       console.error("save equipment classifier node error:", err)
-      message.error(err?.response?.data?.message || "Не удалось сохранить узел классификатора")
+      message.error(err?.response?.data?.message || "Не удалось сохранить раздел классификатора")
     } finally {
       setSaving(false)
     }
@@ -500,20 +531,20 @@ export default function EquipmentClassifierMain() {
         entityType: "equipment_classifier_nodes",
         entityId: selectedNode.id,
         deleteUrl: `/equipment-classifier-nodes/${selectedNode.id}`,
-        successMessage: "Узел классификатора перемещён в корзину",
+        successMessage: "Раздел классификатора перемещён в корзину",
       })
       if (!result?.deleted) return
       setSelectedId(null)
       await loadTree()
     } catch (err) {
       console.error("delete equipment classifier node error:", err)
-      message.error(err?.response?.data?.message || "Не удалось удалить узел классификатора")
+      message.error(err?.response?.data?.message || "Не удалось удалить раздел классификатора")
     }
   }
 
   const openCreateModel = () => {
     if (!selectedNode) {
-      message.warning("Сначала выберите узел классификатора")
+      message.warning("Сначала выберите раздел классификатора")
       return
     }
     modelForm.resetFields()
@@ -541,7 +572,7 @@ export default function EquipmentClassifierMain() {
         model_code: values.model_code || null,
         notes: values.notes || null,
       })
-      message.success("Модель создана в выбранном узле")
+      message.success("Модель создана в выбранном разделе")
       setModelModalOpen(false)
       await loadWorkspace(selectedNode.id)
     } catch (err) {
@@ -562,7 +593,7 @@ export default function EquipmentClassifierMain() {
   const handleMoveModel = async () => {
     if (!movingModel?.id) return
     if (!moveTargetNodeId) {
-      message.warning("Выберите целевой узел НСИ")
+      message.warning("Выберите целевой раздел классификатора")
       return
     }
     if (Number(moveTargetNodeId) === Number(movingModel.classifier_node_id)) {
@@ -623,7 +654,7 @@ export default function EquipmentClassifierMain() {
 
   const openCreateAttribute = () => {
     if (!selectedNode) {
-      message.warning("Сначала выберите узел НСИ")
+      message.warning("Сначала выберите раздел классификатора")
       return
     }
     setEditingAttribute(null)
@@ -642,7 +673,7 @@ export default function EquipmentClassifierMain() {
 
   const openEditAttribute = (row) => {
     if (!row || Number(row.classifier_node_id) !== Number(selectedNode?.id)) {
-      message.info("Унаследованную характеристику редактируют в том узле, где она создана")
+      message.info("Унаследованную характеристику редактируют в том разделе, где она создана")
       return
     }
     setEditingAttribute(row)
@@ -1077,7 +1108,7 @@ export default function EquipmentClassifierMain() {
       ),
     },
     {
-      title: "Контекст НСИ",
+      title: "Раздел классификатора",
       dataIndex: "classifier_node_name",
       width: 220,
       render: (value) => (value ? <Tag color="blue">{value}</Tag> : "—"),
@@ -1115,7 +1146,7 @@ export default function EquipmentClassifierMain() {
       render: (_, row) => (
         <Space wrap size={4}>
           <Tag>{ATTRIBUTE_TYPE_LABELS[row.value_type] || row.value_type}</Tag>
-          {row.unit ? <Tag color="blue">{row.unit}</Tag> : null}
+          {row.unit ? <Tag color="blue">{formatMeasurementUnit(row.unit)}</Tag> : null}
         </Space>
       ),
     },
@@ -1124,9 +1155,9 @@ export default function EquipmentClassifierMain() {
       width: 190,
       render: (_, row) =>
         row.inherited ? (
-          <Tag color="purple">{row.source_node_name || "Родительский узел"}</Tag>
+          <Tag color="purple">{row.source_node_name || "Родительский раздел"}</Tag>
         ) : (
-          <Tag color="green">Этот узел</Tag>
+          <Tag color="green">Этот раздел</Tag>
         ),
     },
     {
@@ -1170,7 +1201,7 @@ export default function EquipmentClassifierMain() {
 
   const renderAttributeValueInput = (attribute) => {
     const name = `attr_${attribute.id}`
-    const label = attribute.unit ? `${attribute.label}, ${attribute.unit}` : attribute.label
+    const label = attribute.unit ? `${attribute.label}, ${formatMeasurementUnit(attribute.unit)}` : attribute.label
     const rules = attribute.is_required ? [{ required: true, message: "Заполните характеристику" }] : []
     const options = (attribute.options || []).map((option) => ({
       value: option.value_code,
@@ -1432,6 +1463,24 @@ export default function EquipmentClassifierMain() {
         <Button onClick={openCreateAttribute}>
           Настроить характеристики
         </Button>
+        {canEditSelectedNode ? (
+          <>
+            <Button onClick={openEdit}>
+              Изменить раздел
+            </Button>
+            <Popconfirm
+              title="Удалить раздел классификатора?"
+              description={selectedNode?.name || ""}
+              okText="Удалить"
+              cancelText="Отмена"
+              onConfirm={handleDelete}
+            >
+              <Button danger>
+                Удалить раздел
+              </Button>
+            </Popconfirm>
+          </>
+        ) : null}
       </Space>
 
       <Input
@@ -1525,7 +1574,7 @@ export default function EquipmentClassifierMain() {
         <Descriptions.Item label="Код модели">
           {currentModel?.model_code || "—"}
         </Descriptions.Item>
-        <Descriptions.Item label="Раздел НСИ">
+        <Descriptions.Item label="Раздел классификатора">
           {currentModel?.classifier_node_name || selectedNode?.name || "—"}
         </Descriptions.Item>
         <Descriptions.Item label="OEM деталей">
@@ -1652,43 +1701,42 @@ export default function EquipmentClassifierMain() {
         ? [currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "Модель"
         : selectedTreeEntity.type === "unit"
           ? selectedUnitFromTree?.client_name || "Машина клиента"
-          : selectedNode?.name || "НСИ"
+          : selectedNode?.name || "Классификатор"
 
   const canEditSelectedNode = selectedTreeEntity.type === "node" && selectedNode
+  const addMenuItems = [
+    {
+      key: "section",
+      label: canEditSelectedNode ? "Подраздел" : "Раздел",
+    },
+    {
+      key: "model",
+      label: "Модель",
+      disabled: !selectedNode,
+    },
+  ]
 
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <Card size="small">
         <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
-          <Typography.Text strong>НСИ оборудования</Typography.Text>
-          <Space wrap>
-            <Button onClick={loadTree}>Обновить</Button>
-            <Button type="primary" onClick={openCreateSection}>
-              {canEditSelectedNode ? "Добавить подраздел" : "Добавить раздел"}
-            </Button>
-            <Button onClick={openCreateModel} disabled={!selectedNode}>
-              Добавить модель
-            </Button>
-            <Button onClick={openEdit} disabled={!canEditSelectedNode}>
-              Изменить
-            </Button>
-            <Popconfirm
-              title="Удалить раздел НСИ?"
-              description={selectedNode?.name || ""}
-              okText="Удалить"
-              cancelText="Отмена"
-              onConfirm={handleDelete}
-              disabled={!canEditSelectedNode}
-            >
-              <Button danger disabled={!canEditSelectedNode}>
-                Удалить
-              </Button>
-            </Popconfirm>
-          </Space>
+          <Typography.Text strong>Классификатор</Typography.Text>
+          <Dropdown
+            menu={{
+              items: addMenuItems,
+              onClick: ({ key }) => {
+                if (key === "section") openCreateSection()
+                if (key === "model") openCreateModel()
+              },
+            }}
+            trigger={["click"]}
+          >
+            <Button type="primary">+ Добавить</Button>
+          </Dropdown>
         </Space>
       </Card>
 
-      <Card size="small" title="Поиск по НСИ">
+      <Card size="small" title="Поиск по классификатору">
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Input.Search
             allowClear
@@ -1727,7 +1775,7 @@ export default function EquipmentClassifierMain() {
             <Space direction="vertical" size={12} style={{ width: "100%" }}>
               <Input
                 allowClear
-                placeholder="Поиск по разделам НСИ"
+                placeholder="Поиск по разделам классификатора"
                 value={treeQuery}
                 onChange={(event) => setTreeQuery(event.target.value)}
               />
@@ -1778,7 +1826,7 @@ export default function EquipmentClassifierMain() {
               <Descriptions.Item label="Код модели">
                 {detailsModel.model_code || "—"}
               </Descriptions.Item>
-              <Descriptions.Item label="Узел НСИ">
+              <Descriptions.Item label="Раздел классификатора">
                 {detailsModel.classifier_node_name || "—"}
               </Descriptions.Item>
               <Descriptions.Item label="OEM деталей">
@@ -1853,10 +1901,10 @@ export default function EquipmentClassifierMain() {
         open={modalOpen}
         title={
           editingNode
-            ? "Редактирование узла классификатора"
+            ? "Редактирование раздела"
             : parentForCreate
-              ? `Новый дочерний узел для "${parentForCreate.name}"`
-              : "Новый корневой узел"
+              ? `Новый подраздел для "${parentForCreate.name}"`
+              : "Новый раздел"
         }
         onCancel={() => setModalOpen(false)}
         onOk={handleSubmit}
@@ -1903,7 +1951,7 @@ export default function EquipmentClassifierMain() {
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Typography.Text type="secondary">
-            Выберите новый узел НСИ. Все OEM-применения, BOM и машины клиентов останутся привязаны к этой модели.
+            Выберите новый раздел классификатора. Все OEM-применения, BOM и машины клиентов останутся привязаны к этой модели.
           </Typography.Text>
           {treeData.length ? (
             <Tree
@@ -1914,7 +1962,7 @@ export default function EquipmentClassifierMain() {
               height={420}
             />
           ) : (
-            <Empty description="Нет доступных узлов НСИ" />
+            <Empty description="Нет доступных разделов классификатора" />
           )}
         </Space>
       </Modal>
@@ -1945,7 +1993,14 @@ export default function EquipmentClassifierMain() {
             </Col>
             <Col xs={24} md={12}>
               <Form.Item label="Единица" name="unit">
-                <Input placeholder="мм, кВт, т/ч" />
+                <Select
+                  allowClear
+                  showSearch
+                  loading={measurementUnitsLoading}
+                  options={attributeUnitOptions}
+                  optionFilterProp="label"
+                  placeholder="Выберите единицу"
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -2002,13 +2057,13 @@ export default function EquipmentClassifierMain() {
             {modelAttributeRows.map((attribute) => renderAttributeValueInput(attribute))}
           </Form>
         ) : (
-          <Empty description="Для этого узла пока нет характеристик" />
+          <Empty description="Для этого раздела пока нет характеристик" />
         )}
       </Modal>
 
       <Modal
         open={modelModalOpen}
-        title={selectedNode ? `Новая модель для узла "${selectedNode.name}"` : "Новая модель"}
+        title={selectedNode ? `Новая модель для раздела "${selectedNode.name}"` : "Новая модель"}
         onCancel={() => setModelModalOpen(false)}
         onOk={handleCreateModel}
         confirmLoading={modelSaving}
