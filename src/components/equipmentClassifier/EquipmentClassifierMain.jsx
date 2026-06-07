@@ -1701,7 +1701,7 @@ export default function EquipmentClassifierMain() {
         ? [currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "Модель"
         : selectedTreeEntity.type === "unit"
           ? selectedUnitFromTree?.client_name || "Машина клиента"
-          : selectedNode?.name || "Классификатор"
+          : selectedNode?.name || "Рабочая область"
 
   const canEditSelectedNode = selectedTreeEntity.type === "node" && selectedNode
   const addMenuItems = [
@@ -1718,9 +1718,10 @@ export default function EquipmentClassifierMain() {
 
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
-      <Card size="small">
-        <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
-          <Typography.Text strong>Классификатор</Typography.Text>
+      <Card
+        size="small"
+        title="Поиск"
+        extra={
           <Dropdown
             menu={{
               items: addMenuItems,
@@ -1733,10 +1734,8 @@ export default function EquipmentClassifierMain() {
           >
             <Button type="primary">+ Добавить</Button>
           </Dropdown>
-        </Space>
-      </Card>
-
-      <Card size="small" title="Поиск по классификатору">
+        }
+      >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Input.Search
             allowClear
