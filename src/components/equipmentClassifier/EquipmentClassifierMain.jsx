@@ -72,7 +72,6 @@ const ATTRIBUTE_TYPE_LABELS = Object.fromEntries(ATTRIBUTE_TYPE_OPTIONS.map((ite
 
 const EMPTY_FORM = {
   name: "",
-  is_active: true,
   notes: "",
 }
 
@@ -469,14 +468,6 @@ export default function EquipmentClassifierMain() {
     setModalOpen(true)
   }
 
-  const openCreateSection = () => {
-    if (selectedNode && selectedTreeEntity.type === "node") {
-      openCreateChild()
-      return
-    }
-    openCreateRoot()
-  }
-
   const openEdit = () => {
     if (!selectedNode) {
       message.warning("Сначала выберите раздел")
@@ -486,7 +477,6 @@ export default function EquipmentClassifierMain() {
     setEditingNode(selectedNode)
     form.setFieldsValue({
       name: selectedNode.name || "",
-      is_active: !!selectedNode.is_active,
       notes: selectedNode.notes || "",
     })
     setModalOpen(true)
@@ -501,7 +491,7 @@ export default function EquipmentClassifierMain() {
         code: editingNode ? editingNode.code || null : null,
         node_type: editingNode?.node_type || getDefaultNodeType(parentForCreate),
         sort_order: editingNode ? editingNode.sort_order || 0 : 0,
-        is_active: values.is_active ? 1 : 0,
+        is_active: editingNode ? (editingNode.is_active ? 1 : 0) : 1,
         notes: values.notes || null,
       }
 
@@ -569,7 +559,6 @@ export default function EquipmentClassifierMain() {
         manufacturer_id: values.manufacturer_id,
         model_name: values.model_name,
         classifier_node_id: selectedNode.id,
-        model_code: values.model_code || null,
         notes: values.notes || null,
       })
       message.success("Модель создана в выбранном разделе")
@@ -1019,7 +1008,6 @@ export default function EquipmentClassifierMain() {
         [
           row.manufacturer_name,
           row.model_name,
-          row.model_code,
         ]
           .filter(Boolean)
           .join(" ")
@@ -1050,7 +1038,7 @@ export default function EquipmentClassifierMain() {
         <Space direction="vertical" size={0}>
           <Typography.Text strong>{row.model_name || "—"}</Typography.Text>
           <Typography.Text type="secondary">
-            {[row.model_code, row.classifier_node_name].filter(Boolean).join(" / ") || "—"}
+            {row.classifier_node_name || "—"}
           </Typography.Text>
         </Space>
       ),
@@ -1485,7 +1473,7 @@ export default function EquipmentClassifierMain() {
 
       <Input
         allowClear
-        placeholder="Фильтр моделей: производитель, модель, код"
+        placeholder="Фильтр моделей: производитель или модель"
         value={workspaceQuery}
         onChange={(event) => setWorkspaceQuery(event.target.value)}
       />
@@ -1570,9 +1558,6 @@ export default function EquipmentClassifierMain() {
         </Descriptions.Item>
         <Descriptions.Item label="Модель">
           {currentModel?.model_name || "—"}
-        </Descriptions.Item>
-        <Descriptions.Item label="Код модели">
-          {currentModel?.model_code || "—"}
         </Descriptions.Item>
         <Descriptions.Item label="Раздел классификатора">
           {currentModel?.classifier_node_name || selectedNode?.name || "—"}
@@ -1706,12 +1691,17 @@ export default function EquipmentClassifierMain() {
   const canEditSelectedNode = selectedTreeEntity.type === "node" && selectedNode
   const addMenuItems = [
     {
-      key: "section",
-      label: canEditSelectedNode ? "Подраздел" : "Раздел",
+      key: "root-section",
+      label: "Раздел верхнего уровня",
+    },
+    {
+      key: "child-section",
+      label: "Подраздел в выбранном разделе",
+      disabled: !canEditSelectedNode,
     },
     {
       key: "model",
-      label: "Модель",
+      label: "Модель в выбранном разделе",
       disabled: !selectedNode,
     },
   ]
@@ -1726,7 +1716,8 @@ export default function EquipmentClassifierMain() {
             menu={{
               items: addMenuItems,
               onClick: ({ key }) => {
-                if (key === "section") openCreateSection()
+                if (key === "root-section") openCreateRoot()
+                if (key === "child-section") openCreateChild()
                 if (key === "model") openCreateModel()
               },
             }}
@@ -1821,9 +1812,6 @@ export default function EquipmentClassifierMain() {
               </Descriptions.Item>
               <Descriptions.Item label="Модель">
                 {detailsModel.model_name || "—"}
-              </Descriptions.Item>
-              <Descriptions.Item label="Код модели">
-                {detailsModel.model_code || "—"}
               </Descriptions.Item>
               <Descriptions.Item label="Раздел классификатора">
                 {detailsModel.classifier_node_name || "—"}
@@ -1922,9 +1910,6 @@ export default function EquipmentClassifierMain() {
           </Form.Item>
           <Form.Item label="Заметки" name="notes">
             <Input.TextArea rows={3} />
-          </Form.Item>
-          <Form.Item label="Активен" name="is_active" valuePropName="checked">
-            <Switch />
           </Form.Item>
         </Form>
       </Modal>
@@ -2093,9 +2078,6 @@ export default function EquipmentClassifierMain() {
             name="model_name"
             rules={[{ required: true, message: "Укажите модель" }]}
           >
-            <Input />
-          </Form.Item>
-          <Form.Item label="Код модели" name="model_code">
             <Input />
           </Form.Item>
           <Form.Item label="Заметки" name="notes">
