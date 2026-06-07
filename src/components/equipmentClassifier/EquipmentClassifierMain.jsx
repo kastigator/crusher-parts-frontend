@@ -901,11 +901,6 @@ export default function EquipmentClassifierMain() {
     })
   }, [rawWorkspaceClientParts, selectedUnitFromTree])
 
-  const currentManufacturerModels = useMemo(() => {
-    if (selectedTreeEntity.type !== "manufacturer" || !selectedTreeEntity.id) return []
-    return workspaceModels.filter((model) => Number(model.manufacturer_id) === Number(selectedTreeEntity.id))
-  }, [selectedTreeEntity, workspaceModels])
-
   const handleTreeSelect = (keys) => {
     const key = keys?.[0] || null
     setSelectedTreeKey(key)
@@ -1006,6 +1001,11 @@ export default function EquipmentClassifierMain() {
     }
     return rows
   }, [attributeFilters, filterableAttributes, hasActiveAttributeFilters, rawWorkspaceModels, workspaceNeedle])
+
+  const currentManufacturerModels = useMemo(() => {
+    if (selectedTreeEntity.type !== "manufacturer" || !selectedTreeEntity.id) return []
+    return workspaceModels.filter((model) => Number(model.manufacturer_id) === Number(selectedTreeEntity.id))
+  }, [selectedTreeEntity, workspaceModels])
 
   const modelsColumns = [
     {
