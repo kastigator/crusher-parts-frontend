@@ -26,17 +26,6 @@ import {
 import axios from "@/api/axiosInstance"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
 
-const NODE_TYPE_OPTIONS = [
-  { value: "ROOT", label: "Корень" },
-  { value: "CATEGORY", label: "Категория" },
-  { value: "SUBCATEGORY", label: "Подкатегория" },
-  { value: "EQUIPMENT_TYPE", label: "Тип оборудования" },
-  { value: "MANUFACTURER_GROUP", label: "Группа производителей" },
-  { value: "MODEL_GROUP", label: "Группа моделей" },
-]
-
-const NODE_TYPE_LABELS = Object.fromEntries(NODE_TYPE_OPTIONS.map((item) => [item.value, item.label]))
-
 const CLIENT_PART_TYPE_LABELS = {
   client_drawing: "По чертежу клиента",
   oem_variant: "Отличается от OEM",
@@ -81,26 +70,25 @@ const ATTRIBUTE_TYPE_LABELS = Object.fromEntries(ATTRIBUTE_TYPE_OPTIONS.map((ite
 
 const EMPTY_FORM = {
   name: "",
-  code: "",
-  node_type: "CATEGORY",
-  sort_order: 0,
   is_active: true,
   notes: "",
 }
 
-const buildTreeData = (nodes) =>
-  (nodes || []).map((node) => ({
-    key: String(node.id),
-    title: (
-      <Space size={6}>
-        <span>{node.name}</span>
-        <Tag bordered={false} color={node.is_active ? "blue" : "default"}>
-          {NODE_TYPE_LABELS[node.node_type] || node.node_type}
-        </Tag>
-      </Space>
-    ),
-    children: buildTreeData(node.children || []),
-  }))
+const treeKey = {
+  node: (id) => `node:${id}`,
+  manufacturer: (nodeId, manufacturerId) => `manufacturer:${nodeId}:${manufacturerId}`,
+  model: (id) => `model:${id}`,
+  unit: (id) => `unit:${id}`,
+}
+
+const parseTreeKey = (value) => {
+  const [type, first, second] = String(value || "").split(":")
+  return {
+    type,
+    id: Number(first) || null,
+    extraId: Number(second) || null,
+  }
+}
 
 const flattenTree = (nodes, map = new Map()) => {
   ;(nodes || []).forEach((node) => {
@@ -113,6 +101,8 @@ const flattenTree = (nodes, map = new Map()) => {
 export default function EquipmentClassifierMain() {
   const navigate = useNavigate()
   const [treeRows, setTreeRows] = useState([])
+  const [allModels, setAllModels] = useState([])
+  const [allUnits, setAllUnits] = useState([])
   const [treeQuery, setTreeQuery] = useState("")
   const [workspaceQuery, setWorkspaceQuery] = useState("")
   const [loading, setLoading] = useState(false)
@@ -148,6 +138,8 @@ export default function EquipmentClassifierMain() {
   const [editingNode, setEditingNode] = useState(null)
   const [parentForCreate, setParentForCreate] = useState(null)
   const [selectedId, setSelectedId] = useState(null)
+  const [selectedTreeKey, setSelectedTreeKey] = useState(null)
+  const [selectedTreeEntity, setSelectedTreeEntity] = useState({ type: "node", id: null })
   const [form] = Form.useForm()
   const [modelForm] = Form.useForm()
   const [manufacturerForm] = Form.useForm()
@@ -169,9 +161,25 @@ export default function EquipmentClassifierMain() {
     }
   }, [])
 
+  const loadTreeInventory = useCallback(async () => {
+    try {
+      const [modelsResult, unitsResult] = await Promise.all([
+        axios.get("/equipment-models"),
+        axios.get("/client-equipment-units", { params: { limit: 1000 } }),
+      ])
+      setAllModels(Array.isArray(modelsResult.data) ? modelsResult.data : [])
+      setAllUnits(Array.isArray(unitsResult.data) ? unitsResult.data : [])
+    } catch (err) {
+      console.error("load classifier tree inventory error:", err)
+      setAllModels([])
+      setAllUnits([])
+    }
+  }, [])
+
   useEffect(() => {
     loadTree()
-  }, [loadTree])
+    loadTreeInventory()
+  }, [loadTree, loadTreeInventory])
 
   const loadWorkspace = useCallback(async (nodeId) => {
     if (!nodeId) {
@@ -253,12 +261,16 @@ export default function EquipmentClassifierMain() {
     if (row.classifier_node_id) {
       const nodeId = String(row.classifier_node_id)
       setSelectedId(nodeId)
+      setSelectedTreeKey(treeKey.node(nodeId))
+      setSelectedTreeEntity({ type: "node", id: Number(nodeId) })
       await loadWorkspace(nodeId)
       return
     }
     if (row.entity_type === "classifier_node" && row.entity_id) {
       const nodeId = String(row.entity_id)
       setSelectedId(nodeId)
+      setSelectedTreeKey(treeKey.node(nodeId))
+      setSelectedTreeEntity({ type: "node", id: Number(nodeId) })
       await loadWorkspace(nodeId)
     }
   }, [loadWorkspace, navigate])
@@ -280,6 +292,26 @@ export default function EquipmentClassifierMain() {
 
   const nodeMap = useMemo(() => flattenTree(treeRows), [treeRows])
   const selectedNode = selectedId ? nodeMap.get(Number(selectedId)) || null : null
+  const selectedModelFromTree = useMemo(() => {
+    if (selectedTreeEntity.type !== "model" || !selectedTreeEntity.id) return null
+    return allModels.find((model) => Number(model.id) === Number(selectedTreeEntity.id)) || null
+  }, [allModels, selectedTreeEntity])
+
+  const selectedUnitFromTree = useMemo(() => {
+    if (selectedTreeEntity.type !== "unit" || !selectedTreeEntity.id) return null
+    return allUnits.find((unit) => Number(unit.id) === Number(selectedTreeEntity.id)) || null
+  }, [allUnits, selectedTreeEntity])
+
+  const selectedManufacturerFromTree = useMemo(() => {
+    if (selectedTreeEntity.type !== "manufacturer" || !selectedTreeEntity.id) return null
+    const manufacturerId = Number(selectedTreeEntity.id)
+    return {
+      id: manufacturerId,
+      name:
+        allModels.find((model) => Number(model.manufacturer_id) === manufacturerId)?.manufacturer_name ||
+        "Производитель",
+    }
+  }, [allModels, selectedTreeEntity])
   const filteredTreeRows = useMemo(() => {
     const q = treeQuery.trim().toLowerCase()
     if (!q) return treeRows
@@ -299,12 +331,99 @@ export default function EquipmentClassifierMain() {
     return filterNodes(treeRows)
   }, [treeRows, treeQuery])
 
-  const treeData = useMemo(() => buildTreeData(filteredTreeRows), [filteredTreeRows])
+  const unitsByModelId = useMemo(() => {
+    const map = new Map()
+    allUnits.forEach((unit) => {
+      const modelId = Number(unit.equipment_model_id)
+      if (!modelId) return
+      if (!map.has(modelId)) map.set(modelId, [])
+      map.get(modelId).push(unit)
+    })
+    return map
+  }, [allUnits])
+
+  const modelsByNodeId = useMemo(() => {
+    const map = new Map()
+    allModels.forEach((model) => {
+      const nodeId = Number(model.classifier_node_id)
+      if (!nodeId) return
+      if (!map.has(nodeId)) map.set(nodeId, [])
+      map.get(nodeId).push(model)
+    })
+    map.forEach((rows) => {
+      rows.sort((a, b) => {
+        const manufacturer = String(a.manufacturer_name || "").localeCompare(String(b.manufacturer_name || ""), "ru")
+        if (manufacturer) return manufacturer
+        return String(a.model_name || "").localeCompare(String(b.model_name || ""), "ru")
+      })
+    })
+    return map
+  }, [allModels])
+
+  const treeData = useMemo(() => {
+    const q = treeQuery.trim().toLowerCase()
+    const build = (nodes) =>
+      (nodes || []).map((node) => {
+        const nodeModels = q ? [] : modelsByNodeId.get(Number(node.id)) || []
+        const modelsByManufacturer = new Map()
+        nodeModels.forEach((model) => {
+          const manufacturerId = Number(model.manufacturer_id)
+          if (!manufacturerId) return
+          if (!modelsByManufacturer.has(manufacturerId)) {
+            modelsByManufacturer.set(manufacturerId, {
+              id: manufacturerId,
+              name: model.manufacturer_name || "Производитель не указан",
+              models: [],
+            })
+          }
+          modelsByManufacturer.get(manufacturerId).models.push(model)
+        })
+        const manufacturerChildren = Array.from(modelsByManufacturer.values())
+          .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"))
+          .map((manufacturer) => ({
+            key: treeKey.manufacturer(node.id, manufacturer.id),
+            title: manufacturer.name,
+            children: manufacturer.models.map((model) => {
+              const modelUnits = unitsByModelId.get(Number(model.id)) || []
+              return {
+                key: treeKey.model(model.id),
+                title: model.model_name || `Модель #${model.id}`,
+                children: modelUnits.map((unit) => ({
+                  key: treeKey.unit(unit.id),
+                  title:
+                    [
+                      unit.client_name,
+                      unit.serial_number ? `SN ${unit.serial_number}` : unit.internal_name,
+                    ]
+                      .filter(Boolean)
+                      .join(" / ") || `Машина #${unit.id}`,
+                  isLeaf: true,
+                })),
+              }
+            }),
+          }))
+
+        return {
+          key: treeKey.node(node.id),
+          title: node.name,
+          children: [...build(node.children || []), ...manufacturerChildren],
+        }
+      })
+
+    return build(filteredTreeRows)
+  }, [filteredTreeRows, modelsByNodeId, treeQuery, unitsByModelId])
+
+  const getDefaultNodeType = (parent) => {
+    if (!parent) return "ROOT"
+    if (parent.node_type === "ROOT") return "CATEGORY"
+    if (parent.node_type === "CATEGORY") return "SUBCATEGORY"
+    return "EQUIPMENT_TYPE"
+  }
 
   const openCreateRoot = () => {
     setEditingNode(null)
     setParentForCreate(null)
-    form.setFieldsValue({ ...EMPTY_FORM, node_type: "ROOT" })
+    form.setFieldsValue({ ...EMPTY_FORM })
     setModalOpen(true)
   }
 
@@ -315,8 +434,16 @@ export default function EquipmentClassifierMain() {
     }
     setEditingNode(null)
     setParentForCreate(selectedNode)
-    form.setFieldsValue({ ...EMPTY_FORM, node_type: "CATEGORY" })
+    form.setFieldsValue({ ...EMPTY_FORM })
     setModalOpen(true)
+  }
+
+  const openCreateSection = () => {
+    if (selectedNode && selectedTreeEntity.type === "node") {
+      openCreateChild()
+      return
+    }
+    openCreateRoot()
   }
 
   const openEdit = () => {
@@ -328,9 +455,6 @@ export default function EquipmentClassifierMain() {
     setEditingNode(selectedNode)
     form.setFieldsValue({
       name: selectedNode.name || "",
-      code: selectedNode.code || "",
-      node_type: selectedNode.node_type || "CATEGORY",
-      sort_order: selectedNode.sort_order || 0,
       is_active: !!selectedNode.is_active,
       notes: selectedNode.notes || "",
     })
@@ -343,9 +467,9 @@ export default function EquipmentClassifierMain() {
       const payload = {
         parent_id: editingNode ? editingNode.parent_id : parentForCreate?.id || null,
         name: values.name,
-        code: values.code || null,
-        node_type: values.node_type,
-        sort_order: values.sort_order ?? 0,
+        code: editingNode ? editingNode.code || null : null,
+        node_type: editingNode?.node_type || getDefaultNodeType(parentForCreate),
+        sort_order: editingNode ? editingNode.sort_order || 0 : 0,
         is_active: values.is_active ? 1 : 0,
         notes: values.notes || null,
       }
@@ -393,6 +517,9 @@ export default function EquipmentClassifierMain() {
       return
     }
     modelForm.resetFields()
+    if (selectedTreeEntity.type === "manufacturer" && selectedTreeEntity.id) {
+      modelForm.setFieldsValue({ manufacturer_id: selectedTreeEntity.id })
+    }
     loadManufacturers()
     setModelModalOpen(true)
   }
@@ -452,6 +579,7 @@ export default function EquipmentClassifierMain() {
       setMovingModel(null)
       setMoveTargetNodeId(null)
       await loadTree()
+      await loadTreeInventory()
       if (selectedId) await loadWorkspace(selectedId)
     } catch (err) {
       console.error("PUT /equipment-models/:id classifier_node_id error:", err)
@@ -654,7 +782,6 @@ export default function EquipmentClassifierMain() {
 
   const workspaceStats = workspace?.stats || {}
   const rawWorkspaceModels = Array.isArray(workspace?.models) ? workspace.models : []
-  const rawWorkspaceManufacturers = Array.isArray(workspace?.manufacturers) ? workspace.manufacturers : []
   const rawWorkspaceUnits = Array.isArray(workspace?.client_equipment_units) ? workspace.client_equipment_units : []
   const rawWorkspaceOemParts = Array.isArray(workspace?.oem_parts) ? workspace.oem_parts : []
   const rawWorkspaceClientParts = Array.isArray(workspace?.client_parts) ? workspace.client_parts : []
@@ -730,6 +857,88 @@ export default function EquipmentClassifierMain() {
     })
   }, [detailsModel, rawWorkspaceClientParts])
 
+  const currentModel = useMemo(() => {
+    if (selectedTreeEntity.type !== "model" || !selectedTreeEntity.id) return null
+    return rawWorkspaceModels.find((model) => Number(model.id) === Number(selectedTreeEntity.id)) || selectedModelFromTree
+  }, [rawWorkspaceModels, selectedModelFromTree, selectedTreeEntity])
+
+  const currentModelOemParts = useMemo(() => {
+    if (!currentModel?.id) return []
+    const modelId = Number(currentModel.id)
+    return rawWorkspaceOemParts.filter((row) => splitIds(row.model_ids).includes(modelId))
+  }, [currentModel, rawWorkspaceOemParts])
+
+  const currentModelUnits = useMemo(() => {
+    if (!currentModel?.id) return []
+    const modelId = Number(currentModel.id)
+    return rawWorkspaceUnits.filter((row) => Number(row.equipment_model_id) === modelId)
+  }, [currentModel, rawWorkspaceUnits])
+
+  const currentModelClientParts = useMemo(() => {
+    if (!currentModel?.id) return []
+    const modelId = Number(currentModel.id)
+    return rawWorkspaceClientParts.filter((row) => {
+      const modelIds = splitIds(row.application_model_ids)
+      const unitModelIds = splitIds(row.application_unit_model_ids)
+      return modelIds.includes(modelId) || unitModelIds.includes(modelId)
+    })
+  }, [currentModel, rawWorkspaceClientParts])
+
+  const currentUnitOemParts = useMemo(() => {
+    if (!selectedUnitFromTree?.equipment_model_id) return []
+    const modelId = Number(selectedUnitFromTree.equipment_model_id)
+    return rawWorkspaceOemParts.filter((row) => splitIds(row.model_ids).includes(modelId))
+  }, [rawWorkspaceOemParts, selectedUnitFromTree])
+
+  const currentUnitClientParts = useMemo(() => {
+    if (!selectedUnitFromTree?.id && !selectedUnitFromTree?.equipment_model_id) return []
+    const unitId = Number(selectedUnitFromTree?.id)
+    const modelId = Number(selectedUnitFromTree?.equipment_model_id)
+    return rawWorkspaceClientParts.filter((row) => {
+      const unitModelIds = splitIds(row.application_unit_model_ids)
+      const modelIds = splitIds(row.application_model_ids)
+      return unitModelIds.includes(modelId) || modelIds.includes(modelId) || Number(row.client_equipment_unit_id) === unitId
+    })
+  }, [rawWorkspaceClientParts, selectedUnitFromTree])
+
+  const currentManufacturerModels = useMemo(() => {
+    if (selectedTreeEntity.type !== "manufacturer" || !selectedTreeEntity.id) return []
+    return workspaceModels.filter((model) => Number(model.manufacturer_id) === Number(selectedTreeEntity.id))
+  }, [selectedTreeEntity, workspaceModels])
+
+  const handleTreeSelect = (keys) => {
+    const key = keys?.[0] || null
+    setSelectedTreeKey(key)
+    if (!key) {
+      setSelectedTreeEntity({ type: "node", id: null })
+      setSelectedId(null)
+      return
+    }
+
+    const parsed = parseTreeKey(key)
+    if (parsed.type === "node") {
+      setSelectedTreeEntity({ type: "node", id: parsed.id })
+      setSelectedId(parsed.id ? String(parsed.id) : null)
+      return
+    }
+    if (parsed.type === "manufacturer") {
+      setSelectedTreeEntity({ type: "manufacturer", id: parsed.extraId, nodeId: parsed.id })
+      setSelectedId(parsed.id ? String(parsed.id) : null)
+      return
+    }
+    if (parsed.type === "model") {
+      const model = allModels.find((item) => Number(item.id) === Number(parsed.id))
+      setSelectedTreeEntity({ type: "model", id: parsed.id })
+      setSelectedId(model?.classifier_node_id ? String(model.classifier_node_id) : null)
+      return
+    }
+    if (parsed.type === "unit") {
+      const unit = allUnits.find((item) => Number(item.id) === Number(parsed.id))
+      setSelectedTreeEntity({ type: "unit", id: parsed.id })
+      setSelectedId(unit?.classifier_node_id ? String(unit.classifier_node_id) : null)
+    }
+  }
+
   const openModelDetails = (row) => {
     setDetailsModel(row || null)
     setModelDetailsOpen(true)
@@ -798,99 +1007,6 @@ export default function EquipmentClassifierMain() {
     return rows
   }, [attributeFilters, filterableAttributes, hasActiveAttributeFilters, rawWorkspaceModels, workspaceNeedle])
 
-  const workspaceUnits = useMemo(() => {
-    if (!workspaceNeedle) return rawWorkspaceUnits
-    return rawWorkspaceUnits.filter((row) =>
-      [
-        row.client_name,
-        row.manufacturer_name,
-        row.model_name,
-        row.model_code,
-        row.serial_number,
-        row.site_name,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(workspaceNeedle),
-    )
-  }, [rawWorkspaceUnits, workspaceNeedle])
-
-  const workspaceManufacturers = useMemo(() => {
-    if (!workspaceNeedle) return rawWorkspaceManufacturers
-    return rawWorkspaceManufacturers.filter((row) =>
-      String(row.name || "").toLowerCase().includes(workspaceNeedle),
-    )
-  }, [rawWorkspaceManufacturers, workspaceNeedle])
-
-  const workspaceOemParts = useMemo(() => {
-    if (!workspaceNeedle) return rawWorkspaceOemParts
-    return rawWorkspaceOemParts.filter((row) =>
-      [
-        row.manufacturer_name,
-        row.part_number,
-        row.description_ru,
-        row.description_en,
-        row.tech_description,
-        row.model_names,
-        row.direct_classifier_node_name,
-        row.fitment_classifier_node_names,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(workspaceNeedle),
-    )
-  }, [rawWorkspaceOemParts, workspaceNeedle])
-
-  const workspaceClientParts = useMemo(() => {
-    if (!workspaceNeedle) return rawWorkspaceClientParts
-    return rawWorkspaceClientParts.filter((row) =>
-      [
-        row.client_name,
-        row.display_name,
-        row.client_part_number,
-        row.drawing_number,
-        row.revision_code,
-        row.base_oem_part_number,
-        row.difference_summary,
-        row.material_note,
-        row.application_model_refs,
-        row.application_unit_refs,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(workspaceNeedle),
-    )
-  }, [rawWorkspaceClientParts, workspaceNeedle])
-
-  const manufacturersColumns = [
-    {
-      title: "Производитель",
-      dataIndex: "name",
-      render: (value) => <Typography.Text strong>{value}</Typography.Text>,
-    },
-    {
-      title: "Модели",
-      dataIndex: "models_count",
-      width: 100,
-      align: "center",
-    },
-    {
-      title: "Машины клиентов",
-      dataIndex: "units_count",
-      width: 140,
-      align: "center",
-    },
-    {
-      title: "OEM детали",
-      dataIndex: "oem_parts_count",
-      width: 120,
-      align: "center",
-    },
-  ]
-
   const modelsColumns = [
     {
       title: "Производитель",
@@ -935,203 +1051,6 @@ export default function EquipmentClassifierMain() {
           <Button size="small" onClick={() => openMoveModel(row)}>
             Перенести
           </Button>
-        </Space>
-      ),
-    },
-  ]
-
-  const unitsColumns = [
-    {
-      title: "Клиент",
-      dataIndex: "client_name",
-      render: (value) => <Typography.Text strong>{value || "—"}</Typography.Text>,
-    },
-    {
-      title: "Машина",
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <span>{row.manufacturer_name || "—"} / {row.model_name || "—"}</span>
-          <Typography.Text type="secondary">{row.model_code || "—"}</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: "Серийный номер",
-      dataIndex: "serial_number",
-      render: (value) => value || "—",
-    },
-    {
-      title: "Год",
-      dataIndex: "manufacture_year",
-      width: 100,
-      align: "center",
-      render: (value) => value || "—",
-    },
-    {
-      title: "Площадка",
-      dataIndex: "site_name",
-      render: (value) => value || "—",
-    },
-    {
-      title: "Действия",
-      key: "actions",
-      width: 120,
-      render: (_, row) => (
-        <Space wrap>
-          <Button size="small" onClick={() => navigate(`/clients/${row.client_id}`)}>
-            Клиент
-          </Button>
-        </Space>
-      ),
-    },
-  ]
-
-  const oemPartsColumns = [
-    {
-      title: "OEM деталь",
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text strong>{row.part_number || "—"}</Typography.Text>
-          <Typography.Text type="secondary">{row.manufacturer_name || "—"}</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: "Описание",
-      render: (_, row) => row.description_ru || row.description_en || row.tech_description || "—",
-    },
-    {
-      title: "Модели",
-      dataIndex: "model_names",
-      width: 240,
-      render: (value, row) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text>{value || "—"}</Typography.Text>
-          <Typography.Text type="secondary">
-            {Number(row.models_count) || 0} моделей / {Number(row.client_units_count) || 0} машин клиентов
-          </Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: "НСИ",
-      width: 220,
-      render: (_, row) => {
-        const value = row.direct_classifier_node_name || row.fitment_classifier_node_names
-        return value ? <Tag color="blue">{value}</Tag> : "—"
-      },
-    },
-    {
-      title: "Признаки",
-      width: 170,
-      render: (_, row) => (
-        <Space wrap size={4}>
-          {row.has_drawing ? <Tag color="green">Чертеж</Tag> : null}
-          {row.is_overweight ? <Tag color="orange">Тяжелая</Tag> : null}
-          {row.is_oversize ? <Tag color="orange">Негабарит</Tag> : null}
-          {!row.has_drawing && !row.is_overweight && !row.is_oversize ? "—" : null}
-        </Space>
-      ),
-    },
-    {
-      title: "Действия",
-      key: "actions",
-      width: 120,
-      render: (_, row) => (
-        <Button size="small" onClick={() => navigate(`/original-parts/${row.id}`)}>
-          Открыть
-        </Button>
-      ),
-    },
-  ]
-
-  const clientPartsColumns = [
-    {
-      title: "Деталь клиента",
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text strong>{row.display_name || "—"}</Typography.Text>
-          <Typography.Text type="secondary">
-            {[row.client_part_number, row.drawing_number, row.revision_code].filter(Boolean).join(" / ") || "без номера"}
-          </Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: "Клиент",
-      dataIndex: "client_name",
-      width: 180,
-      render: (value) => value || "—",
-    },
-    {
-      title: "Тип",
-      dataIndex: "relationship_type",
-      width: 160,
-      render: (value) => (
-        <Tag color={CLIENT_PART_TYPE_COLORS[value] || "default"}>
-          {CLIENT_PART_TYPE_LABELS[value] || value || "—"}
-        </Tag>
-      ),
-    },
-    {
-      title: "Базовая OEM",
-      width: 180,
-      render: (_, row) =>
-        row.base_oem_part_id ? (
-          <Space direction="vertical" size={0}>
-            <Typography.Text>{row.base_oem_part_number || `#${row.base_oem_part_id}`}</Typography.Text>
-            <Typography.Text type="secondary">{row.base_oem_manufacturer_name || "—"}</Typography.Text>
-          </Space>
-        ) : (
-          "—"
-        ),
-    },
-    {
-      title: "Отличие",
-      dataIndex: "difference_summary",
-      render: (value, row) => value || row.material_note || "—",
-    },
-    {
-      title: "Применяется",
-      width: 280,
-      render: (_, row) => {
-        const unitRefs = String(row.application_unit_refs || "").trim()
-        const modelRefs = String(row.application_model_refs || "").trim()
-        if (!unitRefs && !modelRefs) {
-          return Number(row.applications_count || 0) > 0 ? `${row.applications_count} связей` : "—"
-        }
-        return (
-          <Space direction="vertical" size={2}>
-            {unitRefs ? (
-              <Typography.Text>
-                <Tag color="orange">Машина</Tag>
-                {unitRefs}
-              </Typography.Text>
-            ) : null}
-            {modelRefs ? (
-              <Typography.Text>
-                <Tag color="green">Модель</Tag>
-                {modelRefs}
-              </Typography.Text>
-            ) : null}
-          </Space>
-        )
-      },
-    },
-    {
-      title: "Действия",
-      key: "actions",
-      width: 180,
-      render: (_, row) => (
-        <Space wrap>
-          <Button size="small" onClick={() => navigate(`/clients/${row.client_id}`)}>
-            Клиент
-          </Button>
-          {row.base_oem_part_id ? (
-            <Button size="small" onClick={() => navigate(`/original-parts/${row.base_oem_part_id}`)}>
-              OEM
-            </Button>
-          ) : null}
         </Space>
       ),
     },
@@ -1496,35 +1415,272 @@ export default function EquipmentClassifierMain() {
     },
   ]
 
+  const renderNodeContent = () => (
+    <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      <Space wrap size={24}>
+        <Statistic title="Разделов ниже" value={Number(workspaceStats.subtree_nodes_count) || 0} loading={workspaceLoading} />
+        <Statistic title="Моделей" value={Number(workspaceStats.models_count) || 0} loading={workspaceLoading} />
+        <Statistic title="Машин клиентов" value={Number(workspaceStats.units_count) || 0} loading={workspaceLoading} />
+        <Statistic title="OEM деталей" value={Number(workspaceStats.oem_parts_count) || 0} loading={workspaceLoading} />
+        <Statistic title="Деталей клиентов" value={Number(workspaceStats.client_parts_count) || 0} loading={workspaceLoading} />
+      </Space>
+
+      <Space wrap>
+        <Button type="primary" onClick={openCreateModel}>
+          Добавить модель
+        </Button>
+        <Button onClick={openCreateAttribute}>
+          Настроить характеристики
+        </Button>
+      </Space>
+
+      <Input
+        allowClear
+        placeholder="Фильтр моделей: производитель, модель, код"
+        value={workspaceQuery}
+        onChange={(event) => setWorkspaceQuery(event.target.value)}
+      />
+
+      {filterableAttributes.length ? (
+        <Card
+          size="small"
+          title="Фильтры моделей"
+          extra={
+            hasActiveAttributeFilters ? (
+              <Button size="small" onClick={() => setAttributeFilters({})}>
+                Сбросить
+              </Button>
+            ) : null
+          }
+        >
+          <Space wrap align="start" size={[12, 12]}>
+            {filterableAttributes.map((attribute) => renderAttributeFilterControl(attribute))}
+          </Space>
+        </Card>
+      ) : null}
+
+      <Table
+        size="small"
+        rowKey="id"
+        columns={modelsColumns}
+        dataSource={workspaceModels}
+        loading={workspaceLoading}
+        pagination={{ pageSize: 12, showSizeChanger: false }}
+        locale={{ emptyText: "В этом разделе пока нет моделей" }}
+        scroll={{ x: 860 }}
+      />
+
+      <Card
+        size="small"
+        title={`Характеристики раздела (${attributes.length})`}
+        extra={
+          <Button size="small" onClick={openCreateAttribute}>
+            Настроить
+          </Button>
+        }
+      >
+        <Table
+          size="small"
+          rowKey="id"
+          columns={attributeColumns}
+          dataSource={attributes}
+          loading={attributesLoading}
+          pagination={false}
+          locale={{ emptyText: "Для этого раздела пока не настроены характеристики" }}
+          scroll={{ x: 860 }}
+        />
+      </Card>
+    </Space>
+  )
+
+  const renderManufacturerContent = () => (
+    <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      <Space wrap>
+        <Button type="primary" onClick={openCreateModel}>
+          Добавить модель {selectedManufacturerFromTree?.name ? selectedManufacturerFromTree.name : ""}
+        </Button>
+      </Space>
+      <Table
+        size="small"
+        rowKey="id"
+        columns={modelsColumns}
+        dataSource={currentManufacturerModels}
+        loading={workspaceLoading}
+        pagination={false}
+        locale={{ emptyText: "У производителя пока нет моделей в этом разделе" }}
+        scroll={{ x: 860 }}
+      />
+    </Space>
+  )
+
+  const renderModelContent = () => (
+    <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      <Descriptions bordered size="small" column={2}>
+        <Descriptions.Item label="Производитель">
+          {currentModel?.manufacturer_name || "—"}
+        </Descriptions.Item>
+        <Descriptions.Item label="Модель">
+          {currentModel?.model_name || "—"}
+        </Descriptions.Item>
+        <Descriptions.Item label="Код модели">
+          {currentModel?.model_code || "—"}
+        </Descriptions.Item>
+        <Descriptions.Item label="Раздел НСИ">
+          {currentModel?.classifier_node_name || selectedNode?.name || "—"}
+        </Descriptions.Item>
+        <Descriptions.Item label="OEM деталей">
+          {Number(currentModel?.oem_parts_count) || currentModelOemParts.length}
+        </Descriptions.Item>
+        <Descriptions.Item label="Машин клиентов">
+          {Number(currentModel?.units_count) || currentModelUnits.length}
+        </Descriptions.Item>
+        <Descriptions.Item label="Заметки" span={2}>
+          {currentModel?.notes || "—"}
+        </Descriptions.Item>
+      </Descriptions>
+
+      <Space wrap>
+        <Button type="primary" onClick={() => currentModel && openModelAttributes(currentModel)} disabled={!currentModel}>
+          Характеристики
+        </Button>
+        <Button onClick={() => currentModel && openMoveModel(currentModel)} disabled={!currentModel}>
+          Перенести модель
+        </Button>
+      </Space>
+
+      <Card size="small" title={`OEM детали (${currentModelOemParts.length})`}>
+        <Table
+          size="small"
+          rowKey="id"
+          columns={compactOemColumns}
+          dataSource={currentModelOemParts}
+          loading={workspaceLoading}
+          pagination={{ pageSize: 8, showSizeChanger: false }}
+          locale={{ emptyText: "Для этой модели пока нет OEM-деталей" }}
+        />
+      </Card>
+
+      <Card size="small" title={`Машины клиентов (${currentModelUnits.length})`}>
+        <Table
+          size="small"
+          rowKey="id"
+          columns={compactUnitColumns}
+          dataSource={currentModelUnits}
+          loading={workspaceLoading}
+          pagination={{ pageSize: 8, showSizeChanger: false }}
+          locale={{ emptyText: "Для этой модели пока нет машин клиентов" }}
+        />
+      </Card>
+
+      <Card size="small" title={`Детали клиентов (${currentModelClientParts.length})`}>
+        <Table
+          size="small"
+          rowKey="id"
+          columns={compactClientPartColumns}
+          dataSource={currentModelClientParts}
+          loading={workspaceLoading}
+          pagination={{ pageSize: 8, showSizeChanger: false }}
+          locale={{ emptyText: "Для этой модели пока нет деталей клиентов" }}
+        />
+      </Card>
+    </Space>
+  )
+
+  const renderUnitContent = () => (
+    <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      <Descriptions bordered size="small" column={2}>
+        <Descriptions.Item label="Клиент">
+          {selectedUnitFromTree?.client_name || "—"}
+        </Descriptions.Item>
+        <Descriptions.Item label="Модель">
+          {[selectedUnitFromTree?.manufacturer_name, selectedUnitFromTree?.model_name].filter(Boolean).join(" ") || "—"}
+        </Descriptions.Item>
+        <Descriptions.Item label="Серийный номер">
+          {selectedUnitFromTree?.serial_number || "—"}
+        </Descriptions.Item>
+        <Descriptions.Item label="Год">
+          {selectedUnitFromTree?.manufacture_year || "—"}
+        </Descriptions.Item>
+        <Descriptions.Item label="Площадка" span={2}>
+          {selectedUnitFromTree?.site_name || "—"}
+        </Descriptions.Item>
+      </Descriptions>
+      <Space wrap>
+        <Button type="primary" onClick={() => selectedUnitFromTree?.client_id && navigate(`/clients/${selectedUnitFromTree.client_id}`)}>
+          Открыть клиента
+        </Button>
+      </Space>
+
+      <Card size="small" title={`OEM каталог модели (${currentUnitOemParts.length})`}>
+        <Table
+          size="small"
+          rowKey="id"
+          columns={compactOemColumns}
+          dataSource={currentUnitOemParts}
+          loading={workspaceLoading}
+          pagination={{ pageSize: 8, showSizeChanger: false }}
+          locale={{ emptyText: "Для модели этой машины пока нет OEM-деталей" }}
+        />
+      </Card>
+
+      <Card size="small" title={`Особенности и детали клиента (${currentUnitClientParts.length})`}>
+        <Table
+          size="small"
+          rowKey="id"
+          columns={compactClientPartColumns}
+          dataSource={currentUnitClientParts}
+          loading={workspaceLoading}
+          pagination={{ pageSize: 8, showSizeChanger: false }}
+          locale={{ emptyText: "Для этой машины пока нет клиентских отличий" }}
+        />
+      </Card>
+    </Space>
+  )
+
+  const renderContextContent = () => {
+    if (!selectedNode) return <Empty description="Выберите раздел, производителя, модель или машину слева" />
+    if (selectedTreeEntity.type === "manufacturer") return renderManufacturerContent()
+    if (selectedTreeEntity.type === "model") return renderModelContent()
+    if (selectedTreeEntity.type === "unit") return renderUnitContent()
+    return renderNodeContent()
+  }
+
+  const contextTitle =
+    selectedTreeEntity.type === "manufacturer"
+      ? selectedManufacturerFromTree?.name || "Производитель"
+      : selectedTreeEntity.type === "model"
+        ? [currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "Модель"
+        : selectedTreeEntity.type === "unit"
+          ? selectedUnitFromTree?.client_name || "Машина клиента"
+          : selectedNode?.name || "НСИ"
+
+  const canEditSelectedNode = selectedTreeEntity.type === "node" && selectedNode
+
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <Card size="small">
         <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
-          <Space wrap>
-            <Tag color="blue">Узлов: {nodeMap.size}</Tag>
-            <Tag color="green">Корней: {treeRows.length}</Tag>
-          </Space>
+          <Typography.Text strong>НСИ оборудования</Typography.Text>
           <Space wrap>
             <Button onClick={loadTree}>Обновить</Button>
-            <Button onClick={openCreateRoot}>Добавить корневой узел</Button>
-            <Button type="primary" onClick={openCreateChild} disabled={!selectedNode}>
-              Добавить дочерний
+            <Button type="primary" onClick={openCreateSection}>
+              {canEditSelectedNode ? "Добавить подраздел" : "Добавить раздел"}
             </Button>
             <Button onClick={openCreateModel} disabled={!selectedNode}>
-              Создать модель в узле
+              Добавить модель
             </Button>
-            <Button onClick={openEdit} disabled={!selectedNode}>
+            <Button onClick={openEdit} disabled={!canEditSelectedNode}>
               Изменить
             </Button>
             <Popconfirm
-              title="Удалить узел классификатора?"
+              title="Удалить раздел НСИ?"
               description={selectedNode?.name || ""}
               okText="Удалить"
               cancelText="Отмена"
               onConfirm={handleDelete}
-              disabled={!selectedNode}
+              disabled={!canEditSelectedNode}
             >
-              <Button danger disabled={!selectedNode}>
+              <Button danger disabled={!canEditSelectedNode}>
                 Удалить
               </Button>
             </Popconfirm>
@@ -1571,14 +1727,14 @@ export default function EquipmentClassifierMain() {
             <Space direction="vertical" size={12} style={{ width: "100%" }}>
               <Input
                 allowClear
-                placeholder="Поиск по названию или коду узла"
+                placeholder="Поиск по разделам НСИ"
                 value={treeQuery}
                 onChange={(event) => setTreeQuery(event.target.value)}
               />
             {treeData.length ? (
               <Tree
-                selectedKeys={selectedId ? [String(selectedId)] : []}
-                onSelect={(keys) => setSelectedId(keys?.[0] || null)}
+                selectedKeys={selectedTreeKey ? [selectedTreeKey] : []}
+                onSelect={handleTreeSelect}
                 treeData={treeData}
                 defaultExpandAll
               />
@@ -1591,172 +1747,11 @@ export default function EquipmentClassifierMain() {
 
         <Col xs={24} xl={16}>
           <Card
-            title="Workspace выбранного узла"
+            title={contextTitle}
             size="small"
             bodyStyle={{ minHeight: 520 }}
           >
-            {!selectedNode ? (
-              <Empty description="Выберите узел слева" />
-            ) : (
-              <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                <Descriptions bordered size="small" column={2}>
-                  <Descriptions.Item label="Название">
-                    {selectedNode.name}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Тип узла">
-                    {NODE_TYPE_LABELS[selectedNode.node_type] || selectedNode.node_type}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Код">
-                    {selectedNode.code || "—"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Родитель">
-                    {selectedNode.parent_id ? nodeMap.get(Number(selectedNode.parent_id))?.name || selectedNode.parent_id : "Корневой уровень"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Статус">
-                    {selectedNode.is_active ? "Активен" : "Неактивен"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Дочерних узлов">
-                    {selectedNode.children_count ?? (selectedNode.children || []).length ?? 0}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Заметки" span={2}>
-                    {selectedNode.notes || "—"}
-                  </Descriptions.Item>
-                </Descriptions>
-
-                <Space wrap size={24}>
-                  <Statistic title="Узлов в поддереве" value={Number(workspaceStats.subtree_nodes_count) || 0} loading={workspaceLoading} />
-                  <Statistic title="Производителей" value={Number(workspaceStats.manufacturers_count) || 0} loading={workspaceLoading} />
-                  <Statistic title="Моделей" value={Number(workspaceStats.models_count) || 0} loading={workspaceLoading} />
-                  <Statistic title="Машин клиентов" value={Number(workspaceStats.units_count) || 0} loading={workspaceLoading} />
-                  <Statistic title="OEM деталей" value={Number(workspaceStats.oem_parts_count) || 0} loading={workspaceLoading} />
-                  <Statistic title="Деталей клиентов" value={Number(workspaceStats.client_parts_count) || 0} loading={workspaceLoading} />
-                </Space>
-
-              <Space wrap>
-                <Button onClick={openCreateModel}>
-                  Создать модель в этом узле
-                </Button>
-              </Space>
-
-              <Input
-                allowClear
-                placeholder="Поиск в узле: производитель, модель, OEM номер, клиент, серийный номер, чертеж"
-                value={workspaceQuery}
-                onChange={(event) => setWorkspaceQuery(event.target.value)}
-              />
-
-              <Card size="small" title={`Производители (${workspaceManufacturers.length})`}>
-                  <Table
-                    size="small"
-                    rowKey="id"
-                    columns={manufacturersColumns}
-                    dataSource={workspaceManufacturers}
-                    loading={workspaceLoading}
-                    pagination={false}
-                    locale={{ emptyText: "В этом узле пока нет производителей с моделями" }}
-                    scroll={{ x: 640 }}
-                  />
-                </Card>
-
-                {filterableAttributes.length ? (
-                  <Card
-                    size="small"
-                    title="Фильтры моделей"
-                    extra={
-                      hasActiveAttributeFilters ? (
-                        <Button size="small" onClick={() => setAttributeFilters({})}>
-                          Сбросить
-                        </Button>
-                      ) : null
-                    }
-                  >
-                    <Space wrap align="start" size={[12, 12]}>
-                      {filterableAttributes.map((attribute) => renderAttributeFilterControl(attribute))}
-                    </Space>
-                  </Card>
-                ) : null}
-
-                <Card
-                  size="small"
-                  title={
-                    hasActiveAttributeFilters
-                      ? `Модели (${workspaceModels.length} из ${rawWorkspaceModels.length})`
-                      : `Модели (${workspaceModels.length})`
-                  }
-                >
-                  <Table
-                    size="small"
-                    rowKey="id"
-                    columns={modelsColumns}
-                    dataSource={workspaceModels}
-                    loading={workspaceLoading}
-                    pagination={false}
-                    locale={{ emptyText: "В этом узле пока нет моделей" }}
-                    scroll={{ x: 860 }}
-                  />
-                </Card>
-
-                <Card
-                  size="small"
-                  title={`Характеристики оборудования (${attributes.length})`}
-                  extra={
-                    <Button size="small" onClick={openCreateAttribute}>
-                      Настроить
-                    </Button>
-                  }
-                >
-                  <Table
-                    size="small"
-                    rowKey="id"
-                    columns={attributeColumns}
-                    dataSource={attributes}
-                    loading={attributesLoading}
-                    pagination={false}
-                    locale={{ emptyText: "Для этого узла пока не настроены характеристики" }}
-                    scroll={{ x: 860 }}
-                  />
-                </Card>
-
-                <Card size="small" title={`OEM детали (${workspaceOemParts.length})`}>
-                  <Table
-                    size="small"
-                    rowKey="id"
-                    columns={oemPartsColumns}
-                    dataSource={workspaceOemParts}
-                    loading={workspaceLoading}
-                    pagination={{ pageSize: 10, showSizeChanger: false }}
-                    locale={{ emptyText: "В этом узле пока нет OEM-деталей" }}
-                    scroll={{ x: 1120 }}
-                  />
-                </Card>
-
-                <Card size="small" title={`Машины клиентов (${workspaceUnits.length})`}>
-                  <Table
-                    size="small"
-                    rowKey="id"
-                    columns={unitsColumns}
-                    dataSource={workspaceUnits}
-                    loading={workspaceLoading}
-                    pagination={false}
-                    locale={{ emptyText: "Для моделей этого узла пока нет машин клиентов" }}
-                    scroll={{ x: 920 }}
-                  />
-                </Card>
-
-                <Card size="small" title={`Детали клиентов (${workspaceClientParts.length})`}>
-                  <Table
-                    size="small"
-                    rowKey="id"
-                    columns={clientPartsColumns}
-                    dataSource={workspaceClientParts}
-                    loading={workspaceLoading}
-                    pagination={false}
-                    locale={{ emptyText: "В этом узле пока нет деталей клиентов" }}
-                    scroll={{ x: 1060 }}
-                  />
-                </Card>
-              </Space>
-            )}
+            {renderContextContent()}
           </Card>
         </Col>
       </Row>
@@ -1874,18 +1869,9 @@ export default function EquipmentClassifierMain() {
           <Form.Item
             label="Название"
             name="name"
-            rules={[{ required: true, message: "Укажите название узла" }]}
+            rules={[{ required: true, message: "Укажите название раздела" }]}
           >
-            <Input />
-          </Form.Item>
-          <Form.Item label="Код" name="code">
-            <Input />
-          </Form.Item>
-          <Form.Item label="Тип узла" name="node_type">
-            <Select options={NODE_TYPE_OPTIONS} />
-          </Form.Item>
-          <Form.Item label="Порядок сортировки" name="sort_order">
-            <InputNumber style={{ width: "100%" }} />
+            <Input placeholder="Например: Дробилки конусные" />
           </Form.Item>
           <Form.Item label="Заметки" name="notes">
             <Input.TextArea rows={3} />

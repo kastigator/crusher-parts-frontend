@@ -11,6 +11,7 @@ const { Sider } = Layout
 
 const CATALOG_ROOT_PATH = "/catalogs"
 const HIDDEN_LEGACY_PATHS = new Set([
+  "/original-parts",
   "/tnved-origin-rules",
   "/logistics-routes",
   "/country-risk-profiles",
@@ -19,9 +20,7 @@ const CATALOG_CHILD_PATHS = new Set([
   "/clients",
   "/suppliers",
   "/supplier-parts",
-  "/original-parts",
   "/standard-parts",
-  "/equipment-classifier",
   "/materials",
   "/tnved-codes",
   "/logistics-route-templates",
@@ -52,7 +51,6 @@ const ICON_BY_PATH = {
 }
 const CATALOG_LABEL_BY_PATH = {
   "/catalogs": "Обзор и качество",
-  "/original-parts": "OEM детали",
   "/logistics-route-templates": "Шаблоны доставки",
 }
 
@@ -115,6 +113,7 @@ export default function Sidebar() {
     const catalogTabs = []
     let adminTab = null
     let usersTab = null
+    let classifierTab = null
     let catalogInsertIndex = null
 
     sorted.forEach((tab) => {
@@ -132,6 +131,11 @@ export default function Sidebar() {
         return
       }
 
+      if (tab.path === "/equipment-classifier") {
+        classifierTab = tab
+        return
+      }
+
       const isCatalog =
         tab.path === CATALOG_ROOT_PATH || CATALOG_CHILD_PATHS.has(tab.path)
 
@@ -146,6 +150,12 @@ export default function Sidebar() {
 
     const items = otherTabs.map((tab) => buildMenuItem(tab))
     const parentMap = new Map()
+
+    if (classifierTab) {
+      const classifierItem = buildMenuItem(classifierTab)
+      const rfqIndex = items.findIndex((item) => item?.key === "/rfq-workspace" || item?.key === "/rfq")
+      items.splice(rfqIndex >= 0 ? rfqIndex + 1 : Math.min(2, items.length), 0, classifierItem)
+    }
 
     if (catalogTabs.length) {
       const catalogRoot = catalogTabs.find((t) => t.path === CATALOG_ROOT_PATH) || null
