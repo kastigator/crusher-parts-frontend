@@ -58,6 +58,14 @@ const SEARCH_TYPE_COLORS = {
   client_part: "cyan",
 }
 
+const SEARCH_TYPE_ORDER = [
+  "classifier_node",
+  "equipment_model",
+  "oem_part",
+  "client_equipment_unit",
+  "client_part",
+]
+
 const ATTRIBUTE_TYPE_OPTIONS = [
   { value: "number", label: "Число" },
   { value: "text", label: "Текст" },
@@ -256,7 +264,27 @@ export default function EquipmentClassifierMain() {
       navigate(`/original-parts/${row.oem_part_id}`)
       return
     }
-    if ((row.entity_type === "client_part" || row.entity_type === "client_equipment_unit") && row.client_id) {
+    if (row.entity_type === "client_part" && row.client_id) {
+      navigate(`/clients/${row.client_id}`)
+      return
+    }
+    if (row.entity_type === "equipment_model" && row.classifier_node_id && row.entity_id) {
+      const nodeId = String(row.classifier_node_id)
+      setSelectedId(nodeId)
+      setSelectedTreeKey(treeKey.model(row.entity_id))
+      setSelectedTreeEntity({ type: "model", id: Number(row.entity_id) })
+      await loadWorkspace(nodeId)
+      return
+    }
+    if (row.entity_type === "client_equipment_unit" && row.classifier_node_id && row.entity_id) {
+      const nodeId = String(row.classifier_node_id)
+      setSelectedId(nodeId)
+      setSelectedTreeKey(treeKey.unit(row.entity_id))
+      setSelectedTreeEntity({ type: "unit", id: Number(row.entity_id) })
+      await loadWorkspace(nodeId)
+      return
+    }
+    if (row.entity_type === "client_equipment_unit" && row.client_id) {
       navigate(`/clients/${row.client_id}`)
       return
     }
@@ -1077,16 +1105,6 @@ export default function EquipmentClassifierMain() {
 
   const searchColumns = [
     {
-      title: "Тип",
-      dataIndex: "entity_type",
-      width: 150,
-      render: (value) => (
-        <Tag color={SEARCH_TYPE_COLORS[value] || "default"}>
-          {SEARCH_TYPE_LABELS[value] || value || "—"}
-        </Tag>
-      ),
-    },
-    {
       title: "Найдено",
       render: (_, row) => (
         <Space direction="vertical" size={0}>
@@ -1112,11 +1130,27 @@ export default function EquipmentClassifierMain() {
       width: 120,
       render: (_, row) => (
         <Button size="small" onClick={() => openSearchResult(row)}>
-          Открыть
+          {row.entity_type === "oem_part" ? "OEM" : row.entity_type === "client_part" ? "Клиент" : "Показать"}
         </Button>
       ),
     },
   ]
+
+  const searchGroups = useMemo(() => {
+    const byType = new Map()
+    nsiSearchRows.forEach((row) => {
+      const type = row.entity_type || "unknown"
+      if (!byType.has(type)) byType.set(type, [])
+      byType.get(type).push(row)
+    })
+    return Array.from(byType.entries())
+      .sort(([a], [b]) => {
+        const ai = SEARCH_TYPE_ORDER.indexOf(a)
+        const bi = SEARCH_TYPE_ORDER.indexOf(b)
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+      })
+      .map(([type, rows]) => ({ type, rows }))
+  }, [nsiSearchRows])
 
   const attributeColumns = [
     {
@@ -1742,15 +1776,32 @@ export default function EquipmentClassifierMain() {
             loading={nsiSearchLoading}
           />
           {nsiSearchRows.length || nsiSearchLoading ? (
-            <Table
-              size="small"
-              rowKey={(row) => `${row.entity_type}-${row.entity_id}`}
-              columns={searchColumns}
-              dataSource={nsiSearchRows}
-              loading={nsiSearchLoading}
-              pagination={{ pageSize: 10, showSizeChanger: false }}
-              scroll={{ x: 980 }}
-            />
+            <Space direction="vertical" size={12} style={{ width: "100%" }}>
+              {searchGroups.map((group) => (
+                <Card
+                  key={group.type}
+                  size="small"
+                  title={
+                    <Space>
+                      <Tag color={SEARCH_TYPE_COLORS[group.type] || "default"}>
+                        {SEARCH_TYPE_LABELS[group.type] || group.type}
+                      </Tag>
+                      <Typography.Text type="secondary">{group.rows.length}</Typography.Text>
+                    </Space>
+                  }
+                >
+                  <Table
+                    size="small"
+                    rowKey={(row) => `${row.entity_type}-${row.entity_id}`}
+                    columns={searchColumns}
+                    dataSource={group.rows}
+                    loading={nsiSearchLoading}
+                    pagination={group.rows.length > 5 ? { pageSize: 5, showSizeChanger: false } : false}
+                    scroll={{ x: 840 }}
+                  />
+                </Card>
+              ))}
+            </Space>
           ) : null}
         </Space>
       </Card>
