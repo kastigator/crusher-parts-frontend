@@ -9,6 +9,7 @@ import {
   Dropdown,
   Empty,
   Form,
+  Image,
   Input,
   InputNumber,
   Modal,
@@ -22,6 +23,7 @@ import {
   Table,
   Tree,
   Typography,
+  Upload,
   message,
 } from "antd"
 import axios from "@/api/axiosInstance"
@@ -113,7 +115,6 @@ export default function EquipmentClassifierMain() {
   const [treeRows, setTreeRows] = useState([])
   const [allModels, setAllModels] = useState([])
   const [allUnits, setAllUnits] = useState([])
-  const [treeQuery, setTreeQuery] = useState("")
   const [workspaceQuery, setWorkspaceQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
@@ -128,9 +129,13 @@ export default function EquipmentClassifierMain() {
   const [modelDetailsOpen, setModelDetailsOpen] = useState(false)
   const [modelAttributesLoading, setModelAttributesLoading] = useState(false)
   const [modelAttributesSaving, setModelAttributesSaving] = useState(false)
+  const [modelDetailsSaving, setModelDetailsSaving] = useState(false)
   const [modelAttributeRows, setModelAttributeRows] = useState([])
   const [attributeModel, setAttributeModel] = useState(null)
   const [detailsModel, setDetailsModel] = useState(null)
+  const [modelMedia, setModelMedia] = useState([])
+  const [modelMediaLoading, setModelMediaLoading] = useState(false)
+  const [modelMediaUploading, setModelMediaUploading] = useState(false)
   const [nsiSearchQuery, setNsiSearchQuery] = useState("")
   const [nsiSearchRows, setNsiSearchRows] = useState([])
   const [nsiSearchLoading, setNsiSearchLoading] = useState(false)
@@ -155,6 +160,7 @@ export default function EquipmentClassifierMain() {
   const [manufacturerForm] = Form.useForm()
   const [attributeForm] = Form.useForm()
   const [modelAttributesForm] = Form.useForm()
+  const [modelDetailsForm] = Form.useForm()
 
   const loadTree = useCallback(async () => {
     setLoading(true)
@@ -237,6 +243,24 @@ export default function EquipmentClassifierMain() {
     }
   }, [])
 
+  const loadModelMedia = useCallback(async (modelId) => {
+    if (!modelId) {
+      setModelMedia([])
+      return
+    }
+    setModelMediaLoading(true)
+    try {
+      const { data } = await axios.get(`/equipment-models/${modelId}/media`)
+      setModelMedia(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error("GET /equipment-models/:id/media error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить фото модели")
+      setModelMedia([])
+    } finally {
+      setModelMediaLoading(false)
+    }
+  }, [])
+
   const handleNsiSearch = useCallback(async (value) => {
     const q = String(value || "").trim()
     setNsiSearchQuery(q)
@@ -271,7 +295,7 @@ export default function EquipmentClassifierMain() {
     if (row.entity_type === "equipment_model" && row.classifier_node_id && row.entity_id) {
       const nodeId = String(row.classifier_node_id)
       setSelectedId(nodeId)
-      setSelectedTreeKey(treeKey.model(row.entity_id))
+      setSelectedTreeKey(treeKey.node(nodeId))
       setSelectedTreeEntity({ type: "model", id: Number(row.entity_id) })
       await loadWorkspace(nodeId)
       return
@@ -279,7 +303,7 @@ export default function EquipmentClassifierMain() {
     if (row.entity_type === "client_equipment_unit" && row.classifier_node_id && row.entity_id) {
       const nodeId = String(row.classifier_node_id)
       setSelectedId(nodeId)
-      setSelectedTreeKey(treeKey.unit(row.entity_id))
+      setSelectedTreeKey(treeKey.node(nodeId))
       setSelectedTreeEntity({ type: "unit", id: Number(row.entity_id) })
       await loadWorkspace(nodeId)
       return
@@ -322,6 +346,8 @@ export default function EquipmentClassifierMain() {
 
   const nodeMap = useMemo(() => flattenTree(treeRows), [treeRows])
   const selectedNode = selectedId ? nodeMap.get(Number(selectedId)) || null : null
+  const selectedNodeChildren = Array.isArray(selectedNode?.children) ? selectedNode.children : []
+  const selectedNodeIsLeaf = !!selectedNode && selectedNodeChildren.length === 0
   const selectedModelFromTree = useMemo(() => {
     if (selectedTreeEntity.type !== "model" || !selectedTreeEntity.id) return null
     return allModels.find((model) => Number(model.id) === Number(selectedTreeEntity.id)) || null
@@ -370,106 +396,17 @@ export default function EquipmentClassifierMain() {
       .map((unit) => ({ value: unit, label: unit }))
     return [...measurementUnitOptions, ...extra]
   }, [attributes, measurementUnitOptions])
-  const filteredTreeRows = useMemo(() => {
-    const q = treeQuery.trim().toLowerCase()
-    if (!q) return treeRows
-
-    const filterNodes = (nodes) =>
-      (nodes || [])
-        .map((node) => {
-          const children = filterNodes(node.children || [])
-          const selfMatch =
-            String(node.name || "").toLowerCase().includes(q) ||
-            String(node.code || "").toLowerCase().includes(q)
-          if (!selfMatch && !children.length) return null
-          return { ...node, children }
-        })
-        .filter(Boolean)
-
-    return filterNodes(treeRows)
-  }, [treeRows, treeQuery])
-
-  const unitsByModelId = useMemo(() => {
-    const map = new Map()
-    allUnits.forEach((unit) => {
-      const modelId = Number(unit.equipment_model_id)
-      if (!modelId) return
-      if (!map.has(modelId)) map.set(modelId, [])
-      map.get(modelId).push(unit)
-    })
-    return map
-  }, [allUnits])
-
-  const modelsByNodeId = useMemo(() => {
-    const map = new Map()
-    allModels.forEach((model) => {
-      const nodeId = Number(model.classifier_node_id)
-      if (!nodeId) return
-      if (!map.has(nodeId)) map.set(nodeId, [])
-      map.get(nodeId).push(model)
-    })
-    map.forEach((rows) => {
-      rows.sort((a, b) => {
-        const manufacturer = String(a.manufacturer_name || "").localeCompare(String(b.manufacturer_name || ""), "ru")
-        if (manufacturer) return manufacturer
-        return String(a.model_name || "").localeCompare(String(b.model_name || ""), "ru")
-      })
-    })
-    return map
-  }, [allModels])
 
   const treeData = useMemo(() => {
-    const q = treeQuery.trim().toLowerCase()
     const build = (nodes) =>
-      (nodes || []).map((node) => {
-        const nodeModels = q ? [] : modelsByNodeId.get(Number(node.id)) || []
-        const modelsByManufacturer = new Map()
-        nodeModels.forEach((model) => {
-          const manufacturerId = Number(model.manufacturer_id)
-          if (!manufacturerId) return
-          if (!modelsByManufacturer.has(manufacturerId)) {
-            modelsByManufacturer.set(manufacturerId, {
-              id: manufacturerId,
-              name: model.manufacturer_name || "Производитель не указан",
-              models: [],
-            })
-          }
-          modelsByManufacturer.get(manufacturerId).models.push(model)
-        })
-        const manufacturerChildren = Array.from(modelsByManufacturer.values())
-          .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"))
-          .map((manufacturer) => ({
-            key: treeKey.manufacturer(node.id, manufacturer.id),
-            title: manufacturer.name,
-            children: manufacturer.models.map((model) => {
-              const modelUnits = unitsByModelId.get(Number(model.id)) || []
-              return {
-                key: treeKey.model(model.id),
-                title: model.model_name || `Модель #${model.id}`,
-                children: modelUnits.map((unit) => ({
-                  key: treeKey.unit(unit.id),
-                  title:
-                    [
-                      unit.client_name,
-                      unit.serial_number ? `SN ${unit.serial_number}` : unit.internal_name,
-                    ]
-                      .filter(Boolean)
-                      .join(" / ") || `Машина #${unit.id}`,
-                  isLeaf: true,
-                })),
-              }
-            }),
-          }))
+      (nodes || []).map((node) => ({
+        key: treeKey.node(node.id),
+        title: node.name,
+        children: build(node.children || []),
+      }))
 
-        return {
-          key: treeKey.node(node.id),
-          title: node.name,
-          children: [...build(node.children || []), ...manufacturerChildren],
-        }
-      })
-
-    return build(filteredTreeRows)
-  }, [filteredTreeRows, modelsByNodeId, treeQuery, unitsByModelId])
+    return build(treeRows)
+  }, [treeRows])
 
   const getDefaultNodeType = (parent) => {
     if (!parent) return "ROOT"
@@ -565,6 +502,10 @@ export default function EquipmentClassifierMain() {
       message.warning("Сначала выберите раздел классификатора")
       return
     }
+    if (!selectedNodeIsLeaf) {
+      message.warning("Модели создаются только в нижнем разделе без подразделов")
+      return
+    }
     modelForm.resetFields()
     if (selectedTreeEntity.type === "manufacturer" && selectedTreeEntity.id) {
       modelForm.setFieldsValue({ manufacturer_id: selectedTreeEntity.id })
@@ -584,9 +525,15 @@ export default function EquipmentClassifierMain() {
       const values = await modelForm.validateFields()
       setModelSaving(true)
       await axios.post("/equipment-models", {
+        source: "classifier",
         manufacturer_id: values.manufacturer_id,
         model_name: values.model_name,
         classifier_node_id: selectedNode.id,
+        storage_uom: values.storage_uom || null,
+        weight_kg: values.weight_kg ?? null,
+        length_mm: values.length_mm ?? null,
+        width_mm: values.width_mm ?? null,
+        height_mm: values.height_mm ?? null,
         notes: values.notes || null,
       })
       message.success("Модель создана в выбранном разделе")
@@ -642,6 +589,7 @@ export default function EquipmentClassifierMain() {
       const values = await manufacturerForm.validateFields()
       setManufacturerSaving(true)
       const { data } = await axios.post("/equipment-manufacturers", {
+        source: "classifier",
         name: values.name,
         country: values.country || null,
         website: values.website || null,
@@ -672,6 +620,10 @@ export default function EquipmentClassifierMain() {
   const openCreateAttribute = () => {
     if (!selectedNode) {
       message.warning("Сначала выберите раздел классификатора")
+      return
+    }
+    if (!selectedNodeIsLeaf) {
+      message.warning("Характеристики задаются только для нижнего раздела")
       return
     }
     setEditingAttribute(null)
@@ -835,8 +787,11 @@ export default function EquipmentClassifierMain() {
   const rawWorkspaceClientParts = Array.isArray(workspace?.client_parts) ? workspace.client_parts : []
   const workspaceNeedle = workspaceQuery.trim().toLowerCase()
   const filterableAttributes = useMemo(
-    () => attributes.filter((attribute) => Number(attribute.is_filterable || 0) === 1),
-    [attributes],
+    () =>
+      selectedNodeIsLeaf
+        ? attributes.filter((attribute) => Number(attribute.is_filterable || 0) === 1)
+        : [],
+    [attributes, selectedNodeIsLeaf],
   )
   const hasActiveAttributeFilters = useMemo(
     () =>
@@ -984,7 +939,79 @@ export default function EquipmentClassifierMain() {
 
   const openModelDetails = (row) => {
     setDetailsModel(row || null)
+    modelDetailsForm.setFieldsValue({
+      storage_uom: row?.storage_uom || undefined,
+      weight_kg: row?.weight_kg ?? undefined,
+      length_mm: row?.length_mm ?? undefined,
+      width_mm: row?.width_mm ?? undefined,
+      height_mm: row?.height_mm ?? undefined,
+      notes: row?.notes || "",
+    })
+    if (row?.id) {
+      loadModelMedia(row.id)
+    }
     setModelDetailsOpen(true)
+  }
+
+  const handleSaveModelDetails = async () => {
+    if (!detailsModel?.id) return
+    try {
+      const values = await modelDetailsForm.validateFields()
+      setModelDetailsSaving(true)
+      const { data } = await axios.put(`/equipment-models/${detailsModel.id}`, {
+        storage_uom: values.storage_uom || null,
+        weight_kg: values.weight_kg ?? null,
+        length_mm: values.length_mm ?? null,
+        width_mm: values.width_mm ?? null,
+        height_mm: values.height_mm ?? null,
+        notes: values.notes || null,
+      })
+      setDetailsModel(data || detailsModel)
+      message.success("Карточка модели сохранена")
+      if (selectedId) await loadWorkspace(selectedId)
+    } catch (err) {
+      if (err?.errorFields) return
+      console.error("PUT /equipment-models/:id card error:", err)
+      message.error(err?.response?.data?.message || "Не удалось сохранить карточку модели")
+    } finally {
+      setModelDetailsSaving(false)
+    }
+  }
+
+  const handleUploadModelMedia = async ({ file, onSuccess, onError }) => {
+    if (!detailsModel?.id) {
+      onError?.(new Error("Модель не выбрана"))
+      return
+    }
+    const formData = new FormData()
+    formData.append("file", file)
+    setModelMediaUploading(true)
+    try {
+      await axios.post(`/equipment-models/${detailsModel.id}/media`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      await loadModelMedia(detailsModel.id)
+      message.success("Фото модели загружено")
+      onSuccess?.()
+    } catch (err) {
+      console.error("POST /equipment-models/:id/media error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить фото модели")
+      onError?.(err)
+    } finally {
+      setModelMediaUploading(false)
+    }
+  }
+
+  const handleDeleteModelMedia = async (mediaId) => {
+    if (!detailsModel?.id || !mediaId) return
+    try {
+      await axios.delete(`/equipment-models/${detailsModel.id}/media/${mediaId}`)
+      await loadModelMedia(detailsModel.id)
+      message.success("Фото удалено")
+    } catch (err) {
+      console.error("DELETE /equipment-models/:id/media/:mediaId error:", err)
+      message.error(err?.response?.data?.message || "Не удалось удалить фото")
+    }
   }
 
   const modelMatchesAttributeFilters = (model) =>
@@ -1094,6 +1121,18 @@ export default function EquipmentClassifierMain() {
           </Button>
           <Button size="small" onClick={() => openModelAttributes(row)}>
             Характеристики
+          </Button>
+          <Button
+            size="small"
+            onClick={() =>
+              navigate(
+                `/original-parts?equipment_model_id=${encodeURIComponent(row.id)}${
+                  row.classifier_node_id ? `&classifier_node_id=${encodeURIComponent(row.classifier_node_id)}` : ""
+                }`,
+              )
+            }
+          >
+            OEM
           </Button>
           <Button size="small" onClick={() => openMoveModel(row)}>
             Перенести
@@ -1280,7 +1319,7 @@ export default function EquipmentClassifierMain() {
 
   const renderAttributeFilterControl = (attribute) => {
     const filter = attributeFilters[attribute.id] || {}
-    const label = attribute.unit ? `${attribute.label}, ${attribute.unit}` : attribute.label
+    const label = attribute.unit ? `${attribute.label}, ${formatMeasurementUnit(attribute.unit)}` : attribute.label
     const commonLabel = (
       <Typography.Text type="secondary" style={{ display: "block", marginBottom: 4 }}>
         {label}
@@ -1289,20 +1328,20 @@ export default function EquipmentClassifierMain() {
 
     if (attribute.value_type === "number") {
       return (
-        <div key={attribute.id} style={{ minWidth: 220 }}>
+        <div key={attribute.id} style={{ width: "100%" }}>
           {commonLabel}
-          <Space.Compact>
+          <Space.Compact style={{ width: "100%" }}>
             <InputNumber
               placeholder="от"
               value={filter.min}
               onChange={(value) => setAttributeFilterValue(attribute.id, { min: value })}
-              style={{ width: 105 }}
+              style={{ width: "50%" }}
             />
             <InputNumber
               placeholder="до"
               value={filter.max}
               onChange={(value) => setAttributeFilterValue(attribute.id, { max: value })}
-              style={{ width: 105 }}
+              style={{ width: "50%" }}
             />
           </Space.Compact>
         </div>
@@ -1311,7 +1350,7 @@ export default function EquipmentClassifierMain() {
 
     if (attribute.value_type === "boolean") {
       return (
-        <div key={attribute.id} style={{ minWidth: 180 }}>
+        <div key={attribute.id} style={{ width: "100%" }}>
           {commonLabel}
           <Select
             allowClear
@@ -1330,7 +1369,7 @@ export default function EquipmentClassifierMain() {
 
     if (attribute.value_type === "select") {
       return (
-        <div key={attribute.id} style={{ minWidth: 220 }}>
+        <div key={attribute.id} style={{ width: "100%" }}>
           {commonLabel}
           <Select
             allowClear
@@ -1349,7 +1388,7 @@ export default function EquipmentClassifierMain() {
 
     if (attribute.value_type === "multiselect") {
       return (
-        <div key={attribute.id} style={{ minWidth: 260 }}>
+        <div key={attribute.id} style={{ width: "100%" }}>
           {commonLabel}
           <Select
             mode="multiple"
@@ -1368,7 +1407,7 @@ export default function EquipmentClassifierMain() {
     }
 
     return (
-      <div key={attribute.id} style={{ minWidth: 220 }}>
+      <div key={attribute.id} style={{ width: "100%" }}>
         {commonLabel}
         <Input
           allowClear
@@ -1468,6 +1507,26 @@ export default function EquipmentClassifierMain() {
     },
   ]
 
+  const childSectionColumns = [
+    {
+      title: "Подраздел",
+      dataIndex: "name",
+      render: (value, row) => (
+        <Button
+          type="link"
+          style={{ padding: 0 }}
+          onClick={() => {
+            setSelectedId(String(row.id))
+            setSelectedTreeKey(treeKey.node(row.id))
+            setSelectedTreeEntity({ type: "node", id: Number(row.id) })
+          }}
+        >
+          {value || "—"}
+        </Button>
+      ),
+    },
+  ]
+
   const renderNodeContent = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <Space wrap size={24}>
@@ -1479,12 +1538,20 @@ export default function EquipmentClassifierMain() {
       </Space>
 
       <Space wrap>
-        <Button type="primary" onClick={openCreateModel}>
-          Добавить модель
-        </Button>
-        <Button onClick={openCreateAttribute}>
-          Настроить характеристики
-        </Button>
+        {selectedNodeIsLeaf ? (
+          <>
+            <Button type="primary" onClick={openCreateModel}>
+              Добавить модель
+            </Button>
+            <Button onClick={openCreateAttribute}>
+              Настроить характеристики
+            </Button>
+          </>
+        ) : (
+          <Button type="primary" onClick={openCreateChild}>
+            Добавить подраздел
+          </Button>
+        )}
         {canEditSelectedNode ? (
           <>
             <Button onClick={openEdit}>
@@ -1505,62 +1572,58 @@ export default function EquipmentClassifierMain() {
         ) : null}
       </Space>
 
-      <Input
-        allowClear
-        placeholder="Фильтр моделей: производитель или модель"
-        value={workspaceQuery}
-        onChange={(event) => setWorkspaceQuery(event.target.value)}
-      />
+      {selectedNodeIsLeaf ? (
+        <>
+          <Input
+            allowClear
+            placeholder="Фильтр моделей: производитель или модель"
+            value={workspaceQuery}
+            onChange={(event) => setWorkspaceQuery(event.target.value)}
+          />
 
-      {filterableAttributes.length ? (
-        <Card
-          size="small"
-          title="Фильтры моделей"
-          extra={
-            hasActiveAttributeFilters ? (
-              <Button size="small" onClick={() => setAttributeFilters({})}>
-                Сбросить
+          <Table
+            size="small"
+            rowKey="id"
+            columns={modelsColumns}
+            dataSource={workspaceModels}
+            loading={workspaceLoading}
+            pagination={{ pageSize: 12, showSizeChanger: false }}
+            locale={{ emptyText: "В этом разделе пока нет моделей" }}
+            scroll={{ x: 860 }}
+          />
+
+          <Card
+            size="small"
+            title={`Характеристики раздела (${attributes.length})`}
+            extra={
+              <Button size="small" onClick={openCreateAttribute}>
+                Настроить
               </Button>
-            ) : null
-          }
-        >
-          <Space wrap align="start" size={[12, 12]}>
-            {filterableAttributes.map((attribute) => renderAttributeFilterControl(attribute))}
-          </Space>
-        </Card>
-      ) : null}
-
-      <Table
-        size="small"
-        rowKey="id"
-        columns={modelsColumns}
-        dataSource={workspaceModels}
-        loading={workspaceLoading}
-        pagination={{ pageSize: 12, showSizeChanger: false }}
-        locale={{ emptyText: "В этом разделе пока нет моделей" }}
-        scroll={{ x: 860 }}
-      />
-
-      <Card
-        size="small"
-        title={`Характеристики раздела (${attributes.length})`}
-        extra={
-          <Button size="small" onClick={openCreateAttribute}>
-            Настроить
-          </Button>
-        }
-      >
+            }
+          >
+            <Table
+              size="small"
+              rowKey="id"
+              columns={attributeColumns}
+              dataSource={attributes}
+              loading={attributesLoading}
+              pagination={false}
+              locale={{ emptyText: "Для этого раздела пока не настроены характеристики" }}
+              scroll={{ x: 760 }}
+            />
+          </Card>
+        </>
+      ) : (
         <Table
           size="small"
           rowKey="id"
-          columns={attributeColumns}
-          dataSource={attributes}
-          loading={attributesLoading}
+          columns={childSectionColumns}
+          dataSource={selectedNodeChildren}
+          loading={workspaceLoading}
           pagination={false}
-          locale={{ emptyText: "Для этого раздела пока не настроены характеристики" }}
-          scroll={{ x: 860 }}
+          locale={{ emptyText: "В этом разделе пока нет подразделов" }}
         />
-      </Card>
+      )}
     </Space>
   )
 
@@ -1706,7 +1769,7 @@ export default function EquipmentClassifierMain() {
   )
 
   const renderContextContent = () => {
-    if (!selectedNode) return <Empty description="Выберите раздел, производителя, модель или машину слева" />
+    if (!selectedNode) return <Empty description="Выберите раздел слева" />
     if (selectedTreeEntity.type === "manufacturer") return renderManufacturerContent()
     if (selectedTreeEntity.type === "model") return renderModelContent()
     if (selectedTreeEntity.type === "unit") return renderUnitContent()
@@ -1730,36 +1793,41 @@ export default function EquipmentClassifierMain() {
     },
     {
       key: "child-section",
-      label: "Подраздел в выбранном разделе",
+      label: selectedNode ? `Подраздел в "${selectedNode.name}"` : "Подраздел",
       disabled: !canEditSelectedNode,
     },
     {
       key: "model",
-      label: "Модель в выбранном разделе",
-      disabled: !selectedNode,
+      label: selectedNode ? `Модель в "${selectedNode.name}"` : "Модель",
+      disabled: !selectedNode || !selectedNodeIsLeaf,
     },
   ]
+
+  const renderFiltersPanel = () => {
+    if (!selectedNode) return <Empty description="Выберите нижний раздел" />
+    if (!selectedNodeIsLeaf) {
+      return <Empty description="Фильтры появятся в нижнем разделе" />
+    }
+    if (!filterableAttributes.length) {
+      return <Empty description="Характеристики для фильтров не настроены" />
+    }
+    return (
+      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        {filterableAttributes.map((attribute) => renderAttributeFilterControl(attribute))}
+        {hasActiveAttributeFilters ? (
+          <Button size="small" onClick={() => setAttributeFilters({})}>
+            Сбросить фильтры
+          </Button>
+        ) : null}
+      </Space>
+    )
+  }
 
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <Card
         size="small"
         title="Поиск"
-        extra={
-          <Dropdown
-            menu={{
-              items: addMenuItems,
-              onClick: ({ key }) => {
-                if (key === "root-section") openCreateRoot()
-                if (key === "child-section") openCreateChild()
-                if (key === "model") openCreateModel()
-              },
-            }}
-            trigger={["click"]}
-          >
-            <Button type="primary">+ Добавить</Button>
-          </Dropdown>
-        }
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Input.Search
@@ -1807,19 +1875,27 @@ export default function EquipmentClassifierMain() {
       </Card>
 
       <Row gutter={[12, 12]} align="top">
-        <Col xs={24} xl={8}>
+        <Col xs={24} xl={5}>
           <Card
             title="Дерево классификатора"
+            extra={
+              <Dropdown
+                menu={{
+                  items: addMenuItems,
+                  onClick: ({ key }) => {
+                    if (key === "root-section") openCreateRoot()
+                    if (key === "child-section") openCreateChild()
+                    if (key === "model") openCreateModel()
+                  },
+                }}
+                trigger={["click"]}
+              >
+                <Button type="primary" size="small">+ Добавить</Button>
+              </Dropdown>
+            }
             size="small"
             bodyStyle={{ minHeight: 520 }}
           >
-            <Space direction="vertical" size={12} style={{ width: "100%" }}>
-              <Input
-                allowClear
-                placeholder="Поиск по разделам классификатора"
-                value={treeQuery}
-                onChange={(event) => setTreeQuery(event.target.value)}
-              />
             {treeData.length ? (
               <Tree
                 selectedKeys={selectedTreeKey ? [selectedTreeKey] : []}
@@ -1828,19 +1904,28 @@ export default function EquipmentClassifierMain() {
                 defaultExpandAll
               />
             ) : (
-              <Empty description={treeQuery ? "Поиск не дал совпадений" : "Классификатор пока пуст"} />
+              <Empty description="Классификатор пока пуст" />
             )}
-            </Space>
           </Card>
         </Col>
 
-        <Col xs={24} xl={16}>
+        <Col xs={24} xl={14}>
           <Card
             title={contextTitle}
             size="small"
             bodyStyle={{ minHeight: 520 }}
           >
             {renderContextContent()}
+          </Card>
+        </Col>
+
+        <Col xs={24} xl={5}>
+          <Card
+            title="Фильтры"
+            size="small"
+            bodyStyle={{ minHeight: 520 }}
+          >
+            {renderFiltersPanel()}
           </Card>
         </Col>
       </Row>
@@ -1867,6 +1952,17 @@ export default function EquipmentClassifierMain() {
               <Descriptions.Item label="Раздел классификатора">
                 {detailsModel.classifier_node_name || "—"}
               </Descriptions.Item>
+              <Descriptions.Item label="Ед. хранения">
+                {formatMeasurementUnit(detailsModel.storage_uom) || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Вес, кг">
+                {detailsModel.weight_kg ?? "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Габариты, мм" span={2}>
+                {[detailsModel.length_mm, detailsModel.width_mm, detailsModel.height_mm].some((value) => value !== null && value !== undefined)
+                  ? [detailsModel.length_mm, detailsModel.width_mm, detailsModel.height_mm].map((value) => value ?? "—").join(" × ")
+                  : "—"}
+              </Descriptions.Item>
               <Descriptions.Item label="OEM деталей">
                 {Number(detailsModel.oem_parts_count) || 0}
               </Descriptions.Item>
@@ -1877,6 +1973,98 @@ export default function EquipmentClassifierMain() {
                 {detailsModel.notes || "—"}
               </Descriptions.Item>
             </Descriptions>
+
+            <Card
+              size="small"
+              title="Карточка модели"
+              extra={
+                <Button size="small" type="primary" loading={modelDetailsSaving} onClick={handleSaveModelDetails}>
+                  Сохранить
+                </Button>
+              }
+            >
+              <Form form={modelDetailsForm} layout="vertical">
+                <Row gutter={12}>
+                  <Col xs={24} md={12}>
+                    <Form.Item label="Единица хранения" name="storage_uom">
+                      <Select
+                        allowClear
+                        showSearch
+                        loading={measurementUnitsLoading}
+                        options={measurementUnitOptions}
+                        optionFilterProp="label"
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={12}>
+                    <Form.Item label="Вес, кг" name="weight_kg">
+                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Form.Item label="Длина, мм" name="length_mm">
+                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Form.Item label="Ширина, мм" name="width_mm">
+                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Form.Item label="Высота, мм" name="height_mm">
+                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Form.Item label="Заметки" name="notes">
+                  <Input.TextArea rows={3} />
+                </Form.Item>
+              </Form>
+            </Card>
+
+            <Card
+              size="small"
+              title={`Фото модели (${modelMedia.length})`}
+              loading={modelMediaLoading}
+              extra={
+                <Upload
+                  accept="image/*"
+                  showUploadList={false}
+                  customRequest={handleUploadModelMedia}
+                >
+                  <Button size="small" loading={modelMediaUploading}>
+                    Загрузить фото
+                  </Button>
+                </Upload>
+              }
+            >
+              {modelMedia.length ? (
+                <Space wrap align="start">
+                  {modelMedia.map((item) => (
+                    <div key={item.id} style={{ width: 132 }}>
+                      <Image
+                        src={item.file_url}
+                        alt={item.caption || item.file_name || "Фото модели"}
+                        width={132}
+                        height={96}
+                        style={{ objectFit: "cover", borderRadius: 6 }}
+                      />
+                      <Button
+                        size="small"
+                        danger
+                        style={{ marginTop: 6, width: "100%" }}
+                        onClick={() => handleDeleteModelMedia(item.id)}
+                      >
+                        Удалить
+                      </Button>
+                    </div>
+                  ))}
+                </Space>
+              ) : (
+                <Empty description="Фото модели пока не загружены" />
+              )}
+            </Card>
 
             <Card
               size="small"
@@ -1992,8 +2180,11 @@ export default function EquipmentClassifierMain() {
             <Tree
               treeData={treeData}
               defaultExpandAll
-              selectedKeys={moveTargetNodeId ? [String(moveTargetNodeId)] : []}
-              onSelect={(keys) => setMoveTargetNodeId(Number(keys?.[0] || 0) || null)}
+              selectedKeys={moveTargetNodeId ? [treeKey.node(moveTargetNodeId)] : []}
+              onSelect={(keys) => {
+                const parsed = parseTreeKey(keys?.[0])
+                setMoveTargetNodeId(parsed.type === "node" ? parsed.id : null)
+              }}
               height={420}
             />
           ) : (
@@ -2131,6 +2322,39 @@ export default function EquipmentClassifierMain() {
           >
             <Input />
           </Form.Item>
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item label="Единица хранения" name="storage_uom">
+                <Select
+                  allowClear
+                  showSearch
+                  loading={measurementUnitsLoading}
+                  options={measurementUnitOptions}
+                  optionFilterProp="label"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="Вес, кг" name="weight_kg">
+                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label="Длина, мм" name="length_mm">
+                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label="Ширина, мм" name="width_mm">
+                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label="Высота, мм" name="height_mm">
+                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item label="Заметки" name="notes">
             <Input.TextArea rows={3} />
           </Form.Item>

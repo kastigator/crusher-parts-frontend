@@ -4,7 +4,7 @@ import EquipmentClassifierMain from "@/components/equipmentClassifier/EquipmentC
 
 export default function EquipmentClassifierPage() {
   return (
-    <PageWrapper title="Классификатор оборудования">
+    <PageWrapper>
       <EquipmentClassifierMain />
     </PageWrapper>
   )

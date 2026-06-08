@@ -264,6 +264,7 @@ export default function OriginalPartsMain() {
         if (equipmentModelId) {
           const { data } = await axios.get(`/equipment-models/${equipmentModelId}`)
           if (cancelled || !data) return
+          setShowAll(false)
           const nextManufacturer = data.manufacturer_id
             ? { id: data.manufacturer_id, name: data.manufacturer_name }
             : null
@@ -392,7 +393,7 @@ export default function OriginalPartsMain() {
     } finally {
       setLoading(false)
     }
-  }, [model?.id, search, showAll, viewMode, filters])
+  }, [model?.id, search, showAll, viewMode, filters, catalogContext])
 
   const columnsViewKey = `${showAll ? "showAll" : "model"}:${viewMode}`
   const currentVisibleKeys = columnsByView?.[columnsViewKey] || null
