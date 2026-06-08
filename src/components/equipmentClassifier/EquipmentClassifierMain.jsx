@@ -17,7 +17,6 @@ import {
   Row,
   Select,
   Space,
-  Statistic,
   Switch,
   Tag,
   Table,
@@ -123,6 +122,7 @@ export default function EquipmentClassifierMain() {
   const [attributeFilters, setAttributeFilters] = useState({})
   const [attributesLoading, setAttributesLoading] = useState(false)
   const [attributeModalOpen, setAttributeModalOpen] = useState(false)
+  const [attributeManagerOpen, setAttributeManagerOpen] = useState(false)
   const [attributeSaving, setAttributeSaving] = useState(false)
   const [editingAttribute, setEditingAttribute] = useState(null)
   const [modelAttributesOpen, setModelAttributesOpen] = useState(false)
@@ -381,6 +381,13 @@ export default function EquipmentClassifierMain() {
     },
     [measurementUnitLabelByCode]
   )
+  const formatMeasurementUnitShort = useCallback(
+    (unit) => {
+      const label = formatMeasurementUnit(unit)
+      return label.split(" · ")[0] || label
+    },
+    [formatMeasurementUnit]
+  )
 
   const attributeUnitOptions = useMemo(() => {
     const seen = new Set(measurementUnitOptions.map((option) => String(option.value)))
@@ -637,7 +644,20 @@ export default function EquipmentClassifierMain() {
       help_text: "",
       options_text: "",
     })
+    setAttributeManagerOpen(false)
     setAttributeModalOpen(true)
+  }
+
+  const openManageAttributes = () => {
+    if (!selectedNode) {
+      message.warning("Сначала выберите раздел классификатора")
+      return
+    }
+    if (!selectedNodeIsLeaf) {
+      message.warning("Характеристики задаются только для нижнего раздела")
+      return
+    }
+    setAttributeManagerOpen(true)
   }
 
   const openEditAttribute = (row) => {
@@ -656,6 +676,7 @@ export default function EquipmentClassifierMain() {
       help_text: row.help_text || "",
       options_text: (row.options || []).map((option) => option.value_label).join("\n"),
     })
+    setAttributeManagerOpen(false)
     setAttributeModalOpen(true)
   }
 
@@ -682,9 +703,10 @@ export default function EquipmentClassifierMain() {
         message.success("Характеристика обновлена")
       } else {
         await axios.post(`/equipment-classifier-nodes/${selectedNode.id}/attributes`, payload)
-      message.success("Характеристика добавлена")
+        message.success("Характеристика добавлена")
       }
       setAttributeModalOpen(false)
+      setAttributeManagerOpen(true)
       await loadAttributes(selectedNode.id)
       await loadWorkspace(selectedNode.id)
     } catch (err) {
@@ -780,7 +802,6 @@ export default function EquipmentClassifierMain() {
     }
   }
 
-  const workspaceStats = workspace?.stats || {}
   const rawWorkspaceModels = Array.isArray(workspace?.models) ? workspace.models : []
   const rawWorkspaceUnits = Array.isArray(workspace?.client_equipment_units) ? workspace.client_equipment_units : []
   const rawWorkspaceOemParts = Array.isArray(workspace?.oem_parts) ? workspace.oem_parts : []
@@ -953,6 +974,15 @@ export default function EquipmentClassifierMain() {
     setModelDetailsOpen(true)
   }
 
+  const openModelOemCatalog = (row) => {
+    if (!row?.id) return
+    navigate(
+      `/original-parts?equipment_model_id=${encodeURIComponent(row.id)}${
+        row.classifier_node_id ? `&classifier_node_id=${encodeURIComponent(row.classifier_node_id)}` : ""
+      }`,
+    )
+  }
+
   const handleSaveModelDetails = async () => {
     if (!detailsModel?.id) return
     try {
@@ -991,6 +1021,7 @@ export default function EquipmentClassifierMain() {
         headers: { "Content-Type": "multipart/form-data" },
       })
       await loadModelMedia(detailsModel.id)
+      if (selectedId) await loadWorkspace(selectedId)
       message.success("Фото модели загружено")
       onSuccess?.()
     } catch (err) {
@@ -1007,6 +1038,7 @@ export default function EquipmentClassifierMain() {
     try {
       await axios.delete(`/equipment-models/${detailsModel.id}/media/${mediaId}`)
       await loadModelMedia(detailsModel.id)
+      if (selectedId) await loadWorkspace(selectedId)
       message.success("Фото удалено")
     } catch (err) {
       console.error("DELETE /equipment-models/:id/media/:mediaId error:", err)
@@ -1083,60 +1115,52 @@ export default function EquipmentClassifierMain() {
 
   const modelsColumns = [
     {
-      title: "Производитель",
-      dataIndex: "manufacturer_name",
-      width: 180,
-    },
-    {
-      title: "Модель",
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text strong>{row.model_name || "—"}</Typography.Text>
-          <Typography.Text type="secondary">
-            {row.classifier_node_name || "—"}
-          </Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: "Машины клиентов",
-      dataIndex: "units_count",
-      width: 140,
-      align: "center",
-    },
-    {
-      title: "OEM детали",
-      dataIndex: "oem_parts_count",
-      width: 120,
-      align: "center",
-    },
-    {
-      title: "Действия",
-      key: "actions",
-      width: 240,
-      render: (_, row) => (
-        <Space wrap>
-          <Button size="small" onClick={() => openModelDetails(row)}>
-            Открыть
-          </Button>
-          <Button size="small" onClick={() => openModelAttributes(row)}>
-            Характеристики
-          </Button>
-          <Button
-            size="small"
-            onClick={() =>
-              navigate(
-                `/original-parts?equipment_model_id=${encodeURIComponent(row.id)}${
-                  row.classifier_node_id ? `&classifier_node_id=${encodeURIComponent(row.classifier_node_id)}` : ""
-                }`,
-              )
-            }
+      title: "Фото",
+      width: 92,
+      render: (_, row) =>
+        row.primary_photo_url ? (
+          <Image
+            src={row.primary_photo_url}
+            alt={row.model_name || "Фото модели"}
+            width={64}
+            height={48}
+            preview={false}
+            style={{ objectFit: "cover", borderRadius: 6, cursor: "pointer" }}
+            onClick={() => openModelDetails(row)}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => openModelDetails(row)}
+            style={{
+              width: 64,
+              height: 48,
+              border: "1px solid #d9d9d9",
+              borderRadius: 6,
+              background: "#fafafa",
+              color: "#bfbfbf",
+              cursor: "pointer",
+            }}
           >
-            OEM
-          </Button>
-          <Button size="small" onClick={() => openMoveModel(row)}>
-            Перенести
-          </Button>
+            Фото
+          </button>
+        ),
+    },
+    {
+      title: "Модель оборудования",
+      render: (_, row) => (
+        <Space direction="vertical" size={2}>
+          <Typography.Link strong onClick={() => openModelDetails(row)}>
+            {row.model_name || "—"}
+          </Typography.Link>
+          <Typography.Text type="secondary">
+            {[row.manufacturer_name, row.classifier_node_name].filter(Boolean).join(" / ") || "—"}
+          </Typography.Text>
+          <Space size={8} wrap>
+            <Typography.Link onClick={() => openModelOemCatalog(row)}>OEM каталог</Typography.Link>
+            <Typography.Link onClick={() => openModelAttributes(row)}>Характеристики</Typography.Link>
+            <Typography.Link onClick={() => openMoveModel(row)}>Перенести</Typography.Link>
+          </Space>
         </Space>
       ),
     },
@@ -1197,33 +1221,23 @@ export default function EquipmentClassifierMain() {
       render: (_, row) => (
         <Space direction="vertical" size={0}>
           <Typography.Text strong>{row.label || "—"}</Typography.Text>
-          <Typography.Text type="secondary">{row.help_text || row.code || "—"}</Typography.Text>
+          {row.help_text ? <Typography.Text type="secondary">{row.help_text}</Typography.Text> : null}
         </Space>
       ),
     },
     {
-      title: "Тип",
+      title: "Формат",
       width: 190,
       render: (_, row) => (
         <Space wrap size={4}>
           <Tag>{ATTRIBUTE_TYPE_LABELS[row.value_type] || row.value_type}</Tag>
-          {row.unit ? <Tag color="blue">{formatMeasurementUnit(row.unit)}</Tag> : null}
+          {row.unit ? <Tag color="blue">{formatMeasurementUnitShort(row.unit)}</Tag> : null}
         </Space>
       ),
     },
     {
-      title: "Источник",
-      width: 190,
-      render: (_, row) =>
-        row.inherited ? (
-          <Tag color="purple">{row.source_node_name || "Родительский раздел"}</Tag>
-        ) : (
-          <Tag color="green">Этот раздел</Tag>
-        ),
-    },
-    {
-      title: "Режим",
-      width: 160,
+      title: "Использование",
+      width: 180,
       render: (_, row) => (
         <Space wrap size={4}>
           {row.is_filterable ? <Tag color="cyan">Фильтр</Tag> : null}
@@ -1262,7 +1276,7 @@ export default function EquipmentClassifierMain() {
 
   const renderAttributeValueInput = (attribute) => {
     const name = `attr_${attribute.id}`
-    const label = attribute.unit ? `${attribute.label}, ${formatMeasurementUnit(attribute.unit)}` : attribute.label
+    const label = attribute.unit ? `${attribute.label}, ${formatMeasurementUnitShort(attribute.unit)}` : attribute.label
     const rules = attribute.is_required ? [{ required: true, message: "Заполните характеристику" }] : []
     const options = (attribute.options || []).map((option) => ({
       value: option.value_code,
@@ -1319,7 +1333,7 @@ export default function EquipmentClassifierMain() {
 
   const renderAttributeFilterControl = (attribute) => {
     const filter = attributeFilters[attribute.id] || {}
-    const label = attribute.unit ? `${attribute.label}, ${formatMeasurementUnit(attribute.unit)}` : attribute.label
+    const label = attribute.unit ? `${attribute.label}, ${formatMeasurementUnitShort(attribute.unit)}` : attribute.label
     const commonLabel = (
       <Typography.Text type="secondary" style={{ display: "block", marginBottom: 4 }}>
         {label}
@@ -1529,29 +1543,12 @@ export default function EquipmentClassifierMain() {
 
   const renderNodeContent = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
-      <Space wrap size={24}>
-        <Statistic title="Разделов ниже" value={Number(workspaceStats.subtree_nodes_count) || 0} loading={workspaceLoading} />
-        <Statistic title="Моделей" value={Number(workspaceStats.models_count) || 0} loading={workspaceLoading} />
-        <Statistic title="Машин клиентов" value={Number(workspaceStats.units_count) || 0} loading={workspaceLoading} />
-        <Statistic title="OEM деталей" value={Number(workspaceStats.oem_parts_count) || 0} loading={workspaceLoading} />
-        <Statistic title="Деталей клиентов" value={Number(workspaceStats.client_parts_count) || 0} loading={workspaceLoading} />
-      </Space>
-
       <Space wrap>
-        {selectedNodeIsLeaf ? (
-          <>
-            <Button type="primary" onClick={openCreateModel}>
-              Добавить модель
-            </Button>
-            <Button onClick={openCreateAttribute}>
-              Настроить характеристики
-            </Button>
-          </>
-        ) : (
+        {!selectedNodeIsLeaf ? (
           <Button type="primary" onClick={openCreateChild}>
             Добавить подраздел
           </Button>
-        )}
+        ) : null}
         {canEditSelectedNode ? (
           <>
             <Button onClick={openEdit}>
@@ -1589,29 +1586,10 @@ export default function EquipmentClassifierMain() {
             loading={workspaceLoading}
             pagination={{ pageSize: 12, showSizeChanger: false }}
             locale={{ emptyText: "В этом разделе пока нет моделей" }}
-            scroll={{ x: 860 }}
+            onRow={(row) => ({
+              onDoubleClick: () => openModelDetails(row),
+            })}
           />
-
-          <Card
-            size="small"
-            title={`Характеристики раздела (${attributes.length})`}
-            extra={
-              <Button size="small" onClick={openCreateAttribute}>
-                Настроить
-              </Button>
-            }
-          >
-            <Table
-              size="small"
-              rowKey="id"
-              columns={attributeColumns}
-              dataSource={attributes}
-              loading={attributesLoading}
-              pagination={false}
-              locale={{ emptyText: "Для этого раздела пока не настроены характеристики" }}
-              scroll={{ x: 760 }}
-            />
-          </Card>
         </>
       ) : (
         <Table
@@ -1875,7 +1853,7 @@ export default function EquipmentClassifierMain() {
       </Card>
 
       <Row gutter={[12, 12]} align="top">
-        <Col xs={24} xl={5}>
+        <Col xs={24} xl={4}>
           <Card
             title="Дерево классификатора"
             extra={
@@ -1909,7 +1887,7 @@ export default function EquipmentClassifierMain() {
           </Card>
         </Col>
 
-        <Col xs={24} xl={14}>
+        <Col xs={24} xl={15}>
           <Card
             title={contextTitle}
             size="small"
@@ -1922,6 +1900,13 @@ export default function EquipmentClassifierMain() {
         <Col xs={24} xl={5}>
           <Card
             title="Фильтры"
+            extra={
+              selectedNodeIsLeaf ? (
+                <Button size="small" onClick={openManageAttributes}>
+                  Настроить
+                </Button>
+              ) : null
+            }
             size="small"
             bodyStyle={{ minHeight: 520 }}
           >
@@ -2191,6 +2176,32 @@ export default function EquipmentClassifierMain() {
             <Empty description="Нет доступных разделов классификатора" />
           )}
         </Space>
+      </Modal>
+
+      <Modal
+        open={attributeManagerOpen}
+        title={selectedNode ? `Характеристики: ${selectedNode.name}` : "Характеристики"}
+        onCancel={() => setAttributeManagerOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setAttributeManagerOpen(false)}>
+            Закрыть
+          </Button>,
+          <Button key="add" type="primary" onClick={openCreateAttribute}>
+            Добавить характеристику
+          </Button>,
+        ]}
+        width={820}
+        destroyOnHidden
+      >
+        <Table
+          size="small"
+          rowKey="id"
+          columns={attributeColumns}
+          dataSource={attributes}
+          loading={attributesLoading}
+          pagination={false}
+          locale={{ emptyText: "Для этого раздела пока не настроены характеристики" }}
+        />
       </Modal>
 
       <Modal
