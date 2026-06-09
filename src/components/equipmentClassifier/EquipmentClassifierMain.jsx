@@ -161,6 +161,8 @@ export default function EquipmentClassifierMain() {
   const [attributeForm] = Form.useForm()
   const [modelAttributesForm] = Form.useForm()
   const [modelDetailsForm] = Form.useForm()
+  const [nsiSearchActive, setNsiSearchActive] = useState(false)
+  const [manufacturerFilter, setManufacturerFilter] = useState(null)
 
   const loadTree = useCallback(async () => {
     setLoading(true)
@@ -265,9 +267,11 @@ export default function EquipmentClassifierMain() {
     const q = String(value || "").trim()
     setNsiSearchQuery(q)
     if (q.length < 2) {
+      setNsiSearchActive(false)
       setNsiSearchRows([])
       return
     }
+    setNsiSearchActive(true)
     setNsiSearchLoading(true)
     try {
       const { data } = await axios.get("/equipment-classifier-nodes/search", {
@@ -284,6 +288,7 @@ export default function EquipmentClassifierMain() {
 
   const openSearchResult = useCallback(async (row) => {
     if (!row) return
+    setNsiSearchActive(false)
     if (row.entity_type === "oem_part" && row.oem_part_id) {
       navigate(`/original-parts/${row.oem_part_id}`)
       return
@@ -342,12 +347,20 @@ export default function EquipmentClassifierMain() {
   useEffect(() => {
     setWorkspaceQuery("")
     setAttributeFilters({})
+    setManufacturerFilter(null)
   }, [selectedId])
 
   const nodeMap = useMemo(() => flattenTree(treeRows), [treeRows])
   const selectedNode = selectedId ? nodeMap.get(Number(selectedId)) || null : null
   const selectedNodeChildren = Array.isArray(selectedNode?.children) ? selectedNode.children : []
   const selectedNodeIsLeaf = !!selectedNode && selectedNodeChildren.length === 0
+  const selectClassifierNode = useCallback((node) => {
+    if (!node?.id) return
+    setNsiSearchActive(false)
+    setSelectedId(String(node.id))
+    setSelectedTreeKey(treeKey.node(node.id))
+    setSelectedTreeEntity({ type: "node", id: Number(node.id) })
+  }, [])
   const selectedModelFromTree = useMemo(() => {
     if (selectedTreeEntity.type !== "model" || !selectedTreeEntity.id) return null
     return allModels.find((model) => Number(model.id) === Number(selectedTreeEntity.id)) || null
@@ -800,6 +813,7 @@ export default function EquipmentClassifierMain() {
   }
 
   const rawWorkspaceModels = Array.isArray(workspace?.models) ? workspace.models : []
+  const rawWorkspaceManufacturers = Array.isArray(workspace?.manufacturers) ? workspace.manufacturers : []
   const rawWorkspaceUnits = Array.isArray(workspace?.client_equipment_units) ? workspace.client_equipment_units : []
   const rawWorkspaceOemParts = Array.isArray(workspace?.oem_parts) ? workspace.oem_parts : []
   const rawWorkspaceClientParts = Array.isArray(workspace?.client_parts) ? workspace.client_parts : []
@@ -924,6 +938,7 @@ export default function EquipmentClassifierMain() {
 
   const handleTreeSelect = (keys) => {
     const key = keys?.[0] || null
+    setNsiSearchActive(false)
     setSelectedTreeKey(key)
     if (!key) {
       setSelectedTreeEntity({ type: "node", id: null })
@@ -1087,6 +1102,9 @@ export default function EquipmentClassifierMain() {
 
   const workspaceModels = useMemo(() => {
     let rows = rawWorkspaceModels
+    if (manufacturerFilter) {
+      rows = rows.filter((row) => Number(row.manufacturer_id) === Number(manufacturerFilter))
+    }
     if (workspaceNeedle) {
       rows = rows.filter((row) =>
         [
@@ -1103,7 +1121,20 @@ export default function EquipmentClassifierMain() {
       rows = rows.filter((row) => modelMatchesAttributeFilters(row))
     }
     return rows
-  }, [attributeFilters, filterableAttributes, hasActiveAttributeFilters, rawWorkspaceModels, workspaceNeedle])
+  }, [attributeFilters, filterableAttributes, hasActiveAttributeFilters, manufacturerFilter, rawWorkspaceModels, workspaceNeedle])
+
+  const manufacturerFilterOptions = useMemo(() => {
+    const byId = new Map()
+    rawWorkspaceManufacturers.forEach((row) => {
+      if (row.id) byId.set(Number(row.id), row.name || "Производитель")
+    })
+    rawWorkspaceModels.forEach((row) => {
+      if (row.manufacturer_id) byId.set(Number(row.manufacturer_id), row.manufacturer_name || "Производитель")
+    })
+    return Array.from(byId.entries())
+      .sort((a, b) => String(a[1]).localeCompare(String(b[1]), "ru"))
+      .map(([value, label]) => ({ value, label }))
+  }, [rawWorkspaceManufacturers, rawWorkspaceModels])
 
   const currentManufacturerModels = useMemo(() => {
     if (selectedTreeEntity.type !== "manufacturer" || !selectedTreeEntity.id) return []
@@ -1527,25 +1558,78 @@ export default function EquipmentClassifierMain() {
     },
   ]
 
-  const childSectionColumns = [
-    {
-      title: "Подраздел",
-      dataIndex: "name",
-      render: (value, row) => (
-        <Button
-          type="link"
-          style={{ padding: 0 }}
-          onClick={() => {
-            setSelectedId(String(row.id))
-            setSelectedTreeKey(treeKey.node(row.id))
-            setSelectedTreeEntity({ type: "node", id: Number(row.id) })
-          }}
-        >
-          {value || "—"}
-        </Button>
-      ),
-    },
-  ]
+  const renderChildSectionCards = () => {
+    if (!selectedNodeChildren.length) return null
+    return (
+      <Row gutter={[12, 12]}>
+        {selectedNodeChildren.map((child) => {
+          const childCount = Array.isArray(child.children) ? child.children.length : 0
+          return (
+            <Col key={child.id} xs={24} sm={12} lg={8}>
+              <Card
+                hoverable
+                size="small"
+                onClick={() => selectClassifierNode(child)}
+                styles={{ body: { minHeight: 118 } }}
+              >
+                <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                  <Typography.Text strong>{child.name || "Раздел"}</Typography.Text>
+                  <Typography.Text type="secondary">
+                    {childCount ? `${childCount} подразделов` : "Нижний раздел"}
+                  </Typography.Text>
+                  {child.notes ? (
+                    <Typography.Paragraph
+                      type="secondary"
+                      ellipsis={{ rows: 2, tooltip: child.notes }}
+                      style={{ marginBottom: 0 }}
+                    >
+                      {child.notes}
+                    </Typography.Paragraph>
+                  ) : null}
+                </Space>
+              </Card>
+            </Col>
+          )
+        })}
+      </Row>
+    )
+  }
+
+  const renderSearchResults = () => {
+    if (!nsiSearchActive) return null
+    if (!nsiSearchLoading && !nsiSearchRows.length) {
+      return <Empty description="Ничего не найдено" />
+    }
+    return (
+      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        {searchGroups.map((group) => (
+          <Card
+            key={group.type}
+            size="small"
+            title={
+              <Space>
+                <Tag color={SEARCH_TYPE_COLORS[group.type] || "default"}>
+                  {SEARCH_TYPE_LABELS[group.type] || group.type}
+                </Tag>
+                <Typography.Text type="secondary">{group.rows.length}</Typography.Text>
+              </Space>
+            }
+          >
+            <Table
+              size="small"
+              rowKey={(row) => `${row.entity_type}-${row.entity_id}`}
+              columns={searchColumns}
+              dataSource={group.rows}
+              loading={nsiSearchLoading}
+              pagination={group.rows.length > 5 ? { pageSize: 5, showSizeChanger: false } : false}
+              scroll={{ x: 840 }}
+            />
+          </Card>
+        ))}
+        {nsiSearchLoading && !searchGroups.length ? <Table size="small" loading columns={searchColumns} dataSource={[]} /> : null}
+      </Space>
+    )
+  }
 
   const renderNodeContent = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
@@ -1598,15 +1682,27 @@ export default function EquipmentClassifierMain() {
           />
         </>
       ) : (
-        <Table
-          size="small"
-          rowKey="id"
-          columns={childSectionColumns}
-          dataSource={selectedNodeChildren}
-          loading={workspaceLoading}
-          pagination={false}
-          locale={{ emptyText: "В этом разделе пока нет подразделов" }}
-        />
+        <>
+          {renderChildSectionCards()}
+          <Input
+            allowClear
+            placeholder="Фильтр моделей: производитель или модель"
+            value={workspaceQuery}
+            onChange={(event) => setWorkspaceQuery(event.target.value)}
+          />
+          <Table
+            size="small"
+            rowKey="id"
+            columns={modelsColumns}
+            dataSource={workspaceModels}
+            loading={workspaceLoading}
+            pagination={{ pageSize: 12, showSizeChanger: false }}
+            locale={{ emptyText: "В этом разделе и ниже пока нет моделей" }}
+            onRow={(row) => ({
+              onDoubleClick: () => openModelDetails(row),
+            })}
+          />
+        </>
       )}
     </Space>
   )
@@ -1753,6 +1849,7 @@ export default function EquipmentClassifierMain() {
   )
 
   const renderContextContent = () => {
+    if (nsiSearchActive) return renderSearchResults()
     if (!selectedNode) return <Empty description="Выберите раздел слева" />
     if (selectedTreeEntity.type === "manufacturer") return renderManufacturerContent()
     if (selectedTreeEntity.type === "model") return renderModelContent()
@@ -1761,7 +1858,9 @@ export default function EquipmentClassifierMain() {
   }
 
   const contextTitle =
-    selectedTreeEntity.type === "manufacturer"
+    nsiSearchActive
+      ? "Результаты поиска"
+      : selectedTreeEntity.type === "manufacturer"
       ? selectedManufacturerFromTree?.name || "Производитель"
       : selectedTreeEntity.type === "model"
         ? [currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "Модель"
@@ -1788,15 +1887,45 @@ export default function EquipmentClassifierMain() {
   ]
 
   const renderFiltersPanel = () => {
-    if (!selectedNode) return <Empty description="Выберите нижний раздел" />
+    const manufacturerFilterControl = manufacturerFilterOptions.length ? (
+      <div>
+        <Typography.Text type="secondary" style={{ display: "block", marginBottom: 4 }}>
+          Производитель
+        </Typography.Text>
+        <Select
+          allowClear
+          placeholder="Любой"
+          value={manufacturerFilter}
+          onChange={setManufacturerFilter}
+          options={manufacturerFilterOptions}
+          style={{ width: "100%" }}
+        />
+      </div>
+    ) : null
+
+    if (!selectedNode) return <Empty description="Выберите раздел" />
     if (!selectedNodeIsLeaf) {
-      return <Empty description="Фильтры появятся в нижнем разделе" />
+      if (!manufacturerFilterControl) {
+        return <Empty description="В этом разделе пока нет производителей" />
+      }
+      return (
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          {manufacturerFilterControl}
+        </Space>
+      )
     }
     if (!filterableAttributes.length) {
-      return <Empty description="Характеристики для фильтров не настроены" />
+      return manufacturerFilterControl ? (
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          {manufacturerFilterControl}
+        </Space>
+      ) : (
+        <Empty description="Характеристики для фильтров не настроены" />
+      )
     }
     return (
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        {manufacturerFilterControl}
         {filterableAttributes.map((attribute) => renderAttributeFilterControl(attribute))}
         {hasActiveAttributeFilters ? (
           <Button size="small" onClick={() => setAttributeFilters({})}>
@@ -1807,55 +1936,36 @@ export default function EquipmentClassifierMain() {
     )
   }
 
+  const sidePanelBodyStyle = {
+    height: "calc(100vh - 270px)",
+    minHeight: 440,
+    overflowY: "auto",
+  }
+  const sidePanelStyle = {
+    position: "sticky",
+    top: 12,
+    borderLeft: "3px solid #f0f0f0",
+  }
+
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
-      <Card
-        size="small"
-        title="Поиск"
-      >
-        <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <Input.Search
-            allowClear
-            enterButton="Найти"
-            placeholder="OEM номер, модель, клиент, серийный номер, чертеж или название детали"
-            value={nsiSearchQuery}
-            onChange={(event) => {
-              const value = event.target.value
-              setNsiSearchQuery(value)
-              if (!value) setNsiSearchRows([])
-            }}
-            onSearch={handleNsiSearch}
-            loading={nsiSearchLoading}
-          />
-          {nsiSearchRows.length || nsiSearchLoading ? (
-            <Space direction="vertical" size={12} style={{ width: "100%" }}>
-              {searchGroups.map((group) => (
-                <Card
-                  key={group.type}
-                  size="small"
-                  title={
-                    <Space>
-                      <Tag color={SEARCH_TYPE_COLORS[group.type] || "default"}>
-                        {SEARCH_TYPE_LABELS[group.type] || group.type}
-                      </Tag>
-                      <Typography.Text type="secondary">{group.rows.length}</Typography.Text>
-                    </Space>
-                  }
-                >
-                  <Table
-                    size="small"
-                    rowKey={(row) => `${row.entity_type}-${row.entity_id}`}
-                    columns={searchColumns}
-                    dataSource={group.rows}
-                    loading={nsiSearchLoading}
-                    pagination={group.rows.length > 5 ? { pageSize: 5, showSizeChanger: false } : false}
-                    scroll={{ x: 840 }}
-                  />
-                </Card>
-              ))}
-            </Space>
-          ) : null}
-        </Space>
+      <Card size="small" title="Поиск">
+        <Input.Search
+          allowClear
+          enterButton="Найти"
+          placeholder="OEM номер, модель, клиент, серийный номер, чертеж или название детали"
+          value={nsiSearchQuery}
+          onChange={(event) => {
+            const value = event.target.value
+            setNsiSearchQuery(value)
+            if (!value) {
+              setNsiSearchActive(false)
+              setNsiSearchRows([])
+            }
+          }}
+          onSearch={handleNsiSearch}
+          loading={nsiSearchLoading}
+        />
       </Card>
 
       <Row gutter={[12, 12]} align="top">
@@ -1878,14 +1988,14 @@ export default function EquipmentClassifierMain() {
               </Dropdown>
             }
             size="small"
-            bodyStyle={{ minHeight: 520 }}
+            style={sidePanelStyle}
+            styles={{ body: sidePanelBodyStyle }}
           >
             {treeData.length ? (
               <Tree
                 selectedKeys={selectedTreeKey ? [selectedTreeKey] : []}
                 onSelect={handleTreeSelect}
                 treeData={treeData}
-                defaultExpandAll
               />
             ) : (
               <Empty description="Классификатор пока пуст" />
@@ -1897,7 +2007,7 @@ export default function EquipmentClassifierMain() {
           <Card
             title={contextTitle}
             size="small"
-            bodyStyle={{ minHeight: 520 }}
+            styles={{ body: { minHeight: 520 } }}
           >
             {renderContextContent()}
           </Card>
@@ -1914,7 +2024,8 @@ export default function EquipmentClassifierMain() {
               ) : null
             }
             size="small"
-            bodyStyle={{ minHeight: 520 }}
+            style={sidePanelStyle}
+            styles={{ body: sidePanelBodyStyle }}
           >
             {renderFiltersPanel()}
           </Card>
@@ -2139,7 +2250,7 @@ export default function EquipmentClassifierMain() {
           >
             <Input placeholder="Например: Дробилки конусные" />
           </Form.Item>
-          <Form.Item label="Заметки" name="notes">
+          <Form.Item label="Описание для карточки" name="notes">
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
