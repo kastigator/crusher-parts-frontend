@@ -661,10 +661,7 @@ export default function EquipmentClassifierMain() {
   }
 
   const openEditAttribute = (row) => {
-    if (!row || Number(row.classifier_node_id) !== Number(selectedNode?.id)) {
-      message.info("Унаследованную характеристику редактируют в том разделе, где она создана")
-      return
-    }
+    if (!row?.id) return
     setEditingAttribute(row)
     attributeForm.setFieldsValue({
       label: row.label || "",
@@ -1237,40 +1234,51 @@ export default function EquipmentClassifierMain() {
     },
     {
       title: "Использование",
-      width: 180,
+      width: 220,
       render: (_, row) => (
-        <Space wrap size={4}>
-          {row.is_filterable ? <Tag color="cyan">Фильтр</Tag> : null}
-          {row.is_required ? <Tag color="orange">Обязательная</Tag> : null}
-          {!row.is_filterable && !row.is_required ? "—" : null}
+        <Space direction="vertical" size={4}>
+          <Space wrap size={4}>
+            {row.is_filterable ? <Tag color="cyan">Фильтр</Tag> : null}
+            {row.is_required ? <Tag color="orange">Обязательная</Tag> : null}
+            {!row.is_filterable && !row.is_required ? "—" : null}
+          </Space>
+          {Number(row.classifier_node_id) !== Number(selectedNode?.id) ? (
+            <Typography.Text type="secondary">
+              из: {row.source_node_name || "родительский раздел"}
+            </Typography.Text>
+          ) : null}
         </Space>
       ),
     },
     {
       title: "Действия",
       key: "actions",
-      width: 150,
-      render: (_, row) =>
-        Number(row.classifier_node_id) === Number(selectedNode?.id) ? (
+      width: 180,
+      render: (_, row) => {
+        const inherited = Number(row.classifier_node_id) !== Number(selectedNode?.id)
+        return (
           <Space wrap>
             <Button size="small" onClick={() => openEditAttribute(row)}>
-              Изменить
+              {inherited ? "Изменить источник" : "Изменить"}
             </Button>
             <Popconfirm
-              title="Отключить характеристику?"
-              description={row.label}
+              title={inherited ? "Отключить характеристику-источник?" : "Отключить характеристику?"}
+              description={
+                inherited
+                  ? `Она задана в разделе "${row.source_node_name || "родительский раздел"}" и исчезнет у разделов, которые её наследуют.`
+                  : row.label
+              }
               okText="Отключить"
               cancelText="Отмена"
               onConfirm={() => handleDeleteAttribute(row)}
             >
               <Button size="small" danger>
-                Убрать
+                {inherited ? "Отключить источник" : "Убрать"}
               </Button>
             </Popconfirm>
           </Space>
-        ) : (
-          <Typography.Text type="secondary">Наследуется</Typography.Text>
-        ),
+        )
+      },
     },
   ]
 
