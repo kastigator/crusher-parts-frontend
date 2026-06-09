@@ -1121,14 +1121,10 @@ export default function EquipmentClassifierMain() {
             alt={row.model_name || "Фото модели"}
             width={64}
             height={48}
-            preview={false}
-            style={{ objectFit: "cover", borderRadius: 6, cursor: "pointer" }}
-            onClick={() => openModelDetails(row)}
+            style={{ objectFit: "cover", borderRadius: 6 }}
           />
         ) : (
-          <button
-            type="button"
-            onClick={() => openModelDetails(row)}
+          <div
             style={{
               width: 64,
               height: 48,
@@ -1136,11 +1132,13 @@ export default function EquipmentClassifierMain() {
               borderRadius: 6,
               background: "#fafafa",
               color: "#bfbfbf",
-              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
             Фото
-          </button>
+          </div>
         ),
     },
     {
@@ -2041,6 +2039,7 @@ export default function EquipmentClassifierMain() {
                         alt={item.caption || item.file_name || "Фото модели"}
                         width={132}
                         height={96}
+                        preview={false}
                         style={{ objectFit: "cover", borderRadius: 6 }}
                       />
                       <Button
