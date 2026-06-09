@@ -84,6 +84,14 @@ const EMPTY_FORM = {
   notes: "",
 }
 
+const CARD_IMAGE_STYLE = {
+  width: "100%",
+  aspectRatio: "4 / 3",
+  objectFit: "cover",
+  borderRadius: 6,
+  background: "#f5f5f5",
+}
+
 const treeKey = {
   node: (id) => `node:${id}`,
   manufacturer: (nodeId, manufacturerId) => `manufacturer:${nodeId}:${manufacturerId}`,
@@ -114,7 +122,6 @@ export default function EquipmentClassifierMain() {
   const [treeRows, setTreeRows] = useState([])
   const [allModels, setAllModels] = useState([])
   const [allUnits, setAllUnits] = useState([])
-  const [workspaceQuery, setWorkspaceQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
   const [workspace, setWorkspace] = useState(null)
@@ -136,6 +143,8 @@ export default function EquipmentClassifierMain() {
   const [modelMedia, setModelMedia] = useState([])
   const [modelMediaLoading, setModelMediaLoading] = useState(false)
   const [modelMediaUploading, setModelMediaUploading] = useState(false)
+  const [nodeCardImageUrl, setNodeCardImageUrl] = useState("")
+  const [nodeCardImageUploading, setNodeCardImageUploading] = useState(false)
   const [nsiSearchQuery, setNsiSearchQuery] = useState("")
   const [nsiSearchRows, setNsiSearchRows] = useState([])
   const [nsiSearchLoading, setNsiSearchLoading] = useState(false)
@@ -345,7 +354,6 @@ export default function EquipmentClassifierMain() {
   }, [selectedId, loadAttributes, loadWorkspace])
 
   useEffect(() => {
-    setWorkspaceQuery("")
     setAttributeFilters({})
     setManufacturerFilter(null)
   }, [selectedId])
@@ -354,6 +362,18 @@ export default function EquipmentClassifierMain() {
   const selectedNode = selectedId ? nodeMap.get(Number(selectedId)) || null : null
   const selectedNodeChildren = Array.isArray(selectedNode?.children) ? selectedNode.children : []
   const selectedNodeIsLeaf = !!selectedNode && selectedNodeChildren.length === 0
+  const selectedNodePath = useMemo(() => {
+    if (!selectedNode) return []
+    const path = []
+    let current = selectedNode
+    const guard = new Set()
+    while (current?.id && !guard.has(Number(current.id))) {
+      guard.add(Number(current.id))
+      path.unshift(current)
+      current = current.parent_id ? nodeMap.get(Number(current.parent_id)) : null
+    }
+    return path
+  }, [nodeMap, selectedNode])
   const selectClassifierNode = useCallback((node) => {
     if (!node?.id) return
     setNsiSearchActive(false)
@@ -438,6 +458,7 @@ export default function EquipmentClassifierMain() {
   const openCreateRoot = () => {
     setEditingNode(null)
     setParentForCreate(null)
+    setNodeCardImageUrl("")
     form.setFieldsValue({ ...EMPTY_FORM })
     setModalOpen(true)
   }
@@ -449,23 +470,27 @@ export default function EquipmentClassifierMain() {
     }
     setEditingNode(null)
     setParentForCreate(selectedNode)
+    setNodeCardImageUrl("")
     form.setFieldsValue({ ...EMPTY_FORM })
     setModalOpen(true)
   }
 
-  const openEdit = () => {
-    if (!selectedNode) {
+  const openEditNode = (node) => {
+    if (!node) {
       message.warning("Сначала выберите раздел")
       return
     }
     setParentForCreate(null)
-    setEditingNode(selectedNode)
+    setEditingNode(node)
+    setNodeCardImageUrl(node.card_image_url || "")
     form.setFieldsValue({
-      name: selectedNode.name || "",
-      notes: selectedNode.notes || "",
+      name: node.name || "",
+      notes: node.notes || "",
     })
     setModalOpen(true)
   }
+
+  const openEdit = () => openEditNode(selectedNode)
 
   const handleSubmit = async () => {
     try {
@@ -478,6 +503,7 @@ export default function EquipmentClassifierMain() {
         sort_order: editingNode ? editingNode.sort_order || 0 : 0,
         is_active: editingNode ? (editingNode.is_active ? 1 : 0) : 1,
         notes: values.notes || null,
+        card_image_url: nodeCardImageUrl || null,
       }
 
       setSaving(true)
@@ -496,6 +522,30 @@ export default function EquipmentClassifierMain() {
       message.error(err?.response?.data?.message || "Не удалось сохранить раздел классификатора")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleUploadNodeCardImage = async ({ file, onSuccess, onError }) => {
+    if (!editingNode?.id) {
+      message.warning("Сначала сохраните раздел")
+      onError?.(new Error("node not saved"))
+      return
+    }
+    const formData = new FormData()
+    formData.append("file", file)
+    setNodeCardImageUploading(true)
+    try {
+      const { data } = await axios.post(`/equipment-classifier-nodes/${editingNode.id}/card-image`, formData)
+      setNodeCardImageUrl(data?.card_image_url || "")
+      message.success("Фото карточки загружено")
+      onSuccess?.(data)
+      await loadTree()
+    } catch (err) {
+      console.error("POST /equipment-classifier-nodes/:id/card-image error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить фото карточки")
+      onError?.(err)
+    } finally {
+      setNodeCardImageUploading(false)
     }
   }
 
@@ -817,7 +867,6 @@ export default function EquipmentClassifierMain() {
   const rawWorkspaceUnits = Array.isArray(workspace?.client_equipment_units) ? workspace.client_equipment_units : []
   const rawWorkspaceOemParts = Array.isArray(workspace?.oem_parts) ? workspace.oem_parts : []
   const rawWorkspaceClientParts = Array.isArray(workspace?.client_parts) ? workspace.client_parts : []
-  const workspaceNeedle = workspaceQuery.trim().toLowerCase()
   const filterableAttributes = useMemo(
     () =>
       selectedNodeIsLeaf
@@ -1105,23 +1154,11 @@ export default function EquipmentClassifierMain() {
     if (manufacturerFilter) {
       rows = rows.filter((row) => Number(row.manufacturer_id) === Number(manufacturerFilter))
     }
-    if (workspaceNeedle) {
-      rows = rows.filter((row) =>
-        [
-          row.manufacturer_name,
-          row.model_name,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(workspaceNeedle),
-      )
-    }
     if (hasActiveAttributeFilters) {
       rows = rows.filter((row) => modelMatchesAttributeFilters(row))
     }
     return rows
-  }, [attributeFilters, filterableAttributes, hasActiveAttributeFilters, manufacturerFilter, rawWorkspaceModels, workspaceNeedle])
+  }, [attributeFilters, filterableAttributes, hasActiveAttributeFilters, manufacturerFilter, rawWorkspaceModels])
 
   const manufacturerFilterOptions = useMemo(() => {
     const byId = new Map()
@@ -1562,36 +1599,78 @@ export default function EquipmentClassifierMain() {
     if (!selectedNodeChildren.length) return null
     return (
       <Row gutter={[12, 12]}>
-        {selectedNodeChildren.map((child) => {
-          const childCount = Array.isArray(child.children) ? child.children.length : 0
+        {selectedNodeChildren.map((child) => (
+          <Col key={child.id} xs={24} sm={12} lg={8}>
+            <Card
+              hoverable
+              size="small"
+              onClick={() => selectClassifierNode(child)}
+              cover={
+                child.card_image_url ? (
+                  <img src={child.card_image_url} alt={child.name || "Раздел"} style={CARD_IMAGE_STYLE} />
+                ) : (
+                  <div
+                    style={{
+                      ...CARD_IMAGE_STYLE,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#bfbfbf",
+                    }}
+                  >
+                    Фото
+                  </div>
+                )
+              }
+              styles={{ body: { minHeight: 116 } }}
+            >
+              <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                <Typography.Text strong>{child.name || "Раздел"}</Typography.Text>
+                {child.notes ? (
+                  <Typography.Paragraph
+                    type="secondary"
+                    ellipsis={{ rows: 2, tooltip: child.notes }}
+                    style={{ marginBottom: 0 }}
+                  >
+                    {child.notes}
+                  </Typography.Paragraph>
+                ) : null}
+                <Typography.Link
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    openEditNode(child)
+                  }}
+                >
+                  Настроить
+                </Typography.Link>
+              </Space>
+            </Card>
+          </Col>
+        ))}
+      </Row>
+    )
+  }
+
+  const renderNodeBreadcrumbs = () => {
+    if (selectedNodePath.length < 2) return null
+    const parentNode = selectedNodePath.length > 1 ? selectedNodePath[selectedNodePath.length - 2] : null
+    const ancestors = selectedNodePath.slice(0, -1)
+    return (
+      <Space wrap size={8}>
+        {parentNode ? (
+          <Button size="small" onClick={() => selectClassifierNode(parentNode)}>
+            Назад
+          </Button>
+        ) : null}
+        {ancestors.map((node, index) => {
           return (
-            <Col key={child.id} xs={24} sm={12} lg={8}>
-              <Card
-                hoverable
-                size="small"
-                onClick={() => selectClassifierNode(child)}
-                styles={{ body: { minHeight: 118 } }}
-              >
-                <Space direction="vertical" size={6} style={{ width: "100%" }}>
-                  <Typography.Text strong>{child.name || "Раздел"}</Typography.Text>
-                  <Typography.Text type="secondary">
-                    {childCount ? `${childCount} подразделов` : "Нижний раздел"}
-                  </Typography.Text>
-                  {child.notes ? (
-                    <Typography.Paragraph
-                      type="secondary"
-                      ellipsis={{ rows: 2, tooltip: child.notes }}
-                      style={{ marginBottom: 0 }}
-                    >
-                      {child.notes}
-                    </Typography.Paragraph>
-                  ) : null}
-                </Space>
-              </Card>
-            </Col>
+            <React.Fragment key={node.id}>
+              {index > 0 ? <Typography.Text type="secondary">/</Typography.Text> : null}
+              <Typography.Link onClick={() => selectClassifierNode(node)}>{node.name}</Typography.Link>
+            </React.Fragment>
           )
         })}
-      </Row>
+      </Space>
     )
   }
 
@@ -1633,6 +1712,7 @@ export default function EquipmentClassifierMain() {
 
   const renderNodeContent = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      {renderNodeBreadcrumbs()}
       <Space wrap>
         {!selectedNodeIsLeaf ? (
           <Button type="primary" onClick={openCreateChild}>
@@ -1661,13 +1741,6 @@ export default function EquipmentClassifierMain() {
 
       {selectedNodeIsLeaf ? (
         <>
-          <Input
-            allowClear
-            placeholder="Фильтр моделей: производитель или модель"
-            value={workspaceQuery}
-            onChange={(event) => setWorkspaceQuery(event.target.value)}
-          />
-
           <Table
             size="small"
             rowKey="id"
@@ -1684,24 +1757,7 @@ export default function EquipmentClassifierMain() {
       ) : (
         <>
           {renderChildSectionCards()}
-          <Input
-            allowClear
-            placeholder="Фильтр моделей: производитель или модель"
-            value={workspaceQuery}
-            onChange={(event) => setWorkspaceQuery(event.target.value)}
-          />
-          <Table
-            size="small"
-            rowKey="id"
-            columns={modelsColumns}
-            dataSource={workspaceModels}
-            loading={workspaceLoading}
-            pagination={{ pageSize: 12, showSizeChanger: false }}
-            locale={{ emptyText: "В этом разделе и ниже пока нет моделей" }}
-            onRow={(row) => ({
-              onDoubleClick: () => openModelDetails(row),
-            })}
-          />
+          {!selectedNodeChildren.length ? <Empty description="В этом разделе пока нет подразделов" /> : null}
         </>
       )}
     </Space>
@@ -2252,6 +2308,37 @@ export default function EquipmentClassifierMain() {
           </Form.Item>
           <Form.Item label="Описание для карточки" name="notes">
             <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item label="Фото карточки">
+            <Space direction="vertical" size={8} style={{ width: "100%" }}>
+              {nodeCardImageUrl ? (
+                <img
+                  src={nodeCardImageUrl}
+                  alt="Фото карточки"
+                  style={{ width: 180, height: 120, objectFit: "cover", borderRadius: 6, border: "1px solid #f0f0f0" }}
+                />
+              ) : null}
+              <Space wrap>
+                <Upload
+                  accept="image/*"
+                  showUploadList={false}
+                  customRequest={handleUploadNodeCardImage}
+                  disabled={!editingNode?.id}
+                >
+                  <Button size="small" loading={nodeCardImageUploading} disabled={!editingNode?.id}>
+                    Загрузить фото
+                  </Button>
+                </Upload>
+                {nodeCardImageUrl ? (
+                  <Button size="small" danger onClick={() => setNodeCardImageUrl("")}>
+                    Убрать фото
+                  </Button>
+                ) : null}
+              </Space>
+              {!editingNode?.id ? (
+                <Typography.Text type="secondary">Фото можно добавить после создания раздела</Typography.Text>
+              ) : null}
+            </Space>
           </Form.Item>
         </Form>
       </Modal>
