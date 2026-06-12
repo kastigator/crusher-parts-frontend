@@ -18,6 +18,7 @@ import {
   Select,
   Space,
   Switch,
+  Tabs,
   Tag,
   Table,
   Tree,
@@ -968,6 +969,20 @@ export default function EquipmentClassifierMain() {
     })
   }, [currentModel, rawWorkspaceClientParts])
 
+  useEffect(() => {
+    if (selectedTreeEntity.type !== "model" || !currentModel?.id) return
+    setDetailsModel(currentModel)
+    modelDetailsForm.setFieldsValue({
+      storage_uom: currentModel.storage_uom || undefined,
+      weight_kg: currentModel.weight_kg ?? undefined,
+      length_mm: currentModel.length_mm ?? undefined,
+      width_mm: currentModel.width_mm ?? undefined,
+      height_mm: currentModel.height_mm ?? undefined,
+      notes: currentModel.notes || "",
+    })
+    loadModelMedia(currentModel.id)
+  }, [currentModel, loadModelMedia, modelDetailsForm, selectedTreeEntity.type])
+
   const currentUnitOemParts = useMemo(() => {
     if (!selectedUnitFromTree?.equipment_model_id) return []
     const modelId = Number(selectedUnitFromTree.equipment_model_id)
@@ -1020,6 +1035,7 @@ export default function EquipmentClassifierMain() {
   }
 
   const openModelDetails = (row) => {
+    if (!row?.id) return
     setDetailsModel(row || null)
     modelDetailsForm.setFieldsValue({
       storage_uom: row?.storage_uom || undefined,
@@ -1032,7 +1048,12 @@ export default function EquipmentClassifierMain() {
     if (row?.id) {
       loadModelMedia(row.id)
     }
-    setModelDetailsOpen(true)
+    if (row?.classifier_node_id) {
+      setSelectedId(String(row.classifier_node_id))
+      setSelectedTreeKey(treeKey.node(row.classifier_node_id))
+    }
+    setSelectedTreeEntity({ type: "model", id: Number(row.id) })
+    setNsiSearchActive(false)
   }
 
   const openModelOemCatalog = (row) => {
@@ -1220,7 +1241,6 @@ export default function EquipmentClassifierMain() {
             {[row.manufacturer_name, row.classifier_node_name].filter(Boolean).join(" / ") || "—"}
           </Typography.Text>
           <Space size={8} wrap>
-            <Typography.Link onClick={() => openModelOemCatalog(row)}>OEM каталог</Typography.Link>
             <Typography.Link onClick={() => openModelAttributes(row)}>Характеристики</Typography.Link>
             <Typography.Link onClick={() => openMoveModel(row)}>Перенести</Typography.Link>
           </Space>
@@ -1540,7 +1560,7 @@ export default function EquipmentClassifierMain() {
       width: 100,
       render: (_, row) => (
         <Button size="small" onClick={() => navigate(`/original-parts/${row.id}`)}>
-          OEM
+          Открыть
         </Button>
       ),
     },
@@ -1783,75 +1803,217 @@ export default function EquipmentClassifierMain() {
     </Space>
   )
 
-  const renderModelContent = () => (
+  const renderModelMediaBlock = () => (
+    <Card
+      size="small"
+      title={`Фото (${modelMedia.length})`}
+      loading={modelMediaLoading}
+      extra={
+        <Upload accept="image/*" showUploadList={false} customRequest={handleUploadModelMedia}>
+          <Button size="small" loading={modelMediaUploading}>
+            Загрузить
+          </Button>
+        </Upload>
+      }
+    >
+      {modelMedia.length ? (
+        <Space wrap align="start">
+          {modelMedia.map((item) => (
+            <div key={item.id} style={{ width: 132 }}>
+              <Image
+                src={item.file_url}
+                alt={item.caption || item.file_name || "Фото модели"}
+                width={132}
+                height={96}
+                style={{ objectFit: "cover", borderRadius: 6 }}
+              />
+              <Button
+                size="small"
+                danger
+                style={{ marginTop: 6, width: "100%" }}
+                onClick={() => handleDeleteModelMedia(item.id)}
+              >
+                Удалить
+              </Button>
+            </div>
+          ))}
+        </Space>
+      ) : (
+        <Empty description="Фото модели пока не загружены" />
+      )}
+    </Card>
+  )
+
+  const renderModelPassportTab = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <Descriptions bordered size="small" column={2}>
-        <Descriptions.Item label="Производитель">
-          {currentModel?.manufacturer_name || "—"}
-        </Descriptions.Item>
-        <Descriptions.Item label="Модель">
-          {currentModel?.model_name || "—"}
-        </Descriptions.Item>
+        <Descriptions.Item label="Производитель">{currentModel?.manufacturer_name || "—"}</Descriptions.Item>
+        <Descriptions.Item label="Модель">{currentModel?.model_name || "—"}</Descriptions.Item>
         <Descriptions.Item label="Раздел классификатора">
           {currentModel?.classifier_node_name || selectedNode?.name || "—"}
         </Descriptions.Item>
-        <Descriptions.Item label="OEM деталей">
-          {Number(currentModel?.oem_parts_count) || currentModelOemParts.length}
+        <Descriptions.Item label="Ед. хранения">
+          {formatMeasurementUnit(currentModel?.storage_uom) || "—"}
         </Descriptions.Item>
-        <Descriptions.Item label="Машин клиентов">
-          {Number(currentModel?.units_count) || currentModelUnits.length}
-        </Descriptions.Item>
-        <Descriptions.Item label="Заметки" span={2}>
-          {currentModel?.notes || "—"}
+        <Descriptions.Item label="Вес, кг">{currentModel?.weight_kg ?? "—"}</Descriptions.Item>
+        <Descriptions.Item label="Габариты, мм">
+          {[currentModel?.length_mm, currentModel?.width_mm, currentModel?.height_mm].some(
+            (value) => value !== null && value !== undefined,
+          )
+            ? [currentModel?.length_mm, currentModel?.width_mm, currentModel?.height_mm]
+                .map((value) => value ?? "—")
+                .join(" × ")
+            : "—"}
         </Descriptions.Item>
       </Descriptions>
 
-      <Space wrap>
-        <Button type="primary" onClick={() => currentModel && openModelAttributes(currentModel)} disabled={!currentModel}>
-          Характеристики
-        </Button>
-        <Button onClick={() => currentModel && openMoveModel(currentModel)} disabled={!currentModel}>
-          Перенести модель
-        </Button>
-      </Space>
-
-      <Card size="small" title={`OEM детали (${currentModelOemParts.length})`}>
-        <Table
-          size="small"
-          rowKey="id"
-          columns={compactOemColumns}
-          dataSource={currentModelOemParts}
-          loading={workspaceLoading}
-          pagination={{ pageSize: 8, showSizeChanger: false }}
-          locale={{ emptyText: "Для этой модели пока нет OEM-деталей" }}
-        />
+      <Card
+        size="small"
+        title="Паспорт модели"
+        extra={
+          <Button size="small" type="primary" loading={modelDetailsSaving} onClick={handleSaveModelDetails}>
+            Сохранить
+          </Button>
+        }
+      >
+        <Form form={modelDetailsForm} layout="vertical">
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item label="Единица хранения" name="storage_uom">
+                <Select
+                  allowClear
+                  showSearch
+                  loading={measurementUnitsLoading}
+                  options={measurementUnitOptions}
+                  optionFilterProp="label"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="Вес, кг" name="weight_kg">
+                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label="Длина, мм" name="length_mm">
+                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label="Ширина, мм" name="width_mm">
+                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label="Высота, мм" name="height_mm">
+                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item label="Заметки" name="notes">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
       </Card>
 
-      <Card size="small" title={`Машины клиентов (${currentModelUnits.length})`}>
-        <Table
-          size="small"
-          rowKey="id"
-          columns={compactUnitColumns}
-          dataSource={currentModelUnits}
-          loading={workspaceLoading}
-          pagination={{ pageSize: 8, showSizeChanger: false }}
-          locale={{ emptyText: "Для этой модели пока нет машин клиентов" }}
-        />
-      </Card>
+      {renderModelMediaBlock()}
 
-      <Card size="small" title={`Детали клиентов (${currentModelClientParts.length})`}>
+      <Card
+        size="small"
+        title="Характеристики модели"
+        extra={
+          <Button size="small" onClick={() => currentModel && openModelAttributes(currentModel)} disabled={!currentModel}>
+            Изменить
+          </Button>
+        }
+      >
         <Table
           size="small"
-          rowKey="id"
-          columns={compactClientPartColumns}
-          dataSource={currentModelClientParts}
-          loading={workspaceLoading}
-          pagination={{ pageSize: 8, showSizeChanger: false }}
-          locale={{ emptyText: "Для этой модели пока нет деталей клиентов" }}
+          rowKey={(row) => row.attribute_id}
+          columns={modelDetailsAttributeColumns}
+          dataSource={Array.isArray(currentModel?.attribute_values) ? currentModel.attribute_values : []}
+          pagination={false}
+          locale={{ emptyText: "У модели пока не заполнены характеристики" }}
         />
       </Card>
     </Space>
   )
+
+  const renderModelContent = () => {
+    if (!currentModel) return <Empty description="Модель не найдена в выбранном разделе" />
+    return (
+      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        <Space wrap>
+          <Button size="small" onClick={() => selectedNode && selectClassifierNode(selectedNode)}>
+            Назад к моделям раздела
+          </Button>
+          <Button size="small" onClick={() => openMoveModel(currentModel)}>
+            Перенести модель
+          </Button>
+        </Space>
+
+        <Tabs
+          items={[
+            {
+              key: "passport",
+              label: "Паспорт",
+              children: renderModelPassportTab(),
+            },
+            {
+              key: "manufacturer-parts",
+              label: `Детали производителя (${currentModelOemParts.length})`,
+              children: (
+                <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                  <Button size="small" onClick={() => openModelOemCatalog(currentModel)}>
+                    Открыть таблицу деталей
+                  </Button>
+                  <Table
+                    size="small"
+                    rowKey="id"
+                    columns={compactOemColumns}
+                    dataSource={currentModelOemParts}
+                    loading={workspaceLoading}
+                    pagination={{ pageSize: 10, showSizeChanger: false }}
+                    locale={{ emptyText: "Для этой модели пока нет деталей производителя" }}
+                  />
+                </Space>
+              ),
+            },
+            {
+              key: "client-units",
+              label: `Машины клиентов (${currentModelUnits.length})`,
+              children: (
+                <Table
+                  size="small"
+                  rowKey="id"
+                  columns={compactUnitColumns}
+                  dataSource={currentModelUnits}
+                  loading={workspaceLoading}
+                  pagination={{ pageSize: 10, showSizeChanger: false }}
+                  locale={{ emptyText: "Для этой модели пока нет машин клиентов" }}
+                />
+              ),
+            },
+            {
+              key: "client-differences",
+              label: `Отличия клиентов (${currentModelClientParts.length})`,
+              children: (
+                <Table
+                  size="small"
+                  rowKey="id"
+                  columns={compactClientPartColumns}
+                  dataSource={currentModelClientParts}
+                  loading={workspaceLoading}
+                  pagination={{ pageSize: 10, showSizeChanger: false }}
+                  locale={{ emptyText: "Для этой модели пока нет клиентских отличий" }}
+                />
+              ),
+            },
+          ]}
+        />
+      </Space>
+    )
+  }
 
   const renderUnitContent = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
