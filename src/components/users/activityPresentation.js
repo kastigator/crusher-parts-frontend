@@ -29,7 +29,7 @@ const ROUTE_PATTERNS = [
   { pattern: /^\/supplier-parts$/, label: "Детали поставщиков", section: "Каталоги", key: "/supplier-parts" },
   { pattern: /^\/supplier-parts\/\d+$/, label: "Карточка детали поставщика", section: "Каталоги", key: "/supplier-parts/:id" },
   { pattern: /^\/standard-parts$/, label: "Стандартные детали", section: "Каталоги", key: "/standard-parts" },
-  { pattern: /^\/equipment-classifier$/, label: "Классификатор оборудования", section: "Каталоги", key: "/equipment-classifier" },
+  { pattern: /^\/equipment-classifier$/, label: "Классификатор", section: "Каталоги", key: "/equipment-classifier" },
   { pattern: /^\/materials$/, label: "Материалы", section: "Каталоги", key: "/materials" },
   { pattern: /^\/tnved-codes$/, label: "Коды ТН ВЭД", section: "Каталоги", key: "/tnved-codes" },
   { pattern: /^\/logistics-route-templates$/, label: "Шаблоны доставки", section: "Каталоги", key: "/logistics-route-templates" },

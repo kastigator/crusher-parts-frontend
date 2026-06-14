@@ -12,6 +12,7 @@ const { Sider } = Layout
 const CATALOG_ROOT_PATH = "/catalogs"
 const HIDDEN_LEGACY_PATHS = new Set([
   "/original-parts",
+  "/standard-parts",
   "/tnved-origin-rules",
   "/logistics-routes",
   "/country-risk-profiles",
@@ -20,7 +21,6 @@ const CATALOG_CHILD_PATHS = new Set([
   "/clients",
   "/suppliers",
   "/supplier-parts",
-  "/standard-parts",
   "/materials",
   "/tnved-codes",
   "/logistics-route-templates",
@@ -152,7 +152,10 @@ export default function Sidebar() {
     const parentMap = new Map()
 
     if (classifierTab) {
-      const classifierItem = buildMenuItem(classifierTab)
+      const classifierItem = buildMenuItem(classifierTab, {
+        labelOverride: "Классификатор",
+        tooltipOverride: "Классификатор",
+      })
       const rfqIndex = items.findIndex((item) => item?.key === "/rfq-workspace" || item?.key === "/rfq")
       items.splice(rfqIndex >= 0 ? rfqIndex + 1 : Math.min(2, items.length), 0, classifierItem)
     }

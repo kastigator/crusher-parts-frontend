@@ -28,7 +28,7 @@ const catalogLinks = [
   { path: "/supplier-parts", label: "Детали поставщиков" },
   { path: "/original-parts", label: "OEM детали" },
   { path: "/standard-parts", label: "Стандартные детали" },
-  { path: "/equipment-classifier", label: "Классификатор оборудования" },
+  { path: "/equipment-classifier", label: "Классификатор" },
   { path: "/materials", label: "Материалы" },
   { path: "/tnved-codes", label: "Коды ТН ВЭД" },
   { path: "/logistics-route-templates", label: "Шаблоны доставки" },

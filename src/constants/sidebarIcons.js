@@ -51,7 +51,7 @@ export const DEFAULT_ICON_PATH = buildIconPath("default")
 export const SIDEBAR_ICONS = [
   { key: "client-requests", label: "Заявки клиентов", path: buildIconPath("client-requests") },
   { key: "rfq", label: "Запросы поставщикам", path: buildIconPath("rfq") },
-  { key: "equipment-classifier", label: "Классификатор оборудования", path: buildIconPath("equipment-classifier") },
+  { key: "equipment-classifier", label: "Классификатор", path: buildIconPath("equipment-classifier") },
   { key: "supplier-responses", label: "Ответы поставщиков", path: buildIconPath("supplier-responses") },
   { key: "coverage", label: "Покрытие и сравнение", path: buildIconPath("coverage") },
   { key: "scorecard", label: "Оценка поставщиков", path: buildIconPath("scorecard") },

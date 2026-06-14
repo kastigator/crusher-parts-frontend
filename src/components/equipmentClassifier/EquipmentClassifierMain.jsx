@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom"
 import {
   Button,
   Card,
+  Alert,
+  Checkbox,
   Col,
   Descriptions,
   Drawer,
@@ -32,9 +34,9 @@ import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const CLIENT_PART_TYPE_LABELS = {
   client_drawing: "По чертежу клиента",
-  oem_variant: "Отличается от OEM",
-  oem_replacement: "Замена OEM",
-  unknown_oem: "OEM неизвестен",
+  oem_variant: "Отличается от детали производителя",
+  oem_replacement: "Замена детали производителя",
+  unknown_oem: "Номер производителя неизвестен",
 }
 
 const CLIENT_PART_TYPE_COLORS = {
@@ -47,7 +49,7 @@ const CLIENT_PART_TYPE_COLORS = {
 const SEARCH_TYPE_LABELS = {
   classifier_node: "Раздел",
   equipment_model: "Модель",
-  oem_part: "OEM",
+  oem_part: "Деталь производителя",
   client_equipment_unit: "Машина клиента",
   client_part: "Деталь клиента",
 }
@@ -55,7 +57,7 @@ const SEARCH_TYPE_LABELS = {
 const SEARCH_TYPE_COLORS = {
   classifier_node: "blue",
   equipment_model: "green",
-  oem_part: "purple",
+  oem_part: "geekblue",
   client_equipment_unit: "orange",
   client_part: "cyan",
 }
@@ -93,6 +95,15 @@ const CARD_IMAGE_STYLE = {
   background: "#f5f5f5",
 }
 
+const API_ORIGIN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
+
+const resolveAssetUrl = (url) => {
+  if (!url) return ""
+  if (/^(https?:)?\/\//i.test(url) || url.startsWith("data:") || url.startsWith("blob:")) return url
+  if (url.startsWith("/")) return `${API_ORIGIN}${url}`
+  return url
+}
+
 const treeKey = {
   node: (id) => `node:${id}`,
   manufacturer: (nodeId, manufacturerId) => `manufacturer:${nodeId}:${manufacturerId}`,
@@ -116,6 +127,107 @@ const flattenTree = (nodes, map = new Map()) => {
   })
   return map
 }
+
+const buildBomTree = (rows) => {
+  const byId = new Map()
+  const roots = []
+  ;(rows || []).forEach((row) => {
+    byId.set(Number(row.id), { ...row, key: row.id, children: [] })
+  })
+  byId.forEach((row) => {
+    const parentId = Number(row.parent_item_id)
+    if (parentId && byId.has(parentId)) {
+      byId.get(parentId).children.push(row)
+    } else {
+      roots.push(row)
+    }
+  })
+  const sortRows = (items) => {
+    items.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id))
+    items.forEach((item) => sortRows(item.children || []))
+  }
+  sortRows(roots)
+  return roots
+}
+
+const getBomItemLabel = (row) =>
+  row?.manufacturer_part_number ||
+  row?.part_number ||
+  row?.catalog_position_code ||
+  row?.catalog_position_name ||
+  row?.title ||
+  "—"
+
+const getBomItemName = (row) =>
+  row?.manufacturer_part_name ||
+  row?.description_ru ||
+  row?.description_en ||
+  row?.catalog_position_name ||
+  row?.title ||
+  ""
+
+const flattenBomTreeRows = (rows, level = 0, acc = []) => {
+  ;(rows || []).forEach((row, index) => {
+    const children = Array.isArray(row.children) ? row.children : []
+    acc.push({
+      ...row,
+      bom_level: level,
+      bom_is_last: index === rows.length - 1,
+      bom_has_children: children.length > 0,
+    })
+    flattenBomTreeRows(children, level + 1, acc)
+  })
+  return acc
+}
+
+const buildBomTreeData = (rows, actions = {}) =>
+  (rows || []).map((row) => {
+    const isGroup = !row.oem_part_id && !row.catalog_position_id
+    const label = getBomItemLabel(row)
+    const itemName = getBomItemName(row)
+    const secondary = [
+      row.catalog_position_id ? `классификатор: ${row.catalog_position_name || row.catalog_position_code}` : null,
+      row.description_ru || row.description_en || row.catalog_position_description,
+      row.drawing_number ? `чертеж: ${row.drawing_number}` : null,
+    ].filter(Boolean)
+    const uom = row.uom || row.catalog_position_uom || "шт"
+
+    return {
+      key: row.id,
+      title: (
+        <Space direction="vertical" size={0}>
+          <Space size={8} wrap>
+            {row.item_no ? <Typography.Text type="secondary">{row.item_no}</Typography.Text> : null}
+            <Typography.Link
+              strong={isGroup || (Array.isArray(row.children) && row.children.length > 0)}
+              onClick={() => actions.onOpen?.(row)}
+            >
+              {label}
+            </Typography.Link>
+            {itemName && itemName !== label ? <Typography.Text>{itemName}</Typography.Text> : null}
+            <Tag title="Количество в этом месте BOM">
+              {Number(row.quantity || 0).toLocaleString("ru-RU")} {uom}
+            </Tag>
+            {row.catalog_position_id ? <Tag color="blue">позиция классификатора</Tag> : null}
+            {actions.onEdit ? (
+              <Button size="small" type="link" onClick={() => actions.onEdit(row)}>
+                Изменить строку
+              </Button>
+            ) : null}
+            {actions.onAddChild ? (
+              <Button size="small" type="link" onClick={() => actions.onAddChild(row)}>
+                Добавить внутрь
+              </Button>
+            ) : null}
+          </Space>
+          <Typography.Text type="secondary">
+            {secondary.join(" / ") || (isGroup ? "сборка или раздел BOM" : "—")}
+          </Typography.Text>
+        </Space>
+      ),
+      children: buildBomTreeData(row.children || [], actions),
+    }
+  })
 
 export default function EquipmentClassifierMain() {
   const navigate = useNavigate()
@@ -144,6 +256,26 @@ export default function EquipmentClassifierMain() {
   const [modelMedia, setModelMedia] = useState([])
   const [modelMediaLoading, setModelMediaLoading] = useState(false)
   const [modelMediaUploading, setModelMediaUploading] = useState(false)
+  const [modelDocuments, setModelDocuments] = useState([])
+  const [modelDocumentsLoading, setModelDocumentsLoading] = useState(false)
+  const [modelDocumentUploading, setModelDocumentUploading] = useState(false)
+  const [modelBomItems, setModelBomItems] = useState([])
+  const [modelBomLoading, setModelBomLoading] = useState(false)
+  const [bomImportOpen, setBomImportOpen] = useState(false)
+  const [bomImportLoading, setBomImportLoading] = useState(false)
+  const [bomImportCommitting, setBomImportCommitting] = useState(false)
+  const [bomImportRows, setBomImportRows] = useState([])
+  const [bomImportErrors, setBomImportErrors] = useState([])
+  const [bomImportWarnings, setBomImportWarnings] = useState([])
+  const [bomImportSourceRows, setBomImportSourceRows] = useState([])
+  const [bomImportReplace, setBomImportReplace] = useState(false)
+  const [bomItemModalOpen, setBomItemModalOpen] = useState(false)
+  const [bomItemSaving, setBomItemSaving] = useState(false)
+  const [editingBomItem, setEditingBomItem] = useState(null)
+  const [bomItemCardOpen, setBomItemCardOpen] = useState(false)
+  const [selectedBomItem, setSelectedBomItem] = useState(null)
+  const [catalogPositionOptions, setCatalogPositionOptions] = useState([])
+  const [catalogPositionsLoading, setCatalogPositionsLoading] = useState(false)
   const [nodeCardImageUrl, setNodeCardImageUrl] = useState("")
   const [nodeCardImageUploading, setNodeCardImageUploading] = useState(false)
   const [nsiSearchQuery, setNsiSearchQuery] = useState("")
@@ -171,6 +303,25 @@ export default function EquipmentClassifierMain() {
   const [attributeForm] = Form.useForm()
   const [modelAttributesForm] = Form.useForm()
   const [modelDetailsForm] = Form.useForm()
+  const [bomItemForm] = Form.useForm()
+  const bomItemKind = Form.useWatch("kind", bomItemForm)
+  const bomItemKindHelp = {
+    group: {
+      message: "Создается новый узел дерева BOM",
+      description:
+        "Используйте для разделов каталога, сборок и подсборок производителя. У такого узла может быть свой каталожный номер и внутрь можно добавлять детали.",
+    },
+    oem_part: {
+      message: "Добавляется уже заведенная деталь производителя",
+      description:
+        "Вы выбираете деталь из каталога этой модели. Номер на схеме, количество и место в дереве относятся только к текущему BOM.",
+    },
+    catalog_position: {
+      message: "Добавляется позиция из классификатора",
+      description:
+        "Так удобно использовать стандартные или типовые изделия. Каталожный номер производителя здесь задается для конкретного места в BOM.",
+    },
+  }
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
   const [manufacturerFilter, setManufacturerFilter] = useState(null)
 
@@ -270,6 +421,60 @@ export default function EquipmentClassifierMain() {
       setModelMedia([])
     } finally {
       setModelMediaLoading(false)
+    }
+  }, [])
+
+  const loadModelDocuments = useCallback(async (modelId) => {
+    if (!modelId) {
+      setModelDocuments([])
+      return
+    }
+    setModelDocumentsLoading(true)
+    try {
+      const { data } = await axios.get(`/equipment-models/${modelId}/documents`)
+      setModelDocuments(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error("GET /equipment-models/:id/documents error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить документы модели")
+      setModelDocuments([])
+    } finally {
+      setModelDocumentsLoading(false)
+    }
+  }, [])
+
+  const loadModelBom = useCallback(async (modelId) => {
+    if (!modelId) {
+      setModelBomItems([])
+      return
+    }
+    setModelBomLoading(true)
+    try {
+      const { data } = await axios.get(`/equipment-models/${modelId}/bom`)
+      setModelBomItems(Array.isArray(data?.items) ? data.items : [])
+    } catch (err) {
+      console.error("GET /equipment-models/:id/bom error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить BOM модели")
+      setModelBomItems([])
+    } finally {
+      setModelBomLoading(false)
+    }
+  }, [])
+
+  const loadCatalogPositions = useCallback(async (query = "") => {
+    setCatalogPositionsLoading(true)
+    try {
+      const { data } = await axios.get("/catalog-positions", {
+        params: {
+          q: query || undefined,
+          limit: 100,
+        },
+      })
+      setCatalogPositionOptions(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error("GET /catalog-positions error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить позиции классификатора")
+    } finally {
+      setCatalogPositionsLoading(false)
     }
   }, [])
 
@@ -953,6 +1158,284 @@ export default function EquipmentClassifierMain() {
     return rawWorkspaceOemParts.filter((row) => splitIds(row.model_ids).includes(modelId))
   }, [currentModel, rawWorkspaceOemParts])
 
+  const currentModelBomTree = useMemo(() => buildBomTree(modelBomItems), [modelBomItems])
+  const currentModelBomRows = useMemo(() => flattenBomTreeRows(currentModelBomTree), [currentModelBomTree])
+
+  const openBomItemModal = useCallback(
+    (item = null, parent = null) => {
+      if (!currentModel?.id) return
+      setEditingBomItem(item)
+      const kind = item?.catalog_position_id ? "catalog_position" : item?.oem_part_id ? "oem_part" : "group"
+      bomItemForm.setFieldsValue({
+        kind,
+        parent_item_id: item ? item.parent_item_id || null : parent?.id || null,
+        item_no: item?.item_no || "",
+        manufacturer_part_number: item?.manufacturer_part_number || item?.part_number || "",
+        manufacturer_part_name:
+          item?.manufacturer_part_name ||
+          item?.description_ru ||
+          item?.description_en ||
+          item?.catalog_position_name ||
+          "",
+        drawing_number: item?.drawing_number || "",
+        oem_part_id: item?.oem_part_id || null,
+        title: item?.title || "",
+        catalog_position_id: item?.catalog_position_id || null,
+        quantity: item?.quantity || 1,
+        sort_order: item?.sort_order || 0,
+        notes: item?.notes || "",
+      })
+      if (!catalogPositionOptions.length) loadCatalogPositions()
+      setBomItemModalOpen(true)
+    },
+    [bomItemForm, catalogPositionOptions.length, currentModel?.id, loadCatalogPositions],
+  )
+
+  const handleSaveBomItem = async () => {
+    if (!currentModel?.id) return
+    try {
+      const values = await bomItemForm.validateFields()
+      setBomItemSaving(true)
+      const payload = {
+        item_type: values.kind,
+        parent_item_id: values.parent_item_id || null,
+        item_no: values.item_no || null,
+        manufacturer_part_number: values.manufacturer_part_number || null,
+        manufacturer_part_name: values.manufacturer_part_name || null,
+        drawing_number: values.drawing_number || null,
+        title: values.kind === "group" ? values.title || values.manufacturer_part_name || values.manufacturer_part_number : null,
+        oem_part_id: values.kind === "oem_part" ? values.oem_part_id : null,
+        catalog_position_id: values.kind === "catalog_position" ? values.catalog_position_id : null,
+        quantity: values.quantity || 1,
+        sort_order: values.sort_order ?? editingBomItem?.sort_order ?? 0,
+        notes: values.notes || null,
+      }
+      const { data } = editingBomItem?.id
+        ? await axios.put(`/equipment-models/${currentModel.id}/bom/items/${editingBomItem.id}`, payload)
+        : await axios.post(`/equipment-models/${currentModel.id}/bom/items`, payload)
+      setModelBomItems(Array.isArray(data?.items) ? data.items : [])
+      setBomItemModalOpen(false)
+      setEditingBomItem(null)
+      message.success(editingBomItem?.id ? "Строка BOM изменена" : "Строка BOM добавлена")
+    } catch (err) {
+      if (err?.errorFields) return
+      console.error("SAVE equipment model BOM item error:", err)
+      message.error(err?.response?.data?.message || "Не удалось сохранить строку BOM")
+    } finally {
+      setBomItemSaving(false)
+    }
+  }
+
+  const downloadBomTemplate = async () => {
+    if (!currentModel?.id) return
+    try {
+      const { data, headers } = await axios.get(`/equipment-models/${currentModel.id}/bom/template`, {
+        responseType: "blob",
+      })
+      const disposition = headers?.["content-disposition"] || ""
+      const match = disposition.match(/filename="?([^"]+)"?/i)
+      const filename = match?.[1] || `equipment_model_${currentModel.id}_bom_template.xlsx`
+      const url = window.URL.createObjectURL(data)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error("GET equipment model BOM template error:", err)
+      message.error(err?.response?.data?.message || "Не удалось скачать шаблон BOM")
+    }
+  }
+
+  const parseBomExcelFile = async (file) => {
+    const { default: readXlsxFile } = await import("read-excel-file")
+    const rows = await readXlsxFile(file)
+    if (!Array.isArray(rows) || rows.length < 2) throw new Error("Файл пустой или не распознан")
+
+    const headerRow = rows[0].map((value) => String(value ?? "").trim())
+    const headerMap = {
+      "Уровень": "level",
+      "Ключ": "item_key",
+      "Родительский ключ": "parent_key",
+      "Тип": "item_type",
+      "№ позиции": "item_no",
+      "Позиция": "item_no",
+      "Каталожный номер": "manufacturer_part_number",
+      "Название по каталогу": "manufacturer_part_name",
+      "Чертеж": "drawing_number",
+      "Код детали производителя": "oem_part_number",
+      "Код OEM": "oem_part_number",
+      "Код классификатора": "catalog_position_code",
+      "Название": "title",
+      "Количество": "quantity",
+      "Порядок": "sort_order",
+      "Заметки": "notes",
+    }
+    const requiredHeaders = ["Уровень", "Тип", "Количество"]
+    const missingHeaders = requiredHeaders.filter((header) => !headerRow.includes(header))
+    if (missingHeaders.length) {
+      throw new Error(`В файле нет обязательных колонок: ${missingHeaders.join(", ")}`)
+    }
+
+    return rows.slice(1).map((row, index) => {
+      const result = { row_number: index + 2 }
+      headerRow.forEach((label, columnIndex) => {
+        const key = headerMap[label]
+        if (key) result[key] = row[columnIndex]
+      })
+      return result
+    })
+  }
+
+  const previewBomImportRows = async (rows) => {
+    if (!currentModel?.id) return
+    setBomImportLoading(true)
+    setBomImportRows([])
+    setBomImportErrors([])
+    setBomImportWarnings([])
+    try {
+      const { data } = await axios.post(`/equipment-models/${currentModel.id}/bom/import/preview`, { rows })
+      setBomImportRows(Array.isArray(data?.rows) ? data.rows : [])
+      setBomImportErrors(Array.isArray(data?.errors) ? data.errors : [])
+      setBomImportWarnings(Array.isArray(data?.warnings) ? data.warnings : [])
+    } catch (err) {
+      console.error("POST equipment model BOM import preview error:", err)
+      setBomImportErrors([{ message: err?.response?.data?.message || "Не удалось проверить BOM" }])
+    } finally {
+      setBomImportLoading(false)
+    }
+  }
+
+  const handleBomImportUpload = async ({ file, onSuccess, onError }) => {
+    try {
+      const rows = await parseBomExcelFile(file)
+      setBomImportSourceRows(rows)
+      await previewBomImportRows(rows)
+      onSuccess?.("ok")
+    } catch (err) {
+      console.error("parse BOM Excel error:", err)
+      const text = err?.message || "Не удалось прочитать Excel"
+      setBomImportErrors([{ message: text }])
+      onError?.(err)
+    }
+  }
+
+  const handleCommitBomImport = async () => {
+    if (!currentModel?.id || !bomImportSourceRows.length) return
+    setBomImportCommitting(true)
+    try {
+      const { data } = await axios.post(`/equipment-models/${currentModel.id}/bom/import/commit`, {
+        rows: bomImportSourceRows,
+        mode: bomImportReplace ? "replace" : "append",
+      })
+      setModelBomItems(Array.isArray(data?.items) ? data.items : [])
+      setBomImportOpen(false)
+      setBomImportRows([])
+      setBomImportErrors([])
+      setBomImportWarnings([])
+      setBomImportSourceRows([])
+      message.success(`BOM импортирован: ${data?.imported || 0} строк`)
+    } catch (err) {
+      console.error("POST equipment model BOM import commit error:", err)
+      const data = err?.response?.data
+      setBomImportErrors(
+        Array.isArray(data?.errors) && data.errors.length
+          ? data.errors
+          : [{ message: data?.message || "Не удалось импортировать BOM" }],
+      )
+    } finally {
+      setBomImportCommitting(false)
+    }
+  }
+
+  const currentModelBomTreeData = useMemo(
+    () =>
+      buildBomTreeData(currentModelBomTree, {
+        onOpen: (row) => {
+          setSelectedBomItem(row)
+          setBomItemCardOpen(true)
+        },
+        onEdit: (row) => openBomItemModal(row),
+        onAddChild: (row) => openBomItemModal(null, row),
+      }),
+    [currentModelBomTree, openBomItemModal],
+  )
+
+  const bomImportColumns = useMemo(
+    () => [
+      {
+        title: "Строка",
+        dataIndex: "row_number",
+        width: 80,
+      },
+      {
+        title: "Уровень",
+        dataIndex: "level",
+        width: 90,
+      },
+      {
+        title: "Тип",
+        dataIndex: "item_type",
+        width: 150,
+        render: (value) =>
+          value === "catalog_position"
+            ? "Позиция классификатора"
+            : value === "oem_part"
+              ? "Деталь производителя"
+              : "Сборка",
+      },
+      {
+        title: "№",
+        dataIndex: "item_no",
+        width: 80,
+        render: (value) => value || "—",
+      },
+      {
+        title: "Каталожный номер",
+        dataIndex: "manufacturer_part_number",
+        width: 180,
+        render: (value, row) => value || row.oem_part_number || row.catalog_position_code || "—",
+      },
+      {
+        title: "Название",
+        dataIndex: "resolved_label",
+        render: (value, row) => (
+          <Space direction="vertical" size={0}>
+            <Typography.Text strong>
+              {row.manufacturer_part_name || value || row.title || row.item_key}
+            </Typography.Text>
+            {row.resolved_subtitle ? <Typography.Text type="secondary">{row.resolved_subtitle}</Typography.Text> : null}
+            {row.drawing_number ? <Typography.Text type="secondary">Чертеж: {row.drawing_number}</Typography.Text> : null}
+          </Space>
+        ),
+      },
+      {
+        title: "Количество",
+        dataIndex: "quantity",
+        width: 120,
+      },
+      {
+        title: "Родитель",
+        dataIndex: "parent_key",
+        width: 180,
+        render: (value) => value || "Корень модели",
+      },
+    ],
+    [],
+  )
+
+  const currentModelStructuredPartIds = useMemo(
+    () => new Set(modelBomItems.map((item) => Number(item.oem_part_id)).filter(Boolean)),
+    [modelBomItems],
+  )
+
+  const currentModelOemPartsOutsideBom = useMemo(
+    () => currentModelOemParts.filter((row) => !currentModelStructuredPartIds.has(Number(row.id))),
+    [currentModelOemParts, currentModelStructuredPartIds],
+  )
+
   const currentModelUnits = useMemo(() => {
     if (!currentModel?.id) return []
     const modelId = Number(currentModel.id)
@@ -981,7 +1464,9 @@ export default function EquipmentClassifierMain() {
       notes: currentModel.notes || "",
     })
     loadModelMedia(currentModel.id)
-  }, [currentModel, loadModelMedia, modelDetailsForm, selectedTreeEntity.type])
+    loadModelDocuments(currentModel.id)
+    loadModelBom(currentModel.id)
+  }, [currentModel, loadModelBom, loadModelDocuments, loadModelMedia, modelDetailsForm, selectedTreeEntity.type])
 
   const currentUnitOemParts = useMemo(() => {
     if (!selectedUnitFromTree?.equipment_model_id) return []
@@ -1047,6 +1532,7 @@ export default function EquipmentClassifierMain() {
     })
     if (row?.id) {
       loadModelMedia(row.id)
+      loadModelBom(row.id)
     }
     if (row?.classifier_node_id) {
       setSelectedId(String(row.classifier_node_id))
@@ -1128,6 +1614,42 @@ export default function EquipmentClassifierMain() {
     }
   }
 
+  const handleUploadModelDocument = async ({ file, onSuccess, onError }) => {
+    if (!detailsModel?.id) {
+      onError?.(new Error("Модель не выбрана"))
+      return
+    }
+    const formData = new FormData()
+    formData.append("file", file)
+    setModelDocumentUploading(true)
+    try {
+      await axios.post(`/equipment-models/${detailsModel.id}/documents`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      await loadModelDocuments(detailsModel.id)
+      message.success("Документ модели загружен")
+      onSuccess?.()
+    } catch (err) {
+      console.error("POST /equipment-models/:id/documents error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить документ модели")
+      onError?.(err)
+    } finally {
+      setModelDocumentUploading(false)
+    }
+  }
+
+  const handleDeleteModelDocument = async (documentId) => {
+    if (!detailsModel?.id || !documentId) return
+    try {
+      await axios.delete(`/equipment-models/${detailsModel.id}/documents/${documentId}`)
+      await loadModelDocuments(detailsModel.id)
+      message.success("Документ удален")
+    } catch (err) {
+      console.error("DELETE /equipment-models/:id/documents/:documentId error:", err)
+      message.error(err?.response?.data?.message || "Не удалось удалить документ")
+    }
+  }
+
   const modelMatchesAttributeFilters = (model) =>
     filterableAttributes.every((attribute) => {
       const filter = attributeFilters[attribute.id]
@@ -1206,7 +1728,7 @@ export default function EquipmentClassifierMain() {
       render: (_, row) =>
         row.primary_photo_url ? (
           <Image
-            src={row.primary_photo_url}
+            src={resolveAssetUrl(row.primary_photo_url)}
             alt={row.model_name || "Фото модели"}
             width={64}
             height={48}
@@ -1276,7 +1798,7 @@ export default function EquipmentClassifierMain() {
       width: 120,
       render: (_, row) => (
         <Button size="small" onClick={() => openSearchResult(row)}>
-          {row.entity_type === "oem_part" ? "OEM" : row.entity_type === "client_part" ? "Клиент" : "Показать"}
+          {row.entity_type === "oem_part" ? "Деталь производителя" : row.entity_type === "client_part" ? "Клиент" : "Показать"}
         </Button>
       ),
     },
@@ -1543,7 +2065,7 @@ export default function EquipmentClassifierMain() {
 
   const compactOemColumns = [
     {
-      title: "OEM",
+      title: "Каталожный номер производителя",
       render: (_, row) => (
         <Space direction="vertical" size={0}>
           <Typography.Text strong>{row.part_number || "—"}</Typography.Text>
@@ -1560,8 +2082,66 @@ export default function EquipmentClassifierMain() {
       width: 100,
       render: (_, row) => (
         <Button size="small" onClick={() => navigate(`/original-parts/${row.id}`)}>
-          Открыть
+          Карточка
         </Button>
+      ),
+    },
+  ]
+
+  const modelBomColumns = [
+    {
+      title: "Позиция BOM",
+      render: (_, row) => (
+        <div style={{ display: "flex", gap: 10, paddingLeft: Number(row.bom_level || 0) * 28 }}>
+          <div
+            style={{
+              width: 18,
+              minWidth: 18,
+              color: row.bom_has_children ? "#1677ff" : "#bfbfbf",
+              fontWeight: row.bom_has_children ? 700 : 400,
+              textAlign: "center",
+            }}
+          >
+            {row.bom_has_children ? "▾" : row.bom_level ? "•" : ""}
+          </div>
+          <Space direction="vertical" size={0}>
+            <Typography.Text strong={row.bom_has_children}>
+              {row.part_number || row.title || "—"}
+            </Typography.Text>
+            <Typography.Text type="secondary">
+              {[row.description_ru || row.description_en, row.manufacturer_name].filter(Boolean).join(" / ") || "—"}
+            </Typography.Text>
+          </Space>
+        </div>
+      ),
+    },
+    {
+      title: "Кол-во",
+      dataIndex: "quantity",
+      width: 100,
+      render: (value) => Number(value || 0).toLocaleString("ru-RU"),
+    },
+    {
+      title: "Ед.",
+      dataIndex: "uom",
+      width: 90,
+      render: (value) => value || "шт",
+    },
+    {
+      title: "Действие",
+      key: "action",
+      width: 190,
+      render: (_, row) => (
+        <Space wrap size={8}>
+          {row.oem_part_id ? (
+            <Button size="small" onClick={() => navigate(`/original-parts/${row.oem_part_id}`)}>
+              Открыть
+            </Button>
+          ) : null}
+          <Button size="small" onClick={() => message.info("Редактирование строки BOM добавим следующим проходом")}>
+            Изменить
+          </Button>
+        </Space>
       ),
     },
   ]
@@ -1627,7 +2207,7 @@ export default function EquipmentClassifierMain() {
               onClick={() => selectClassifierNode(child)}
               cover={
                 child.card_image_url ? (
-                  <img src={child.card_image_url} alt={child.name || "Раздел"} style={CARD_IMAGE_STYLE} />
+                  <img src={resolveAssetUrl(child.card_image_url)} alt={child.name || "Раздел"} style={CARD_IMAGE_STYLE} />
                 ) : (
                   <div
                     style={{
@@ -1722,6 +2302,10 @@ export default function EquipmentClassifierMain() {
               loading={nsiSearchLoading}
               pagination={group.rows.length > 5 ? { pageSize: 5, showSizeChanger: false } : false}
               scroll={{ x: 840 }}
+              onRow={(row) => ({
+                onClick: () => openSearchResult(row),
+                style: { cursor: "pointer" },
+              })}
             />
           </Card>
         ))}
@@ -1821,7 +2405,7 @@ export default function EquipmentClassifierMain() {
           {modelMedia.map((item) => (
             <div key={item.id} style={{ width: 132 }}>
               <Image
-                src={item.file_url}
+                src={resolveAssetUrl(item.file_url)}
                 alt={item.caption || item.file_name || "Фото модели"}
                 width={132}
                 height={96}
@@ -1840,6 +2424,64 @@ export default function EquipmentClassifierMain() {
         </Space>
       ) : (
         <Empty description="Фото модели пока не загружены" />
+      )}
+    </Card>
+  )
+
+  const renderModelDocumentsBlock = () => (
+    <Card
+      size="small"
+      title={`Документы (${modelDocuments.length})`}
+      loading={modelDocumentsLoading}
+      extra={
+        <Upload
+          accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,text/plain"
+          showUploadList={false}
+          customRequest={handleUploadModelDocument}
+        >
+          <Button size="small" loading={modelDocumentUploading}>
+            Загрузить
+          </Button>
+        </Upload>
+      }
+    >
+      {modelDocuments.length ? (
+        <Table
+          size="small"
+          rowKey="id"
+          pagination={false}
+          dataSource={modelDocuments}
+          columns={[
+            {
+              title: "Документ",
+              render: (_, row) => (
+                <Space direction="vertical" size={0}>
+                  <a href={resolveAssetUrl(row.file_url)} target="_blank" rel="noreferrer">
+                    {row.file_name || "Документ"}
+                  </a>
+                  {row.description ? <Typography.Text type="secondary">{row.description}</Typography.Text> : null}
+                </Space>
+              ),
+            },
+            {
+              title: "Тип",
+              dataIndex: "file_type",
+              width: 180,
+              render: (value) => value || "—",
+            },
+            {
+              title: "",
+              width: 90,
+              render: (_, row) => (
+                <Button size="small" danger onClick={() => handleDeleteModelDocument(row.id)}>
+                  Удалить
+                </Button>
+              ),
+            },
+          ]}
+        />
+      ) : (
+        <Empty description="Документы модели пока не загружены" />
       )}
     </Card>
   )
@@ -1917,6 +2559,7 @@ export default function EquipmentClassifierMain() {
       </Card>
 
       {renderModelMediaBlock()}
+      {renderModelDocumentsBlock()}
 
       <Card
         size="small"
@@ -1939,18 +2582,152 @@ export default function EquipmentClassifierMain() {
     </Space>
   )
 
+  const renderModelSummary = () => {
+    const primaryPhoto = modelMedia[0]
+    const dimensions = [currentModel?.length_mm, currentModel?.width_mm, currentModel?.height_mm]
+    const hasDimensions = dimensions.some((value) => value !== null && value !== undefined)
+
+    return (
+      <Card size="small" loading={modelMediaLoading}>
+        <Row gutter={[16, 16]} align="middle">
+          <Col flex="96px">
+            {primaryPhoto?.file_url ? (
+              <Image
+                src={resolveAssetUrl(primaryPhoto.file_url)}
+                alt={primaryPhoto.caption || primaryPhoto.file_name || "Фото модели"}
+                width={88}
+                height={72}
+                style={{ objectFit: "cover", borderRadius: 6 }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 88,
+                  height: 72,
+                  border: "1px solid #f0f0f0",
+                  borderRadius: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#bfbfbf",
+                  background: "#fafafa",
+                }}
+              >
+                Фото
+              </div>
+            )}
+          </Col>
+          <Col flex="auto">
+            <Space direction="vertical" size={4} style={{ width: "100%" }}>
+              <Typography.Title level={4} style={{ margin: 0 }}>
+                {[currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "Модель"}
+              </Typography.Title>
+              <Typography.Text type="secondary">
+                {currentModel?.classifier_node_name || selectedNode?.name || "Раздел классификатора"}
+              </Typography.Text>
+              <Space wrap size={[8, 4]}>
+                {currentModel?.storage_uom ? (
+                  <Tag>Ед. хранения: {formatMeasurementUnit(currentModel.storage_uom)}</Tag>
+                ) : null}
+                {currentModel?.weight_kg ? <Tag>Вес: {currentModel.weight_kg} кг</Tag> : null}
+                {hasDimensions ? (
+                  <Tag>Габариты: {dimensions.map((value) => value ?? "—").join(" × ")} мм</Tag>
+                ) : null}
+              </Space>
+            </Space>
+          </Col>
+          <Col>
+            <Space wrap>
+              <Button size="small" onClick={() => selectedNode && selectClassifierNode(selectedNode)}>
+                Назад к моделям
+              </Button>
+              <Button size="small" onClick={() => openMoveModel(currentModel)}>
+                Перенести
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
+    )
+  }
+
+  const renderModelBomTab = () => (
+    <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      <Card
+        size="small"
+        title={`BOM модели: ${currentModel?.manufacturer_name || ""} ${currentModel?.model_name || ""}`.trim()}
+        extra={
+          <Space wrap>
+            <Button size="small" onClick={() => openBomItemModal()}>
+              Добавить строку
+            </Button>
+            <Button size="small" onClick={() => setBomImportOpen(true)}>
+              Импорт Excel
+            </Button>
+          </Space>
+        }
+      >
+        <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+          Клик по названию открывает карточку строки. Через «Изменить строку» меняются количество, номер на схеме,
+          родительский узел и связь с деталью/классификатором.
+        </Typography.Paragraph>
+        {modelBomLoading ? (
+          <Table size="small" loading columns={modelBomColumns} dataSource={[]} pagination={false} />
+        ) : currentModelBomTreeData.length ? (
+          <Tree
+            showLine
+            defaultExpandAll
+            treeData={currentModelBomTreeData}
+            style={{ background: "transparent" }}
+          />
+        ) : (
+          <Empty description="BOM модели пока не собран" />
+        )}
+      </Card>
+
+      <Card size="small" title={`Детали производителя вне BOM (${currentModelOemPartsOutsideBom.length})`}>
+        <Table
+          size="small"
+          rowKey="id"
+          columns={compactOemColumns}
+          dataSource={currentModelOemPartsOutsideBom}
+          loading={workspaceLoading}
+          pagination={{ pageSize: 10, showSizeChanger: false }}
+          locale={{ emptyText: "Все привязанные к модели детали производителя уже входят в BOM" }}
+        />
+      </Card>
+    </Space>
+  )
+
+  const renderModelUnitsTab = () => (
+    <Table
+      size="small"
+      rowKey="id"
+      columns={compactUnitColumns}
+      dataSource={currentModelUnits}
+      loading={workspaceLoading}
+      pagination={{ pageSize: 10, showSizeChanger: false }}
+      locale={{ emptyText: "Для этой модели пока нет машин клиентов" }}
+    />
+  )
+
+  const renderModelClientExecutionsTab = () => (
+    <Table
+      size="small"
+      rowKey="id"
+      columns={compactClientPartColumns}
+      dataSource={currentModelClientParts}
+      loading={workspaceLoading}
+      pagination={{ pageSize: 10, showSizeChanger: false }}
+      locale={{ emptyText: "Для этой модели пока нет клиентских отличий" }}
+    />
+  )
+
   const renderModelContent = () => {
     if (!currentModel) return <Empty description="Модель не найдена в выбранном разделе" />
     return (
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
-        <Space wrap>
-          <Button size="small" onClick={() => selectedNode && selectClassifierNode(selectedNode)}>
-            Назад к моделям раздела
-          </Button>
-          <Button size="small" onClick={() => openMoveModel(currentModel)}>
-            Перенести модель
-          </Button>
-        </Space>
+        {renderModelSummary()}
 
         <Tabs
           items={[
@@ -1960,54 +2737,19 @@ export default function EquipmentClassifierMain() {
               children: renderModelPassportTab(),
             },
             {
-              key: "manufacturer-parts",
-              label: `Детали производителя (${currentModelOemParts.length})`,
-              children: (
-                <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                  <Button size="small" onClick={() => openModelOemCatalog(currentModel)}>
-                    Открыть таблицу деталей
-                  </Button>
-                  <Table
-                    size="small"
-                    rowKey="id"
-                    columns={compactOemColumns}
-                    dataSource={currentModelOemParts}
-                    loading={workspaceLoading}
-                    pagination={{ pageSize: 10, showSizeChanger: false }}
-                    locale={{ emptyText: "Для этой модели пока нет деталей производителя" }}
-                  />
-                </Space>
-              ),
+              key: "model-bom",
+              label: `BOM модели (${modelBomItems.length})`,
+              children: renderModelBomTab(),
             },
             {
               key: "client-units",
               label: `Машины клиентов (${currentModelUnits.length})`,
-              children: (
-                <Table
-                  size="small"
-                  rowKey="id"
-                  columns={compactUnitColumns}
-                  dataSource={currentModelUnits}
-                  loading={workspaceLoading}
-                  pagination={{ pageSize: 10, showSizeChanger: false }}
-                  locale={{ emptyText: "Для этой модели пока нет машин клиентов" }}
-                />
-              ),
+              children: renderModelUnitsTab(),
             },
             {
-              key: "client-differences",
-              label: `Отличия клиентов (${currentModelClientParts.length})`,
-              children: (
-                <Table
-                  size="small"
-                  rowKey="id"
-                  columns={compactClientPartColumns}
-                  dataSource={currentModelClientParts}
-                  loading={workspaceLoading}
-                  pagination={{ pageSize: 10, showSizeChanger: false }}
-                  locale={{ emptyText: "Для этой модели пока нет клиентских отличий" }}
-                />
-              ),
+              key: "client-executions",
+              label: `Клиентские исполнения (${currentModelClientParts.length})`,
+              children: renderModelClientExecutionsTab(),
             },
           ]}
         />
@@ -2040,7 +2782,7 @@ export default function EquipmentClassifierMain() {
         </Button>
       </Space>
 
-      <Card size="small" title={`OEM каталог модели (${currentUnitOemParts.length})`}>
+      <Card size="small" title={`Детали производителя по модели (${currentUnitOemParts.length})`}>
         <Table
           size="small"
           rowKey="id"
@@ -2048,7 +2790,7 @@ export default function EquipmentClassifierMain() {
           dataSource={currentUnitOemParts}
           loading={workspaceLoading}
           pagination={{ pageSize: 8, showSizeChanger: false }}
-          locale={{ emptyText: "Для модели этой машины пока нет OEM-деталей" }}
+          locale={{ emptyText: "Для модели этой машины пока нет деталей производителя" }}
         />
       </Card>
 
@@ -2171,7 +2913,7 @@ export default function EquipmentClassifierMain() {
         <Input.Search
           allowClear
           enterButton="Найти"
-          placeholder="OEM номер, модель, клиент, серийный номер, чертеж или название детали"
+          placeholder="Номер детали производителя, модель, клиент, серийный номер, чертеж или название детали"
           value={nsiSearchQuery}
           onChange={(event) => {
             const value = event.target.value
@@ -2283,7 +3025,7 @@ export default function EquipmentClassifierMain() {
                   ? [detailsModel.length_mm, detailsModel.width_mm, detailsModel.height_mm].map((value) => value ?? "—").join(" × ")
                   : "—"}
               </Descriptions.Item>
-              <Descriptions.Item label="OEM деталей">
+              <Descriptions.Item label="Деталей производителя">
                 {Number(detailsModel.oem_parts_count) || 0}
               </Descriptions.Item>
               <Descriptions.Item label="Машин клиентов">
@@ -2364,7 +3106,7 @@ export default function EquipmentClassifierMain() {
                   {modelMedia.map((item) => (
                     <div key={item.id} style={{ width: 132 }}>
                       <Image
-                        src={item.file_url}
+                        src={resolveAssetUrl(item.file_url)}
                         alt={item.caption || item.file_name || "Фото модели"}
                         width={132}
                         height={96}
@@ -2406,14 +3148,14 @@ export default function EquipmentClassifierMain() {
               />
             </Card>
 
-            <Card size="small" title={`OEM детали (${selectedModelOemParts.length})`}>
+            <Card size="small" title={`Детали производителя (${selectedModelOemParts.length})`}>
               <Table
                 size="small"
                 rowKey="id"
                 columns={compactOemColumns}
                 dataSource={selectedModelOemParts}
                 pagination={{ pageSize: 6, showSizeChanger: false }}
-                locale={{ emptyText: "Для этой модели пока нет OEM-деталей" }}
+                locale={{ emptyText: "Для этой модели пока нет деталей производителя" }}
               />
             </Card>
 
@@ -2443,6 +3185,450 @@ export default function EquipmentClassifierMain() {
           <Empty description="Модель не выбрана" />
         )}
       </Drawer>
+
+      <Drawer
+        open={bomItemCardOpen}
+        title={selectedBomItem ? getBomItemLabel(selectedBomItem) : "Строка BOM"}
+        width={620}
+        onClose={() => {
+          setBomItemCardOpen(false)
+          setSelectedBomItem(null)
+        }}
+        extra={
+          selectedBomItem ? (
+            <Space>
+              {selectedBomItem.oem_part_id ? (
+                <Button size="small" onClick={() => navigate(`/original-parts/${selectedBomItem.oem_part_id}`)}>
+                  Открыть деталь производителя
+                </Button>
+              ) : null}
+              <Button size="small" onClick={() => openBomItemModal(selectedBomItem)}>
+                Изменить строку
+              </Button>
+            </Space>
+          ) : null
+        }
+      >
+        {selectedBomItem ? (
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            <Alert
+              type="info"
+              showIcon
+              message="Это строка применения в BOM модели"
+              description="Здесь видно, как конкретная деталь, сборка или позиция классификатора используется внутри этой модели: где стоит в дереве, какой номер на схеме, сколько штук и к какому чертежу относится. Это не цена и не коммерческая карточка поставщика."
+            />
+
+            <Card size="small" title="В этом BOM">
+              <Descriptions size="small" bordered column={1}>
+                <Descriptions.Item label="Модель">
+                  {[currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Тип строки">
+                  {selectedBomItem.catalog_position_id
+                    ? "Позиция классификатора"
+                    : selectedBomItem.oem_part_id
+                      ? "Деталь производителя"
+                      : "Сборка / узел производителя"}
+                </Descriptions.Item>
+                <Descriptions.Item label="№ позиции">
+                  {selectedBomItem.item_no || "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Каталожный номер производителя">
+                  {selectedBomItem.manufacturer_part_number || selectedBomItem.part_number || "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Название по каталогу">
+                  {selectedBomItem.manufacturer_part_name ||
+                    selectedBomItem.description_ru ||
+                    selectedBomItem.description_en ||
+                    selectedBomItem.title ||
+                    "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Количество">
+                  {Number(selectedBomItem.quantity || 0).toLocaleString("ru-RU")}{" "}
+                  {selectedBomItem.uom || selectedBomItem.catalog_position_uom || "шт"}
+                  <Button
+                    size="small"
+                    type="link"
+                    style={{ padding: "0 0 0 8px" }}
+                    onClick={() => openBomItemModal(selectedBomItem)}
+                  >
+                    изменить
+                  </Button>
+                </Descriptions.Item>
+                <Descriptions.Item label="Чертеж / документ">
+                  {selectedBomItem.drawing_number || "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Заметки">
+                  {selectedBomItem.notes || "—"}
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
+
+            {selectedBomItem.oem_part_id ? (
+              <Card size="small" title="Базовая деталь производителя">
+                <Descriptions size="small" bordered column={1}>
+                  <Descriptions.Item label="Производитель">
+                    {selectedBomItem.manufacturer_name || currentModel?.manufacturer_name || "—"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Номер производителя">
+                    {selectedBomItem.part_number || selectedBomItem.manufacturer_part_number || "—"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Описание">
+                    {selectedBomItem.description_ru ||
+                      selectedBomItem.description_en ||
+                      selectedBomItem.tech_description ||
+                      selectedBomItem.manufacturer_part_name ||
+                      "—"}
+                  </Descriptions.Item>
+                </Descriptions>
+              </Card>
+            ) : null}
+
+            {selectedBomItem.catalog_position_id ? (
+              <Card size="small" title="Связанная позиция классификатора">
+                <Descriptions size="small" bordered column={1}>
+                  <Descriptions.Item label="Позиция">
+                    {selectedBomItem.catalog_position_name || "—"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Код">
+                    {selectedBomItem.catalog_position_code || "—"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Раздел классификатора">
+                    {selectedBomItem.catalog_position_node_name || selectedBomItem.classifier_node_name || "—"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Описание">
+                    {selectedBomItem.catalog_position_description || "—"}
+                  </Descriptions.Item>
+                </Descriptions>
+              </Card>
+            ) : null}
+          </Space>
+        ) : (
+          <Empty description="Строка BOM не выбрана" />
+        )}
+      </Drawer>
+
+      <Modal
+        open={bomImportOpen}
+        title={`Импорт BOM из Excel${currentModel ? `: ${currentModel.manufacturer_name || ""} ${currentModel.model_name || ""}` : ""}`}
+        onCancel={() => {
+          setBomImportOpen(false)
+          setBomImportRows([])
+          setBomImportErrors([])
+          setBomImportWarnings([])
+          setBomImportSourceRows([])
+        }}
+        width={980}
+        footer={[
+          <Button key="template" onClick={downloadBomTemplate}>
+            Скачать шаблон
+          </Button>,
+          <Button
+            key="close"
+            onClick={() => {
+              setBomImportOpen(false)
+              setBomImportRows([])
+              setBomImportErrors([])
+              setBomImportWarnings([])
+              setBomImportSourceRows([])
+            }}
+          >
+            Закрыть
+          </Button>,
+          <Button
+            key="commit"
+            type="primary"
+            loading={bomImportCommitting}
+            disabled={!bomImportRows.length || bomImportErrors.length > 0}
+            onClick={handleCommitBomImport}
+          >
+            Импортировать
+          </Button>,
+        ]}
+        destroyOnHidden
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            Excel может описывать дерево BOM по уровням или через родительские ключи. Строки деталей производителя
+            ищутся среди деталей, привязанных к этой модели, а позиции классификатора — по коду или точному названию.
+          </Typography.Paragraph>
+
+          <Space wrap>
+            <Upload accept=".xlsx" showUploadList={false} customRequest={handleBomImportUpload}>
+              <Button loading={bomImportLoading}>Загрузить Excel</Button>
+            </Upload>
+            <Checkbox checked={bomImportReplace} onChange={(event) => setBomImportReplace(event.target.checked)}>
+              Заменить текущий BOM модели
+            </Checkbox>
+          </Space>
+
+          {bomImportErrors.length ? (
+            <Alert
+              type="error"
+              showIcon
+              message="Файл нужно поправить перед импортом"
+              description={
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  {bomImportErrors.slice(0, 12).map((error, index) => (
+                    <li key={index}>
+                      {error.row_number ? `Строка ${error.row_number}: ` : ""}
+                      {error.message || String(error)}
+                    </li>
+                  ))}
+                </ul>
+              }
+            />
+          ) : null}
+
+          {bomImportWarnings.length ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="Предупреждения"
+              description={
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  {bomImportWarnings.slice(0, 8).map((warning, index) => (
+                    <li key={index}>
+                      {warning.row_number ? `Строка ${warning.row_number}: ` : ""}
+                      {warning.message || String(warning)}
+                    </li>
+                  ))}
+                </ul>
+              }
+            />
+          ) : null}
+
+          <Table
+            size="small"
+            rowKey={(row) => row.item_key || row.row_number}
+            columns={bomImportColumns}
+            dataSource={bomImportRows}
+            loading={bomImportLoading}
+            pagination={{ pageSize: 8, showSizeChanger: false }}
+            locale={{ emptyText: "Загрузите Excel, чтобы увидеть предварительный разбор BOM" }}
+          />
+        </Space>
+      </Modal>
+
+      <Modal
+        open={bomItemModalOpen}
+        title={editingBomItem ? "Строка BOM" : "Новая строка BOM"}
+        width={760}
+        okText="Сохранить"
+        cancelText="Отмена"
+        confirmLoading={bomItemSaving}
+        onOk={handleSaveBomItem}
+        onCancel={() => {
+          setBomItemModalOpen(false)
+          setEditingBomItem(null)
+        }}
+        destroyOnHidden
+      >
+        <Form form={bomItemForm} layout="vertical" initialValues={{ kind: "group", quantity: 1 }}>
+          <Form.Item name="kind" rules={[{ required: true }]} hidden>
+            <Input />
+          </Form.Item>
+
+          <Form.Item label="Что добавить в BOM">
+            <Row gutter={10}>
+              {[
+                {
+                  value: "group",
+                  title: "Новая сборка / раздел",
+                  text: "Создать узел дерева: группу, сборку или подсборку производителя.",
+                },
+                {
+                  value: "oem_part",
+                  title: "Существующая деталь производителя",
+                  text: "Взять деталь, которая уже заведена в каталоге этой модели.",
+                },
+                {
+                  value: "catalog_position",
+                  title: "Позиция из классификатора",
+                  text: "Переиспользовать стандартную или типовую позицию классификатора.",
+                },
+              ].map((option) => {
+                const active = bomItemKind === option.value
+                return (
+                  <Col span={8} key={option.value}>
+                    <button
+                      type="button"
+                      disabled={Boolean(editingBomItem)}
+                      onClick={() => bomItemForm.setFieldsValue({ kind: option.value })}
+                      style={{
+                        width: "100%",
+                        minHeight: 112,
+                        padding: 12,
+                        textAlign: "left",
+                        border: active ? "1px solid #1677ff" : "1px solid #d9d9d9",
+                        borderRadius: 6,
+                        background: active ? "#e6f4ff" : "#fff",
+                        cursor: editingBomItem ? "default" : "pointer",
+                      }}
+                    >
+                      <Typography.Text strong>{option.title}</Typography.Text>
+                      <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0", fontSize: 12 }}>
+                        {option.text}
+                      </Typography.Paragraph>
+                    </button>
+                  </Col>
+                )
+              })}
+            </Row>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginTop: 12 }}
+              message={bomItemKindHelp[bomItemKind || "group"].message}
+              description={bomItemKindHelp[bomItemKind || "group"].description}
+            />
+            {editingBomItem ? (
+              <Typography.Text type="secondary">
+                Тип строки уже выбран при создании. Сейчас можно менять место в дереве, номер, количество и описание.
+              </Typography.Text>
+            ) : null}
+          </Form.Item>
+
+          <Form.Item
+            label="Куда добавить в дереве BOM"
+            name="parent_item_id"
+            extra="Оставьте пустым, если строка должна быть на верхнем уровне модели."
+          >
+            <Select
+              allowClear
+              placeholder="В корень модели"
+              options={currentModelBomRows
+                .filter((row) => Number(row.id) !== Number(editingBomItem?.id))
+                .map((row) => ({
+                  value: row.id,
+                  label: `${"— ".repeat(row.bom_level || 0)}${row.item_no ? `${row.item_no}. ` : ""}${getBomItemLabel(row)}${getBomItemName(row) ? ` — ${getBomItemName(row)}` : ""}`,
+                }))}
+            />
+          </Form.Item>
+
+          <Row gutter={12}>
+            <Col span={8}>
+              <Form.Item
+                label="№ на схеме"
+                name="item_no"
+                extra="Позиция из бумажного или PDF-каталога: 1, 2, 14A, 3.1."
+              >
+                <Input placeholder="1, 2, 14A" />
+              </Form.Item>
+            </Col>
+            <Col span={16}>
+              <Form.Item
+                label="Каталожный номер производителя"
+                name="manufacturer_part_number"
+                extra={
+                  bomItemKind === "catalog_position"
+                    ? "Например, свой номер Metso для стандартного болта из классификатора."
+                    : "Официальный номер производителя в каталоге этой модели."
+                }
+              >
+                <Input placeholder="Например: 1093080129" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            label="Название по каталогу"
+            name="manufacturer_part_name"
+            rules={[
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  const kind = getFieldValue("kind")
+                  const hasNumber = getFieldValue("manufacturer_part_number")
+                  const hasTitle = getFieldValue("title")
+                  if (kind !== "group" || value || hasNumber || hasTitle) return Promise.resolve()
+                  return Promise.reject(new Error("Укажите название или каталожный номер"))
+                },
+              }),
+            ]}
+          >
+            <Input placeholder="Например: Adjustment Ring" />
+          </Form.Item>
+
+          {bomItemKind === "group" ? (
+            <Form.Item
+              label="Название в системе, если отличается"
+              name="title"
+              extra="Обычно можно оставить пустым: тогда будет показано название по каталогу."
+            >
+              <Input placeholder="Можно оставить пустым" />
+            </Form.Item>
+          ) : null}
+
+          {bomItemKind === "oem_part" ? (
+            <Form.Item
+              label="Найти деталь производителя в каталоге модели"
+              name="oem_part_id"
+              rules={[{ required: true, message: "Выберите деталь производителя" }]}
+            >
+              <Select
+                showSearch
+                optionFilterProp="label"
+                placeholder="Начните вводить номер или описание детали"
+                onChange={(value) => {
+                  const row = currentModelOemParts.find((item) => Number(item.id) === Number(value))
+                  if (!row) return
+                  bomItemForm.setFieldsValue({
+                    manufacturer_part_number: row.part_number || "",
+                    manufacturer_part_name: row.description_ru || row.description_en || row.tech_description || "",
+                  })
+                }}
+                options={currentModelOemParts.map((row) => ({
+                  value: row.id,
+                  label: `${row.part_number || "без номера"}${row.description_ru || row.description_en ? ` — ${row.description_ru || row.description_en}` : ""}`,
+                }))}
+              />
+            </Form.Item>
+          ) : null}
+
+          {bomItemKind === "catalog_position" ? (
+            <Form.Item
+              label="Найти позицию в классификаторе"
+              name="catalog_position_id"
+              rules={[{ required: true, message: "Выберите позицию классификатора" }]}
+            >
+              <Select
+                showSearch
+                filterOption={false}
+                loading={catalogPositionsLoading}
+                placeholder="Начните вводить: болт, M20, DIN..."
+                onSearch={loadCatalogPositions}
+                onChange={(value) => {
+                  const row = catalogPositionOptions.find((item) => Number(item.id) === Number(value))
+                  if (!row) return
+                  bomItemForm.setFieldsValue({
+                    manufacturer_part_name: row.display_name || "",
+                  })
+                }}
+                options={catalogPositionOptions.map((row) => ({
+                  value: row.id,
+                  label: `${row.display_name}${row.classifier_node_name ? ` / ${row.classifier_node_name}` : ""}`,
+                }))}
+              />
+            </Form.Item>
+          ) : null}
+
+          <Form.Item label="Чертеж / документ" name="drawing_number">
+            <Input placeholder="Например: 11093075008" />
+          </Form.Item>
+
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item label="Количество" name="quantity" rules={[{ required: true }]}>
+                <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item label="Заметки" name="notes">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         open={modalOpen}
@@ -2475,7 +3661,7 @@ export default function EquipmentClassifierMain() {
             <Space direction="vertical" size={8} style={{ width: "100%" }}>
               {nodeCardImageUrl ? (
                 <img
-                  src={nodeCardImageUrl}
+                  src={resolveAssetUrl(nodeCardImageUrl)}
                   alt="Фото карточки"
                   style={{ width: 180, height: 120, objectFit: "cover", borderRadius: 6, border: "1px solid #f0f0f0" }}
                 />
@@ -2526,7 +3712,7 @@ export default function EquipmentClassifierMain() {
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Typography.Text type="secondary">
-            Выберите новый раздел классификатора. Все OEM-применения, BOM и машины клиентов останутся привязаны к этой модели.
+            Выберите новый раздел классификатора. Все применения деталей производителя, BOM и машины клиентов останутся привязаны к этой модели.
           </Typography.Text>
           {treeData.length ? (
             <Tree

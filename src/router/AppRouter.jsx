@@ -81,7 +81,7 @@ const AppRouter = () => (
         <Route path="supplier-parts" element={<TabAccessRoute path="/supplier-parts" title="Детали поставщиков"><SupplierPartsPage /></TabAccessRoute>} />
         <Route path="supplier-parts/:id" element={<TabAccessRoute path="/supplier-parts" title="Детали поставщиков"><SupplierPartDetailPage /></TabAccessRoute>} />
         <Route path="standard-parts" element={<TabAccessRoute path="/standard-parts" title="Стандартные детали"><StandardPartsPage /></TabAccessRoute>} />
-        <Route path="equipment-classifier" element={<TabAccessRoute path="/equipment-classifier" title="Классификатор оборудования"><EquipmentClassifierPage /></TabAccessRoute>} />
+        <Route path="equipment-classifier" element={<TabAccessRoute path="/equipment-classifier" title="Классификатор"><EquipmentClassifierPage /></TabAccessRoute>} />
         <Route path="materials" element={<TabAccessRoute path="/materials" title="Материалы"><MaterialsPage /></TabAccessRoute>} />
         <Route path="measurement-units" element={<TabAccessRoute path="/measurement-units" title="Единицы измерения"><MeasurementUnitsPage /></TabAccessRoute>} />
         <Route path="logistics-route-templates" element={<TabAccessRoute path="/logistics-route-templates" title="Шаблоны доставки"><LogisticsRouteTemplatesPage /></TabAccessRoute>} />
