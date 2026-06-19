@@ -97,20 +97,8 @@ const ATTRIBUTE_TYPE_OPTIONS = [
 
 const ATTRIBUTE_TYPE_LABELS = Object.fromEntries(ATTRIBUTE_TYPE_OPTIONS.map((item) => [item.value, item.label]))
 
-const CARD_KIND_OPTIONS = [
-  { value: "auto", label: "Определять автоматически" },
-  { value: "mixed", label: "Смешанный раздел" },
-  { value: "equipment_model", label: "Модели оборудования" },
-  { value: "catalog_position", label: "Карточки товара" },
-  { value: "material", label: "Материалы" },
-  { value: "service", label: "Услуги" },
-]
-
-const CARD_KIND_LABELS = Object.fromEntries(CARD_KIND_OPTIONS.map((item) => [item.value, item.label]))
-
 const EMPTY_FORM = {
   name: "",
-  card_kind: "auto",
   notes: "",
 }
 
@@ -342,7 +330,6 @@ export default function EquipmentClassifierMain() {
   const [modelClientExecutionsLoading, setModelClientExecutionsLoading] = useState(false)
   const [clientExecutionStatusFilter, setClientExecutionStatusFilter] = useState(null)
   const [clientExecutionMissingDocsOnly, setClientExecutionMissingDocsOnly] = useState(false)
-  const [modelPassportEditing, setModelPassportEditing] = useState(false)
   const [bomImportOpen, setBomImportOpen] = useState(false)
   const [bomImportLoading, setBomImportLoading] = useState(false)
   const [bomImportCommitting, setBomImportCommitting] = useState(false)
@@ -687,14 +674,12 @@ export default function EquipmentClassifierMain() {
     setAttributeFilters({})
     setManufacturerFilter(null)
     setBranchSectionFilter(null)
-    setModelPassportEditing(false)
   }, [selectedId])
 
   const nodeMap = useMemo(() => flattenTree(treeRows), [treeRows])
   const selectedNode = selectedId ? nodeMap.get(Number(selectedId)) || null : null
   const selectedNodeChildren = Array.isArray(selectedNode?.children) ? selectedNode.children : []
   const selectedNodeIsLeaf = !!selectedNode && selectedNodeChildren.length === 0
-  const selectedNodeCardKind = selectedNode?.card_kind || "auto"
   const selectedBranchNodeIds = useMemo(() => {
     if (!selectedNode) return []
     const ids = []
@@ -813,16 +798,7 @@ export default function EquipmentClassifierMain() {
     const build = (nodes) =>
       (nodes || []).map((node) => ({
         key: treeKey.node(node.id),
-        title: (
-          <Space size={4}>
-            <span>{node.name}</span>
-            {node.card_kind && node.card_kind !== "auto" ? (
-              <Tag style={{ marginInlineEnd: 0 }} color={node.card_kind === "catalog_position" ? "purple" : "blue"}>
-                {CARD_KIND_LABELS[node.card_kind] || node.card_kind}
-              </Tag>
-            ) : null}
-          </Space>
-        ),
+        title: node.name,
         children: build(node.children || []),
       }))
 
@@ -866,7 +842,6 @@ export default function EquipmentClassifierMain() {
     setNodeCardImageUrl(node.card_image_url || "")
     form.setFieldsValue({
       name: node.name || "",
-      card_kind: node.card_kind || "auto",
       notes: node.notes || "",
     })
     setModalOpen(true)
@@ -882,7 +857,6 @@ export default function EquipmentClassifierMain() {
         name: values.name,
         code: editingNode ? editingNode.code || null : null,
         node_type: editingNode?.node_type || getDefaultNodeType(parentForCreate),
-        card_kind: values.card_kind || "auto",
         sort_order: editingNode ? editingNode.sort_order || 0 : 0,
         is_active: editingNode ? (editingNode.is_active ? 1 : 0) : 1,
         notes: values.notes || null,
@@ -982,11 +956,6 @@ export default function EquipmentClassifierMain() {
         manufacturer_id: values.manufacturer_id,
         model_name: values.model_name,
         classifier_node_id: selectedNode.id,
-        storage_uom: values.storage_uom || null,
-        weight_kg: values.weight_kg ?? null,
-        length_mm: values.length_mm ?? null,
-        width_mm: values.width_mm ?? null,
-        height_mm: values.height_mm ?? null,
         notes: values.notes || null,
       })
       message.success("Модель создана в выбранном разделе")
@@ -2098,11 +2067,6 @@ export default function EquipmentClassifierMain() {
     if (selectedTreeEntity.type !== "model" || !currentModel?.id) return
     setDetailsModel(currentModel)
     modelDetailsForm.setFieldsValue({
-      storage_uom: currentModel.storage_uom || undefined,
-      weight_kg: currentModel.weight_kg ?? undefined,
-      length_mm: currentModel.length_mm ?? undefined,
-      width_mm: currentModel.width_mm ?? undefined,
-      height_mm: currentModel.height_mm ?? undefined,
       notes: currentModel.notes || "",
     })
     loadModelMedia(currentModel.id)
@@ -2182,11 +2146,6 @@ export default function EquipmentClassifierMain() {
     if (!row?.id) return
     setDetailsModel(row || null)
     modelDetailsForm.setFieldsValue({
-      storage_uom: row?.storage_uom || undefined,
-      weight_kg: row?.weight_kg ?? undefined,
-      length_mm: row?.length_mm ?? undefined,
-      width_mm: row?.width_mm ?? undefined,
-      height_mm: row?.height_mm ?? undefined,
       notes: row?.notes || "",
     })
     if (row?.id) {
@@ -2216,11 +2175,6 @@ export default function EquipmentClassifierMain() {
       const values = await modelDetailsForm.validateFields()
       setModelDetailsSaving(true)
       const { data } = await axios.put(`/equipment-models/${detailsModel.id}`, {
-        storage_uom: values.storage_uom || null,
-        weight_kg: values.weight_kg ?? null,
-        length_mm: values.length_mm ?? null,
-        width_mm: values.width_mm ?? null,
-        height_mm: values.height_mm ?? null,
         notes: values.notes || null,
       })
       setDetailsModel(data || detailsModel)
@@ -2371,26 +2325,8 @@ export default function EquipmentClassifierMain() {
     [rawWorkspaceCatalogPositions, selectedId, selectedNodeIsLeaf],
   )
 
-  const resolvedSelectedNodeCardKind = useMemo(() => {
-    if (!selectedNode) return "auto"
-    const explicitKind = selectedNode.card_kind || "auto"
-    if (explicitKind !== "auto") return explicitKind
-    const hasModels = workspaceModels.length > 0
-    const hasCatalogPositions = workspaceCatalogPositions.length > 0
-    if (hasModels && hasCatalogPositions) return "mixed"
-    if (hasCatalogPositions) return "catalog_position"
-    if (hasModels) return "equipment_model"
-    return "auto"
-  }, [selectedNode, workspaceCatalogPositions.length, workspaceModels.length])
-
-  const shouldShowModelSection =
-    resolvedSelectedNodeCardKind === "auto" ||
-    resolvedSelectedNodeCardKind === "mixed" ||
-    resolvedSelectedNodeCardKind === "equipment_model"
-  const shouldShowCatalogPositionSection =
-    resolvedSelectedNodeCardKind === "auto" ||
-    resolvedSelectedNodeCardKind === "mixed" ||
-    resolvedSelectedNodeCardKind === "catalog_position"
+  const shouldShowModelSection = workspaceModels.length > 0 || workspaceCatalogPositions.length === 0
+  const shouldShowCatalogPositionSection = workspaceCatalogPositions.length > 0
 
   const branchModelsRaw = useMemo(() => {
     if (!selectedNode || selectedNodeIsLeaf) return []
@@ -3503,15 +3439,6 @@ export default function EquipmentClassifierMain() {
         ) : null}
       </Space>
 
-      {selectedNode ? (
-        <Space wrap>
-          <Tag color={resolvedSelectedNodeCardKind === "catalog_position" ? "purple" : "blue"}>
-            {CARD_KIND_LABELS[resolvedSelectedNodeCardKind] || "Тип содержимого не задан"}
-          </Tag>
-          {selectedNodeCardKind === "auto" ? <Tag>авто</Tag> : null}
-        </Space>
-      ) : null}
-
       {selectedNodeIsLeaf ? (
         <>
           {shouldShowModelSection ? (
@@ -3545,18 +3472,6 @@ export default function EquipmentClassifierMain() {
                 })}
               />
             </Card>
-          ) : null}
-          {resolvedSelectedNodeCardKind === "material" || resolvedSelectedNodeCardKind === "service" ? (
-            <Alert
-              type="info"
-              showIcon
-              message={
-                resolvedSelectedNodeCardKind === "material"
-                  ? "Раздел материалов"
-                  : "Раздел услуг"
-              }
-              description="Тип раздела уже зафиксирован. Отдельная карточка для этого типа будет следующим слоем: поля, документы, поставщики и связи."
-            />
           ) : null}
         </>
       ) : (
@@ -3601,33 +3516,6 @@ export default function EquipmentClassifierMain() {
             <Button size="small" onClick={() => currentModel && openModelAttributes(currentModel)} disabled={!currentModel}>
               Изменить характеристики
             </Button>
-            {modelPassportEditing ? (
-              <>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    modelDetailsForm.setFieldsValue({
-                      storage_uom: currentModel?.storage_uom || undefined,
-                      weight_kg: currentModel?.weight_kg ?? undefined,
-                      length_mm: currentModel?.length_mm ?? undefined,
-                      width_mm: currentModel?.width_mm ?? undefined,
-                      height_mm: currentModel?.height_mm ?? undefined,
-                      notes: currentModel?.notes || "",
-                    })
-                    setModelPassportEditing(false)
-                  }}
-                >
-                  Отмена
-                </Button>
-                <Button size="small" type="primary" loading={modelDetailsSaving} onClick={handleSaveModelDetails}>
-                  Сохранить
-                </Button>
-              </>
-            ) : (
-              <Button size="small" type="primary" onClick={() => setModelPassportEditing(true)}>
-                Редактировать паспорт
-              </Button>
-            )}
           </Space>
         }
       >
@@ -3649,19 +3537,6 @@ export default function EquipmentClassifierMain() {
                 <Descriptions.Item label="Модель">{currentModel?.model_name || "—"}</Descriptions.Item>
                 <Descriptions.Item label="Раздел классификатора">
                   {currentModel?.classifier_node_name || selectedNode?.name || "—"}
-                </Descriptions.Item>
-                <Descriptions.Item label="Ед. хранения">
-                  {formatMeasurementUnit(currentModel?.storage_uom) || "—"}
-                </Descriptions.Item>
-                <Descriptions.Item label="Вес, кг">{currentModel?.weight_kg ?? "—"}</Descriptions.Item>
-                <Descriptions.Item label="Габариты, мм">
-                  {[currentModel?.length_mm, currentModel?.width_mm, currentModel?.height_mm].some(
-                    (value) => value !== null && value !== undefined,
-                  )
-                    ? [currentModel?.length_mm, currentModel?.width_mm, currentModel?.height_mm]
-                        .map((value) => value ?? "—")
-                        .join(" × ")
-                    : "—"}
                 </Descriptions.Item>
               </Descriptions>
             </Col>
@@ -3814,52 +3689,6 @@ export default function EquipmentClassifierMain() {
             {currentModel?.notes || "Заметки по модели пока не заполнены"}
           </Typography.Paragraph>
 
-          {modelPassportEditing ? (
-            <>
-              <Divider style={{ margin: "8px 0" }} />
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                Редактирование паспорта
-              </Typography.Title>
-              <Form form={modelDetailsForm} layout="vertical">
-                <Row gutter={12}>
-                  <Col xs={24} md={12}>
-                    <Form.Item label="Единица хранения" name="storage_uom">
-                      <Select
-                        allowClear
-                        showSearch
-                        loading={measurementUnitsLoading}
-                        options={measurementUnitOptions}
-                        optionFilterProp="label"
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <Form.Item label="Вес, кг" name="weight_kg">
-                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Form.Item label="Длина, мм" name="length_mm">
-                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Form.Item label="Ширина, мм" name="width_mm">
-                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Form.Item label="Высота, мм" name="height_mm">
-                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Form.Item label="Заметки" name="notes">
-                  <Input.TextArea rows={3} />
-                </Form.Item>
-              </Form>
-            </>
-          ) : null}
         </Space>
       </Card>
     </Space>
@@ -4393,17 +4222,6 @@ export default function EquipmentClassifierMain() {
               <Descriptions.Item label="Раздел классификатора">
                 {detailsModel.classifier_node_name || "—"}
               </Descriptions.Item>
-              <Descriptions.Item label="Ед. хранения">
-                {formatMeasurementUnit(detailsModel.storage_uom) || "—"}
-              </Descriptions.Item>
-              <Descriptions.Item label="Вес, кг">
-                {detailsModel.weight_kg ?? "—"}
-              </Descriptions.Item>
-              <Descriptions.Item label="Габариты, мм" span={2}>
-                {[detailsModel.length_mm, detailsModel.width_mm, detailsModel.height_mm].some((value) => value !== null && value !== undefined)
-                  ? [detailsModel.length_mm, detailsModel.width_mm, detailsModel.height_mm].map((value) => value ?? "—").join(" × ")
-                  : "—"}
-              </Descriptions.Item>
               <Descriptions.Item label="Деталей производителя">
                 {Number(detailsModel.oem_parts_count) || 0}
               </Descriptions.Item>
@@ -4417,7 +4235,7 @@ export default function EquipmentClassifierMain() {
 
             <Card
               size="small"
-              title="Карточка модели"
+              title="Заметки"
               extra={
                 <Button size="small" type="primary" loading={modelDetailsSaving} onClick={handleSaveModelDetails}>
                   Сохранить
@@ -4425,39 +4243,6 @@ export default function EquipmentClassifierMain() {
               }
             >
               <Form form={modelDetailsForm} layout="vertical">
-                <Row gutter={12}>
-                  <Col xs={24} md={12}>
-                    <Form.Item label="Единица хранения" name="storage_uom">
-                      <Select
-                        allowClear
-                        showSearch
-                        loading={measurementUnitsLoading}
-                        options={measurementUnitOptions}
-                        optionFilterProp="label"
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <Form.Item label="Вес, кг" name="weight_kg">
-                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Form.Item label="Длина, мм" name="length_mm">
-                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Form.Item label="Ширина, мм" name="width_mm">
-                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Form.Item label="Высота, мм" name="height_mm">
-                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-                    </Form.Item>
-                  </Col>
-                </Row>
                 <Form.Item label="Заметки" name="notes">
                   <Input.TextArea rows={3} />
                 </Form.Item>
@@ -5422,13 +5207,6 @@ export default function EquipmentClassifierMain() {
           >
             <Input placeholder="Например: Дробилки конусные" />
           </Form.Item>
-          <Form.Item
-            label="Тип содержимого"
-            name="card_kind"
-            tooltip="Определяет, какие карточки ожидаются в этом разделе: модели оборудования, товарные карточки, материалы, услуги или смешанный раздел."
-          >
-            <Select options={CARD_KIND_OPTIONS} />
-          </Form.Item>
           <Form.Item label="Описание для карточки" name="notes">
             <Input.TextArea rows={3} />
           </Form.Item>
@@ -5661,39 +5439,6 @@ export default function EquipmentClassifierMain() {
           >
             <Input />
           </Form.Item>
-          <Row gutter={12}>
-            <Col xs={24} md={12}>
-              <Form.Item label="Единица хранения" name="storage_uom">
-                <Select
-                  allowClear
-                  showSearch
-                  loading={measurementUnitsLoading}
-                  options={measurementUnitOptions}
-                  optionFilterProp="label"
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Вес, кг" name="weight_kg">
-                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="Длина, мм" name="length_mm">
-                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="Ширина, мм" name="width_mm">
-                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="Высота, мм" name="height_mm">
-                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-              </Form.Item>
-            </Col>
-          </Row>
           <Form.Item label="Заметки" name="notes">
             <Input.TextArea rows={3} />
           </Form.Item>
