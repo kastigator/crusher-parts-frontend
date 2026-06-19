@@ -46,6 +46,17 @@ const CLIENT_PART_TYPE_COLORS = {
   unknown_oem: "default",
 }
 
+const UNIT_BOM_STATUS_OPTIONS = [
+  { value: "as_original", label: "Как в базовой модели", color: "green" },
+  { value: "replaced", label: "Заменена", color: "purple" },
+  { value: "client_drawing", label: "По чертежу клиента", color: "blue" },
+  { value: "unknown_oem", label: "OEM неизвестен", color: "default" },
+  { value: "not_applicable", label: "Не применяется", color: "red" },
+  { value: "needs_review", label: "Требует уточнения", color: "orange" },
+]
+
+const UNIT_BOM_STATUS_BY_VALUE = Object.fromEntries(UNIT_BOM_STATUS_OPTIONS.map((item) => [item.value, item]))
+
 const SEARCH_TYPE_LABELS = {
   classifier_node: "Раздел",
   equipment_model: "Модель",
@@ -93,6 +104,15 @@ const CARD_IMAGE_STYLE = {
   objectFit: "cover",
   borderRadius: 6,
   background: "#f5f5f5",
+}
+
+const formatFileSize = (bytes) => {
+  if (bytes === null || bytes === undefined || bytes === "") return "—"
+  const n = Number(bytes)
+  if (!Number.isFinite(n)) return "—"
+  const units = ["B", "KB", "MB", "GB"]
+  const idx = Math.min(Math.floor(Math.log(Math.max(n, 1)) / Math.log(1024)), units.length - 1)
+  return `${(n / 1024 ** idx).toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`
 }
 
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
@@ -166,6 +186,12 @@ const getBomItemName = (row) =>
   row?.title ||
   ""
 
+const getBomItemTypeLabel = (row) => {
+  if (row?.catalog_position_id) return "Позиция классификатора"
+  if (row?.oem_part_id) return "Деталь производителя"
+  return "Сборка / узел производителя"
+}
+
 const flattenBomTreeRows = (rows, level = 0, acc = []) => {
   ;(rows || []).forEach((row, index) => {
     const children = Array.isArray(row.children) ? row.children : []
@@ -219,6 +245,19 @@ const buildBomTreeData = (rows, actions = {}) =>
                 Добавить внутрь
               </Button>
             ) : null}
+            {actions.onDelete ? (
+              <Popconfirm
+                title="Удалить строку из BOM?"
+                description="Будет удалено только это место применения в BOM модели. Если внутри есть дочерние позиции, удалится весь подузел."
+                okText="Удалить"
+                cancelText="Отмена"
+                onConfirm={() => actions.onDelete(row)}
+              >
+                <Button size="small" type="link" danger>
+                  Удалить
+                </Button>
+              </Popconfirm>
+            ) : null}
           </Space>
           <Typography.Text type="secondary">
             {secondary.join(" / ") || (isGroup ? "сборка или раздел BOM" : "—")}
@@ -235,6 +274,7 @@ export default function EquipmentClassifierMain() {
   const [treeRows, setTreeRows] = useState([])
   const [allModels, setAllModels] = useState([])
   const [allUnits, setAllUnits] = useState([])
+  const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(false)
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
   const [workspace, setWorkspace] = useState(null)
@@ -251,6 +291,26 @@ export default function EquipmentClassifierMain() {
   const [modelAttributesSaving, setModelAttributesSaving] = useState(false)
   const [modelDetailsSaving, setModelDetailsSaving] = useState(false)
   const [modelAttributeRows, setModelAttributeRows] = useState([])
+  const [unitModalOpen, setUnitModalOpen] = useState(false)
+  const [unitSaving, setUnitSaving] = useState(false)
+  const [unitAttributesLoading, setUnitAttributesLoading] = useState(false)
+  const [unitAttributeRows, setUnitAttributeRows] = useState([])
+  const [unitPassportLoading, setUnitPassportLoading] = useState(false)
+  const [unitPassportRows, setUnitPassportRows] = useState([])
+  const [editingUnit, setEditingUnit] = useState(null)
+  const [unitBomLoading, setUnitBomLoading] = useState(false)
+  const [unitBomItems, setUnitBomItems] = useState([])
+  const [unitBomOverrideOpen, setUnitBomOverrideOpen] = useState(false)
+  const [unitBomOverrideSaving, setUnitBomOverrideSaving] = useState(false)
+  const [unitBomClientPartSaving, setUnitBomClientPartSaving] = useState(false)
+  const [unitClientPartOptions, setUnitClientPartOptions] = useState([])
+  const [unitClientPartLoading, setUnitClientPartLoading] = useState(false)
+  const [editingUnitBomItem, setEditingUnitBomItem] = useState(null)
+  const [clientPartDrawerOpen, setClientPartDrawerOpen] = useState(false)
+  const [clientPartDetails, setClientPartDetails] = useState(null)
+  const [clientPartDocuments, setClientPartDocuments] = useState([])
+  const [clientPartDetailsLoading, setClientPartDetailsLoading] = useState(false)
+  const [clientPartDocumentUploading, setClientPartDocumentUploading] = useState(false)
   const [attributeModel, setAttributeModel] = useState(null)
   const [detailsModel, setDetailsModel] = useState(null)
   const [modelMedia, setModelMedia] = useState([])
@@ -261,6 +321,10 @@ export default function EquipmentClassifierMain() {
   const [modelDocumentUploading, setModelDocumentUploading] = useState(false)
   const [modelBomItems, setModelBomItems] = useState([])
   const [modelBomLoading, setModelBomLoading] = useState(false)
+  const [modelClientExecutions, setModelClientExecutions] = useState([])
+  const [modelClientExecutionsLoading, setModelClientExecutionsLoading] = useState(false)
+  const [clientExecutionStatusFilter, setClientExecutionStatusFilter] = useState(null)
+  const [clientExecutionMissingDocsOnly, setClientExecutionMissingDocsOnly] = useState(false)
   const [bomImportOpen, setBomImportOpen] = useState(false)
   const [bomImportLoading, setBomImportLoading] = useState(false)
   const [bomImportCommitting, setBomImportCommitting] = useState(false)
@@ -303,23 +367,26 @@ export default function EquipmentClassifierMain() {
   const [attributeForm] = Form.useForm()
   const [modelAttributesForm] = Form.useForm()
   const [modelDetailsForm] = Form.useForm()
+  const [unitForm] = Form.useForm()
+  const [unitAttributesForm] = Form.useForm()
+  const [unitBomOverrideForm] = Form.useForm()
   const [bomItemForm] = Form.useForm()
   const bomItemKind = Form.useWatch("kind", bomItemForm)
   const bomItemKindHelp = {
     group: {
-      message: "Создается новый узел дерева BOM",
+      message: "Создать узел или сборку",
       description:
-        "Используйте для разделов каталога, сборок и подсборок производителя. У такого узла может быть свой каталожный номер и внутрь можно добавлять детали.",
+        "Подходит для разделов parts book, сборок и подсборок. Внутрь такого узла можно добавлять детали.",
     },
     oem_part: {
-      message: "Добавляется уже заведенная деталь производителя",
+      message: "Добавить деталь производителя",
       description:
-        "Вы выбираете деталь из каталога этой модели. Номер на схеме, количество и место в дереве относятся только к текущему BOM.",
+        "Выберите деталь из каталога производителя. Номер на схеме, количество и родитель относятся к текущему месту в BOM.",
     },
     catalog_position: {
-      message: "Добавляется позиция из классификатора",
+      message: "Добавить позицию из классификатора",
       description:
-        "Так удобно использовать стандартные или типовые изделия. Каталожный номер производителя здесь задается для конкретного места в BOM.",
+        "Используйте для стандартных и типовых изделий. Номер производителя задается именно для этого места в BOM.",
     },
   }
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
@@ -355,10 +422,22 @@ export default function EquipmentClassifierMain() {
     }
   }, [])
 
+  const loadClients = useCallback(async () => {
+    try {
+      const { data } = await axios.get("/clients", { params: { limit: 1000 } })
+      setClients(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error("GET /clients error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить клиентов")
+      setClients([])
+    }
+  }, [])
+
   useEffect(() => {
     loadTree()
     loadTreeInventory()
-  }, [loadTree, loadTreeInventory])
+    loadClients()
+  }, [loadClients, loadTree, loadTreeInventory])
 
   const loadWorkspace = useCallback(async (nodeId) => {
     if (!nodeId) {
@@ -457,6 +536,24 @@ export default function EquipmentClassifierMain() {
       setModelBomItems([])
     } finally {
       setModelBomLoading(false)
+    }
+  }, [])
+
+  const loadModelClientExecutions = useCallback(async (modelId) => {
+    if (!modelId) {
+      setModelClientExecutions([])
+      return
+    }
+    setModelClientExecutionsLoading(true)
+    try {
+      const { data } = await axios.get(`/equipment-models/${modelId}/client-executions`)
+      setModelClientExecutions(Array.isArray(data?.rows) ? data.rows : [])
+    } catch (err) {
+      console.error("GET /equipment-models/:id/client-executions error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить клиентские исполнения")
+      setModelClientExecutions([])
+    } finally {
+      setModelClientExecutionsLoading(false)
     }
   }, [])
 
@@ -611,6 +708,14 @@ export default function EquipmentClassifierMain() {
   const measurementUnitLabelByCode = useMemo(
     () => new Map(measurementUnitOptions.map((option) => [String(option.value), option.label])),
     [measurementUnitOptions]
+  )
+  const clientOptions = useMemo(
+    () =>
+      clients.map((client) => ({
+        value: client.id,
+        label: client.company_name || `Клиент #${client.id}`,
+      })),
+    [clients],
   )
 
   const formatMeasurementUnit = useCallback(
@@ -1068,6 +1173,430 @@ export default function EquipmentClassifierMain() {
     }
   }
 
+  const getClassifierNodeIdForUnit = (unit = null) =>
+    Number(unit?.classifier_node_id || currentModel?.classifier_node_id || selectedNode?.id || selectedId || 0) || null
+
+  const buildAttributeFormValues = (attrRows, valuesRows) => {
+    const valuesByAttrId = new Map((valuesRows || []).map((item) => [Number(item.attribute_id), item]))
+    const formValues = {}
+    attrRows.forEach((attribute) => {
+      formValues[`attr_${attribute.id}`] = normalizeValueForForm(attribute, valuesByAttrId.get(Number(attribute.id)))
+    })
+    return formValues
+  }
+
+  const loadUnitAttributesForForm = async (unit, nodeId) => {
+    if (!nodeId) {
+      setUnitAttributeRows([])
+      unitAttributesForm.resetFields()
+      return
+    }
+    setUnitAttributesLoading(true)
+    try {
+      if (!unit?.id) {
+        const { data } = await axios.get(`/equipment-classifier-nodes/${nodeId}/attributes`)
+        const attrRows = Array.isArray(data) ? data : []
+        setUnitAttributeRows(attrRows)
+        unitAttributesForm.resetFields()
+        return
+      }
+      const { data } = await axios.get(`/equipment-classifier-nodes/${nodeId}/attribute-values`, {
+        params: { entity_type: "client_equipment_unit", entity_id: unit.id },
+      })
+      const attrRows = Array.isArray(data?.attributes) ? data.attributes : []
+      setUnitAttributeRows(attrRows)
+      unitAttributesForm.setFieldsValue(buildAttributeFormValues(attrRows, data?.values || []))
+    } catch (err) {
+      console.error("GET client unit attribute values error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить паспортные поля машины")
+      setUnitAttributeRows([])
+    } finally {
+      setUnitAttributesLoading(false)
+    }
+  }
+
+  const loadUnitPassport = async (unit) => {
+    const nodeId = getClassifierNodeIdForUnit(unit)
+    if (!unit?.id || !nodeId) {
+      setUnitPassportRows([])
+      return
+    }
+    setUnitPassportLoading(true)
+    try {
+      const { data } = await axios.get(`/equipment-classifier-nodes/${nodeId}/attribute-values`, {
+        params: { entity_type: "client_equipment_unit", entity_id: unit.id },
+      })
+      const attrRows = Array.isArray(data?.attributes) ? data.attributes : []
+      const valuesByAttrId = new Map((data?.values || []).map((item) => [Number(item.attribute_id), item]))
+      setUnitPassportRows(
+        attrRows.map((attribute) => {
+          const valueRow = valuesByAttrId.get(Number(attribute.id))
+          const value = normalizeValueForForm(attribute, valueRow)
+          const displayValue = Array.isArray(value) ? value.join(", ") : value
+          return {
+            ...attribute,
+            display_value:
+              displayValue === undefined || displayValue === null || displayValue === ""
+                ? ""
+                : String(displayValue),
+          }
+        }),
+      )
+    } catch (err) {
+      console.error("GET client unit passport error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить паспорт машины")
+      setUnitPassportRows([])
+    } finally {
+      setUnitPassportLoading(false)
+    }
+  }
+
+  const loadUnitBom = async (unit) => {
+    if (!unit?.id) {
+      setUnitBomItems([])
+      return
+    }
+    setUnitBomLoading(true)
+    try {
+      const { data } = await axios.get(`/client-equipment-units/${unit.id}/bom`)
+      setUnitBomItems(Array.isArray(data?.items) ? data.items : [])
+    } catch (err) {
+      console.error("GET client equipment unit BOM error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить BOM машины клиента")
+      setUnitBomItems([])
+    } finally {
+      setUnitBomLoading(false)
+    }
+  }
+
+  const loadUnitClientParts = async (unit = selectedUnitFromTree, q = "") => {
+    if (!unit?.client_id) {
+      setUnitClientPartOptions([])
+      return []
+    }
+    setUnitClientPartLoading(true)
+    try {
+      const { data } = await axios.get("/client-parts", {
+        params: {
+          client_id: unit.client_id,
+          q: q || undefined,
+          limit: 100,
+        },
+      })
+      const rows = Array.isArray(data) ? data : []
+      setUnitClientPartOptions(rows)
+      return rows
+    } catch (err) {
+      console.error("GET /client-parts for BOM override error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить детали клиента")
+      setUnitClientPartOptions([])
+      return []
+    } finally {
+      setUnitClientPartLoading(false)
+    }
+  }
+
+  const handleSelectUnitClientPart = (clientPartId) => {
+    const row = unitClientPartOptions.find((item) => Number(item.id) === Number(clientPartId))
+    if (!row) return
+    unitBomOverrideForm.setFieldsValue({
+      client_part_id: row.id,
+      client_part_number: row.client_part_number || "",
+      client_drawing_number: row.drawing_number || "",
+      client_revision: row.revision_code || "",
+      difference_summary: unitBomOverrideForm.getFieldValue("difference_summary") || row.difference_summary || "",
+    })
+  }
+
+  const getUnitBomRelationshipType = (status) => {
+    if (status === "unknown_oem") return "unknown_oem"
+    if (status === "replaced") return "oem_replacement"
+    return "client_drawing"
+  }
+
+  const handleCreateUnitClientPartFromBom = async () => {
+    if (!selectedUnitFromTree?.id || !selectedUnitFromTree?.client_id || !editingUnitBomItem?.id) return
+    try {
+      const values = await unitBomOverrideForm.validateFields()
+      const displayName =
+        values.client_part_number ||
+        values.client_drawing_number ||
+        getBomItemName(editingUnitBomItem) ||
+        getBomItemLabel(editingUnitBomItem)
+      if (!displayName) {
+        message.warning("Укажите номер, чертеж или название клиентской детали")
+        return
+      }
+
+      setUnitBomClientPartSaving(true)
+      const { data: created } = await axios.post("/client-parts", {
+        client_id: selectedUnitFromTree.client_id,
+        classifier_node_id: selectedUnitFromTree.classifier_node_id || null,
+        base_oem_part_id: editingUnitBomItem.oem_part_id || null,
+        relationship_type: getUnitBomRelationshipType(values.status || "client_drawing"),
+        client_part_number: values.client_part_number || null,
+        drawing_number: values.client_drawing_number || null,
+        revision_code: values.client_revision || null,
+        display_name: displayName,
+        description_ru: getBomItemName(editingUnitBomItem) || null,
+        difference_summary: values.difference_summary || null,
+        uom: editingUnitBomItem.uom || editingUnitBomItem.catalog_position_uom || "шт",
+        status: "active",
+        notes: values.notes || null,
+      })
+
+      if (created?.id) {
+        await axios.post(`/client-parts/${created.id}/applications`, {
+          client_equipment_unit_id: selectedUnitFromTree.id,
+          note: `BOM: ${[editingUnitBomItem.item_no, getBomItemLabel(editingUnitBomItem)].filter(Boolean).join(" / ")}`,
+        })
+        const rows = await loadUnitClientParts(selectedUnitFromTree)
+        if (!rows.some((row) => Number(row.id) === Number(created.id))) {
+          setUnitClientPartOptions((prev) => [created, ...prev])
+        }
+        unitBomOverrideForm.setFieldsValue({
+          client_part_id: created.id,
+          client_part_number: created.client_part_number || values.client_part_number || "",
+          client_drawing_number: created.drawing_number || values.client_drawing_number || "",
+          client_revision: created.revision_code || values.client_revision || "",
+        })
+        if (selectedId) await loadWorkspace(selectedId)
+        message.success("Клиентская деталь создана и привязана к машине")
+      }
+    } catch (err) {
+      if (err?.errorFields) return
+      console.error("create client part from BOM override error:", err)
+      message.error(err?.response?.data?.message || "Не удалось создать деталь клиента")
+    } finally {
+      setUnitBomClientPartSaving(false)
+    }
+  }
+
+  const loadClientPartDocuments = async (clientPartId) => {
+    if (!clientPartId) {
+      setClientPartDocuments([])
+      return
+    }
+    try {
+      const { data } = await axios.get(`/client-parts/${clientPartId}/documents`)
+      setClientPartDocuments(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error("GET /client-parts/:id/documents error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить документы детали клиента")
+      setClientPartDocuments([])
+    }
+  }
+
+  const openClientPartDrawer = async (row) => {
+    if (!row?.id) return
+    setClientPartDrawerOpen(true)
+    setClientPartDetails(row)
+    setClientPartDocuments([])
+    setClientPartDetailsLoading(true)
+    try {
+      const [{ data: details }, { data: documents }] = await Promise.all([
+        axios.get(`/client-parts/${row.id}`),
+        axios.get(`/client-parts/${row.id}/documents`),
+      ])
+      setClientPartDetails(details || row)
+      setClientPartDocuments(Array.isArray(documents) ? documents : [])
+    } catch (err) {
+      console.error("GET client part details error:", err)
+      message.error(err?.response?.data?.message || "Не удалось открыть деталь клиента")
+    } finally {
+      setClientPartDetailsLoading(false)
+    }
+  }
+
+  const handleUploadClientPartDocument = async ({ file, onSuccess, onError }) => {
+    if (!clientPartDetails?.id) {
+      onError?.(new Error("Деталь клиента не выбрана"))
+      return
+    }
+    const formData = new FormData()
+    formData.append("file", file)
+    setClientPartDocumentUploading(true)
+    try {
+      await axios.post(`/client-parts/${clientPartDetails.id}/documents`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      await loadClientPartDocuments(clientPartDetails.id)
+      message.success("Документ детали клиента загружен")
+      onSuccess?.()
+    } catch (err) {
+      console.error("POST /client-parts/:id/documents error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить документ детали клиента")
+      onError?.(err)
+    } finally {
+      setClientPartDocumentUploading(false)
+    }
+  }
+
+  const handleDeleteClientPartDocument = async (documentId) => {
+    if (!clientPartDetails?.id || !documentId) return
+    try {
+      await axios.delete(`/client-parts/documents/${documentId}`)
+      await loadClientPartDocuments(clientPartDetails.id)
+      message.success("Документ детали клиента перемещен в корзину")
+    } catch (err) {
+      console.error("DELETE /client-parts/documents/:documentId error:", err)
+      message.error(err?.response?.data?.message || "Не удалось удалить документ детали клиента")
+    }
+  }
+
+  const openUnitBomOverride = (item) => {
+    if (!item?.id) return
+    setEditingUnitBomItem(item)
+    unitBomOverrideForm.setFieldsValue({
+      status: item.override_status || "as_original",
+      difference_summary: item.difference_summary || "",
+      client_part_id: item.client_part_id || null,
+      client_part_number: item.client_part_number || "",
+      client_drawing_number: item.client_drawing_number || "",
+      client_revision: item.client_revision || "",
+      notes: item.override_notes || "",
+    })
+    loadUnitClientParts(selectedUnitFromTree)
+    setUnitBomOverrideOpen(true)
+  }
+
+  const handleSaveUnitBomOverride = async () => {
+    if (!selectedUnitFromTree?.id || !editingUnitBomItem?.id) return
+    try {
+      const values = await unitBomOverrideForm.validateFields()
+      setUnitBomOverrideSaving(true)
+      await axios.put(`/client-equipment-units/${selectedUnitFromTree.id}/bom/items/${editingUnitBomItem.id}/override`, {
+        status: values.status || "as_original",
+        difference_summary: values.difference_summary || null,
+        client_part_id: values.client_part_id || null,
+        client_part_number: values.client_part_number || null,
+        client_drawing_number: values.client_drawing_number || null,
+        client_revision: values.client_revision || null,
+        notes: values.notes || null,
+      })
+      message.success("Отличие по строке BOM сохранено")
+      setUnitBomOverrideOpen(false)
+      setEditingUnitBomItem(null)
+      await loadUnitBom(selectedUnitFromTree)
+      if (selectedUnitFromTree?.equipment_model_id) {
+        await loadModelClientExecutions(selectedUnitFromTree.equipment_model_id)
+      }
+    } catch (err) {
+      if (err?.errorFields) return
+      console.error("PUT client equipment unit BOM override error:", err)
+      message.error(err?.response?.data?.message || "Не удалось сохранить отличие")
+    } finally {
+      setUnitBomOverrideSaving(false)
+    }
+  }
+
+  const handleResetUnitBomOverride = async () => {
+    if (!selectedUnitFromTree?.id || !editingUnitBomItem?.id) return
+    try {
+      setUnitBomOverrideSaving(true)
+      await axios.delete(`/client-equipment-units/${selectedUnitFromTree.id}/bom/items/${editingUnitBomItem.id}/override`)
+      message.success("Строка снова используется как в базовой модели")
+      setUnitBomOverrideOpen(false)
+      setEditingUnitBomItem(null)
+      await loadUnitBom(selectedUnitFromTree)
+    } catch (err) {
+      console.error("DELETE client equipment unit BOM override error:", err)
+      message.error(err?.response?.data?.message || "Не удалось сбросить отличие")
+    } finally {
+      setUnitBomOverrideSaving(false)
+    }
+  }
+
+  const openCreateUnit = async () => {
+    if (!currentModel?.id) {
+      message.warning("Сначала откройте модель оборудования")
+      return
+    }
+    setEditingUnit(null)
+    unitForm.resetFields()
+    unitAttributesForm.resetFields()
+    unitForm.setFieldsValue({
+      equipment_model_id: currentModel.id,
+    })
+    setUnitModalOpen(true)
+    await loadClients()
+    await loadUnitAttributesForForm(null, getClassifierNodeIdForUnit())
+  }
+
+  const openEditUnit = async (unit) => {
+    if (!unit?.id) return
+    setEditingUnit(unit)
+    unitForm.setFieldsValue({
+      client_id: unit.client_id || undefined,
+      equipment_model_id: unit.equipment_model_id || currentModel?.id || undefined,
+      serial_number: unit.serial_number || "",
+      internal_name: unit.internal_name || "",
+      manufacture_year: unit.manufacture_year ?? undefined,
+      site_name: unit.site_name || "",
+      notes: unit.notes || "",
+    })
+    setUnitModalOpen(true)
+    await loadClients()
+    await loadUnitAttributesForForm(unit, getClassifierNodeIdForUnit(unit))
+  }
+
+  const handleSaveUnit = async () => {
+    if (!currentModel?.id && !editingUnit?.equipment_model_id) return
+    try {
+      const [unitValues, attributeValues] = await Promise.all([
+        unitForm.validateFields(),
+        unitAttributesForm.validateFields(),
+      ])
+      const modelId = editingUnit?.equipment_model_id || currentModel?.id
+      const payload = {
+        client_id: unitValues.client_id,
+        equipment_model_id: modelId,
+        serial_number: unitValues.serial_number || null,
+        internal_name: unitValues.internal_name || null,
+        manufacture_year: unitValues.manufacture_year ?? null,
+        site_name: unitValues.site_name || null,
+        commissioning_date: editingUnit?.commissioning_date || null,
+        decommissioned_date: editingUnit?.decommissioned_date || null,
+        status: "active",
+        notes: unitValues.notes || null,
+      }
+      setUnitSaving(true)
+      const { data } = editingUnit?.id
+        ? await axios.put(`/client-equipment-units/${editingUnit.id}`, payload)
+        : await axios.post("/client-equipment-units", payload)
+
+      const savedUnit = data || editingUnit
+      const nodeId = getClassifierNodeIdForUnit(savedUnit)
+      if (nodeId && savedUnit?.id && unitAttributeRows.length) {
+        await axios.put(`/equipment-classifier-nodes/${nodeId}/attribute-values`, {
+          entity_type: "client_equipment_unit",
+          entity_id: savedUnit.id,
+          values: unitAttributeRows.map((attribute) => ({
+            attribute_id: attribute.id,
+            value: attributeValues[`attr_${attribute.id}`],
+          })),
+        })
+      }
+      message.success(editingUnit?.id ? "Машина клиента сохранена" : "Машина клиента создана")
+      setUnitModalOpen(false)
+      setEditingUnit(null)
+      await loadTreeInventory()
+      if (selectedId) await loadWorkspace(selectedId)
+      if (savedUnit?.id) {
+        const savedNodeId = getClassifierNodeIdForUnit(savedUnit)
+        if (savedNodeId) setSelectedId(String(savedNodeId))
+        setSelectedTreeKey(treeKey.unit(savedUnit.id))
+        setSelectedTreeEntity({ type: "unit", id: Number(savedUnit.id) })
+      }
+    } catch (err) {
+      if (err?.errorFields) return
+      console.error("save client equipment unit error:", err)
+      message.error(err?.response?.data?.message || "Не удалось сохранить машину клиента")
+    } finally {
+      setUnitSaving(false)
+    }
+  }
+
   const rawWorkspaceModels = Array.isArray(workspace?.models) ? workspace.models : []
   const rawWorkspaceManufacturers = Array.isArray(workspace?.manufacturers) ? workspace.manufacturers : []
   const rawWorkspaceUnits = Array.isArray(workspace?.client_equipment_units) ? workspace.client_equipment_units : []
@@ -1160,6 +1689,14 @@ export default function EquipmentClassifierMain() {
 
   const currentModelBomTree = useMemo(() => buildBomTree(modelBomItems), [modelBomItems])
   const currentModelBomRows = useMemo(() => flattenBomTreeRows(currentModelBomTree), [currentModelBomTree])
+  const selectedBomParent = useMemo(() => {
+    if (!selectedBomItem?.parent_item_id) return null
+    return currentModelBomRows.find((row) => Number(row.id) === Number(selectedBomItem.parent_item_id)) || null
+  }, [currentModelBomRows, selectedBomItem])
+  const selectedBomChildren = useMemo(
+    () => (Array.isArray(selectedBomItem?.children) ? selectedBomItem.children : []),
+    [selectedBomItem],
+  )
 
   const openBomItemModal = useCallback(
     (item = null, parent = null) => {
@@ -1225,6 +1762,22 @@ export default function EquipmentClassifierMain() {
       setBomItemSaving(false)
     }
   }
+
+  const handleDeleteBomItem = useCallback(async (item) => {
+    if (!currentModel?.id || !item?.id) return
+    try {
+      const { data } = await axios.delete(`/equipment-models/${currentModel.id}/bom/items/${item.id}`)
+      setModelBomItems(Array.isArray(data?.items) ? data.items : [])
+      if (Number(selectedBomItem?.id) === Number(item.id)) {
+        setBomItemCardOpen(false)
+        setSelectedBomItem(null)
+      }
+      message.success("Строка удалена из BOM модели")
+    } catch (err) {
+      console.error("DELETE equipment model BOM item error:", err)
+      message.error(err?.response?.data?.message || "Не удалось удалить строку BOM")
+    }
+  }, [currentModel?.id, selectedBomItem?.id])
 
   const downloadBomTemplate = async () => {
     if (!currentModel?.id) return
@@ -1359,8 +1912,9 @@ export default function EquipmentClassifierMain() {
         },
         onEdit: (row) => openBomItemModal(row),
         onAddChild: (row) => openBomItemModal(null, row),
+        onDelete: (row) => handleDeleteBomItem(row),
       }),
-    [currentModelBomTree, openBomItemModal],
+    [currentModelBomTree, openBomItemModal, handleDeleteBomItem],
   )
 
   const bomImportColumns = useMemo(
@@ -1452,6 +2006,16 @@ export default function EquipmentClassifierMain() {
     })
   }, [currentModel, rawWorkspaceClientParts])
 
+  const filteredModelClientExecutions = useMemo(
+    () =>
+      modelClientExecutions.filter((row) => {
+        if (clientExecutionStatusFilter && row.override_status !== clientExecutionStatusFilter) return false
+        if (clientExecutionMissingDocsOnly && Number(row.client_part_documents_count || 0) > 0) return false
+        return true
+      }),
+    [clientExecutionMissingDocsOnly, clientExecutionStatusFilter, modelClientExecutions],
+  )
+
   useEffect(() => {
     if (selectedTreeEntity.type !== "model" || !currentModel?.id) return
     setDetailsModel(currentModel)
@@ -1466,7 +2030,8 @@ export default function EquipmentClassifierMain() {
     loadModelMedia(currentModel.id)
     loadModelDocuments(currentModel.id)
     loadModelBom(currentModel.id)
-  }, [currentModel, loadModelBom, loadModelDocuments, loadModelMedia, modelDetailsForm, selectedTreeEntity.type])
+    loadModelClientExecutions(currentModel.id)
+  }, [currentModel, loadModelBom, loadModelClientExecutions, loadModelDocuments, loadModelMedia, modelDetailsForm, selectedTreeEntity.type])
 
   const currentUnitOemParts = useMemo(() => {
     if (!selectedUnitFromTree?.equipment_model_id) return []
@@ -1484,6 +2049,22 @@ export default function EquipmentClassifierMain() {
       return unitModelIds.includes(modelId) || modelIds.includes(modelId) || Number(row.client_equipment_unit_id) === unitId
     })
   }, [rawWorkspaceClientParts, selectedUnitFromTree])
+  const currentUnitBomTree = useMemo(() => buildBomTree(unitBomItems), [unitBomItems])
+  const currentUnitBomRows = useMemo(() => flattenBomTreeRows(currentUnitBomTree), [currentUnitBomTree])
+  const currentUnitBomOverridesCount = useMemo(
+    () => currentUnitBomRows.filter((row) => row.override_status && row.override_status !== "as_original").length,
+    [currentUnitBomRows],
+  )
+
+  useEffect(() => {
+    if (selectedTreeEntity.type === "unit" && selectedUnitFromTree?.id) {
+      loadUnitPassport(selectedUnitFromTree)
+      loadUnitBom(selectedUnitFromTree)
+    } else {
+      setUnitPassportRows([])
+      setUnitBomItems([])
+    }
+  }, [selectedTreeEntity.type, selectedUnitFromTree])
 
   const handleTreeSelect = (keys) => {
     const key = keys?.[0] || null
@@ -2154,15 +2735,36 @@ export default function EquipmentClassifierMain() {
     },
     {
       title: "Машина",
-      render: (_, row) => [row.internal_name, row.serial_number, row.site_name].filter(Boolean).join(" / ") || "—",
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Link
+            strong
+            onClick={() => {
+              setSelectedTreeEntity({ type: "unit", id: Number(row.id) })
+              setSelectedTreeKey(treeKey.unit(row.id))
+              setSelectedId(row.classifier_node_id ? String(row.classifier_node_id) : selectedId)
+            }}
+          >
+            {row.internal_name || row.serial_number || row.site_name || "Машина клиента"}
+          </Typography.Link>
+          <Typography.Text type="secondary">
+            {[row.serial_number ? `сер. ${row.serial_number}` : null, row.site_name, row.manufacture_year].filter(Boolean).join(" / ") || "—"}
+          </Typography.Text>
+        </Space>
+      ),
     },
     {
-      title: "Действие",
-      width: 100,
+      title: "Действия",
+      width: 170,
       render: (_, row) => (
-        <Button size="small" onClick={() => navigate(`/clients/${row.client_id}`)}>
-          Клиент
-        </Button>
+        <Space wrap>
+          <Button size="small" onClick={() => openEditUnit(row)}>
+            Паспорт
+          </Button>
+          <Button size="small" onClick={() => navigate(`/clients/${row.client_id}`)}>
+            Клиент
+          </Button>
+        </Space>
       ),
     },
   ]
@@ -2188,9 +2790,280 @@ export default function EquipmentClassifierMain() {
       title: "Действие",
       width: 100,
       render: (_, row) => (
-        <Button size="small" onClick={() => navigate(`/clients/${row.client_id}`)}>
-          Клиент
+        <Button size="small" onClick={() => openClientPartDrawer(row)}>
+          Карточка
         </Button>
+      ),
+    },
+  ]
+
+  const openExecutionUnit = (row) => {
+    if (!row?.client_equipment_unit_id) return
+    setSelectedTreeEntity({ type: "unit", id: Number(row.client_equipment_unit_id) })
+    setSelectedTreeKey(treeKey.unit(row.client_equipment_unit_id))
+  }
+
+  const openExecutionClientPart = (row) => {
+    if (!row?.client_part_id) {
+      message.warning("Для этого отличия еще не выбрана деталь клиента")
+      return
+    }
+    openClientPartDrawer({
+      id: row.client_part_id,
+      client_id: row.client_part_client_id || row.client_id,
+      client_name: row.client_name,
+      classifier_node_id: row.client_part_classifier_node_id,
+      classifier_node_name: row.client_part_classifier_node_name,
+      base_oem_part_id: row.base_oem_part_id,
+      base_oem_part_number: row.base_oem_part_number,
+      base_oem_description_ru: row.base_oem_description_ru,
+      base_oem_manufacturer_name: row.base_oem_manufacturer_name,
+      relationship_type: row.relationship_type,
+      client_part_number: row.client_part_number,
+      revision_code: row.revision_code,
+      drawing_number: row.client_part_drawing_number,
+      display_name: row.client_part_name,
+      description_ru: row.client_part_description_ru,
+      difference_summary: row.client_part_difference_summary,
+      uom: row.client_part_uom,
+      material_note: row.material_note,
+      status: row.client_part_status,
+      notes: row.client_part_notes,
+    })
+  }
+
+  const modelClientExecutionColumns = [
+    {
+      title: "Клиент / машина",
+      width: 220,
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text strong>{row.client_name || "—"}</Typography.Text>
+          <Typography.Link onClick={() => openExecutionUnit(row)}>
+            {row.unit_internal_name || row.serial_number || row.site_name || `Машина #${row.client_equipment_unit_id}`}
+          </Typography.Link>
+          <Typography.Text type="secondary">
+            {[row.serial_number ? `сер. ${row.serial_number}` : null, row.site_name].filter(Boolean).join(" / ") || "—"}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Строка BOM",
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text strong>
+            {[row.item_no, row.manufacturer_part_number || row.oem_part_number || row.catalog_position_code || row.title]
+              .filter(Boolean)
+              .join(" / ") || `BOM #${row.equipment_model_bom_item_id}`}
+          </Typography.Text>
+          <Typography.Text type="secondary">
+            {[row.manufacturer_part_name || row.oem_part_name || row.catalog_position_name, row.difference_summary]
+              .filter(Boolean)
+              .join(" / ") || "—"}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Статус",
+      dataIndex: "override_status",
+      width: 150,
+      render: (value) => {
+        const status = UNIT_BOM_STATUS_BY_VALUE[value] || { label: value || "—", color: "default" }
+        return <Tag color={status.color}>{status.label}</Tag>
+      },
+    },
+    {
+      title: "Деталь клиента",
+      width: 220,
+      render: (_, row) =>
+        row.client_part_id ? (
+          <Space direction="vertical" size={0}>
+            <Typography.Link strong onClick={() => openExecutionClientPart(row)}>
+              {row.client_part_name || row.client_part_number || `Деталь #${row.client_part_id}`}
+            </Typography.Link>
+            <Typography.Text type="secondary">
+              {[row.client_part_number || row.override_client_part_number, row.client_part_drawing_number || row.client_drawing_number, row.revision_code || row.client_revision ? `рев. ${row.revision_code || row.client_revision}` : null]
+                .filter(Boolean)
+                .join(" / ") || "без номера"}
+            </Typography.Text>
+          </Space>
+        ) : (
+          <Space direction="vertical" size={0}>
+            <Typography.Text type="secondary">Деталь клиента не выбрана</Typography.Text>
+            <Typography.Text type="secondary">
+              {[row.override_client_part_number, row.client_drawing_number, row.client_revision ? `рев. ${row.client_revision}` : null]
+                .filter(Boolean)
+                .join(" / ") || "—"}
+            </Typography.Text>
+          </Space>
+        ),
+    },
+    {
+      title: "Документы",
+      width: 115,
+      render: (_, row) =>
+        row.client_part_id ? (
+          <Tag color={Number(row.client_part_documents_count || 0) > 0 ? "green" : "orange"}>
+            {Number(row.client_part_documents_count || 0) > 0
+              ? `${Number(row.client_part_documents_count)} док.`
+              : "нет"}
+          </Tag>
+        ) : (
+          <Tag>—</Tag>
+        ),
+    },
+    {
+      title: "Действия",
+      width: 170,
+      render: (_, row) => (
+        <Space wrap>
+          <Button size="small" onClick={() => openExecutionUnit(row)}>
+            Машина
+          </Button>
+          <Button size="small" disabled={!row.client_part_id} onClick={() => openExecutionClientPart(row)}>
+            Деталь
+          </Button>
+        </Space>
+      ),
+    },
+  ]
+
+  const unitBomColumns = [
+    {
+      title: "Позиция BOM",
+      render: (_, row) => {
+        const status = UNIT_BOM_STATUS_BY_VALUE[row.override_status || "as_original"] || UNIT_BOM_STATUS_BY_VALUE.as_original
+        return (
+          <div style={{ display: "flex", gap: 10, paddingLeft: Number(row.bom_level || 0) * 24 }}>
+            <div
+              style={{
+                width: 18,
+                minWidth: 18,
+                color: row.bom_has_children ? "#1677ff" : "#bfbfbf",
+                fontWeight: row.bom_has_children ? 700 : 400,
+                textAlign: "center",
+              }}
+            >
+              {row.bom_has_children ? "▾" : row.bom_level ? "•" : ""}
+            </div>
+            <Space direction="vertical" size={2}>
+              <Space wrap size={6}>
+                {row.item_no ? <Typography.Text type="secondary">{row.item_no}</Typography.Text> : null}
+                <Typography.Text strong={row.bom_has_children}>
+                  {getBomItemLabel(row)}
+                </Typography.Text>
+                <Tag color={status.color}>{status.label}</Tag>
+              </Space>
+              <Typography.Text type="secondary">
+                {[getBomItemName(row), row.difference_summary || row.override_notes].filter(Boolean).join(" / ") || "—"}
+              </Typography.Text>
+            </Space>
+          </div>
+        )
+      },
+    },
+    {
+      title: "База",
+      width: 110,
+      render: (_, row) =>
+        `${Number(row.quantity || 0).toLocaleString("ru-RU")} ${row.uom || row.catalog_position_uom || "шт"}`,
+    },
+    {
+      title: "Клиент",
+      width: 190,
+      render: (_, row) => {
+        const numberLine = [
+          row.client_part_number,
+          row.client_drawing_number,
+          row.client_revision ? `рев. ${row.client_revision}` : null,
+        ]
+          .filter(Boolean)
+          .join(" / ")
+        return (
+          <Space direction="vertical" size={0}>
+            {row.client_part_name ? <Typography.Text>{row.client_part_name}</Typography.Text> : null}
+            <Typography.Text type={row.client_part_name ? "secondary" : undefined}>{numberLine || "—"}</Typography.Text>
+          </Space>
+        )
+      },
+    },
+    {
+      title: "Действие",
+      width: 110,
+      render: (_, row) => (
+        <Button size="small" onClick={() => openUnitBomOverride(row)}>
+          Отметить
+        </Button>
+      ),
+    },
+  ]
+
+  const clientPartApplicationColumns = [
+    {
+      title: "Где применяется",
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text>
+            {row.client_equipment_unit_id
+              ? row.internal_name || row.serial_number || `Машина #${row.client_equipment_unit_id}`
+              : row.model_name || row.model_code || `Модель #${row.equipment_model_id}`}
+          </Typography.Text>
+          <Typography.Text type="secondary">
+            {[row.manufacturer_name, row.model_name, row.serial_number ? `сер. ${row.serial_number}` : null, row.site_name]
+              .filter(Boolean)
+              .join(" / ") || "—"}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Заметка",
+      dataIndex: "note",
+      width: 180,
+      render: (value) => value || "—",
+    },
+  ]
+
+  const clientPartDocumentColumns = [
+    {
+      title: "Файл",
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          {row.file_url ? (
+            <Typography.Link href={row.file_url} target="_blank" rel="noreferrer">
+              {row.file_name || `Документ #${row.id}`}
+            </Typography.Link>
+          ) : (
+            <Typography.Text>{row.file_name || `Документ #${row.id}`}</Typography.Text>
+          )}
+          <Typography.Text type="secondary">
+            {[row.file_type, formatFileSize(row.file_size)].filter(Boolean).join(" / ")}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Описание",
+      dataIndex: "description",
+      render: (value) => value || "—",
+    },
+    {
+      title: "Действие",
+      width: 100,
+      render: (_, row) => (
+        <Popconfirm
+          title="Удалить документ?"
+          description="Документ будет перемещен в корзину, файл в хранилище останется доступен по снимку."
+          okText="Удалить"
+          cancelText="Отмена"
+          onConfirm={() => handleDeleteClientPartDocument(row.id)}
+        >
+          <Button size="small" danger>
+            Удалить
+          </Button>
+        </Popconfirm>
       ),
     },
   ]
@@ -2700,27 +3573,67 @@ export default function EquipmentClassifierMain() {
   )
 
   const renderModelUnitsTab = () => (
-    <Table
+    <Card
       size="small"
-      rowKey="id"
-      columns={compactUnitColumns}
-      dataSource={currentModelUnits}
-      loading={workspaceLoading}
-      pagination={{ pageSize: 10, showSizeChanger: false }}
-      locale={{ emptyText: "Для этой модели пока нет машин клиентов" }}
-    />
+      title="Машины клиентов этой модели"
+      extra={
+        <Button size="small" type="primary" onClick={openCreateUnit}>
+          Добавить машину
+        </Button>
+      }
+    >
+      <Table
+        size="small"
+        rowKey="id"
+        columns={compactUnitColumns}
+        dataSource={currentModelUnits}
+        loading={workspaceLoading}
+        pagination={{ pageSize: 10, showSizeChanger: false }}
+        locale={{ emptyText: "Для этой модели пока нет машин клиентов" }}
+      />
+    </Card>
   )
 
   const renderModelClientExecutionsTab = () => (
-    <Table
+    <Card
       size="small"
-      rowKey="id"
-      columns={compactClientPartColumns}
-      dataSource={currentModelClientParts}
-      loading={workspaceLoading}
-      pagination={{ pageSize: 10, showSizeChanger: false }}
-      locale={{ emptyText: "Для этой модели пока нет клиентских отличий" }}
-    />
+      title={`Клиентские исполнения (${modelClientExecutions.length})`}
+      extra={
+        <Space wrap>
+          <Select
+            allowClear
+            size="small"
+            placeholder="Статус"
+            style={{ width: 190 }}
+            value={clientExecutionStatusFilter}
+            onChange={setClientExecutionStatusFilter}
+            options={UNIT_BOM_STATUS_OPTIONS.filter((item) => item.value !== "as_original").map(({ value, label }) => ({
+              value,
+              label,
+            }))}
+          />
+          <Checkbox
+            checked={clientExecutionMissingDocsOnly}
+            onChange={(event) => setClientExecutionMissingDocsOnly(event.target.checked)}
+          >
+            Без документов
+          </Checkbox>
+          <Button size="small" onClick={() => currentModel?.id && loadModelClientExecutions(currentModel.id)}>
+            Обновить
+          </Button>
+        </Space>
+      }
+    >
+      <Table
+        size="small"
+        rowKey={(row) => row.override_id}
+        columns={modelClientExecutionColumns}
+        dataSource={filteredModelClientExecutions}
+        loading={modelClientExecutionsLoading}
+        pagination={{ pageSize: 10, showSizeChanger: false }}
+        locale={{ emptyText: "Для этой модели пока нет BOM-отличий по машинам клиентов" }}
+      />
+    </Card>
   )
 
   const renderModelContent = () => {
@@ -2748,7 +3661,7 @@ export default function EquipmentClassifierMain() {
             },
             {
               key: "client-executions",
-              label: `Клиентские исполнения (${currentModelClientParts.length})`,
+              label: `Клиентские исполнения (${modelClientExecutions.length})`,
               children: renderModelClientExecutionsTab(),
             },
           ]}
@@ -2759,6 +3672,15 @@ export default function EquipmentClassifierMain() {
 
   const renderUnitContent = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      <Space wrap>
+        <Button size="small" onClick={() => selectedUnitFromTree?.equipment_model_id && setSelectedTreeEntity({ type: "model", id: Number(selectedUnitFromTree.equipment_model_id) })}>
+          Назад к модели
+        </Button>
+        <Button size="small" type="primary" onClick={() => openEditUnit(selectedUnitFromTree)}>
+          Изменить паспорт
+        </Button>
+      </Space>
+
       <Descriptions bordered size="small" column={2}>
         <Descriptions.Item label="Клиент">
           {selectedUnitFromTree?.client_name || "—"}
@@ -2775,12 +3697,49 @@ export default function EquipmentClassifierMain() {
         <Descriptions.Item label="Площадка" span={2}>
           {selectedUnitFromTree?.site_name || "—"}
         </Descriptions.Item>
+        <Descriptions.Item label="Заметки" span={2}>
+          {selectedUnitFromTree?.notes || "—"}
+        </Descriptions.Item>
       </Descriptions>
       <Space wrap>
-        <Button type="primary" onClick={() => selectedUnitFromTree?.client_id && navigate(`/clients/${selectedUnitFromTree.client_id}`)}>
+        <Button onClick={() => selectedUnitFromTree?.client_id && navigate(`/clients/${selectedUnitFromTree.client_id}`)}>
           Открыть клиента
         </Button>
       </Space>
+
+      <Card size="small" title="Паспорт машины">
+        <Table
+          size="small"
+          rowKey={(row) => row.id}
+          columns={modelDetailsAttributeColumns}
+          dataSource={unitPassportRows}
+          loading={unitPassportLoading}
+          pagination={false}
+          locale={{ emptyText: "Для этой машины пока не заполнены паспортные характеристики" }}
+        />
+      </Card>
+
+      <Card
+        size="small"
+        title={`BOM базовой модели (${currentUnitBomRows.length})`}
+        extra={
+          currentUnitBomOverridesCount ? (
+            <Tag color="orange">Отличий: {currentUnitBomOverridesCount}</Tag>
+          ) : (
+            <Tag color="green">Как в базовой модели</Tag>
+          )
+        }
+      >
+        <Table
+          size="small"
+          rowKey="id"
+          columns={unitBomColumns}
+          dataSource={currentUnitBomRows}
+          loading={unitBomLoading}
+          pagination={{ pageSize: 20, showSizeChanger: false }}
+          locale={{ emptyText: "Для модели этой машины пока не собран BOM" }}
+        />
+      </Card>
 
       <Card size="small" title={`Детали производителя по модели (${currentUnitOemParts.length})`}>
         <Table
@@ -3187,8 +4146,105 @@ export default function EquipmentClassifierMain() {
       </Drawer>
 
       <Drawer
+        open={clientPartDrawerOpen}
+        title={clientPartDetails?.display_name || clientPartDetails?.client_part_number || "Деталь клиента"}
+        width={720}
+        loading={clientPartDetailsLoading}
+        onClose={() => {
+          setClientPartDrawerOpen(false)
+          setClientPartDetails(null)
+          setClientPartDocuments([])
+        }}
+        extra={
+          clientPartDetails?.client_id ? (
+            <Button size="small" onClick={() => navigate(`/clients/${clientPartDetails.client_id}`)}>
+              Открыть клиента
+            </Button>
+          ) : null
+        }
+      >
+        {clientPartDetails ? (
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            <Descriptions bordered size="small" column={2}>
+              <Descriptions.Item label="Клиент" span={2}>
+                {clientPartDetails.client_name || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Номер клиента">
+                {clientPartDetails.client_part_number || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Чертеж / ревизия">
+                {[clientPartDetails.drawing_number, clientPartDetails.revision_code ? `рев. ${clientPartDetails.revision_code}` : null]
+                  .filter(Boolean)
+                  .join(" / ") || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Тип">
+                <Tag color={CLIENT_PART_TYPE_COLORS[clientPartDetails.relationship_type] || "default"}>
+                  {CLIENT_PART_TYPE_LABELS[clientPartDetails.relationship_type] || clientPartDetails.relationship_type || "—"}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="Раздел">
+                {clientPartDetails.classifier_node_name || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Базовая деталь производителя" span={2}>
+                {[clientPartDetails.base_oem_part_number, clientPartDetails.base_oem_manufacturer_name, clientPartDetails.base_oem_description_ru || clientPartDetails.base_oem_description_en]
+                  .filter(Boolean)
+                  .join(" / ") || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Отличие" span={2}>
+                {clientPartDetails.difference_summary || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Описание" span={2}>
+                {clientPartDetails.description_ru || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Заметки" span={2}>
+                {clientPartDetails.notes || "—"}
+              </Descriptions.Item>
+            </Descriptions>
+
+            <Card size="small" title={`Применяемость (${Array.isArray(clientPartDetails.applications) ? clientPartDetails.applications.length : 0})`}>
+              <Table
+                size="small"
+                rowKey="id"
+                columns={clientPartApplicationColumns}
+                dataSource={Array.isArray(clientPartDetails.applications) ? clientPartDetails.applications : []}
+                pagination={false}
+                locale={{ emptyText: "Применяемость пока не указана" }}
+              />
+            </Card>
+
+            <Card
+              size="small"
+              title={`Документы и чертежи (${clientPartDocuments.length})`}
+              extra={
+                <Upload showUploadList={false} customRequest={handleUploadClientPartDocument}>
+                  <Button size="small" loading={clientPartDocumentUploading}>
+                    Загрузить
+                  </Button>
+                </Upload>
+              }
+            >
+              <Table
+                size="small"
+                rowKey="id"
+                columns={clientPartDocumentColumns}
+                dataSource={clientPartDocuments}
+                pagination={false}
+                locale={{ emptyText: "Документы детали клиента пока не загружены" }}
+              />
+            </Card>
+          </Space>
+        ) : (
+          <Empty description="Деталь клиента не выбрана" />
+        )}
+      </Drawer>
+
+      <Drawer
         open={bomItemCardOpen}
-        title={selectedBomItem ? getBomItemLabel(selectedBomItem) : "Строка BOM"}
+        title={
+          selectedBomItem
+            ? getBomItemName(selectedBomItem) || getBomItemLabel(selectedBomItem)
+            : "Позиция BOM"
+        }
         width={620}
         onClose={() => {
           setBomItemCardOpen(false)
@@ -3197,38 +4253,40 @@ export default function EquipmentClassifierMain() {
         extra={
           selectedBomItem ? (
             <Space>
-              {selectedBomItem.oem_part_id ? (
-                <Button size="small" onClick={() => navigate(`/original-parts/${selectedBomItem.oem_part_id}`)}>
-                  Открыть деталь производителя
-                </Button>
-              ) : null}
               <Button size="small" onClick={() => openBomItemModal(selectedBomItem)}>
                 Изменить строку
               </Button>
+              <Popconfirm
+                title="Удалить строку из BOM?"
+                description="Удаляется только это место применения в BOM модели. Коммерческие связи и история детали не удаляются."
+                okText="Удалить"
+                cancelText="Отмена"
+                onConfirm={() => handleDeleteBomItem(selectedBomItem)}
+              >
+                <Button size="small" danger>
+                  Удалить
+                </Button>
+              </Popconfirm>
             </Space>
           ) : null
         }
       >
         {selectedBomItem ? (
           <Space direction="vertical" size={12} style={{ width: "100%" }}>
-            <Alert
-              type="info"
-              showIcon
-              message="Это строка применения в BOM модели"
-              description="Здесь видно, как конкретная деталь, сборка или позиция классификатора используется внутри этой модели: где стоит в дереве, какой номер на схеме, сколько штук и к какому чертежу относится. Это не цена и не коммерческая карточка поставщика."
-            />
-
             <Card size="small" title="В этом BOM">
               <Descriptions size="small" bordered column={1}>
                 <Descriptions.Item label="Модель">
                   {[currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "—"}
                 </Descriptions.Item>
+                <Descriptions.Item label="Родительский узел">
+                  {selectedBomParent
+                    ? [selectedBomParent.item_no, getBomItemLabel(selectedBomParent), getBomItemName(selectedBomParent)]
+                        .filter(Boolean)
+                        .join(" / ")
+                    : "Корень модели"}
+                </Descriptions.Item>
                 <Descriptions.Item label="Тип строки">
-                  {selectedBomItem.catalog_position_id
-                    ? "Позиция классификатора"
-                    : selectedBomItem.oem_part_id
-                      ? "Деталь производителя"
-                      : "Сборка / узел производителя"}
+                  {getBomItemTypeLabel(selectedBomItem)}
                 </Descriptions.Item>
                 <Descriptions.Item label="№ позиции">
                   {selectedBomItem.item_no || "—"}
@@ -3255,51 +4313,127 @@ export default function EquipmentClassifierMain() {
                     изменить
                   </Button>
                 </Descriptions.Item>
-                <Descriptions.Item label="Чертеж / документ">
-                  {selectedBomItem.drawing_number || "—"}
-                </Descriptions.Item>
                 <Descriptions.Item label="Заметки">
                   {selectedBomItem.notes || "—"}
                 </Descriptions.Item>
               </Descriptions>
             </Card>
 
-            {selectedBomItem.oem_part_id ? (
-              <Card size="small" title="Базовая деталь производителя">
-                <Descriptions size="small" bordered column={1}>
-                  <Descriptions.Item label="Производитель">
-                    {selectedBomItem.manufacturer_name || currentModel?.manufacturer_name || "—"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Номер производителя">
-                    {selectedBomItem.part_number || selectedBomItem.manufacturer_part_number || "—"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Описание">
-                    {selectedBomItem.description_ru ||
-                      selectedBomItem.description_en ||
-                      selectedBomItem.tech_description ||
-                      selectedBomItem.manufacturer_part_name ||
-                      "—"}
-                  </Descriptions.Item>
-                </Descriptions>
+            <Card size="small" title="Инженерные данные">
+              <Descriptions size="small" bordered column={1}>
+                {selectedBomItem.oem_part_id ? (
+                  <>
+                    <Descriptions.Item label="Производитель">
+                      {selectedBomItem.manufacturer_name || currentModel?.manufacturer_name || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Номер производителя">
+                      {selectedBomItem.part_number || selectedBomItem.manufacturer_part_number || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Описание производителя">
+                      {selectedBomItem.description_ru ||
+                        selectedBomItem.description_en ||
+                        selectedBomItem.tech_description ||
+                        selectedBomItem.manufacturer_part_name ||
+                        "—"}
+                    </Descriptions.Item>
+                  </>
+                ) : null}
+
+                {selectedBomItem.catalog_position_id ? (
+                  <>
+                    <Descriptions.Item label="Позиция классификатора">
+                      {selectedBomItem.catalog_position_name || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Код классификатора">
+                      {selectedBomItem.catalog_position_code || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Раздел классификатора">
+                      {selectedBomItem.catalog_classifier_node_name ||
+                        selectedBomItem.catalog_position_node_name ||
+                        selectedBomItem.classifier_node_name ||
+                        "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Описание">
+                      {selectedBomItem.catalog_position_description || "—"}
+                    </Descriptions.Item>
+                  </>
+                ) : null}
+
+                {!selectedBomItem.oem_part_id && !selectedBomItem.catalog_position_id ? (
+                  <>
+                    <Descriptions.Item label="Название узла">
+                      {selectedBomItem.title || selectedBomItem.manufacturer_part_name || "—"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Внутри узла">
+                      {selectedBomChildren.length
+                        ? `${selectedBomChildren.length} поз.`
+                        : "Дочерних позиций пока нет"}
+                    </Descriptions.Item>
+                  </>
+                ) : null}
+              </Descriptions>
+            </Card>
+
+            <Card size="small" title="Документы и чертежи">
+              <Descriptions size="small" bordered column={1}>
+                <Descriptions.Item label="Чертеж / документ">
+                  {selectedBomItem.drawing_number || "—"}
+                </Descriptions.Item>
+              </Descriptions>
+              <Typography.Text type="secondary">
+                Просмотр файлов для BOM-позиций будет подключен отдельным блоком документов.
+              </Typography.Text>
+            </Card>
+
+            {selectedBomChildren.length ? (
+              <Card size="small" title={`Состав узла (${selectedBomChildren.length})`}>
+                <Table
+                  size="small"
+                  rowKey="id"
+                  pagination={false}
+                  dataSource={selectedBomChildren}
+                  columns={[
+                    {
+                      title: "Позиция",
+                      render: (_, row) => (
+                        <Space direction="vertical" size={0}>
+                          <Typography.Link
+                            strong
+                            onClick={() => {
+                              setSelectedBomItem(row)
+                            }}
+                          >
+                            {[row.item_no, getBomItemLabel(row)].filter(Boolean).join(". ") || "—"}
+                          </Typography.Link>
+                          <Typography.Text type="secondary">{getBomItemName(row) || "—"}</Typography.Text>
+                        </Space>
+                      ),
+                    },
+                    {
+                      title: "Кол-во",
+                      width: 100,
+                      render: (_, row) =>
+                        `${Number(row.quantity || 0).toLocaleString("ru-RU")} ${row.uom || row.catalog_position_uom || "шт"}`,
+                    },
+                  ]}
+                />
               </Card>
             ) : null}
 
-            {selectedBomItem.catalog_position_id ? (
-              <Card size="small" title="Связанная позиция классификатора">
-                <Descriptions size="small" bordered column={1}>
-                  <Descriptions.Item label="Позиция">
-                    {selectedBomItem.catalog_position_name || "—"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Код">
-                    {selectedBomItem.catalog_position_code || "—"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Раздел классификатора">
-                    {selectedBomItem.catalog_position_node_name || selectedBomItem.classifier_node_name || "—"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Описание">
-                    {selectedBomItem.catalog_position_description || "—"}
-                  </Descriptions.Item>
-                </Descriptions>
+            {selectedBomItem.oem_part_id ? (
+              <Card
+                size="small"
+                title="Связи с поставщиками"
+                extra={
+                  <Button size="small" onClick={() => navigate(`/original-parts/${selectedBomItem.oem_part_id}`)}>
+                    Коммерческие связи
+                  </Button>
+                }
+              >
+                <Typography.Text type="secondary">
+                  Аналоги поставщиков, предложения и цены относятся к коммерческому слою. Здесь фиксируется только
+                  инженерная строка BOM и деталь производителя.
+                </Typography.Text>
               </Card>
             ) : null}
           </Space>
@@ -3434,18 +4568,18 @@ export default function EquipmentClassifierMain() {
               {[
                 {
                   value: "group",
-                  title: "Новая сборка / раздел",
-                  text: "Создать узел дерева: группу, сборку или подсборку производителя.",
+                  title: "Создать узел / сборку",
+                  text: "Для раздела parts book, сборки или подсборки производителя.",
                 },
                 {
                   value: "oem_part",
-                  title: "Существующая деталь производителя",
-                  text: "Взять деталь, которая уже заведена в каталоге этой модели.",
+                  title: "Добавить деталь производителя",
+                  text: "Выбрать деталь производителя из каталога этой модели.",
                 },
                 {
                   value: "catalog_position",
-                  title: "Позиция из классификатора",
-                  text: "Переиспользовать стандартную или типовую позицию классификатора.",
+                  title: "Добавить из классификатора",
+                  text: "Выбрать стандартную или типовую позицию классификатора.",
                 },
               ].map((option) => {
                 const active = bomItemKind === option.value
@@ -3628,6 +4762,220 @@ export default function EquipmentClassifierMain() {
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        open={unitModalOpen}
+        title={
+          editingUnit
+            ? "Паспорт машины клиента"
+            : `Новая машина клиента${currentModel ? `: ${currentModel.manufacturer_name || ""} ${currentModel.model_name || ""}` : ""}`
+        }
+        width={820}
+        okText="Сохранить"
+        cancelText="Отмена"
+        confirmLoading={unitSaving}
+        onOk={handleSaveUnit}
+        onCancel={() => {
+          setUnitModalOpen(false)
+          setEditingUnit(null)
+          setUnitAttributeRows([])
+        }}
+        destroyOnHidden
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Card size="small" title="Основные данные">
+            <Form form={unitForm} layout="vertical">
+              <Row gutter={12}>
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    label="Клиент"
+                    name="client_id"
+                    rules={[{ required: true, message: "Выберите клиента" }]}
+                  >
+                    <Select
+                      showSearch
+                      optionFilterProp="label"
+                      placeholder="Выберите клиента"
+                      options={clientOptions}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Item label="Модель">
+                    <Input
+                      disabled
+                      value={
+                        editingUnit
+                          ? [editingUnit.manufacturer_name, editingUnit.model_name].filter(Boolean).join(" ")
+                          : [currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ")
+                      }
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Item label="Название машины у клиента" name="internal_name">
+                    <Input placeholder="Например: HP800 линия 2" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Item label="Серийный номер" name="serial_number">
+                    <Input placeholder="Серийный номер с таблички" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={8}>
+                  <Form.Item label="Год выпуска" name="manufacture_year">
+                    <InputNumber min={1900} max={2200} style={{ width: "100%" }} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={16}>
+                  <Form.Item label="Площадка / участок" name="site_name">
+                    <Input placeholder="Фабрика, линия, цех" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Form.Item label="Заметки" name="notes">
+                <Input.TextArea rows={3} />
+              </Form.Item>
+            </Form>
+          </Card>
+
+          <Card size="small" title="Паспортные характеристики этой машины" loading={unitAttributesLoading}>
+            {unitAttributeRows.length ? (
+              <Form form={unitAttributesForm} layout="vertical">
+                <Row gutter={12}>
+                  {unitAttributeRows.map((attribute) => (
+                    <Col key={attribute.id} xs={24} md={attribute.value_type === "textarea" ? 24 : 12}>
+                      {renderAttributeValueInput(attribute)}
+                    </Col>
+                  ))}
+                </Row>
+              </Form>
+            ) : (
+              <Empty description="Для раздела модели не настроены паспортные характеристики" />
+            )}
+          </Card>
+        </Space>
+      </Modal>
+
+      <Modal
+        open={unitBomOverrideOpen}
+        title={
+          editingUnitBomItem
+            ? `Отличие по BOM: ${getBomItemLabel(editingUnitBomItem)}`
+            : "Отличие по BOM"
+        }
+        width={720}
+        okText="Сохранить"
+        cancelText="Отмена"
+        confirmLoading={unitBomOverrideSaving}
+        onOk={handleSaveUnitBomOverride}
+        onCancel={() => {
+          setUnitBomOverrideOpen(false)
+          setEditingUnitBomItem(null)
+        }}
+        footer={[
+          <Button
+            key="reset"
+            disabled={!editingUnitBomItem?.override_id}
+            loading={unitBomOverrideSaving}
+            onClick={handleResetUnitBomOverride}
+          >
+            Сбросить отличие
+          </Button>,
+          <Button
+            key="cancel"
+            onClick={() => {
+              setUnitBomOverrideOpen(false)
+              setEditingUnitBomItem(null)
+            }}
+          >
+            Отмена
+          </Button>,
+          <Button key="save" type="primary" loading={unitBomOverrideSaving} onClick={handleSaveUnitBomOverride}>
+            Сохранить
+          </Button>,
+        ]}
+        destroyOnHidden
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          {editingUnitBomItem ? (
+            <Descriptions bordered size="small" column={1}>
+              <Descriptions.Item label="Базовая строка">
+                {[editingUnitBomItem.item_no, getBomItemLabel(editingUnitBomItem), getBomItemName(editingUnitBomItem)]
+                  .filter(Boolean)
+                  .join(" / ") || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Количество в модели">
+                {Number(editingUnitBomItem.quantity || 0).toLocaleString("ru-RU")}{" "}
+                {editingUnitBomItem.uom || editingUnitBomItem.catalog_position_uom || "шт"}
+              </Descriptions.Item>
+            </Descriptions>
+          ) : null}
+
+          <Form form={unitBomOverrideForm} layout="vertical">
+            <Form.Item label="Статус для этой машины" name="status" rules={[{ required: true }]}>
+              <Select options={UNIT_BOM_STATUS_OPTIONS.map(({ value, label }) => ({ value, label }))} />
+            </Form.Item>
+            <Form.Item label="Описание отличия" name="difference_summary">
+              <Input.TextArea rows={3} placeholder="Что отличается от базовой модели" />
+            </Form.Item>
+            <Form.Item
+              label="Деталь клиента в справочнике"
+              name="client_part_id"
+              extra="Можно выбрать существующую деталь клиента или создать новую из полей ниже."
+            >
+              <Select
+                allowClear
+                showSearch
+                loading={unitClientPartLoading}
+                placeholder="Выберите деталь клиента"
+                filterOption={false}
+                onSearch={(value) => loadUnitClientParts(selectedUnitFromTree, value)}
+                onChange={handleSelectUnitClientPart}
+                options={unitClientPartOptions.map((row) => ({
+                  value: row.id,
+                  label:
+                    [
+                      row.display_name,
+                      [row.client_part_number, row.drawing_number, row.revision_code].filter(Boolean).join(" / "),
+                    ]
+                      .filter(Boolean)
+                      .join(" — ") || `Деталь #${row.id}`,
+                }))}
+              />
+            </Form.Item>
+            <Row gutter={12}>
+              <Col xs={24} md={8}>
+                <Form.Item label="Номер клиента" name="client_part_number">
+                  <Input />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={8}>
+                <Form.Item label="Чертеж клиента" name="client_drawing_number">
+                  <Input />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={8}>
+                <Form.Item label="Ревизия" name="client_revision">
+                  <Input />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Form.Item>
+              <Button
+                loading={unitBomClientPartSaving}
+                disabled={!selectedUnitFromTree?.client_id}
+                onClick={handleCreateUnitClientPartFromBom}
+              >
+                Создать деталь клиента из этой строки
+              </Button>
+            </Form.Item>
+            <Form.Item label="Заметки" name="notes">
+              <Input.TextArea rows={2} />
+            </Form.Item>
+          </Form>
+        </Space>
       </Modal>
 
       <Modal

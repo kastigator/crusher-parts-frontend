@@ -8,6 +8,9 @@ export const TRASH_ENTITY_LABELS = {
   client_request_revision_items: "Позиция заявки",
   client_request_revision_item_components: "Компонент позиции заявки",
   client_request_revision_item_strategies: "Стратегия позиции заявки",
+  client_parts: "Деталь клиента",
+  client_part_applications: "Применяемость детали клиента",
+  client_part_documents: "Документ детали клиента",
 
   part_suppliers: "Поставщик",
   supplier_contacts: "Контакт поставщика",
@@ -36,6 +39,7 @@ export const TRASH_ENTITY_LABELS = {
   oem_part_presentation_profiles: "Профиль отображения OEM-детали",
   oem_part_standard_parts: "Связь OEM-детали со стандартной деталью",
   oem_part_unit_overrides: "Индивидуальная настройка OEM-детали",
+  client_equipment_unit_bom_overrides: "Индивидуальное отличие BOM машины",
   oem_part_unit_material_overrides: "Индивидуальный материал OEM-детали",
   oem_part_unit_material_specs: "Индивидуальная спецификация материала",
 

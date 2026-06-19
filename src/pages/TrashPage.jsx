@@ -55,6 +55,9 @@ const QUICK_FILTERS = [
       "client_shipping_addresses",
       "client_bank_details",
       "client_equipment_units",
+      "client_parts",
+      "client_part_applications",
+      "client_part_documents",
     ],
   },
   {
@@ -432,6 +435,8 @@ function resolveTrashNavigationTarget(record) {
   switch (rootType) {
     case "clients":
       return rootId > 0 ? `/clients/${rootId}` : "/clients"
+    case "client_parts":
+      return "/clients"
     case "part_suppliers":
       return rootId > 0 ? `/suppliers/${rootId}` : "/suppliers"
     case "oem_parts":
