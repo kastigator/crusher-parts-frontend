@@ -61,6 +61,7 @@ const UNIT_BOM_STATUS_BY_VALUE = Object.fromEntries(UNIT_BOM_STATUS_OPTIONS.map(
 const SEARCH_TYPE_LABELS = {
   classifier_node: "Раздел",
   equipment_model: "Модель",
+  catalog_position: "Карточка товара",
   oem_part: "Деталь производителя",
   client_equipment_unit: "Машина клиента",
   client_part: "Деталь клиента",
@@ -69,6 +70,7 @@ const SEARCH_TYPE_LABELS = {
 const SEARCH_TYPE_COLORS = {
   classifier_node: "blue",
   equipment_model: "green",
+  catalog_position: "purple",
   oem_part: "geekblue",
   client_equipment_unit: "orange",
   client_part: "cyan",
@@ -77,6 +79,7 @@ const SEARCH_TYPE_COLORS = {
 const SEARCH_TYPE_ORDER = [
   "classifier_node",
   "equipment_model",
+  "catalog_position",
   "oem_part",
   "client_equipment_unit",
   "client_part",
@@ -129,6 +132,7 @@ const treeKey = {
   node: (id) => `node:${id}`,
   manufacturer: (nodeId, manufacturerId) => `manufacturer:${nodeId}:${manufacturerId}`,
   model: (id) => `model:${id}`,
+  catalogPosition: (id) => `catalog_position:${id}`,
   unit: (id) => `unit:${id}`,
 }
 
@@ -326,6 +330,7 @@ export default function EquipmentClassifierMain() {
   const [modelClientExecutionsLoading, setModelClientExecutionsLoading] = useState(false)
   const [clientExecutionStatusFilter, setClientExecutionStatusFilter] = useState(null)
   const [clientExecutionMissingDocsOnly, setClientExecutionMissingDocsOnly] = useState(false)
+  const [modelPassportEditing, setModelPassportEditing] = useState(false)
   const [bomImportOpen, setBomImportOpen] = useState(false)
   const [bomImportLoading, setBomImportLoading] = useState(false)
   const [bomImportCommitting, setBomImportCommitting] = useState(false)
@@ -341,6 +346,12 @@ export default function EquipmentClassifierMain() {
   const [selectedBomItem, setSelectedBomItem] = useState(null)
   const [catalogPositionOptions, setCatalogPositionOptions] = useState([])
   const [catalogPositionsLoading, setCatalogPositionsLoading] = useState(false)
+  const [glossaryTerms, setGlossaryTerms] = useState([])
+  const [glossaryLoading, setGlossaryLoading] = useState(false)
+  const [glossaryQuery, setGlossaryQuery] = useState("")
+  const [glossaryModalOpen, setGlossaryModalOpen] = useState(false)
+  const [editingGlossaryTerm, setEditingGlossaryTerm] = useState(null)
+  const [glossarySaving, setGlossarySaving] = useState(false)
   const [nodeCardImageUrl, setNodeCardImageUrl] = useState("")
   const [nodeCardImageUploading, setNodeCardImageUploading] = useState(false)
   const [nsiSearchQuery, setNsiSearchQuery] = useState("")
@@ -372,6 +383,7 @@ export default function EquipmentClassifierMain() {
   const [unitAttributesForm] = Form.useForm()
   const [unitBomOverrideForm] = Form.useForm()
   const [bomItemForm] = Form.useForm()
+  const [glossaryForm] = Form.useForm()
   const bomItemKind = Form.useWatch("kind", bomItemForm)
   const bomItemKindHelp = {
     group: {
@@ -577,6 +589,74 @@ export default function EquipmentClassifierMain() {
     }
   }, [])
 
+  const loadGlossaryTerms = useCallback(async (query = "") => {
+    setGlossaryLoading(true)
+    try {
+      const { data } = await axios.get("/glossary-terms", {
+        params: { q: query || undefined },
+      })
+      setGlossaryTerms(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error("GET /glossary-terms error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить глоссарий")
+      setGlossaryTerms([])
+    } finally {
+      setGlossaryLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadGlossaryTerms()
+  }, [loadGlossaryTerms])
+
+  const openGlossaryCreate = () => {
+    setEditingGlossaryTerm(null)
+    glossaryForm.resetFields()
+    setGlossaryModalOpen(true)
+  }
+
+  const openGlossaryEdit = (term) => {
+    setEditingGlossaryTerm(term)
+    glossaryForm.setFieldsValue({
+      term: term.term || "",
+      aliases: Array.isArray(term.aliases) ? term.aliases.join(", ") : "",
+      definition: term.definition || "",
+      canonical_entity: term.canonical_entity || "",
+      scope: term.scope || "",
+      notes: term.notes || "",
+    })
+    setGlossaryModalOpen(true)
+  }
+
+  const handleSaveGlossaryTerm = async () => {
+    try {
+      const values = await glossaryForm.validateFields()
+      const payload = {
+        ...values,
+        aliases: String(values.aliases || "")
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+      }
+      setGlossarySaving(true)
+      if (editingGlossaryTerm?.id) {
+        await axios.put(`/glossary-terms/${editingGlossaryTerm.id}`, payload)
+      } else {
+        await axios.post("/glossary-terms", payload)
+      }
+      message.success(editingGlossaryTerm?.id ? "Термин обновлен" : "Термин добавлен")
+      setGlossaryModalOpen(false)
+      setEditingGlossaryTerm(null)
+      await loadGlossaryTerms(glossaryQuery)
+    } catch (err) {
+      if (err?.errorFields) return
+      console.error("save glossary term error:", err)
+      message.error(err?.response?.data?.message || "Не удалось сохранить термин")
+    } finally {
+      setGlossarySaving(false)
+    }
+  }
+
   const handleNsiSearch = useCallback(async (value) => {
     const q = String(value || "").trim()
     setNsiSearchQuery(q)
@@ -616,6 +696,14 @@ export default function EquipmentClassifierMain() {
       setSelectedId(nodeId)
       setSelectedTreeKey(treeKey.node(nodeId))
       setSelectedTreeEntity({ type: "model", id: Number(row.entity_id) })
+      await loadWorkspace(nodeId)
+      return
+    }
+    if (row.entity_type === "catalog_position" && row.classifier_node_id && row.entity_id) {
+      const nodeId = String(row.classifier_node_id)
+      setSelectedId(nodeId)
+      setSelectedTreeKey(treeKey.catalogPosition(row.entity_id))
+      setSelectedTreeEntity({ type: "catalog_position", id: Number(row.entity_id) })
       await loadWorkspace(nodeId)
       return
     }
@@ -662,6 +750,7 @@ export default function EquipmentClassifierMain() {
     setAttributeFilters({})
     setManufacturerFilter(null)
     setBranchSectionFilter(null)
+    setModelPassportEditing(false)
   }, [selectedId])
 
   const nodeMap = useMemo(() => flattenTree(treeRows), [treeRows])
@@ -1632,6 +1721,7 @@ export default function EquipmentClassifierMain() {
   }
 
   const rawWorkspaceModels = Array.isArray(workspace?.models) ? workspace.models : []
+  const rawWorkspaceCatalogPositions = Array.isArray(workspace?.catalog_positions) ? workspace.catalog_positions : []
   const rawWorkspaceManufacturers = Array.isArray(workspace?.manufacturers) ? workspace.manufacturers : []
   const rawWorkspaceUnits = Array.isArray(workspace?.client_equipment_units) ? workspace.client_equipment_units : []
   const rawWorkspaceOemParts = Array.isArray(workspace?.oem_parts) ? workspace.oem_parts : []
@@ -1714,6 +1804,11 @@ export default function EquipmentClassifierMain() {
     if (selectedTreeEntity.type !== "model" || !selectedTreeEntity.id) return null
     return rawWorkspaceModels.find((model) => Number(model.id) === Number(selectedTreeEntity.id)) || selectedModelFromTree
   }, [rawWorkspaceModels, selectedModelFromTree, selectedTreeEntity])
+
+  const selectedCatalogPosition = useMemo(() => {
+    if (selectedTreeEntity.type !== "catalog_position" || !selectedTreeEntity.id) return null
+    return rawWorkspaceCatalogPositions.find((row) => Number(row.id) === Number(selectedTreeEntity.id)) || null
+  }, [rawWorkspaceCatalogPositions, selectedTreeEntity])
 
   const currentModelOemParts = useMemo(() => {
     if (!currentModel?.id) return []
@@ -2180,6 +2275,7 @@ export default function EquipmentClassifierMain() {
         notes: values.notes || null,
       })
       setDetailsModel(data || detailsModel)
+      setModelPassportEditing(false)
       message.success("Карточка модели сохранена")
       if (selectedId) await loadWorkspace(selectedId)
     } catch (err) {
@@ -2318,6 +2414,14 @@ export default function EquipmentClassifierMain() {
     return rows
   }, [attributeFilters, filterableAttributes, hasActiveAttributeFilters, manufacturerFilter, rawWorkspaceModels])
 
+  const workspaceCatalogPositions = useMemo(
+    () =>
+      rawWorkspaceCatalogPositions
+        .filter((row) => !selectedNodeIsLeaf || Number(row.classifier_node_id) === Number(selectedId))
+        .sort((a, b) => String(a.display_name || "").localeCompare(String(b.display_name || ""), "ru")),
+    [rawWorkspaceCatalogPositions, selectedId, selectedNodeIsLeaf],
+  )
+
   const branchModelsRaw = useMemo(() => {
     if (!selectedNode || selectedNodeIsLeaf) return []
     return allModels
@@ -2419,6 +2523,16 @@ export default function EquipmentClassifierMain() {
     return workspaceModels.filter((model) => Number(model.manufacturer_id) === Number(selectedTreeEntity.id))
   }, [selectedTreeEntity, workspaceModels])
 
+  const openCatalogPositionCard = (row) => {
+    if (!row?.id) return
+    if (row.classifier_node_id) {
+      setSelectedId(String(row.classifier_node_id))
+      setSelectedTreeKey(treeKey.catalogPosition(row.id))
+    }
+    setSelectedTreeEntity({ type: "catalog_position", id: Number(row.id) })
+    setNsiSearchActive(false)
+  }
+
   const modelsColumns = [
     {
       title: "Фото",
@@ -2466,6 +2580,36 @@ export default function EquipmentClassifierMain() {
           </Space>
         </Space>
       ),
+    },
+  ]
+
+  const catalogPositionColumns = [
+    {
+      title: "Карточка товара",
+      render: (_, row) => (
+        <Space direction="vertical" size={2}>
+          <Typography.Link strong onClick={() => openCatalogPositionCard(row)}>
+            {row.display_name || "—"}
+          </Typography.Link>
+          <Typography.Text type="secondary">
+            {[row.position_code, row.classifier_node_name].filter(Boolean).join(" / ") || "без кода"}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Ед.",
+      dataIndex: "uom",
+      width: 90,
+      render: (value) => formatMeasurementUnit(value) || value || "—",
+    },
+    {
+      title: "Характеристики",
+      width: 180,
+      render: (_, row) => {
+        const count = Array.isArray(row.attribute_values) ? row.attribute_values.length : 0
+        return count ? <Tag color="purple">{count}</Tag> : <Typography.Text type="secondary">не заполнены</Typography.Text>
+      },
     },
   ]
 
@@ -3391,18 +3535,34 @@ export default function EquipmentClassifierMain() {
 
       {selectedNodeIsLeaf ? (
         <>
-          <Table
-            size="small"
-            rowKey="id"
-            columns={modelsColumns}
-            dataSource={workspaceModels}
-            loading={workspaceLoading}
-            pagination={{ pageSize: 12, showSizeChanger: false }}
-            locale={{ emptyText: "В этом разделе пока нет моделей" }}
-            onRow={(row) => ({
-              onDoubleClick: () => openModelDetails(row),
-            })}
-          />
+          <Card size="small" title={`Модели оборудования (${workspaceModels.length})`}>
+            <Table
+              size="small"
+              rowKey="id"
+              columns={modelsColumns}
+              dataSource={workspaceModels}
+              loading={workspaceLoading}
+              pagination={{ pageSize: 8, showSizeChanger: false }}
+              locale={{ emptyText: "В этом разделе пока нет моделей оборудования" }}
+              onRow={(row) => ({
+                onDoubleClick: () => openModelDetails(row),
+              })}
+            />
+          </Card>
+          <Card size="small" title={`Карточки товара (${workspaceCatalogPositions.length})`}>
+            <Table
+              size="small"
+              rowKey="id"
+              columns={catalogPositionColumns}
+              dataSource={workspaceCatalogPositions}
+              loading={workspaceLoading}
+              pagination={{ pageSize: 8, showSizeChanger: false }}
+              locale={{ emptyText: "В этом разделе пока нет товарных карточек" }}
+              onRow={(row) => ({
+                onDoubleClick: () => openCatalogPositionCard(row),
+              })}
+            />
+          </Card>
         </>
       ) : (
         renderBranchOverview()
@@ -3446,6 +3606,33 @@ export default function EquipmentClassifierMain() {
             <Button size="small" onClick={() => currentModel && openModelAttributes(currentModel)} disabled={!currentModel}>
               Изменить характеристики
             </Button>
+            {modelPassportEditing ? (
+              <>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    modelDetailsForm.setFieldsValue({
+                      storage_uom: currentModel?.storage_uom || undefined,
+                      weight_kg: currentModel?.weight_kg ?? undefined,
+                      length_mm: currentModel?.length_mm ?? undefined,
+                      width_mm: currentModel?.width_mm ?? undefined,
+                      height_mm: currentModel?.height_mm ?? undefined,
+                      notes: currentModel?.notes || "",
+                    })
+                    setModelPassportEditing(false)
+                  }}
+                >
+                  Отмена
+                </Button>
+                <Button size="small" type="primary" loading={modelDetailsSaving} onClick={handleSaveModelDetails}>
+                  Сохранить
+                </Button>
+              </>
+            ) : (
+              <Button size="small" type="primary" onClick={() => setModelPassportEditing(true)}>
+                Редактировать паспорт
+              </Button>
+            )}
           </Space>
         }
       >
@@ -3631,56 +3818,54 @@ export default function EquipmentClassifierMain() {
           <Typography.Paragraph style={{ marginBottom: 0 }}>
             {currentModel?.notes || "Заметки по модели пока не заполнены"}
           </Typography.Paragraph>
-        </Space>
-      </Card>
 
-      <Card
-        size="small"
-        title="Редактирование основных данных"
-        extra={
-          <Button size="small" type="primary" loading={modelDetailsSaving} onClick={handleSaveModelDetails}>
-            Сохранить
-          </Button>
-        }
-      >
-        <Form form={modelDetailsForm} layout="vertical">
-          <Row gutter={12}>
-            <Col xs={24} md={12}>
-              <Form.Item label="Единица хранения" name="storage_uom">
-                <Select
-                  allowClear
-                  showSearch
-                  loading={measurementUnitsLoading}
-                  options={measurementUnitOptions}
-                  optionFilterProp="label"
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Вес, кг" name="weight_kg">
-                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="Длина, мм" name="length_mm">
-                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="Ширина, мм" name="width_mm">
-                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="Высота, мм" name="height_mm">
-                <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item label="Заметки" name="notes">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-        </Form>
+          {modelPassportEditing ? (
+            <>
+              <Divider style={{ margin: "8px 0" }} />
+              <Typography.Title level={5} style={{ margin: 0 }}>
+                Редактирование паспорта
+              </Typography.Title>
+              <Form form={modelDetailsForm} layout="vertical">
+                <Row gutter={12}>
+                  <Col xs={24} md={12}>
+                    <Form.Item label="Единица хранения" name="storage_uom">
+                      <Select
+                        allowClear
+                        showSearch
+                        loading={measurementUnitsLoading}
+                        options={measurementUnitOptions}
+                        optionFilterProp="label"
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={12}>
+                    <Form.Item label="Вес, кг" name="weight_kg">
+                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Form.Item label="Длина, мм" name="length_mm">
+                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Form.Item label="Ширина, мм" name="width_mm">
+                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Form.Item label="Высота, мм" name="height_mm">
+                      <InputNumber min={0} style={{ width: "100%" }} decimalSeparator="," />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Form.Item label="Заметки" name="notes">
+                  <Input.TextArea rows={3} />
+                </Form.Item>
+              </Form>
+            </>
+          ) : null}
+        </Space>
       </Card>
     </Space>
   )
@@ -3926,11 +4111,73 @@ export default function EquipmentClassifierMain() {
     </Space>
   )
 
+  const renderCatalogPositionContent = () => {
+    if (!selectedCatalogPosition) return <Empty description="Карточка товара не найдена в выбранном разделе" />
+    const attributeRows = Array.isArray(selectedCatalogPosition.attribute_values)
+      ? selectedCatalogPosition.attribute_values
+      : []
+
+    return (
+      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        <Space wrap>
+          <Button size="small" onClick={() => selectedNode && selectClassifierNode(selectedNode)}>
+            Назад к разделу
+          </Button>
+          <Tag color="purple">Карточка товара</Tag>
+          {selectedCatalogPosition.position_code ? <Tag>{selectedCatalogPosition.position_code}</Tag> : null}
+        </Space>
+
+        <Card size="small" title="Карточка товара">
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            <Descriptions bordered size="small" column={2}>
+              <Descriptions.Item label="Наименование" span={2}>
+                {selectedCatalogPosition.display_name || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Код">
+                {selectedCatalogPosition.position_code || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Единица измерения">
+                {formatMeasurementUnit(selectedCatalogPosition.uom) || selectedCatalogPosition.uom || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Раздел классификатора" span={2}>
+                {selectedCatalogPosition.classifier_node_name || selectedNode?.name || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Описание" span={2}>
+                {selectedCatalogPosition.description || "—"}
+              </Descriptions.Item>
+            </Descriptions>
+
+            <Divider style={{ margin: "8px 0" }} />
+            <Typography.Title level={5} style={{ margin: 0 }}>
+              Характеристики
+            </Typography.Title>
+            <Table
+              size="small"
+              rowKey={(row) => row.attribute_id}
+              columns={modelDetailsAttributeColumns}
+              dataSource={attributeRows}
+              pagination={false}
+              locale={{ emptyText: "У карточки товара пока не заполнены характеристики" }}
+            />
+
+            <Alert
+              type="info"
+              showIcon
+              message="Следующий слой карточки"
+              description="Для товарных карточек дальше стоит добавить связи: где используется в BOM, аналоги/замены, документы и предложения поставщиков."
+            />
+          </Space>
+        </Card>
+      </Space>
+    )
+  }
+
   const renderContextContent = () => {
     if (nsiSearchActive) return renderSearchResults()
     if (!selectedNode) return <Empty description="Выберите раздел слева" />
     if (selectedTreeEntity.type === "manufacturer") return renderManufacturerContent()
     if (selectedTreeEntity.type === "model") return renderModelContent()
+    if (selectedTreeEntity.type === "catalog_position") return renderCatalogPositionContent()
     if (selectedTreeEntity.type === "unit") return renderUnitContent()
     return renderNodeContent()
   }
@@ -3942,6 +4189,8 @@ export default function EquipmentClassifierMain() {
       ? selectedManufacturerFromTree?.name || "Производитель"
       : selectedTreeEntity.type === "model"
         ? [currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "Модель"
+        : selectedTreeEntity.type === "catalog_position"
+          ? selectedCatalogPosition?.display_name || "Карточка товара"
         : selectedTreeEntity.type === "unit"
           ? selectedUnitFromTree?.client_name || "Машина клиента"
           : selectedNode?.name || null
@@ -4031,6 +4280,50 @@ export default function EquipmentClassifierMain() {
     )
   }
 
+  const renderGlossaryPanel = () => (
+    <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      <Input.Search
+        allowClear
+        placeholder="Найти термин"
+        value={glossaryQuery}
+        onChange={(event) => setGlossaryQuery(event.target.value)}
+        onSearch={loadGlossaryTerms}
+        loading={glossaryLoading}
+      />
+      <Button size="small" type="primary" onClick={openGlossaryCreate}>
+        Добавить термин
+      </Button>
+      {glossaryTerms.length ? (
+        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+          {glossaryTerms.map((item) => (
+            <Card key={item.id} size="small" styles={{ body: { padding: 10 } }}>
+              <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                <Space style={{ width: "100%", justifyContent: "space-between" }} align="start">
+                  <Typography.Text strong>{item.term}</Typography.Text>
+                  <Button size="small" type="link" onClick={() => openGlossaryEdit(item)}>
+                    Изменить
+                  </Button>
+                </Space>
+                {Array.isArray(item.aliases) && item.aliases.length ? (
+                  <Typography.Text type="secondary">{item.aliases.join(", ")}</Typography.Text>
+                ) : null}
+                <Typography.Paragraph style={{ marginBottom: 0 }}>
+                  {item.definition}
+                </Typography.Paragraph>
+                <Space wrap size={4}>
+                  {item.scope ? <Tag>{item.scope}</Tag> : null}
+                  {item.canonical_entity ? <Tag color="blue">{item.canonical_entity}</Tag> : null}
+                </Space>
+              </Space>
+            </Card>
+          ))}
+        </Space>
+      ) : (
+        <Empty description="Термины не найдены" />
+      )}
+    </Space>
+  )
+
   const sidePanelBodyStyle = {
     height: "calc(100vh - 270px)",
     minHeight: 440,
@@ -4110,7 +4403,7 @@ export default function EquipmentClassifierMain() {
 
         <Col xs={24} xl={5}>
           <Card
-            title="Фильтры"
+            title="Боковая панель"
             extra={
               selectedNodeIsLeaf ? (
                 <Button size="small" onClick={openManageAttributes}>
@@ -4122,10 +4415,61 @@ export default function EquipmentClassifierMain() {
             style={sidePanelStyle}
             styles={{ body: sidePanelBodyStyle }}
           >
-            {renderFiltersPanel()}
+            <Tabs
+              size="small"
+              items={[
+                {
+                  key: "filters",
+                  label: "Фильтры",
+                  children: renderFiltersPanel(),
+                },
+                {
+                  key: "glossary",
+                  label: "Глоссарий",
+                  children: renderGlossaryPanel(),
+                },
+              ]}
+            />
           </Card>
         </Col>
       </Row>
+
+      <Modal
+        open={glossaryModalOpen}
+        title={editingGlossaryTerm ? "Изменить термин" : "Добавить термин"}
+        okText="Сохранить"
+        cancelText="Отмена"
+        confirmLoading={glossarySaving}
+        onOk={handleSaveGlossaryTerm}
+        onCancel={() => setGlossaryModalOpen(false)}
+      >
+        <Form form={glossaryForm} layout="vertical">
+          <Form.Item label="Термин" name="term" rules={[{ required: true, message: "Укажите термин" }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item label="Синонимы" name="aliases">
+            <Input placeholder="Через запятую" />
+          </Form.Item>
+          <Form.Item label="Определение" name="definition" rules={[{ required: true, message: "Укажите определение" }]}>
+            <Input.TextArea rows={4} />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item label="Сущность" name="canonical_entity">
+                <Input placeholder="catalog_position" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="Область" name="scope">
+                <Input placeholder="Классификатор/BOM" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item label="Заметки" name="notes">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Drawer
         open={modelDetailsOpen}
