@@ -391,6 +391,7 @@ export default function EquipmentClassifierMain() {
   }
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
   const [manufacturerFilter, setManufacturerFilter] = useState(null)
+  const [branchSectionFilter, setBranchSectionFilter] = useState(null)
 
   const loadTree = useCallback(async () => {
     setLoading(true)
@@ -659,12 +660,44 @@ export default function EquipmentClassifierMain() {
   useEffect(() => {
     setAttributeFilters({})
     setManufacturerFilter(null)
+    setBranchSectionFilter(null)
   }, [selectedId])
 
   const nodeMap = useMemo(() => flattenTree(treeRows), [treeRows])
   const selectedNode = selectedId ? nodeMap.get(Number(selectedId)) || null : null
   const selectedNodeChildren = Array.isArray(selectedNode?.children) ? selectedNode.children : []
   const selectedNodeIsLeaf = !!selectedNode && selectedNodeChildren.length === 0
+  const selectedBranchNodeIds = useMemo(() => {
+    if (!selectedNode) return []
+    const ids = []
+    const walk = (node) => {
+      if (!node?.id) return
+      ids.push(Number(node.id))
+      ;(node.children || []).forEach(walk)
+    }
+    walk(selectedNode)
+    return ids
+  }, [selectedNode])
+  const selectedBranchNodeIdSet = useMemo(
+    () => new Set(selectedBranchNodeIds.map((id) => Number(id))),
+    [selectedBranchNodeIds],
+  )
+  const getNodePathLabel = useCallback(
+    (nodeId) => {
+      const node = nodeMap.get(Number(nodeId))
+      if (!node) return ""
+      const path = []
+      let current = node
+      const guard = new Set()
+      while (current?.id && !guard.has(Number(current.id))) {
+        guard.add(Number(current.id))
+        path.unshift(current.name)
+        current = current.parent_id ? nodeMap.get(Number(current.parent_id)) : null
+      }
+      return path.join(" / ")
+    },
+    [nodeMap],
+  )
   const selectedNodePath = useMemo(() => {
     if (!selectedNode) return []
     const path = []
@@ -2284,18 +2317,101 @@ export default function EquipmentClassifierMain() {
     return rows
   }, [attributeFilters, filterableAttributes, hasActiveAttributeFilters, manufacturerFilter, rawWorkspaceModels])
 
+  const branchModelsRaw = useMemo(() => {
+    if (!selectedNode || selectedNodeIsLeaf) return []
+    return allModels
+      .filter((row) => selectedBranchNodeIdSet.has(Number(row.classifier_node_id)))
+      .map((row) => ({
+        ...row,
+        classifier_path: getNodePathLabel(row.classifier_node_id),
+      }))
+      .sort((a, b) => {
+        const byPath = String(a.classifier_path || "").localeCompare(String(b.classifier_path || ""), "ru")
+        if (byPath !== 0) return byPath
+        const byManufacturer = String(a.manufacturer_name || "").localeCompare(String(b.manufacturer_name || ""), "ru")
+        if (byManufacturer !== 0) return byManufacturer
+        return String(a.model_name || "").localeCompare(String(b.model_name || ""), "ru")
+      })
+  }, [allModels, getNodePathLabel, selectedBranchNodeIdSet, selectedNode, selectedNodeIsLeaf])
+
+  const branchChildStats = useMemo(() => {
+    const result = new Map()
+    if (!selectedNodeChildren.length) return result
+
+    const childNodeIds = new Map()
+    selectedNodeChildren.forEach((child) => {
+      const ids = []
+      const walk = (node) => {
+        if (!node?.id) return
+        ids.push(Number(node.id))
+        ;(node.children || []).forEach(walk)
+      }
+      walk(child)
+      childNodeIds.set(Number(child.id), new Set(ids))
+      result.set(Number(child.id), { modelCount: 0, manufacturerIds: new Set() })
+    })
+
+    branchModelsRaw.forEach((model) => {
+      const modelNodeId = Number(model.classifier_node_id)
+      selectedNodeChildren.forEach((child) => {
+        const ids = childNodeIds.get(Number(child.id))
+        if (!ids?.has(modelNodeId)) return
+        const stat = result.get(Number(child.id))
+        stat.modelCount += 1
+        if (model.manufacturer_id) stat.manufacturerIds.add(Number(model.manufacturer_id))
+      })
+    })
+
+    return result
+  }, [branchModelsRaw, selectedNodeChildren])
+
+  const branchSectionFilterOptions = useMemo(
+    () =>
+      selectedNodeChildren.map((child) => {
+        const stat = branchChildStats.get(Number(child.id))
+        const modelCount = stat?.modelCount || 0
+        return {
+          value: Number(child.id),
+          label: `${child.name || "Раздел"} · ${modelCount}`,
+        }
+      }),
+    [branchChildStats, selectedNodeChildren],
+  )
+
+  const branchModels = useMemo(() => {
+    let rows = branchModelsRaw
+    if (branchSectionFilter) {
+      const child = selectedNodeChildren.find((item) => Number(item.id) === Number(branchSectionFilter))
+      const ids = new Set()
+      const walk = (node) => {
+        if (!node?.id) return
+        ids.add(Number(node.id))
+        ;(node.children || []).forEach(walk)
+      }
+      walk(child)
+      rows = rows.filter((row) => ids.has(Number(row.classifier_node_id)))
+    }
+    if (manufacturerFilter) {
+      rows = rows.filter((row) => Number(row.manufacturer_id) === Number(manufacturerFilter))
+    }
+    return rows
+  }, [branchModelsRaw, branchSectionFilter, manufacturerFilter, selectedNodeChildren])
+
   const manufacturerFilterOptions = useMemo(() => {
     const byId = new Map()
-    rawWorkspaceManufacturers.forEach((row) => {
-      if (row.id) byId.set(Number(row.id), row.name || "Производитель")
-    })
-    rawWorkspaceModels.forEach((row) => {
+    const sourceModels = selectedNode && !selectedNodeIsLeaf ? branchModelsRaw : rawWorkspaceModels
+    if (selectedNodeIsLeaf) {
+      rawWorkspaceManufacturers.forEach((row) => {
+        if (row.id) byId.set(Number(row.id), row.name || "Производитель")
+      })
+    }
+    sourceModels.forEach((row) => {
       if (row.manufacturer_id) byId.set(Number(row.manufacturer_id), row.manufacturer_name || "Производитель")
     })
     return Array.from(byId.entries())
       .sort((a, b) => String(a[1]).localeCompare(String(b[1]), "ru"))
       .map(([value, label]) => ({ value, label }))
-  }, [rawWorkspaceManufacturers, rawWorkspaceModels])
+  }, [branchModelsRaw, rawWorkspaceManufacturers, rawWorkspaceModels, selectedNode, selectedNodeIsLeaf])
 
   const currentManufacturerModels = useMemo(() => {
     if (selectedTreeEntity.type !== "manufacturer" || !selectedTreeEntity.id) return []
@@ -2341,7 +2457,7 @@ export default function EquipmentClassifierMain() {
             {row.model_name || "—"}
           </Typography.Link>
           <Typography.Text type="secondary">
-            {[row.manufacturer_name, row.classifier_node_name].filter(Boolean).join(" / ") || "—"}
+            {[row.manufacturer_name, row.classifier_path || row.classifier_node_name].filter(Boolean).join(" / ") || "—"}
           </Typography.Text>
           <Space size={8} wrap>
             <Typography.Link onClick={() => openModelAttributes(row)}>Характеристики</Typography.Link>
@@ -3072,55 +3188,111 @@ export default function EquipmentClassifierMain() {
     if (!selectedNodeChildren.length) return null
     return (
       <Row gutter={[12, 12]}>
-        {selectedNodeChildren.map((child) => (
-          <Col key={child.id} xs={24} sm={12} lg={8}>
-            <Card
-              hoverable
-              size="small"
-              onClick={() => selectClassifierNode(child)}
-              cover={
-                child.card_image_url ? (
-                  <img src={resolveAssetUrl(child.card_image_url)} alt={child.name || "Раздел"} style={CARD_IMAGE_STYLE} />
-                ) : (
-                  <div
-                    style={{
-                      ...CARD_IMAGE_STYLE,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#bfbfbf",
+        {selectedNodeChildren.map((child) => {
+          const stat = branchChildStats.get(Number(child.id))
+          const modelCount = stat?.modelCount || 0
+          const manufacturerCount = stat?.manufacturerIds?.size || 0
+          return (
+            <Col key={child.id} xs={24} sm={12} lg={6}>
+              <Card
+                hoverable
+                size="small"
+                onClick={() => selectClassifierNode(child)}
+                styles={{ body: { minHeight: 104 } }}
+              >
+                <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                  <Typography.Text strong>{child.name || "Раздел"}</Typography.Text>
+                  <Space size={4} wrap>
+                    <Tag color={modelCount ? "blue" : "default"}>{modelCount} моделей</Tag>
+                    <Tag>{manufacturerCount} производителей</Tag>
+                  </Space>
+                  {child.notes ? (
+                    <Typography.Paragraph
+                      type="secondary"
+                      ellipsis={{ rows: 2, tooltip: child.notes }}
+                      style={{ marginBottom: 0 }}
+                    >
+                      {child.notes}
+                    </Typography.Paragraph>
+                  ) : null}
+                  <Typography.Link
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      openEditNode(child)
                     }}
                   >
-                    Фото
-                  </div>
-                )
-              }
-              styles={{ body: { minHeight: 116 } }}
-            >
-              <Space direction="vertical" size={6} style={{ width: "100%" }}>
-                <Typography.Text strong>{child.name || "Раздел"}</Typography.Text>
-                {child.notes ? (
-                  <Typography.Paragraph
-                    type="secondary"
-                    ellipsis={{ rows: 2, tooltip: child.notes }}
-                    style={{ marginBottom: 0 }}
-                  >
-                    {child.notes}
-                  </Typography.Paragraph>
-                ) : null}
-                <Typography.Link
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    openEditNode(child)
-                  }}
-                >
-                  Настроить
-                </Typography.Link>
-              </Space>
+                    Настроить
+                  </Typography.Link>
+                </Space>
+              </Card>
+            </Col>
+          )
+        })}
+      </Row>
+    )
+  }
+
+  const renderBranchOverview = () => {
+    const manufacturerIds = new Set(branchModelsRaw.map((model) => Number(model.manufacturer_id)).filter(Boolean))
+    const leafNodeIds = new Set(branchModelsRaw.map((model) => Number(model.classifier_node_id)).filter(Boolean))
+    return (
+      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        <Row gutter={[8, 8]}>
+          <Col xs={24} sm={8}>
+            <Card size="small">
+              <Typography.Text type="secondary">Подразделы</Typography.Text>
+              <Typography.Title level={4} style={{ margin: 0 }}>
+                {selectedNodeChildren.length}
+              </Typography.Title>
             </Card>
           </Col>
-        ))}
-      </Row>
+          <Col xs={24} sm={8}>
+            <Card size="small">
+              <Typography.Text type="secondary">Модели в ветке</Typography.Text>
+              <Typography.Title level={4} style={{ margin: 0 }}>
+                {branchModelsRaw.length}
+              </Typography.Title>
+            </Card>
+          </Col>
+          <Col xs={24} sm={8}>
+            <Card size="small">
+              <Typography.Text type="secondary">Производители</Typography.Text>
+              <Typography.Title level={4} style={{ margin: 0 }}>
+                {manufacturerIds.size}
+              </Typography.Title>
+            </Card>
+          </Col>
+        </Row>
+
+        <Card
+          size="small"
+          title={
+            <Space wrap>
+              <Typography.Text strong>Модели в выбранной ветке</Typography.Text>
+              <Tag>{branchModels.length} из {branchModelsRaw.length}</Tag>
+              <Tag>{leafNodeIds.size} классов</Tag>
+            </Space>
+          }
+        >
+          <Table
+            size="small"
+            rowKey="id"
+            columns={modelsColumns}
+            dataSource={branchModels}
+            loading={workspaceLoading}
+            pagination={{ pageSize: 12, showSizeChanger: false }}
+            locale={{ emptyText: "В этой ветке пока нет моделей" }}
+            onRow={(row) => ({
+              onDoubleClick: () => openModelDetails(row),
+            })}
+          />
+        </Card>
+
+        <Card size="small" title="Подразделы">
+          {renderChildSectionCards()}
+          {!selectedNodeChildren.length ? <Empty description="В этом разделе пока нет подразделов" /> : null}
+        </Card>
+      </Space>
     )
   }
 
@@ -3232,10 +3404,7 @@ export default function EquipmentClassifierMain() {
           />
         </>
       ) : (
-        <>
-          {renderChildSectionCards()}
-          {!selectedNodeChildren.length ? <Empty description="В этом разделе пока нет подразделов" /> : null}
-        </>
+        renderBranchOverview()
       )}
     </Space>
   )
@@ -3785,7 +3954,7 @@ export default function EquipmentClassifierMain() {
         ? [currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "Модель"
         : selectedTreeEntity.type === "unit"
           ? selectedUnitFromTree?.client_name || "Машина клиента"
-          : selectedNode?.name || "Рабочая область"
+          : selectedNode?.name || null
 
   const canEditSelectedNode = selectedTreeEntity.type === "node" && selectedNode
   const addMenuItems = [
@@ -3821,14 +3990,31 @@ export default function EquipmentClassifierMain() {
         />
       </div>
     ) : null
+    const branchSectionFilterControl =
+      !selectedNodeIsLeaf && branchSectionFilterOptions.length ? (
+        <div>
+          <Typography.Text type="secondary" style={{ display: "block", marginBottom: 4 }}>
+            Подраздел
+          </Typography.Text>
+          <Select
+            allowClear
+            placeholder="Все подразделы"
+            value={branchSectionFilter}
+            onChange={setBranchSectionFilter}
+            options={branchSectionFilterOptions}
+            style={{ width: "100%" }}
+          />
+        </div>
+      ) : null
 
     if (!selectedNode) return <Empty description="Выберите раздел" />
     if (!selectedNodeIsLeaf) {
-      if (!manufacturerFilterControl) {
-        return <Empty description="В этом разделе пока нет производителей" />
+      if (!manufacturerFilterControl && !branchSectionFilterControl) {
+        return <Empty description="В этой ветке пока нет моделей" />
       }
       return (
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          {branchSectionFilterControl}
           {manufacturerFilterControl}
         </Space>
       )
