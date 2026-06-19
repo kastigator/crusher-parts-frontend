@@ -24,6 +24,7 @@ const CATALOG_CHILD_PATHS = new Set([
   "/materials",
   "/tnved-codes",
   "/logistics-route-templates",
+  "/glossary",
 ])
 
 const ADMIN_PATH = "/admin"
@@ -41,6 +42,7 @@ const ICON_BY_PATH = {
   "/original-parts": "original-parts",
   "/standard-parts": "standard-parts",
   "/equipment-classifier": "equipment-classifier",
+  "/glossary": "catalogs",
   "/materials": "materials",
   "/tnved-codes": "tnved-codes",
   "/logistics-route-templates": "logistics-route-templates",
@@ -51,7 +53,14 @@ const ICON_BY_PATH = {
 }
 const CATALOG_LABEL_BY_PATH = {
   "/catalogs": "Обзор и качество",
+  "/glossary": "Глоссарий",
   "/logistics-route-templates": "Шаблоны доставки",
+}
+const GLOSSARY_TAB = {
+  path: "/glossary",
+  name: "Глоссарий",
+  icon: "catalogs",
+  sort_order: 999,
 }
 
 function normalizeIconName(value) {
@@ -183,6 +192,9 @@ export default function Sidebar() {
         }
         childItems.push(buildMenuItem(withFallbackIcon, { withIcon: true }))
       })
+      if (!catalogChildren.some((tab) => tab.path === GLOSSARY_TAB.path)) {
+        childItems.push(buildMenuItem(GLOSSARY_TAB, { withIcon: true }))
+      }
 
       const catalogLabel = catalogRoot?.name ?? "Каталоги"
       const catalogIconTab = catalogRoot ?? { path: "catalogs-group", name: catalogLabel }

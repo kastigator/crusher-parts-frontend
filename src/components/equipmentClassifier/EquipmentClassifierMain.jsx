@@ -346,12 +346,6 @@ export default function EquipmentClassifierMain() {
   const [selectedBomItem, setSelectedBomItem] = useState(null)
   const [catalogPositionOptions, setCatalogPositionOptions] = useState([])
   const [catalogPositionsLoading, setCatalogPositionsLoading] = useState(false)
-  const [glossaryTerms, setGlossaryTerms] = useState([])
-  const [glossaryLoading, setGlossaryLoading] = useState(false)
-  const [glossaryQuery, setGlossaryQuery] = useState("")
-  const [glossaryModalOpen, setGlossaryModalOpen] = useState(false)
-  const [editingGlossaryTerm, setEditingGlossaryTerm] = useState(null)
-  const [glossarySaving, setGlossarySaving] = useState(false)
   const [nodeCardImageUrl, setNodeCardImageUrl] = useState("")
   const [nodeCardImageUploading, setNodeCardImageUploading] = useState(false)
   const [nsiSearchQuery, setNsiSearchQuery] = useState("")
@@ -383,7 +377,6 @@ export default function EquipmentClassifierMain() {
   const [unitAttributesForm] = Form.useForm()
   const [unitBomOverrideForm] = Form.useForm()
   const [bomItemForm] = Form.useForm()
-  const [glossaryForm] = Form.useForm()
   const bomItemKind = Form.useWatch("kind", bomItemForm)
   const bomItemKindHelp = {
     group: {
@@ -588,74 +581,6 @@ export default function EquipmentClassifierMain() {
       setCatalogPositionsLoading(false)
     }
   }, [])
-
-  const loadGlossaryTerms = useCallback(async (query = "") => {
-    setGlossaryLoading(true)
-    try {
-      const { data } = await axios.get("/glossary-terms", {
-        params: { q: query || undefined },
-      })
-      setGlossaryTerms(Array.isArray(data) ? data : [])
-    } catch (err) {
-      console.error("GET /glossary-terms error:", err)
-      message.error(err?.response?.data?.message || "Не удалось загрузить глоссарий")
-      setGlossaryTerms([])
-    } finally {
-      setGlossaryLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadGlossaryTerms()
-  }, [loadGlossaryTerms])
-
-  const openGlossaryCreate = () => {
-    setEditingGlossaryTerm(null)
-    glossaryForm.resetFields()
-    setGlossaryModalOpen(true)
-  }
-
-  const openGlossaryEdit = (term) => {
-    setEditingGlossaryTerm(term)
-    glossaryForm.setFieldsValue({
-      term: term.term || "",
-      aliases: Array.isArray(term.aliases) ? term.aliases.join(", ") : "",
-      definition: term.definition || "",
-      canonical_entity: term.canonical_entity || "",
-      scope: term.scope || "",
-      notes: term.notes || "",
-    })
-    setGlossaryModalOpen(true)
-  }
-
-  const handleSaveGlossaryTerm = async () => {
-    try {
-      const values = await glossaryForm.validateFields()
-      const payload = {
-        ...values,
-        aliases: String(values.aliases || "")
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean),
-      }
-      setGlossarySaving(true)
-      if (editingGlossaryTerm?.id) {
-        await axios.put(`/glossary-terms/${editingGlossaryTerm.id}`, payload)
-      } else {
-        await axios.post("/glossary-terms", payload)
-      }
-      message.success(editingGlossaryTerm?.id ? "Термин обновлен" : "Термин добавлен")
-      setGlossaryModalOpen(false)
-      setEditingGlossaryTerm(null)
-      await loadGlossaryTerms(glossaryQuery)
-    } catch (err) {
-      if (err?.errorFields) return
-      console.error("save glossary term error:", err)
-      message.error(err?.response?.data?.message || "Не удалось сохранить термин")
-    } finally {
-      setGlossarySaving(false)
-    }
-  }
 
   const handleNsiSearch = useCallback(async (value) => {
     const q = String(value || "").trim()
@@ -4280,50 +4205,6 @@ export default function EquipmentClassifierMain() {
     )
   }
 
-  const renderGlossaryPanel = () => (
-    <Space direction="vertical" size={12} style={{ width: "100%" }}>
-      <Input.Search
-        allowClear
-        placeholder="Найти термин"
-        value={glossaryQuery}
-        onChange={(event) => setGlossaryQuery(event.target.value)}
-        onSearch={loadGlossaryTerms}
-        loading={glossaryLoading}
-      />
-      <Button size="small" type="primary" onClick={openGlossaryCreate}>
-        Добавить термин
-      </Button>
-      {glossaryTerms.length ? (
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
-          {glossaryTerms.map((item) => (
-            <Card key={item.id} size="small" styles={{ body: { padding: 10 } }}>
-              <Space direction="vertical" size={4} style={{ width: "100%" }}>
-                <Space style={{ width: "100%", justifyContent: "space-between" }} align="start">
-                  <Typography.Text strong>{item.term}</Typography.Text>
-                  <Button size="small" type="link" onClick={() => openGlossaryEdit(item)}>
-                    Изменить
-                  </Button>
-                </Space>
-                {Array.isArray(item.aliases) && item.aliases.length ? (
-                  <Typography.Text type="secondary">{item.aliases.join(", ")}</Typography.Text>
-                ) : null}
-                <Typography.Paragraph style={{ marginBottom: 0 }}>
-                  {item.definition}
-                </Typography.Paragraph>
-                <Space wrap size={4}>
-                  {item.scope ? <Tag>{item.scope}</Tag> : null}
-                  {item.canonical_entity ? <Tag color="blue">{item.canonical_entity}</Tag> : null}
-                </Space>
-              </Space>
-            </Card>
-          ))}
-        </Space>
-      ) : (
-        <Empty description="Термины не найдены" />
-      )}
-    </Space>
-  )
-
   const sidePanelBodyStyle = {
     height: "calc(100vh - 270px)",
     minHeight: 440,
@@ -4403,7 +4284,7 @@ export default function EquipmentClassifierMain() {
 
         <Col xs={24} xl={5}>
           <Card
-            title="Боковая панель"
+            title="Фильтры"
             extra={
               selectedNodeIsLeaf ? (
                 <Button size="small" onClick={openManageAttributes}>
@@ -4415,61 +4296,10 @@ export default function EquipmentClassifierMain() {
             style={sidePanelStyle}
             styles={{ body: sidePanelBodyStyle }}
           >
-            <Tabs
-              size="small"
-              items={[
-                {
-                  key: "filters",
-                  label: "Фильтры",
-                  children: renderFiltersPanel(),
-                },
-                {
-                  key: "glossary",
-                  label: "Глоссарий",
-                  children: renderGlossaryPanel(),
-                },
-              ]}
-            />
+            {renderFiltersPanel()}
           </Card>
         </Col>
       </Row>
-
-      <Modal
-        open={glossaryModalOpen}
-        title={editingGlossaryTerm ? "Изменить термин" : "Добавить термин"}
-        okText="Сохранить"
-        cancelText="Отмена"
-        confirmLoading={glossarySaving}
-        onOk={handleSaveGlossaryTerm}
-        onCancel={() => setGlossaryModalOpen(false)}
-      >
-        <Form form={glossaryForm} layout="vertical">
-          <Form.Item label="Термин" name="term" rules={[{ required: true, message: "Укажите термин" }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label="Синонимы" name="aliases">
-            <Input placeholder="Через запятую" />
-          </Form.Item>
-          <Form.Item label="Определение" name="definition" rules={[{ required: true, message: "Укажите определение" }]}>
-            <Input.TextArea rows={4} />
-          </Form.Item>
-          <Row gutter={12}>
-            <Col xs={24} md={12}>
-              <Form.Item label="Сущность" name="canonical_entity">
-                <Input placeholder="catalog_position" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Область" name="scope">
-                <Input placeholder="Классификатор/BOM" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item label="Заметки" name="notes">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-        </Form>
-      </Modal>
 
       <Drawer
         open={modelDetailsOpen}
