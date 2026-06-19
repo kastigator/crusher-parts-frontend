@@ -345,6 +345,8 @@ export default function EquipmentClassifierMain() {
   const [selectedBomItem, setSelectedBomItem] = useState(null)
   const [catalogPositionOptions, setCatalogPositionOptions] = useState([])
   const [catalogPositionsLoading, setCatalogPositionsLoading] = useState(false)
+  const [catalogPositionUsage, setCatalogPositionUsage] = useState([])
+  const [catalogPositionUsageLoading, setCatalogPositionUsageLoading] = useState(false)
   const [nodeCardImageUrl, setNodeCardImageUrl] = useState("")
   const [nodeCardImageUploading, setNodeCardImageUploading] = useState(false)
   const [nsiSearchQuery, setNsiSearchQuery] = useState("")
@@ -578,6 +580,24 @@ export default function EquipmentClassifierMain() {
       message.error(err?.response?.data?.message || "Не удалось загрузить позиции классификатора")
     } finally {
       setCatalogPositionsLoading(false)
+    }
+  }, [])
+
+  const loadCatalogPositionUsage = useCallback(async (positionId) => {
+    if (!positionId) {
+      setCatalogPositionUsage([])
+      return
+    }
+    setCatalogPositionUsageLoading(true)
+    try {
+      const { data } = await axios.get(`/catalog-positions/${positionId}/usage`)
+      setCatalogPositionUsage(Array.isArray(data?.rows) ? data.rows : [])
+    } catch (err) {
+      console.error("GET /catalog-positions/:id/usage error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить применяемость карточки товара")
+      setCatalogPositionUsage([])
+    } finally {
+      setCatalogPositionUsageLoading(false)
     }
   }, [])
 
@@ -1734,6 +1754,14 @@ export default function EquipmentClassifierMain() {
     return rawWorkspaceOemParts.filter((row) => splitIds(row.model_ids).includes(modelId))
   }, [currentModel, rawWorkspaceOemParts])
 
+  useEffect(() => {
+    if (selectedTreeEntity.type !== "catalog_position" || !selectedTreeEntity.id) {
+      setCatalogPositionUsage([])
+      return
+    }
+    loadCatalogPositionUsage(selectedTreeEntity.id)
+  }, [loadCatalogPositionUsage, selectedTreeEntity])
+
   const currentModelBomTree = useMemo(() => buildBomTree(modelBomItems), [modelBomItems])
   const currentModelBomRows = useMemo(() => flattenBomTreeRows(currentModelBomTree), [currentModelBomTree])
   const selectedBomParent = useMemo(() => {
@@ -2439,6 +2467,18 @@ export default function EquipmentClassifierMain() {
     setNsiSearchActive(false)
   }
 
+  const openUsageModel = async (row) => {
+    if (!row?.equipment_model_id) return
+    const nodeId = row.model_classifier_node_id || selectedId
+    if (nodeId) {
+      setSelectedId(String(nodeId))
+      setSelectedTreeKey(treeKey.node(nodeId))
+      await loadWorkspace(nodeId)
+    }
+    setSelectedTreeEntity({ type: "model", id: Number(row.equipment_model_id) })
+    setNsiSearchActive(false)
+  }
+
   const modelsColumns = [
     {
       title: "Фото",
@@ -2516,6 +2556,59 @@ export default function EquipmentClassifierMain() {
         const count = Array.isArray(row.attribute_values) ? row.attribute_values.length : 0
         return count ? <Tag color="purple">{count}</Tag> : <Typography.Text type="secondary">не заполнены</Typography.Text>
       },
+    },
+  ]
+
+  const catalogPositionUsageColumns = [
+    {
+      title: "Модель",
+      render: (_, row) => (
+        <Space direction="vertical" size={2}>
+          <Typography.Link strong onClick={() => openUsageModel(row)}>
+            {[row.manufacturer_name, row.model_name].filter(Boolean).join(" ") || `Модель #${row.equipment_model_id}`}
+          </Typography.Link>
+          <Typography.Text type="secondary">
+            {[row.model_classifier_node_name, row.model_code].filter(Boolean).join(" / ") || "—"}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Место в BOM",
+      render: (_, row) => (
+        <Space direction="vertical" size={2}>
+          <Typography.Text strong>
+            {[row.item_no, row.manufacturer_part_number || row.title || selectedCatalogPosition?.position_code]
+              .filter(Boolean)
+              .join(" / ") || `Строка #${row.bom_item_id}`}
+          </Typography.Text>
+          <Typography.Text type="secondary">
+            {[row.manufacturer_part_name, row.drawing_number ? `чертеж ${row.drawing_number}` : null]
+              .filter(Boolean)
+              .join(" / ") || "—"}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Родитель",
+      width: 190,
+      render: (_, row) =>
+        [row.parent_item_no, row.parent_title || row.parent_manufacturer_part_name || row.parent_catalog_position_name || row.parent_oem_part_number]
+          .filter(Boolean)
+          .join(" / ") || "Корень модели",
+    },
+    {
+      title: "Кол-во",
+      dataIndex: "quantity",
+      width: 100,
+      render: (value) => `${Number(value || 0).toLocaleString("ru-RU")} ${selectedCatalogPosition?.uom || "шт"}`,
+    },
+    {
+      title: "Машины",
+      dataIndex: "client_units_count",
+      width: 90,
+      render: (value) => Number(value || 0),
     },
   ]
 
@@ -3941,6 +4034,65 @@ export default function EquipmentClassifierMain() {
       ? selectedCatalogPosition.attribute_values
       : []
 
+    const passportTab = (
+      <Card size="small" title="Паспорт">
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Descriptions bordered size="small" column={2}>
+            <Descriptions.Item label="Наименование" span={2}>
+              {selectedCatalogPosition.display_name || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Код">
+              {selectedCatalogPosition.position_code || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Единица измерения">
+              {formatMeasurementUnit(selectedCatalogPosition.uom) || selectedCatalogPosition.uom || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Раздел классификатора" span={2}>
+              {selectedCatalogPosition.classifier_node_name || selectedNode?.name || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Описание" span={2}>
+              {selectedCatalogPosition.description || "—"}
+            </Descriptions.Item>
+          </Descriptions>
+
+          <Divider style={{ margin: "8px 0" }} />
+          <Typography.Title level={5} style={{ margin: 0 }}>
+            Характеристики
+          </Typography.Title>
+          <Table
+            size="small"
+            rowKey={(row) => row.attribute_id}
+            columns={modelDetailsAttributeColumns}
+            dataSource={attributeRows}
+            pagination={false}
+            locale={{ emptyText: "У карточки товара пока не заполнены характеристики" }}
+          />
+        </Space>
+      </Card>
+    )
+
+    const usageTab = (
+      <Card
+        size="small"
+        title={`Где используется в BOM (${catalogPositionUsage.length})`}
+        extra={
+          <Button size="small" onClick={() => loadCatalogPositionUsage(selectedCatalogPosition.id)}>
+            Обновить
+          </Button>
+        }
+      >
+        <Table
+          size="small"
+          rowKey="bom_item_id"
+          columns={catalogPositionUsageColumns}
+          dataSource={catalogPositionUsage}
+          loading={catalogPositionUsageLoading}
+          pagination={{ pageSize: 12, showSizeChanger: false }}
+          locale={{ emptyText: "Эта карточка товара пока не используется в BOM моделей" }}
+        />
+      </Card>
+    )
+
     return (
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
         <Space wrap>
@@ -3949,49 +4101,41 @@ export default function EquipmentClassifierMain() {
           </Button>
           <Tag color="purple">Карточка товара</Tag>
           {selectedCatalogPosition.position_code ? <Tag>{selectedCatalogPosition.position_code}</Tag> : null}
+          <Tag color={catalogPositionUsage.length ? "blue" : "default"}>BOM: {catalogPositionUsage.length}</Tag>
         </Space>
 
-        <Card size="small" title="Карточка товара">
-          <Space direction="vertical" size={12} style={{ width: "100%" }}>
-            <Descriptions bordered size="small" column={2}>
-              <Descriptions.Item label="Наименование" span={2}>
-                {selectedCatalogPosition.display_name || "—"}
-              </Descriptions.Item>
-              <Descriptions.Item label="Код">
-                {selectedCatalogPosition.position_code || "—"}
-              </Descriptions.Item>
-              <Descriptions.Item label="Единица измерения">
-                {formatMeasurementUnit(selectedCatalogPosition.uom) || selectedCatalogPosition.uom || "—"}
-              </Descriptions.Item>
-              <Descriptions.Item label="Раздел классификатора" span={2}>
-                {selectedCatalogPosition.classifier_node_name || selectedNode?.name || "—"}
-              </Descriptions.Item>
-              <Descriptions.Item label="Описание" span={2}>
-                {selectedCatalogPosition.description || "—"}
-              </Descriptions.Item>
-            </Descriptions>
-
-            <Divider style={{ margin: "8px 0" }} />
-            <Typography.Title level={5} style={{ margin: 0 }}>
-              Характеристики
-            </Typography.Title>
-            <Table
-              size="small"
-              rowKey={(row) => row.attribute_id}
-              columns={modelDetailsAttributeColumns}
-              dataSource={attributeRows}
-              pagination={false}
-              locale={{ emptyText: "У карточки товара пока не заполнены характеристики" }}
-            />
-
-            <Alert
-              type="info"
-              showIcon
-              message="Следующий слой карточки"
-              description="Для товарных карточек дальше стоит добавить связи: где используется в BOM, аналоги/замены, документы и предложения поставщиков."
-            />
-          </Space>
-        </Card>
+        <Tabs
+          items={[
+            {
+              key: "passport",
+              label: "Паспорт",
+              children: passportTab,
+            },
+            {
+              key: "usage",
+              label: `Где используется (${catalogPositionUsage.length})`,
+              children: usageTab,
+            },
+            {
+              key: "suppliers",
+              label: "Поставщики",
+              children: (
+                <Card size="small" title="Поставщики">
+                  <Empty description="Связь поставщиков с карточкой товара еще не настроена" />
+                </Card>
+              ),
+            },
+            {
+              key: "documents",
+              label: "Документы",
+              children: (
+                <Card size="small" title="Документы">
+                  <Empty description="Документы карточки товара будут следующим слоем" />
+                </Card>
+              ),
+            },
+          ]}
+        />
       </Space>
     )
   }
