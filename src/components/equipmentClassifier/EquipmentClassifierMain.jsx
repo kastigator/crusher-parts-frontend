@@ -7,6 +7,7 @@ import {
   Checkbox,
   Col,
   Descriptions,
+  Divider,
   Drawer,
   Dropdown,
   Empty,
@@ -3429,131 +3430,213 @@ export default function EquipmentClassifierMain() {
     </Space>
   )
 
-  const renderModelMediaBlock = () => (
-    <Card
-      size="small"
-      title={`Фото (${modelMedia.length})`}
-      loading={modelMediaLoading}
-      extra={
-        <Upload accept="image/*" showUploadList={false} customRequest={handleUploadModelMedia}>
-          <Button size="small" loading={modelMediaUploading}>
-            Загрузить
-          </Button>
-        </Upload>
-      }
-    >
-      {modelMedia.length ? (
-        <Space wrap align="start">
-          {modelMedia.map((item) => (
-            <div key={item.id} style={{ width: 132 }}>
-              <Image
-                src={resolveAssetUrl(item.file_url)}
-                alt={item.caption || item.file_name || "Фото модели"}
-                width={132}
-                height={96}
-                style={{ objectFit: "cover", borderRadius: 6 }}
-              />
-              <Button
-                size="small"
-                danger
-                style={{ marginTop: 6, width: "100%" }}
-                onClick={() => handleDeleteModelMedia(item.id)}
-              >
-                Удалить
-              </Button>
-            </div>
-          ))}
-        </Space>
-      ) : (
-        <Empty description="Фото модели пока не загружены" />
-      )}
-    </Card>
-  )
-
-  const renderModelDocumentsBlock = () => (
-    <Card
-      size="small"
-      title={`Документы (${modelDocuments.length})`}
-      loading={modelDocumentsLoading}
-      extra={
-        <Upload
-          accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,text/plain"
-          showUploadList={false}
-          customRequest={handleUploadModelDocument}
-        >
-          <Button size="small" loading={modelDocumentUploading}>
-            Загрузить
-          </Button>
-        </Upload>
-      }
-    >
-      {modelDocuments.length ? (
-        <Table
-          size="small"
-          rowKey="id"
-          pagination={false}
-          dataSource={modelDocuments}
-          columns={[
-            {
-              title: "Документ",
-              render: (_, row) => (
-                <Space direction="vertical" size={0}>
-                  <a href={resolveAssetUrl(row.file_url)} target="_blank" rel="noreferrer">
-                    {row.file_name || "Документ"}
-                  </a>
-                  {row.description ? <Typography.Text type="secondary">{row.description}</Typography.Text> : null}
-                </Space>
-              ),
-            },
-            {
-              title: "Тип",
-              dataIndex: "file_type",
-              width: 180,
-              render: (value) => value || "—",
-            },
-            {
-              title: "",
-              width: 90,
-              render: (_, row) => (
-                <Button size="small" danger onClick={() => handleDeleteModelDocument(row.id)}>
-                  Удалить
-                </Button>
-              ),
-            },
-          ]}
-        />
-      ) : (
-        <Empty description="Документы модели пока не загружены" />
-      )}
-    </Card>
-  )
-
   const renderModelPassportTab = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
-      <Descriptions bordered size="small" column={2}>
-        <Descriptions.Item label="Производитель">{currentModel?.manufacturer_name || "—"}</Descriptions.Item>
-        <Descriptions.Item label="Модель">{currentModel?.model_name || "—"}</Descriptions.Item>
-        <Descriptions.Item label="Раздел классификатора">
-          {currentModel?.classifier_node_name || selectedNode?.name || "—"}
-        </Descriptions.Item>
-        <Descriptions.Item label="Ед. хранения">
-          {formatMeasurementUnit(currentModel?.storage_uom) || "—"}
-        </Descriptions.Item>
-        <Descriptions.Item label="Вес, кг">{currentModel?.weight_kg ?? "—"}</Descriptions.Item>
-        <Descriptions.Item label="Габариты, мм">
-          {[currentModel?.length_mm, currentModel?.width_mm, currentModel?.height_mm].some(
-            (value) => value !== null && value !== undefined,
-          )
-            ? [currentModel?.length_mm, currentModel?.width_mm, currentModel?.height_mm]
-                .map((value) => value ?? "—")
-                .join(" × ")
-            : "—"}
-        </Descriptions.Item>
-      </Descriptions>
-
       <Card
         size="small"
         title="Паспорт модели"
+        extra={
+          <Space wrap>
+            <Button size="small" onClick={() => selectedNode && selectClassifierNode(selectedNode)}>
+              Назад к моделям
+            </Button>
+            <Button size="small" onClick={() => openMoveModel(currentModel)}>
+              Перенести
+            </Button>
+            <Button size="small" onClick={() => currentModel && openModelAttributes(currentModel)} disabled={!currentModel}>
+              Изменить характеристики
+            </Button>
+          </Space>
+        }
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Space wrap>
+            <Tag color={modelBomItems.length ? "blue" : "default"}>BOM: {modelBomItems.length}</Tag>
+            <Tag color={currentModelUnits.length ? "orange" : "default"}>Машины: {currentModelUnits.length}</Tag>
+            <Tag color={modelDocuments.length ? "green" : "default"}>Документы: {modelDocuments.length}</Tag>
+            <Tag color={modelMedia.length ? "cyan" : "default"}>Фото: {modelMedia.length}</Tag>
+          </Space>
+
+          <Row gutter={12}>
+            <Col xs={24} lg={18}>
+              <Typography.Title level={5} style={{ marginTop: 0 }}>
+                Основное
+              </Typography.Title>
+              <Descriptions bordered size="small" column={2}>
+                <Descriptions.Item label="Производитель">{currentModel?.manufacturer_name || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Модель">{currentModel?.model_name || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Раздел классификатора">
+                  {currentModel?.classifier_node_name || selectedNode?.name || "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Ед. хранения">
+                  {formatMeasurementUnit(currentModel?.storage_uom) || "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Вес, кг">{currentModel?.weight_kg ?? "—"}</Descriptions.Item>
+                <Descriptions.Item label="Габариты, мм">
+                  {[currentModel?.length_mm, currentModel?.width_mm, currentModel?.height_mm].some(
+                    (value) => value !== null && value !== undefined,
+                  )
+                    ? [currentModel?.length_mm, currentModel?.width_mm, currentModel?.height_mm]
+                        .map((value) => value ?? "—")
+                        .join(" × ")
+                    : "—"}
+                </Descriptions.Item>
+              </Descriptions>
+            </Col>
+            <Col xs={24} lg={6}>
+              <Typography.Title level={5} style={{ marginTop: 0 }}>
+                Обложка
+              </Typography.Title>
+              {modelMedia[0]?.file_url ? (
+                <Image
+                  src={resolveAssetUrl(modelMedia[0].file_url)}
+                  alt={modelMedia[0].caption || modelMedia[0].file_name || "Фото модели"}
+                  width="100%"
+                  height={168}
+                  style={{ objectFit: "cover", borderRadius: 6 }}
+                />
+              ) : (
+                <div
+                  style={{
+                    height: 168,
+                    border: "1px solid #f0f0f0",
+                    borderRadius: 6,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#bfbfbf",
+                    background: "#fafafa",
+                  }}
+                >
+                  Фото не загружено
+                </div>
+              )}
+            </Col>
+          </Row>
+
+          <Divider style={{ margin: "8px 0" }} />
+
+          <Typography.Title level={5} style={{ margin: 0 }}>
+            Технические параметры
+          </Typography.Title>
+          <Table
+            size="small"
+            rowKey={(row) => row.attribute_id}
+            columns={modelDetailsAttributeColumns}
+            dataSource={Array.isArray(currentModel?.attribute_values) ? currentModel.attribute_values : []}
+            pagination={false}
+            locale={{ emptyText: "У модели пока не заполнены характеристики" }}
+          />
+
+          <Divider style={{ margin: "8px 0" }} />
+
+          <Row gutter={[16, 16]}>
+            <Col xs={24} lg={12}>
+              <Space direction="vertical" size={8} style={{ width: "100%" }}>
+                <Space style={{ width: "100%", justifyContent: "space-between" }}>
+                  <Typography.Title level={5} style={{ margin: 0 }}>
+                    Документы
+                  </Typography.Title>
+                  <Upload
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,text/plain"
+                    showUploadList={false}
+                    customRequest={handleUploadModelDocument}
+                  >
+                    <Button size="small" loading={modelDocumentUploading}>
+                      Загрузить
+                    </Button>
+                  </Upload>
+                </Space>
+                {modelDocuments.length ? (
+                  <Table
+                    size="small"
+                    rowKey="id"
+                    pagination={false}
+                    loading={modelDocumentsLoading}
+                    dataSource={modelDocuments}
+                    columns={[
+                      {
+                        title: "Документ",
+                        render: (_, row) => (
+                          <Space direction="vertical" size={0}>
+                            <a href={resolveAssetUrl(row.file_url)} target="_blank" rel="noreferrer">
+                              {row.file_name || "Документ"}
+                            </a>
+                            {row.description ? <Typography.Text type="secondary">{row.description}</Typography.Text> : null}
+                          </Space>
+                        ),
+                      },
+                      {
+                        title: "",
+                        width: 90,
+                        render: (_, row) => (
+                          <Button size="small" danger onClick={() => handleDeleteModelDocument(row.id)}>
+                            Удалить
+                          </Button>
+                        ),
+                      },
+                    ]}
+                  />
+                ) : (
+                  <Empty description="Документы модели пока не загружены" />
+                )}
+              </Space>
+            </Col>
+            <Col xs={24} lg={12}>
+              <Space direction="vertical" size={8} style={{ width: "100%" }}>
+                <Space style={{ width: "100%", justifyContent: "space-between" }}>
+                  <Typography.Title level={5} style={{ margin: 0 }}>
+                    Фото
+                  </Typography.Title>
+                  <Upload accept="image/*" showUploadList={false} customRequest={handleUploadModelMedia}>
+                    <Button size="small" loading={modelMediaUploading}>
+                      Загрузить
+                    </Button>
+                  </Upload>
+                </Space>
+                {modelMedia.length ? (
+                  <Row gutter={[8, 8]}>
+                    {modelMedia.map((item) => (
+                      <Col key={item.id} xs={24} sm={12}>
+                        <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                          <Image
+                            src={resolveAssetUrl(item.file_url)}
+                            alt={item.caption || item.file_name || "Фото модели"}
+                            width="100%"
+                            height={96}
+                            style={{ objectFit: "cover", borderRadius: 6 }}
+                          />
+                          <Typography.Text type="secondary" ellipsis={{ tooltip: item.caption || item.file_name }}>
+                            {item.caption || item.file_name || "Фото"}
+                          </Typography.Text>
+                          <Button size="small" danger onClick={() => handleDeleteModelMedia(item.id)}>
+                            Удалить
+                          </Button>
+                        </Space>
+                      </Col>
+                    ))}
+                  </Row>
+                ) : (
+                  <Empty description="Фото модели пока не загружены" />
+                )}
+              </Space>
+            </Col>
+          </Row>
+
+          <Divider style={{ margin: "8px 0" }} />
+
+          <Typography.Title level={5} style={{ margin: 0 }}>
+            Заметки
+          </Typography.Title>
+          <Typography.Paragraph style={{ marginBottom: 0 }}>
+            {currentModel?.notes || "Заметки по модели пока не заполнены"}
+          </Typography.Paragraph>
+        </Space>
+      </Card>
+
+      <Card
+        size="small"
+        title="Редактирование основных данных"
         extra={
           <Button size="small" type="primary" loading={modelDetailsSaving} onClick={handleSaveModelDetails}>
             Сохранить
@@ -3599,99 +3682,8 @@ export default function EquipmentClassifierMain() {
           </Form.Item>
         </Form>
       </Card>
-
-      {renderModelMediaBlock()}
-      {renderModelDocumentsBlock()}
-
-      <Card
-        size="small"
-        title="Характеристики модели"
-        extra={
-          <Button size="small" onClick={() => currentModel && openModelAttributes(currentModel)} disabled={!currentModel}>
-            Изменить
-          </Button>
-        }
-      >
-        <Table
-          size="small"
-          rowKey={(row) => row.attribute_id}
-          columns={modelDetailsAttributeColumns}
-          dataSource={Array.isArray(currentModel?.attribute_values) ? currentModel.attribute_values : []}
-          pagination={false}
-          locale={{ emptyText: "У модели пока не заполнены характеристики" }}
-        />
-      </Card>
     </Space>
   )
-
-  const renderModelSummary = () => {
-    const primaryPhoto = modelMedia[0]
-    const dimensions = [currentModel?.length_mm, currentModel?.width_mm, currentModel?.height_mm]
-    const hasDimensions = dimensions.some((value) => value !== null && value !== undefined)
-
-    return (
-      <Card size="small" loading={modelMediaLoading}>
-        <Row gutter={[16, 16]} align="middle">
-          <Col flex="96px">
-            {primaryPhoto?.file_url ? (
-              <Image
-                src={resolveAssetUrl(primaryPhoto.file_url)}
-                alt={primaryPhoto.caption || primaryPhoto.file_name || "Фото модели"}
-                width={88}
-                height={72}
-                style={{ objectFit: "cover", borderRadius: 6 }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: 88,
-                  height: 72,
-                  border: "1px solid #f0f0f0",
-                  borderRadius: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#bfbfbf",
-                  background: "#fafafa",
-                }}
-              >
-                Фото
-              </div>
-            )}
-          </Col>
-          <Col flex="auto">
-            <Space direction="vertical" size={4} style={{ width: "100%" }}>
-              <Typography.Title level={4} style={{ margin: 0 }}>
-                {[currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "Модель"}
-              </Typography.Title>
-              <Typography.Text type="secondary">
-                {currentModel?.classifier_node_name || selectedNode?.name || "Раздел классификатора"}
-              </Typography.Text>
-              <Space wrap size={[8, 4]}>
-                {currentModel?.storage_uom ? (
-                  <Tag>Ед. хранения: {formatMeasurementUnit(currentModel.storage_uom)}</Tag>
-                ) : null}
-                {currentModel?.weight_kg ? <Tag>Вес: {currentModel.weight_kg} кг</Tag> : null}
-                {hasDimensions ? (
-                  <Tag>Габариты: {dimensions.map((value) => value ?? "—").join(" × ")} мм</Tag>
-                ) : null}
-              </Space>
-            </Space>
-          </Col>
-          <Col>
-            <Space wrap>
-              <Button size="small" onClick={() => selectedNode && selectClassifierNode(selectedNode)}>
-                Назад к моделям
-              </Button>
-              <Button size="small" onClick={() => openMoveModel(currentModel)}>
-                Перенести
-              </Button>
-            </Space>
-          </Col>
-        </Row>
-      </Card>
-    )
-  }
 
   const renderModelBomTab = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
@@ -3809,8 +3801,6 @@ export default function EquipmentClassifierMain() {
     if (!currentModel) return <Empty description="Модель не найдена в выбранном разделе" />
     return (
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
-        {renderModelSummary()}
-
         <Tabs
           items={[
             {
