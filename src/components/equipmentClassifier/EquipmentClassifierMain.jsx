@@ -97,9 +97,46 @@ const ATTRIBUTE_TYPE_OPTIONS = [
 
 const ATTRIBUTE_TYPE_LABELS = Object.fromEntries(ATTRIBUTE_TYPE_OPTIONS.map((item) => [item.value, item.label]))
 
+const CARD_KIND_OPTIONS = [
+  {
+    value: "auto",
+    label: "Авто",
+    description: "Система смотрит на содержимое раздела и показывает подходящие списки.",
+  },
+  {
+    value: "equipment_model",
+    label: "Модели оборудования",
+    description: "Внутри раздела открываются карточки моделей с паспортом, BOM и клиентскими машинами.",
+  },
+  {
+    value: "catalog_position",
+    label: "Карточки товара",
+    description: "Внутри раздела открываются товарные карточки с паспортом и применяемостью в BOM.",
+  },
+]
+
+const CARD_KIND_LABELS = {
+  auto: "Авто",
+  mixed: "Авто",
+  equipment_model: "Модели оборудования",
+  catalog_position: "Карточки товара",
+  service: "Услуги",
+  material: "Материалы",
+}
+
+const CARD_KIND_COLORS = {
+  auto: "default",
+  mixed: "default",
+  equipment_model: "green",
+  catalog_position: "purple",
+  service: "cyan",
+  material: "orange",
+}
+
 const EMPTY_FORM = {
   name: "",
   notes: "",
+  card_kind: "auto",
 }
 
 const CARD_IMAGE_STYLE = {
@@ -369,6 +406,7 @@ export default function EquipmentClassifierMain() {
   const [selectedTreeKey, setSelectedTreeKey] = useState(null)
   const [selectedTreeEntity, setSelectedTreeEntity] = useState({ type: "node", id: null })
   const [form] = Form.useForm()
+  const nodeCardKind = Form.useWatch("card_kind", form)
   const [modelForm] = Form.useForm()
   const [manufacturerForm] = Form.useForm()
   const [attributeForm] = Form.useForm()
@@ -799,6 +837,32 @@ export default function EquipmentClassifierMain() {
     [formatMeasurementUnit]
   )
 
+  const getCardKind = useCallback((node) => {
+    const kind = String(node?.card_kind || "auto").trim() || "auto"
+    return CARD_KIND_LABELS[kind] ? kind : "auto"
+  }, [])
+
+  const getCardKindDescription = useCallback((node) => {
+    const kind = getCardKind(node)
+    if (kind === "equipment_model") {
+      return "Этот раздел ведет к карточкам моделей: паспорт, BOM модели, машины клиентов и клиентские исполнения."
+    }
+    if (kind === "catalog_position") {
+      return "Этот раздел ведет к карточкам товара: паспорт, характеристики и где используется в BOM."
+    }
+    return "Автоматический режим: раздел показывает то, что в нем уже есть. Для точного поведения задайте тип вручную."
+  }, [getCardKind])
+
+  const renderCardKindTag = useCallback((node, { compact = false } = {}) => {
+    const kind = getCardKind(node)
+    if (compact && kind === "auto") return null
+    return (
+      <Tag color={CARD_KIND_COLORS[kind] || "default"} style={compact ? { marginInlineEnd: 0 } : undefined}>
+        {CARD_KIND_LABELS[kind] || CARD_KIND_LABELS.auto}
+      </Tag>
+    )
+  }, [getCardKind])
+
   const attributeUnitOptions = useMemo(() => {
     const seen = new Set(measurementUnitOptions.map((option) => String(option.value)))
     const extra = attributes
@@ -818,12 +882,17 @@ export default function EquipmentClassifierMain() {
     const build = (nodes) =>
       (nodes || []).map((node) => ({
         key: treeKey.node(node.id),
-        title: node.name,
+        title: (
+          <Space size={4} wrap={false}>
+            <span>{node.name}</span>
+            {renderCardKindTag(node, { compact: true })}
+          </Space>
+        ),
         children: build(node.children || []),
       }))
 
     return build(treeRows)
-  }, [treeRows])
+  }, [renderCardKindTag, treeRows])
 
   const getDefaultNodeType = (parent) => {
     if (!parent) return "ROOT"
@@ -848,7 +917,7 @@ export default function EquipmentClassifierMain() {
     setEditingNode(null)
     setParentForCreate(selectedNode)
     setNodeCardImageUrl("")
-    form.setFieldsValue({ ...EMPTY_FORM })
+    form.setFieldsValue({ ...EMPTY_FORM, card_kind: selectedNode?.card_kind || "auto" })
     setModalOpen(true)
   }
 
@@ -863,6 +932,7 @@ export default function EquipmentClassifierMain() {
     form.setFieldsValue({
       name: node.name || "",
       notes: node.notes || "",
+      card_kind: node.card_kind || "auto",
     })
     setModalOpen(true)
   }
@@ -880,6 +950,7 @@ export default function EquipmentClassifierMain() {
         sort_order: editingNode ? editingNode.sort_order || 0 : 0,
         is_active: editingNode ? (editingNode.is_active ? 1 : 0) : 1,
         notes: values.notes || null,
+        card_kind: values.card_kind || "auto",
         card_image_url: nodeCardImageUrl || null,
       }
 
@@ -2373,6 +2444,16 @@ export default function EquipmentClassifierMain() {
       })
   }, [allModels, getNodePathLabel, selectedBranchNodeIdSet, selectedNode, selectedNodeIsLeaf])
 
+  const branchCatalogPositionsRaw = useMemo(() => {
+    if (!selectedNode || selectedNodeIsLeaf) return []
+    return rawWorkspaceCatalogPositions
+      .filter((row) => selectedBranchNodeIdSet.has(Number(row.classifier_node_id)))
+      .map((row) => ({
+        ...row,
+        classifier_path: getNodePathLabel(row.classifier_node_id),
+      }))
+  }, [getNodePathLabel, rawWorkspaceCatalogPositions, selectedBranchNodeIdSet, selectedNode, selectedNodeIsLeaf])
+
   const branchChildStats = useMemo(() => {
     const result = new Map()
     if (!selectedNodeChildren.length) return result
@@ -2387,7 +2468,7 @@ export default function EquipmentClassifierMain() {
       }
       walk(child)
       childNodeIds.set(Number(child.id), new Set(ids))
-      result.set(Number(child.id), { modelCount: 0, manufacturerIds: new Set() })
+      result.set(Number(child.id), { modelCount: 0, catalogPositionCount: 0, manufacturerIds: new Set() })
     })
 
     branchModelsRaw.forEach((model) => {
@@ -2401,17 +2482,29 @@ export default function EquipmentClassifierMain() {
       })
     })
 
+    branchCatalogPositionsRaw.forEach((position) => {
+      const positionNodeId = Number(position.classifier_node_id)
+      selectedNodeChildren.forEach((child) => {
+        const ids = childNodeIds.get(Number(child.id))
+        if (!ids?.has(positionNodeId)) return
+        const stat = result.get(Number(child.id))
+        stat.catalogPositionCount += 1
+      })
+    })
+
     return result
-  }, [branchModelsRaw, selectedNodeChildren])
+  }, [branchCatalogPositionsRaw, branchModelsRaw, selectedNodeChildren])
 
   const branchSectionFilterOptions = useMemo(
     () =>
       selectedNodeChildren.map((child) => {
         const stat = branchChildStats.get(Number(child.id))
         const modelCount = stat?.modelCount || 0
+        const catalogPositionCount = stat?.catalogPositionCount || 0
+        const totalCount = modelCount + catalogPositionCount
         return {
           value: Number(child.id),
-          label: `${child.name || "Раздел"} · ${modelCount}`,
+          label: `${child.name || "Раздел"} · ${totalCount}`,
         }
       }),
     [branchChildStats, selectedNodeChildren],
@@ -3335,6 +3428,7 @@ export default function EquipmentClassifierMain() {
         {selectedNodeChildren.map((child) => {
           const stat = branchChildStats.get(Number(child.id))
           const modelCount = stat?.modelCount || 0
+          const catalogPositionCount = stat?.catalogPositionCount || 0
           const manufacturerCount = stat?.manufacturerIds?.size || 0
           return (
             <Col key={child.id} xs={24} sm={12} lg={6}>
@@ -3345,9 +3439,13 @@ export default function EquipmentClassifierMain() {
                 styles={{ body: { minHeight: 104 } }}
               >
                 <Space direction="vertical" size={6} style={{ width: "100%" }}>
-                  <Typography.Text strong>{child.name || "Раздел"}</Typography.Text>
+                  <Space size={4} wrap>
+                    <Typography.Text strong>{child.name || "Раздел"}</Typography.Text>
+                    {renderCardKindTag(child, { compact: true })}
+                  </Space>
                   <Space size={4} wrap>
                     <Tag color={modelCount ? "blue" : "default"}>{modelCount} моделей</Tag>
+                    <Tag color={catalogPositionCount ? "purple" : "default"}>{catalogPositionCount} товаров</Tag>
                     <Tag>{manufacturerCount} производителей</Tag>
                   </Space>
                   {child.notes ? (
@@ -3382,7 +3480,7 @@ export default function EquipmentClassifierMain() {
     return (
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
         <Row gutter={[8, 8]}>
-          <Col xs={24} sm={8}>
+          <Col xs={24} sm={12} lg={6}>
             <Card size="small">
               <Typography.Text type="secondary">Подразделы</Typography.Text>
               <Typography.Title level={4} style={{ margin: 0 }}>
@@ -3390,7 +3488,7 @@ export default function EquipmentClassifierMain() {
               </Typography.Title>
             </Card>
           </Col>
-          <Col xs={24} sm={8}>
+          <Col xs={24} sm={12} lg={6}>
             <Card size="small">
               <Typography.Text type="secondary">Модели в ветке</Typography.Text>
               <Typography.Title level={4} style={{ margin: 0 }}>
@@ -3398,7 +3496,15 @@ export default function EquipmentClassifierMain() {
               </Typography.Title>
             </Card>
           </Col>
-          <Col xs={24} sm={8}>
+          <Col xs={24} sm={12} lg={6}>
+            <Card size="small">
+              <Typography.Text type="secondary">Карточки товара</Typography.Text>
+              <Typography.Title level={4} style={{ margin: 0 }}>
+                {branchCatalogPositionsRaw.length}
+              </Typography.Title>
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
             <Card size="small">
               <Typography.Text type="secondary">Производители</Typography.Text>
               <Typography.Title level={4} style={{ margin: 0 }}>
@@ -3506,6 +3612,36 @@ export default function EquipmentClassifierMain() {
   const renderNodeContent = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       {renderNodeBreadcrumbs()}
+      <Card size="small">
+        <Row gutter={[12, 12]} align="middle">
+          <Col xs={24} lg={16}>
+            <Space direction="vertical" size={4}>
+              <Space wrap>
+                <Typography.Text strong>Тип карточек раздела</Typography.Text>
+                {renderCardKindTag(selectedNode)}
+              </Space>
+              <Typography.Text type="secondary">
+                {getCardKindDescription(selectedNode)}
+              </Typography.Text>
+            </Space>
+          </Col>
+          <Col xs={24} lg={8}>
+            <Space wrap style={{ width: "100%", justifyContent: "flex-end" }}>
+              <Tag color={workspaceModels.length || branchModelsRaw.length ? "blue" : "default"}>
+                Модели: {selectedNodeIsLeaf ? workspaceModels.length : branchModelsRaw.length}
+              </Tag>
+              <Tag color={workspaceCatalogPositions.length || branchCatalogPositionsRaw.length ? "purple" : "default"}>
+                Товары: {selectedNodeIsLeaf ? workspaceCatalogPositions.length : branchCatalogPositionsRaw.length}
+              </Tag>
+              {canEditSelectedNode ? (
+                <Button size="small" onClick={openEdit}>
+                  Настроить
+                </Button>
+              ) : null}
+            </Space>
+          </Col>
+        </Row>
+      </Card>
       <Space wrap>
         {!selectedNodeIsLeaf ? (
           <Button type="primary" onClick={openCreateChild}>
@@ -5351,6 +5487,22 @@ export default function EquipmentClassifierMain() {
           >
             <Input placeholder="Например: Дробилки конусные" />
           </Form.Item>
+          <Form.Item
+            label="Тип карточек в разделе"
+            name="card_kind"
+            tooltip="Определяет, какие карточки считаются основными для этого раздела классификатора."
+          >
+            <Select
+              options={CARD_KIND_OPTIONS.map((option) => ({
+                value: option.value,
+                label: option.label,
+              }))}
+            />
+          </Form.Item>
+          <Typography.Paragraph type="secondary" style={{ marginTop: -12 }}>
+            {CARD_KIND_OPTIONS.find((option) => option.value === nodeCardKind)?.description ||
+              CARD_KIND_OPTIONS[0].description}
+          </Typography.Paragraph>
           <Form.Item label="Описание для карточки" name="notes">
             <Input.TextArea rows={3} />
           </Form.Item>
