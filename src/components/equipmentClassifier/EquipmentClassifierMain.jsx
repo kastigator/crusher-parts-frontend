@@ -101,17 +101,26 @@ const CARD_KIND_OPTIONS = [
   {
     value: "auto",
     label: "Авто",
-    description: "Система смотрит на содержимое раздела и показывает подходящие списки.",
+    description: "Оставьте, если раздел пока служит папкой или в нем есть и модели, и товарные карточки.",
+    when: "Для верхних и переходных разделов: Горное оборудование, Гидравлика, Крепеж.",
+    opens: "Раздел показывает то, что уже есть внутри: подразделы, модели и/или карточки товара.",
+    tabs: ["Обзор раздела", "Списки внутри раздела", "Фильтры по найденному содержимому"],
   },
   {
     value: "equipment_model",
     label: "Модели оборудования",
-    description: "Внутри раздела открываются карточки моделей с паспортом, BOM и клиентскими машинами.",
+    description: "Выберите, если элементами этого раздела являются модели машин или оборудования.",
+    when: "Для классов вроде Грохоты, Питатели, Дробилки конусные.",
+    opens: "При клике открывается карточка конкретной модели оборудования.",
+    tabs: ["Паспорт модели", "BOM модели", "Машины клиентов", "Клиентские исполнения"],
   },
   {
     value: "catalog_position",
     label: "Карточки товара",
-    description: "Внутри раздела открываются товарные карточки с паспортом и применяемостью в BOM.",
+    description: "Выберите, если элементами этого раздела являются номенклатурные позиции, детали, материалы или крепеж.",
+    when: "Для классов вроде Болты, Подшипники, Рукава, Масла, Электрокомпоненты.",
+    opens: "При клике открывается карточка товара/позиции классификатора.",
+    tabs: ["Паспорт товара", "Где используется в BOM", "Поставщики", "Документы"],
   },
 ]
 
@@ -4295,6 +4304,7 @@ export default function EquipmentClassifierMain() {
           : selectedNode?.name || null
 
   const canEditSelectedNode = selectedTreeEntity.type === "node" && selectedNode
+  const nodeCardKindOption = CARD_KIND_OPTIONS.find((option) => option.value === nodeCardKind) || CARD_KIND_OPTIONS[0]
   const addMenuItems = [
     {
       key: "root-section",
@@ -5485,7 +5495,6 @@ export default function EquipmentClassifierMain() {
           <Form.Item
             label="Тип карточек в разделе"
             name="card_kind"
-            tooltip="Определяет, какие карточки считаются основными для этого раздела классификатора."
           >
             <Select
               options={CARD_KIND_OPTIONS.map((option) => ({
@@ -5494,10 +5503,28 @@ export default function EquipmentClassifierMain() {
               }))}
             />
           </Form.Item>
-          <Typography.Paragraph type="secondary" style={{ marginTop: -12 }}>
-            {CARD_KIND_OPTIONS.find((option) => option.value === nodeCardKind)?.description ||
-              CARD_KIND_OPTIONS[0].description}
-          </Typography.Paragraph>
+          <Card size="small" style={{ marginTop: -12, marginBottom: 16, background: "#fafafa" }}>
+            <Space direction="vertical" size={8} style={{ width: "100%" }}>
+              <Space wrap>
+                <Tag color={CARD_KIND_COLORS[nodeCardKindOption.value] || "default"}>
+                  {nodeCardKindOption.label}
+                </Tag>
+                <Typography.Text strong>Что это значит</Typography.Text>
+              </Space>
+              <Typography.Text>{nodeCardKindOption.description}</Typography.Text>
+              <Typography.Text type="secondary">
+                <b>Когда использовать:</b> {nodeCardKindOption.when}
+              </Typography.Text>
+              <Typography.Text type="secondary">
+                <b>Что откроется:</b> {nodeCardKindOption.opens}
+              </Typography.Text>
+              <Space size={4} wrap>
+                {nodeCardKindOption.tabs.map((tab) => (
+                  <Tag key={tab}>{tab}</Tag>
+                ))}
+              </Space>
+            </Space>
+          </Card>
           <Form.Item label="Описание для карточки" name="notes">
             <Input.TextArea rows={3} />
           </Form.Item>
