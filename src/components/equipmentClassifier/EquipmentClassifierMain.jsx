@@ -97,8 +97,20 @@ const ATTRIBUTE_TYPE_OPTIONS = [
 
 const ATTRIBUTE_TYPE_LABELS = Object.fromEntries(ATTRIBUTE_TYPE_OPTIONS.map((item) => [item.value, item.label]))
 
+const CARD_KIND_OPTIONS = [
+  { value: "auto", label: "Определять автоматически" },
+  { value: "mixed", label: "Смешанный раздел" },
+  { value: "equipment_model", label: "Модели оборудования" },
+  { value: "catalog_position", label: "Карточки товара" },
+  { value: "material", label: "Материалы" },
+  { value: "service", label: "Услуги" },
+]
+
+const CARD_KIND_LABELS = Object.fromEntries(CARD_KIND_OPTIONS.map((item) => [item.value, item.label]))
+
 const EMPTY_FORM = {
   name: "",
+  card_kind: "auto",
   notes: "",
 }
 
@@ -682,6 +694,7 @@ export default function EquipmentClassifierMain() {
   const selectedNode = selectedId ? nodeMap.get(Number(selectedId)) || null : null
   const selectedNodeChildren = Array.isArray(selectedNode?.children) ? selectedNode.children : []
   const selectedNodeIsLeaf = !!selectedNode && selectedNodeChildren.length === 0
+  const selectedNodeCardKind = selectedNode?.card_kind || "auto"
   const selectedBranchNodeIds = useMemo(() => {
     if (!selectedNode) return []
     const ids = []
@@ -800,7 +813,16 @@ export default function EquipmentClassifierMain() {
     const build = (nodes) =>
       (nodes || []).map((node) => ({
         key: treeKey.node(node.id),
-        title: node.name,
+        title: (
+          <Space size={4}>
+            <span>{node.name}</span>
+            {node.card_kind && node.card_kind !== "auto" ? (
+              <Tag style={{ marginInlineEnd: 0 }} color={node.card_kind === "catalog_position" ? "purple" : "blue"}>
+                {CARD_KIND_LABELS[node.card_kind] || node.card_kind}
+              </Tag>
+            ) : null}
+          </Space>
+        ),
         children: build(node.children || []),
       }))
 
@@ -844,6 +866,7 @@ export default function EquipmentClassifierMain() {
     setNodeCardImageUrl(node.card_image_url || "")
     form.setFieldsValue({
       name: node.name || "",
+      card_kind: node.card_kind || "auto",
       notes: node.notes || "",
     })
     setModalOpen(true)
@@ -859,6 +882,7 @@ export default function EquipmentClassifierMain() {
         name: values.name,
         code: editingNode ? editingNode.code || null : null,
         node_type: editingNode?.node_type || getDefaultNodeType(parentForCreate),
+        card_kind: values.card_kind || "auto",
         sort_order: editingNode ? editingNode.sort_order || 0 : 0,
         is_active: editingNode ? (editingNode.is_active ? 1 : 0) : 1,
         notes: values.notes || null,
@@ -2347,6 +2371,27 @@ export default function EquipmentClassifierMain() {
     [rawWorkspaceCatalogPositions, selectedId, selectedNodeIsLeaf],
   )
 
+  const resolvedSelectedNodeCardKind = useMemo(() => {
+    if (!selectedNode) return "auto"
+    const explicitKind = selectedNode.card_kind || "auto"
+    if (explicitKind !== "auto") return explicitKind
+    const hasModels = workspaceModels.length > 0
+    const hasCatalogPositions = workspaceCatalogPositions.length > 0
+    if (hasModels && hasCatalogPositions) return "mixed"
+    if (hasCatalogPositions) return "catalog_position"
+    if (hasModels) return "equipment_model"
+    return "auto"
+  }, [selectedNode, workspaceCatalogPositions.length, workspaceModels.length])
+
+  const shouldShowModelSection =
+    resolvedSelectedNodeCardKind === "auto" ||
+    resolvedSelectedNodeCardKind === "mixed" ||
+    resolvedSelectedNodeCardKind === "equipment_model"
+  const shouldShowCatalogPositionSection =
+    resolvedSelectedNodeCardKind === "auto" ||
+    resolvedSelectedNodeCardKind === "mixed" ||
+    resolvedSelectedNodeCardKind === "catalog_position"
+
   const branchModelsRaw = useMemo(() => {
     if (!selectedNode || selectedNodeIsLeaf) return []
     return allModels
@@ -3458,36 +3503,61 @@ export default function EquipmentClassifierMain() {
         ) : null}
       </Space>
 
+      {selectedNode ? (
+        <Space wrap>
+          <Tag color={resolvedSelectedNodeCardKind === "catalog_position" ? "purple" : "blue"}>
+            {CARD_KIND_LABELS[resolvedSelectedNodeCardKind] || "Тип содержимого не задан"}
+          </Tag>
+          {selectedNodeCardKind === "auto" ? <Tag>авто</Tag> : null}
+        </Space>
+      ) : null}
+
       {selectedNodeIsLeaf ? (
         <>
-          <Card size="small" title={`Модели оборудования (${workspaceModels.length})`}>
-            <Table
-              size="small"
-              rowKey="id"
-              columns={modelsColumns}
-              dataSource={workspaceModels}
-              loading={workspaceLoading}
-              pagination={{ pageSize: 8, showSizeChanger: false }}
-              locale={{ emptyText: "В этом разделе пока нет моделей оборудования" }}
-              onRow={(row) => ({
-                onDoubleClick: () => openModelDetails(row),
-              })}
+          {shouldShowModelSection ? (
+            <Card size="small" title={`Модели оборудования (${workspaceModels.length})`}>
+              <Table
+                size="small"
+                rowKey="id"
+                columns={modelsColumns}
+                dataSource={workspaceModels}
+                loading={workspaceLoading}
+                pagination={{ pageSize: 8, showSizeChanger: false }}
+                locale={{ emptyText: "В этом разделе пока нет моделей оборудования" }}
+                onRow={(row) => ({
+                  onDoubleClick: () => openModelDetails(row),
+                })}
+              />
+            </Card>
+          ) : null}
+          {shouldShowCatalogPositionSection ? (
+            <Card size="small" title={`Карточки товара (${workspaceCatalogPositions.length})`}>
+              <Table
+                size="small"
+                rowKey="id"
+                columns={catalogPositionColumns}
+                dataSource={workspaceCatalogPositions}
+                loading={workspaceLoading}
+                pagination={{ pageSize: 8, showSizeChanger: false }}
+                locale={{ emptyText: "В этом разделе пока нет товарных карточек" }}
+                onRow={(row) => ({
+                  onDoubleClick: () => openCatalogPositionCard(row),
+                })}
+              />
+            </Card>
+          ) : null}
+          {resolvedSelectedNodeCardKind === "material" || resolvedSelectedNodeCardKind === "service" ? (
+            <Alert
+              type="info"
+              showIcon
+              message={
+                resolvedSelectedNodeCardKind === "material"
+                  ? "Раздел материалов"
+                  : "Раздел услуг"
+              }
+              description="Тип раздела уже зафиксирован. Отдельная карточка для этого типа будет следующим слоем: поля, документы, поставщики и связи."
             />
-          </Card>
-          <Card size="small" title={`Карточки товара (${workspaceCatalogPositions.length})`}>
-            <Table
-              size="small"
-              rowKey="id"
-              columns={catalogPositionColumns}
-              dataSource={workspaceCatalogPositions}
-              loading={workspaceLoading}
-              pagination={{ pageSize: 8, showSizeChanger: false }}
-              locale={{ emptyText: "В этом разделе пока нет товарных карточек" }}
-              onRow={(row) => ({
-                onDoubleClick: () => openCatalogPositionCard(row),
-              })}
-            />
-          </Card>
+          ) : null}
         </>
       ) : (
         renderBranchOverview()
@@ -5351,6 +5421,13 @@ export default function EquipmentClassifierMain() {
             rules={[{ required: true, message: "Укажите название раздела" }]}
           >
             <Input placeholder="Например: Дробилки конусные" />
+          </Form.Item>
+          <Form.Item
+            label="Тип содержимого"
+            name="card_kind"
+            tooltip="Определяет, какие карточки ожидаются в этом разделе: модели оборудования, товарные карточки, материалы, услуги или смешанный раздел."
+          >
+            <Select options={CARD_KIND_OPTIONS} />
           </Form.Item>
           <Form.Item label="Описание для карточки" name="notes">
             <Input.TextArea rows={3} />
