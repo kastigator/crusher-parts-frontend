@@ -882,17 +882,12 @@ export default function EquipmentClassifierMain() {
     const build = (nodes) =>
       (nodes || []).map((node) => ({
         key: treeKey.node(node.id),
-        title: (
-          <Space size={4} wrap={false}>
-            <span>{node.name}</span>
-            {renderCardKindTag(node, { compact: true })}
-          </Space>
-        ),
+        title: node.name,
         children: build(node.children || []),
       }))
 
     return build(treeRows)
-  }, [renderCardKindTag, treeRows])
+  }, [treeRows])
 
   const getDefaultNodeType = (parent) => {
     if (!parent) return "ROOT"
