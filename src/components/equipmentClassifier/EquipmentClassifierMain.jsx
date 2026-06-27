@@ -2816,39 +2816,24 @@ export default function EquipmentClassifierMain() {
       .map(([type, rows]) => ({ type, rows }))
   }, [nsiSearchRows])
 
+  const getAttributeDisplayName = (row) =>
+    row?.unit ? `${row.label || "—"}, ${formatMeasurementUnitShort(row.unit)}` : row?.label || "—"
+
   const attributeColumns = [
     {
-      title: "Характеристика",
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text strong>{row.label || "—"}</Typography.Text>
-          {row.help_text ? <Typography.Text type="secondary">{row.help_text}</Typography.Text> : null}
-        </Space>
-      ),
-    },
-    {
-      title: "Формат",
-      width: 190,
-      render: (_, row) => (
-        <Space wrap size={4}>
-          <Tag>{ATTRIBUTE_TYPE_LABELS[row.value_type] || row.value_type}</Tag>
-          {row.unit ? <Tag color="blue">{formatMeasurementUnitShort(row.unit)}</Tag> : null}
-        </Space>
-      ),
-    },
-    {
-      title: "Использование",
-      width: 220,
+      title: "Поле паспорта",
       render: (_, row) => (
         <Space direction="vertical" size={4}>
+          <Typography.Text strong>{getAttributeDisplayName(row)}</Typography.Text>
+          {row.help_text ? <Typography.Text type="secondary">{row.help_text}</Typography.Text> : null}
           <Space wrap size={4}>
-            {row.is_filterable ? <Tag color="cyan">Фильтр</Tag> : null}
-            {row.is_required ? <Tag color="orange">Обязательная</Tag> : null}
-            {!row.is_filterable && !row.is_required ? "—" : null}
+            {row.is_filterable ? <Tag color="cyan">показывается в фильтрах</Tag> : null}
+            {row.is_required ? <Tag color="orange">обязательное поле</Tag> : null}
+            {row.value_type === "select" || row.value_type === "multiselect" ? <Tag>список значений</Tag> : null}
           </Space>
           {Number(row.classifier_node_id) !== Number(selectedNode?.id) ? (
             <Typography.Text type="secondary">
-              из: {row.source_node_name || "родительский раздел"}
+              Наследуется из раздела: {row.source_node_name || "родительский раздел"}
             </Typography.Text>
           ) : null}
         </Space>
@@ -2857,27 +2842,27 @@ export default function EquipmentClassifierMain() {
     {
       title: "Действия",
       key: "actions",
-      width: 180,
+      width: 230,
       render: (_, row) => {
         const inherited = Number(row.classifier_node_id) !== Number(selectedNode?.id)
         return (
           <Space wrap>
             <Button size="small" onClick={() => openEditAttribute(row)}>
-              {inherited ? "Изменить источник" : "Изменить"}
+              {inherited ? "Изменить в источнике" : "Настроить"}
             </Button>
             <Popconfirm
-              title={inherited ? "Отключить характеристику-источник?" : "Отключить характеристику?"}
+              title={inherited ? "Убрать поле из родительского паспорта?" : "Убрать поле из паспорта?"}
               description={
                 inherited
-                  ? `Она задана в разделе "${row.source_node_name || "родительский раздел"}" и исчезнет у разделов, которые её наследуют.`
-                  : row.label
+                  ? `Поле задано в разделе "${row.source_node_name || "родительский раздел"}" и исчезнет у разделов, которые его наследуют.`
+                  : getAttributeDisplayName(row)
               }
-              okText="Отключить"
+              okText="Убрать"
               cancelText="Отмена"
               onConfirm={() => handleDeleteAttribute(row)}
             >
               <Button size="small" danger>
-                {inherited ? "Отключить источник" : "Убрать"}
+                {inherited ? "Убрать в источнике" : "Убрать"}
               </Button>
             </Popconfirm>
           </Space>
@@ -5608,7 +5593,7 @@ export default function EquipmentClassifierMain() {
 
       <Modal
         open={attributeManagerOpen}
-        title={selectedNode ? `Характеристики: ${selectedNode.name}` : "Характеристики"}
+        title={selectedNode ? `Настройка паспорта: ${selectedNode.name}` : "Настройка паспорта"}
         onCancel={() => setAttributeManagerOpen(false)}
         footer={[
           <Button key="close" onClick={() => setAttributeManagerOpen(false)}>
@@ -5621,20 +5606,28 @@ export default function EquipmentClassifierMain() {
         width={820}
         destroyOnHidden
       >
-        <Table
-          size="small"
-          rowKey="id"
-          columns={attributeColumns}
-          dataSource={attributes}
-          loading={attributesLoading}
-          pagination={false}
-          locale={{ emptyText: "Для этого раздела пока не настроены характеристики" }}
-        />
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Alert
+            type="info"
+            showIcon
+            message="Поля ниже формируют паспорт карточек в этом разделе."
+            description="Единицы измерения, тип значения и варианты списка настраиваются внутри поля. В общем списке оставлены только сведения, которые помогают читать паспорт."
+          />
+          <Table
+            size="small"
+            rowKey="id"
+            columns={attributeColumns}
+            dataSource={attributes}
+            loading={attributesLoading}
+            pagination={false}
+            locale={{ emptyText: "Поля паспорта для этого раздела пока не настроены" }}
+          />
+        </Space>
       </Modal>
 
       <Modal
         open={attributeModalOpen}
-        title={editingAttribute ? "Характеристика оборудования" : "Новая характеристика оборудования"}
+        title={editingAttribute ? "Настройка поля паспорта" : "Новое поле паспорта"}
         onCancel={() => setAttributeModalOpen(false)}
         onOk={handleSaveAttribute}
         confirmLoading={attributeSaving}
@@ -5644,9 +5637,9 @@ export default function EquipmentClassifierMain() {
       >
         <Form form={attributeForm} layout="vertical">
           <Form.Item
-            label="Название"
+            label="Название поля"
             name="label"
-            rules={[{ required: true, message: "Укажите название характеристики" }]}
+            rules={[{ required: true, message: "Укажите название поля" }]}
           >
             <Input placeholder="Например: Диаметр конуса" />
           </Form.Item>
@@ -5657,7 +5650,7 @@ export default function EquipmentClassifierMain() {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="Единица" name="unit">
+              <Form.Item label="Единица измерения" name="unit">
                 <Select
                   allowClear
                   showSearch
@@ -5671,17 +5664,17 @@ export default function EquipmentClassifierMain() {
           </Row>
           <Row gutter={12}>
             <Col xs={24} md={12}>
-              <Form.Item label="Порядок" name="sort_order">
+              <Form.Item label="Порядок в паспорте" name="sort_order">
                 <InputNumber style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={6}>
-              <Form.Item label="В фильтрах" name="is_filterable" valuePropName="checked">
+              <Form.Item label="Показывать в фильтрах" name="is_filterable" valuePropName="checked">
                 <Switch />
               </Form.Item>
             </Col>
             <Col xs={24} md={6}>
-              <Form.Item label="Обязательная" name="is_required" valuePropName="checked">
+              <Form.Item label="Обязательное поле" name="is_required" valuePropName="checked">
                 <Switch />
               </Form.Item>
             </Col>
@@ -5689,13 +5682,13 @@ export default function EquipmentClassifierMain() {
           <Form.Item shouldUpdate noStyle>
             {({ getFieldValue }) =>
               ["select", "multiselect"].includes(getFieldValue("value_type")) ? (
-                <Form.Item label="Варианты списка" name="options_text">
+                <Form.Item label="Варианты для выбора" name="options_text">
                   <Input.TextArea rows={4} placeholder={"Мелкая\nСредняя\nКрупная"} />
                 </Form.Item>
               ) : null
             }
           </Form.Item>
-          <Form.Item label="Подсказка" name="help_text">
+          <Form.Item label="Подсказка для заполнения" name="help_text">
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
