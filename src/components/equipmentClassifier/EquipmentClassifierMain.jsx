@@ -100,35 +100,35 @@ const ATTRIBUTE_TYPE_LABELS = Object.fromEntries(ATTRIBUTE_TYPE_OPTIONS.map((ite
 const CARD_KIND_OPTIONS = [
   {
     value: "auto",
-    label: "Авто",
-    description: "Оставьте, если раздел пока служит папкой или в нем есть и модели, и товарные карточки.",
-    when: "Для верхних и переходных разделов: Горное оборудование, Гидравлика, Крепеж.",
-    opens: "Раздел показывает то, что уже есть внутри: подразделы, модели и/или карточки товара.",
+    label: "Наследовать / папка",
+    description: "Раздел не задает собственный тип карточек. Он наследует тип родителя или работает как папка.",
+    when: "Для промежуточных разделов, которые только группируют дочерние классы.",
+    opens: "Раздел показывает обзор ветки: подразделы, модели и/или товарные карточки.",
     tabs: ["Обзор раздела", "Списки внутри раздела", "Фильтры по найденному содержимому"],
   },
   {
     value: "equipment_model",
-    label: "Модели оборудования",
-    description: "Выберите, если элементами этого раздела являются модели машин или оборудования.",
-    when: "Для классов вроде Грохоты, Питатели, Дробилки конусные.",
+    label: "Оборудование",
+    description: "Ветка предназначена для моделей машин или оборудования.",
+    when: "Для верхних веток и классов вроде Горное оборудование, Грохоты, Питатели, Дробилки конусные.",
     opens: "При клике открывается карточка конкретной модели оборудования.",
     tabs: ["Паспорт модели", "BOM модели", "Машины клиентов", "Клиентские исполнения"],
   },
   {
     value: "catalog_position",
-    label: "Карточки товара",
-    description: "Выберите, если элементами этого раздела являются номенклатурные позиции, детали, материалы или крепеж.",
-    when: "Для классов вроде Болты, Подшипники, Рукава, Масла, Электрокомпоненты.",
+    label: "Товар / номенклатура",
+    description: "Ветка предназначена для товарных и номенклатурных карточек: детали, материалы, крепеж, расходники.",
+    when: "Для верхних веток и классов вроде Крепеж, Болты, Подшипники, Рукава, Масла, Электрокомпоненты.",
     opens: "При клике открывается карточка товара/позиции классификатора.",
     tabs: ["Паспорт товара", "Где используется в BOM", "Поставщики", "Документы"],
   },
 ]
 
 const CARD_KIND_LABELS = {
-  auto: "Авто",
-  mixed: "Авто",
-  equipment_model: "Модели оборудования",
-  catalog_position: "Карточки товара",
+  auto: "Наследовать / папка",
+  mixed: "Наследовать / папка",
+  equipment_model: "Оборудование",
+  catalog_position: "Товар / номенклатура",
   service: "Услуги",
   material: "Материалы",
 }
@@ -846,31 +846,73 @@ export default function EquipmentClassifierMain() {
     [formatMeasurementUnit]
   )
 
-  const getCardKind = useCallback((node) => {
-    const kind = String(node?.card_kind || "auto").trim() || "auto"
+  const normalizeCardKind = useCallback((value) => {
+    const kind = String(value || "auto").trim() || "auto"
     return CARD_KIND_LABELS[kind] ? kind : "auto"
   }, [])
 
-  const getCardKindDescription = useCallback((node) => {
-    const kind = getCardKind(node)
+  const isInheritedCardKind = useCallback((value) => {
+    const kind = normalizeCardKind(value)
+    return kind === "auto" || kind === "mixed"
+  }, [normalizeCardKind])
+
+  const getEffectiveCardKindInfo = useCallback((node) => {
+    if (!node) {
+      return { kind: "auto", sourceNode: null, isInherited: false, directKind: "auto" }
+    }
+    const path = []
+    let current = node
+    const guard = new Set()
+    while (current?.id && !guard.has(Number(current.id))) {
+      guard.add(Number(current.id))
+      path.unshift(current)
+      current = current.parent_id ? nodeMap.get(Number(current.parent_id)) : null
+    }
+    for (let index = path.length - 1; index >= 0; index -= 1) {
+      const candidate = path[index]
+      const candidateKind = normalizeCardKind(candidate.card_kind)
+      if (!isInheritedCardKind(candidateKind)) {
+        return {
+          kind: candidateKind,
+          sourceNode: candidate,
+          isInherited: Number(candidate.id) !== Number(node.id),
+          directKind: normalizeCardKind(node.card_kind),
+        }
+      }
+    }
+    return {
+      kind: "auto",
+      sourceNode: null,
+      isInherited: false,
+      directKind: normalizeCardKind(node.card_kind),
+    }
+  }, [isInheritedCardKind, nodeMap, normalizeCardKind])
+
+  const getCardKindDescription = useCallback((kind) => {
     if (kind === "equipment_model") {
-      return "Этот раздел ведет к карточкам моделей: паспорт, BOM модели, машины клиентов и клиентские исполнения."
+      return "В этой ветке основные карточки — модели оборудования: паспорт, BOM, машины клиентов и клиентские исполнения."
     }
     if (kind === "catalog_position") {
-      return "Этот раздел ведет к карточкам товара: паспорт, характеристики и где используется в BOM."
+      return "В этой ветке основные карточки — товары/номенклатура: паспорт, характеристики и где используется в BOM."
     }
-    return "Автоматический режим: раздел показывает то, что в нем уже есть. Для точного поведения задайте тип вручную."
-  }, [getCardKind])
+    return "Раздел работает как папка или наследует тип от родителя. Если это верхняя ветка, задайте ей основной тип."
+  }, [])
 
   const renderCardKindTag = useCallback((node, { compact = false } = {}) => {
-    const kind = getCardKind(node)
+    const { kind } = getEffectiveCardKindInfo(node)
     if (compact && kind === "auto") return null
     return (
       <Tag color={CARD_KIND_COLORS[kind] || "default"} style={compact ? { marginInlineEnd: 0 } : undefined}>
         {CARD_KIND_LABELS[kind] || CARD_KIND_LABELS.auto}
       </Tag>
     )
-  }, [getCardKind])
+  }, [getEffectiveCardKindInfo])
+
+  const selectedCardKindInfo = useMemo(
+    () => getEffectiveCardKindInfo(selectedNode),
+    [getEffectiveCardKindInfo, selectedNode],
+  )
+  const selectedEffectiveCardKind = selectedCardKindInfo.kind
 
   const attributeUnitOptions = useMemo(() => {
     const seen = new Set(measurementUnitOptions.map((option) => String(option.value)))
@@ -921,7 +963,7 @@ export default function EquipmentClassifierMain() {
     setEditingNode(null)
     setParentForCreate(selectedNode)
     setNodeCardImageUrl("")
-    form.setFieldsValue({ ...EMPTY_FORM, card_kind: selectedNode?.card_kind || "auto" })
+    form.setFieldsValue({ ...EMPTY_FORM, card_kind: "auto" })
     setModalOpen(true)
   }
 
@@ -2428,8 +2470,12 @@ export default function EquipmentClassifierMain() {
     [rawWorkspaceCatalogPositions, selectedId, selectedNodeIsLeaf],
   )
 
-  const shouldShowModelSection = workspaceModels.length > 0 || workspaceCatalogPositions.length === 0
-  const shouldShowCatalogPositionSection = workspaceCatalogPositions.length > 0
+  const shouldShowModelSection =
+    selectedEffectiveCardKind === "equipment_model" ||
+    (selectedEffectiveCardKind === "auto" && (workspaceModels.length > 0 || workspaceCatalogPositions.length === 0))
+  const shouldShowCatalogPositionSection =
+    selectedEffectiveCardKind === "catalog_position" ||
+    (selectedEffectiveCardKind === "auto" && workspaceCatalogPositions.length > 0)
 
   const branchModelsRaw = useMemo(() => {
     if (!selectedNode || selectedNodeIsLeaf) return []
@@ -3621,11 +3667,18 @@ export default function EquipmentClassifierMain() {
           <Col xs={24} lg={16}>
             <Space direction="vertical" size={4}>
               <Space wrap>
-                <Typography.Text strong>Тип карточек раздела</Typography.Text>
+                <Typography.Text strong>Тип ветки</Typography.Text>
                 {renderCardKindTag(selectedNode)}
+                {selectedCardKindInfo.isInherited && selectedCardKindInfo.sourceNode ? (
+                  <Tag>наследуется от {selectedCardKindInfo.sourceNode.name}</Tag>
+                ) : selectedEffectiveCardKind === "auto" ? (
+                  <Tag>папка / не задан</Tag>
+                ) : (
+                  <Tag>задан здесь</Tag>
+                )}
               </Space>
               <Typography.Text type="secondary">
-                {getCardKindDescription(selectedNode)}
+                {getCardKindDescription(selectedEffectiveCardKind)}
               </Typography.Text>
             </Space>
           </Col>
@@ -3735,80 +3788,21 @@ export default function EquipmentClassifierMain() {
 
   const renderModelPassportTab = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
-      <Card
-        size="small"
-        title="Паспорт модели"
-        extra={
-          <Space wrap>
-            <Button size="small" onClick={() => selectedNode && selectClassifierNode(selectedNode)}>
-              Назад к моделям
-            </Button>
-            <Button size="small" onClick={() => openMoveModel(currentModel)}>
-              Перенести
-            </Button>
-            <Button size="small" onClick={() => currentModel && openModelAttributes(currentModel)} disabled={!currentModel}>
-              Изменить характеристики
-            </Button>
-          </Space>
-        }
-      >
-        <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <Space wrap>
-            <Tag color={modelBomItems.length ? "blue" : "default"}>BOM: {modelBomItems.length}</Tag>
-            <Tag color={currentModelUnits.length ? "orange" : "default"}>Машины: {currentModelUnits.length}</Tag>
-            <Tag color={modelDocuments.length ? "green" : "default"}>Документы: {modelDocuments.length}</Tag>
-            <Tag color={modelMedia.length ? "cyan" : "default"}>Фото: {modelMedia.length}</Tag>
-          </Space>
+      <Space wrap style={{ width: "100%", justifyContent: "space-between" }}>
+        <Space wrap>
+          <Button size="small" onClick={() => selectedNode && selectClassifierNode(selectedNode)}>
+            Назад к моделям
+          </Button>
+          <Button size="small" onClick={() => openMoveModel(currentModel)}>
+            Перенести
+          </Button>
+        </Space>
+        <Button size="small" type="primary" onClick={() => currentModel && openModelAttributes(currentModel)} disabled={!currentModel}>
+          Изменить характеристики
+        </Button>
+      </Space>
 
-          <Row gutter={12}>
-            <Col xs={24} lg={18}>
-              <Typography.Title level={5} style={{ marginTop: 0 }}>
-                Основное
-              </Typography.Title>
-              <Descriptions bordered size="small" column={2}>
-                <Descriptions.Item label="Производитель">{currentModel?.manufacturer_name || "—"}</Descriptions.Item>
-                <Descriptions.Item label="Модель">{currentModel?.model_name || "—"}</Descriptions.Item>
-                <Descriptions.Item label="Раздел классификатора">
-                  {currentModel?.classifier_node_name || selectedNode?.name || "—"}
-                </Descriptions.Item>
-              </Descriptions>
-            </Col>
-            <Col xs={24} lg={6}>
-              <Typography.Title level={5} style={{ marginTop: 0 }}>
-                Обложка
-              </Typography.Title>
-              {modelMedia[0]?.file_url ? (
-                <Image
-                  src={resolveAssetUrl(modelMedia[0].file_url)}
-                  alt={modelMedia[0].caption || modelMedia[0].file_name || "Фото модели"}
-                  width="100%"
-                  height={168}
-                  style={{ objectFit: "cover", borderRadius: 6 }}
-                />
-              ) : (
-                <div
-                  style={{
-                    height: 168,
-                    border: "1px solid #f0f0f0",
-                    borderRadius: 6,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#bfbfbf",
-                    background: "#fafafa",
-                  }}
-                >
-                  Фото не загружено
-                </div>
-              )}
-            </Col>
-          </Row>
-
-          <Divider style={{ margin: "8px 0" }} />
-
-          <Typography.Title level={5} style={{ margin: 0 }}>
-            Технические параметры
-          </Typography.Title>
+      <Card size="small" title="Технические параметры">
           <Table
             size="small"
             rowKey={(row) => row.attribute_id}
@@ -3817,26 +3811,25 @@ export default function EquipmentClassifierMain() {
             pagination={false}
             locale={{ emptyText: "У модели пока не заполнены характеристики" }}
           />
+      </Card>
 
-          <Divider style={{ margin: "8px 0" }} />
-
-          <Row gutter={[16, 16]}>
-            <Col xs={24} lg={12}>
-              <Space direction="vertical" size={8} style={{ width: "100%" }}>
-                <Space style={{ width: "100%", justifyContent: "space-between" }}>
-                  <Typography.Title level={5} style={{ margin: 0 }}>
-                    Документы
-                  </Typography.Title>
-                  <Upload
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,text/plain"
-                    showUploadList={false}
-                    customRequest={handleUploadModelDocument}
-                  >
-                    <Button size="small" loading={modelDocumentUploading}>
-                      Загрузить
-                    </Button>
-                  </Upload>
-                </Space>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}>
+          <Space direction="vertical" size={8} style={{ width: "100%" }}>
+            <Space style={{ width: "100%", justifyContent: "space-between" }}>
+              <Typography.Title level={5} style={{ margin: 0 }}>
+                Документы
+              </Typography.Title>
+              <Upload
+                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,text/plain"
+                showUploadList={false}
+                customRequest={handleUploadModelDocument}
+              >
+                <Button size="small" loading={modelDocumentUploading}>
+                  Загрузить
+                </Button>
+              </Upload>
+            </Space>
                 {modelDocuments.length ? (
                   <Table
                     size="small"
@@ -3870,20 +3863,20 @@ export default function EquipmentClassifierMain() {
                 ) : (
                   <Empty description="Документы модели пока не загружены" />
                 )}
-              </Space>
-            </Col>
-            <Col xs={24} lg={12}>
-              <Space direction="vertical" size={8} style={{ width: "100%" }}>
-                <Space style={{ width: "100%", justifyContent: "space-between" }}>
-                  <Typography.Title level={5} style={{ margin: 0 }}>
-                    Фото
-                  </Typography.Title>
-                  <Upload accept="image/*" showUploadList={false} customRequest={handleUploadModelMedia}>
-                    <Button size="small" loading={modelMediaUploading}>
-                      Загрузить
-                    </Button>
-                  </Upload>
-                </Space>
+          </Space>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Space direction="vertical" size={8} style={{ width: "100%" }}>
+            <Space style={{ width: "100%", justifyContent: "space-between" }}>
+              <Typography.Title level={5} style={{ margin: 0 }}>
+                Фото
+              </Typography.Title>
+              <Upload accept="image/*" showUploadList={false} customRequest={handleUploadModelMedia}>
+                <Button size="small" loading={modelMediaUploading}>
+                  Загрузить
+                </Button>
+              </Upload>
+            </Space>
                 {modelMedia.length ? (
                   <Row gutter={[8, 8]}>
                     {modelMedia.map((item) => (
@@ -3909,20 +3902,14 @@ export default function EquipmentClassifierMain() {
                 ) : (
                   <Empty description="Фото модели пока не загружены" />
                 )}
-              </Space>
-            </Col>
-          </Row>
+          </Space>
+        </Col>
+      </Row>
 
-          <Divider style={{ margin: "8px 0" }} />
-
-          <Typography.Title level={5} style={{ margin: 0 }}>
-            Заметки
-          </Typography.Title>
-          <Typography.Paragraph style={{ marginBottom: 0 }}>
-            {currentModel?.notes || "Заметки по модели пока не заполнены"}
-          </Typography.Paragraph>
-
-        </Space>
+      <Card size="small" title="Заметки">
+        <Typography.Paragraph style={{ marginBottom: 0 }}>
+          {currentModel?.notes || "Заметки по модели пока не заполнены"}
+        </Typography.Paragraph>
       </Card>
     </Space>
   )
@@ -5493,7 +5480,7 @@ export default function EquipmentClassifierMain() {
             <Input placeholder="Например: Дробилки конусные" />
           </Form.Item>
           <Form.Item
-            label="Тип карточек в разделе"
+            label="Тип ветки"
             name="card_kind"
           >
             <Select
