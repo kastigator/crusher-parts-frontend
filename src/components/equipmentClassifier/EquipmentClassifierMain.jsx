@@ -3831,99 +3831,94 @@ export default function EquipmentClassifierMain() {
         />
       </Card>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={12}>
-          <Card
-            size="small"
-            title="Документы"
-            loading={modelDocumentsLoading}
-            extra={
-              <Upload
-                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,text/plain"
-                showUploadList={false}
-                customRequest={handleUploadModelDocument}
-              >
-                <Button size="small" loading={modelDocumentUploading}>
-                  Загрузить
-                </Button>
-              </Upload>
-            }
+      <Card
+        size="small"
+        title="Документы"
+        loading={modelDocumentsLoading}
+        extra={
+          <Upload
+            accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,text/plain"
+            showUploadList={false}
+            customRequest={handleUploadModelDocument}
           >
-            {modelDocuments.length ? (
-              <Table
-                size="small"
-                rowKey="id"
-                pagination={false}
-                dataSource={modelDocuments}
-                columns={[
-                  {
-                    title: "Документ",
-                    render: (_, row) => (
-                      <Space direction="vertical" size={0}>
-                        <a href={resolveAssetUrl(row.file_url)} target="_blank" rel="noreferrer">
-                          {row.file_name || "Документ"}
-                        </a>
-                        {row.description ? <Typography.Text type="secondary">{row.description}</Typography.Text> : null}
-                      </Space>
-                    ),
-                  },
-                  {
-                    title: "",
-                    width: 90,
-                    render: (_, row) => (
-                      <Button size="small" danger onClick={() => handleDeleteModelDocument(row.id)}>
-                        Удалить
-                      </Button>
-                    ),
-                  },
-                ]}
-              />
-            ) : (
-              <Empty description="Документы модели пока не загружены" />
-            )}
-          </Card>
-        </Col>
-        <Col xs={24} lg={12}>
-          <Card
+            <Button size="small" loading={modelDocumentUploading}>
+              Загрузить
+            </Button>
+          </Upload>
+        }
+      >
+        {modelDocuments.length ? (
+          <Table
             size="small"
-            title="Фото"
-            loading={modelMediaLoading}
-            extra={
-              <Upload accept="image/*" showUploadList={false} customRequest={handleUploadModelMedia}>
-                <Button size="small" loading={modelMediaUploading}>
-                  Загрузить
-                </Button>
-              </Upload>
-            }
-          >
-            {modelMedia.length ? (
-              <Row gutter={[8, 8]}>
-                {modelMedia.map((item) => (
-                  <Col key={item.id} xs={24} sm={12}>
-                    <Space direction="vertical" size={6} style={{ width: "100%" }}>
-                      <Image
-                        src={resolveAssetUrl(item.file_url)}
-                        alt={item.caption || item.file_name || "Фото модели"}
-                        width="100%"
-                        height={96}
-                        style={{ objectFit: "cover", borderRadius: 6 }}
-                      />
-                      <Typography.Text type="secondary" ellipsis={{ tooltip: item.caption || item.file_name }}>
-                        {item.caption || item.file_name || "Фото"}
-                      </Typography.Text>
-                      <Button size="small" danger onClick={() => handleDeleteModelMedia(item.id)}>
-                        Удалить
-                      </Button>
-                    </Space>
-                  </Col>
-                ))}
-              </Row>
-            ) : (
-              <Empty description="Фото модели пока не загружены" />
-            )}
-          </Card>
-        </Col>
-      </Row>
+            rowKey="id"
+            pagination={false}
+            dataSource={modelDocuments}
+            columns={[
+              {
+                title: "Документ",
+                render: (_, row) => (
+                  <Space direction="vertical" size={0}>
+                    <a href={resolveAssetUrl(row.file_url)} target="_blank" rel="noreferrer">
+                      {row.file_name || "Документ"}
+                    </a>
+                    {row.description ? <Typography.Text type="secondary">{row.description}</Typography.Text> : null}
+                  </Space>
+                ),
+              },
+              {
+                title: "",
+                width: 90,
+                render: (_, row) => (
+                  <Button size="small" danger onClick={() => handleDeleteModelDocument(row.id)}>
+                    Удалить
+                  </Button>
+                ),
+              },
+            ]}
+          />
+        ) : (
+          <Empty description="Документы модели пока не загружены" />
+        )}
+      </Card>
+
+      <Card
+        size="small"
+        title="Фото"
+        loading={modelMediaLoading}
+        extra={
+          <Upload accept="image/*" showUploadList={false} customRequest={handleUploadModelMedia}>
+            <Button size="small" loading={modelMediaUploading}>
+              Загрузить
+            </Button>
+          </Upload>
+        }
+      >
+        {modelMedia.length ? (
+          <Row gutter={[8, 8]}>
+            {modelMedia.map((item) => (
+              <Col key={item.id} xs={24} sm={12} lg={8}>
+                <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                  <Image
+                    src={resolveAssetUrl(item.file_url)}
+                    alt={item.caption || item.file_name || "Фото модели"}
+                    width="100%"
+                    height={96}
+                    style={{ objectFit: "cover", borderRadius: 6 }}
+                  />
+                  <Typography.Text type="secondary" ellipsis={{ tooltip: item.caption || item.file_name }}>
+                    {item.caption || item.file_name || "Фото"}
+                  </Typography.Text>
+                  <Button size="small" danger onClick={() => handleDeleteModelMedia(item.id)}>
+                    Удалить
+                  </Button>
+                </Space>
+              </Col>
+            ))}
+          </Row>
+        ) : (
+          <Empty description="Фото модели пока не загружены" />
+        )}
+      </Card>
 
       <Card size="small" title="Заметки">
         <Typography.Paragraph style={{ marginBottom: 0 }}>
