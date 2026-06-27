@@ -344,10 +344,10 @@ export default function EquipmentClassifierMain() {
   const [attributes, setAttributes] = useState([])
   const [attributeFilters, setAttributeFilters] = useState({})
   const [attributesLoading, setAttributesLoading] = useState(false)
-  const [attributeModalOpen, setAttributeModalOpen] = useState(false)
   const [attributeManagerOpen, setAttributeManagerOpen] = useState(false)
   const [attributeSaving, setAttributeSaving] = useState(false)
   const [editingAttribute, setEditingAttribute] = useState(null)
+  const [attributeEditorMode, setAttributeEditorMode] = useState(null)
   const [modelAttributesOpen, setModelAttributesOpen] = useState(false)
   const [modelDetailsOpen, setModelDetailsOpen] = useState(false)
   const [modelAttributesLoading, setModelAttributesLoading] = useState(false)
@@ -1208,8 +1208,7 @@ export default function EquipmentClassifierMain() {
       help_text: "",
       options_text: "",
     })
-    setAttributeManagerOpen(false)
-    setAttributeModalOpen(true)
+    setAttributeEditorMode("create")
   }
 
   const openManageAttributes = () => {
@@ -1221,6 +1220,8 @@ export default function EquipmentClassifierMain() {
       message.warning("Характеристики задаются только для нижнего раздела")
       return
     }
+    setEditingAttribute(null)
+    setAttributeEditorMode(null)
     setAttributeManagerOpen(true)
   }
 
@@ -1237,12 +1238,11 @@ export default function EquipmentClassifierMain() {
       help_text: row.help_text || "",
       options_text: (row.options || []).map((option) => option.value_label).join("\n"),
     })
-    setAttributeManagerOpen(false)
-    setAttributeModalOpen(true)
+    setAttributeEditorMode("edit")
   }
 
   const handleSaveAttribute = async () => {
-    if (!selectedNode) return
+    if (!selectedNode || !attributeEditorMode) return
     try {
       const values = await attributeForm.validateFields()
       const payload = {
@@ -1266,8 +1266,8 @@ export default function EquipmentClassifierMain() {
         await axios.post(`/equipment-classifier-nodes/${selectedNode.id}/attributes`, payload)
         message.success("Характеристика добавлена")
       }
-      setAttributeModalOpen(false)
-      setAttributeManagerOpen(true)
+      setEditingAttribute(null)
+      setAttributeEditorMode(null)
       await loadAttributes(selectedNode.id)
       await loadWorkspace(selectedNode.id)
     } catch (err) {
@@ -1284,6 +1284,10 @@ export default function EquipmentClassifierMain() {
     try {
       await axios.delete(`/equipment-classifier-nodes/attributes/${row.id}`)
       message.success("Характеристика отключена")
+      if (Number(editingAttribute?.id) === Number(row.id)) {
+        setEditingAttribute(null)
+        setAttributeEditorMode(null)
+      }
       await loadAttributes(selectedNode.id)
       await loadWorkspace(selectedNode.id)
     } catch (err) {
@@ -5601,16 +5605,24 @@ export default function EquipmentClassifierMain() {
       <Modal
         open={attributeManagerOpen}
         title={selectedNode ? `Настройка паспорта: ${selectedNode.name}` : "Настройка паспорта"}
-        onCancel={() => setAttributeManagerOpen(false)}
+        onCancel={() => {
+          setAttributeManagerOpen(false)
+          setEditingAttribute(null)
+          setAttributeEditorMode(null)
+        }}
         footer={[
-          <Button key="close" onClick={() => setAttributeManagerOpen(false)}>
+          <Button
+            key="close"
+            onClick={() => {
+              setAttributeManagerOpen(false)
+              setEditingAttribute(null)
+              setAttributeEditorMode(null)
+            }}
+          >
             Закрыть
           </Button>,
-          <Button key="add" type="primary" onClick={openCreateAttribute}>
-            Добавить характеристику
-          </Button>,
         ]}
-        width={820}
+        width={1120}
         destroyOnHidden
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
@@ -5618,85 +5630,117 @@ export default function EquipmentClassifierMain() {
             Эти поля формируют паспорт карточек в выбранном разделе. Единицы измерения, тип значения и варианты
             списка настраиваются внутри поля.
           </Typography.Paragraph>
-          <Table
-            size="small"
-            rowKey="id"
-            columns={attributeColumns}
-            dataSource={attributes}
-            loading={attributesLoading}
-            pagination={false}
-            locale={{ emptyText: "Поля паспорта для этого раздела пока не настроены" }}
-          />
-        </Space>
-      </Modal>
-
-      <Modal
-        open={attributeModalOpen}
-        title={editingAttribute ? "Настройка поля паспорта" : "Новое поле паспорта"}
-        onCancel={() => setAttributeModalOpen(false)}
-        onOk={handleSaveAttribute}
-        confirmLoading={attributeSaving}
-        okText="Сохранить"
-        cancelText="Отмена"
-        destroyOnHidden
-      >
-        <Form form={attributeForm} layout="vertical">
-          <Form.Item
-            label="Название поля"
-            name="label"
-            rules={[{ required: true, message: "Укажите название поля" }]}
-          >
-            <Input placeholder="Например: Диаметр конуса" />
-          </Form.Item>
-          <Row gutter={12}>
-            <Col xs={24} md={12}>
-              <Form.Item label="Тип значения" name="value_type">
-                <Select options={ATTRIBUTE_TYPE_OPTIONS} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Единица измерения" name="unit">
-                <Select
-                  allowClear
-                  showSearch
-                  loading={measurementUnitsLoading}
-                  options={attributeUnitOptions}
-                  optionFilterProp="label"
-                  placeholder="Выберите единицу"
+          <Row gutter={[16, 16]} align="top">
+            <Col xs={24} lg={13}>
+              <Card
+                size="small"
+                title="Поля паспорта"
+                extra={
+                  <Button size="small" type="primary" onClick={openCreateAttribute}>
+                    Добавить поле
+                  </Button>
+                }
+              >
+                <Table
+                  size="small"
+                  rowKey="id"
+                  columns={attributeColumns}
+                  dataSource={attributes}
+                  loading={attributesLoading}
+                  pagination={false}
+                  locale={{ emptyText: "Поля паспорта для этого раздела пока не настроены" }}
                 />
-              </Form.Item>
+              </Card>
+            </Col>
+            <Col xs={24} lg={11}>
+              <Card
+                size="small"
+                title={
+                  attributeEditorMode === "create"
+                    ? "Новое поле"
+                    : attributeEditorMode === "edit"
+                      ? "Настройка поля"
+                      : "Поле паспорта"
+                }
+              >
+                {attributeEditorMode ? (
+                  <Form form={attributeForm} layout="vertical">
+                    <Form.Item
+                      label="Название поля"
+                      name="label"
+                      rules={[{ required: true, message: "Укажите название поля" }]}
+                    >
+                      <Input placeholder="Например: Диаметр конуса" />
+                    </Form.Item>
+                    <Row gutter={12}>
+                      <Col xs={24} md={12}>
+                        <Form.Item label="Тип значения" name="value_type">
+                          <Select options={ATTRIBUTE_TYPE_OPTIONS} />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} md={12}>
+                        <Form.Item label="Единица измерения" name="unit">
+                          <Select
+                            allowClear
+                            showSearch
+                            loading={measurementUnitsLoading}
+                            options={attributeUnitOptions}
+                            optionFilterProp="label"
+                            placeholder="Выберите единицу"
+                          />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                    <Row gutter={12}>
+                      <Col xs={24} md={12}>
+                        <Form.Item label="Порядок в паспорте" name="sort_order">
+                          <InputNumber style={{ width: "100%" }} />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} md={6}>
+                        <Form.Item label="Показывать в фильтрах" name="is_filterable" valuePropName="checked">
+                          <Switch />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} md={6}>
+                        <Form.Item label="Обязательное поле" name="is_required" valuePropName="checked">
+                          <Switch />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                    <Form.Item shouldUpdate noStyle>
+                      {({ getFieldValue }) =>
+                        ["select", "multiselect"].includes(getFieldValue("value_type")) ? (
+                          <Form.Item label="Варианты для выбора" name="options_text">
+                            <Input.TextArea rows={4} placeholder={"Мелкая\nСредняя\nКрупная"} />
+                          </Form.Item>
+                        ) : null
+                      }
+                    </Form.Item>
+                    <Form.Item label="Подсказка для заполнения" name="help_text">
+                      <Input.TextArea rows={3} />
+                    </Form.Item>
+                    <Space style={{ width: "100%", justifyContent: "flex-end" }}>
+                      <Button
+                        onClick={() => {
+                          setEditingAttribute(null)
+                          setAttributeEditorMode(null)
+                        }}
+                      >
+                        Отмена
+                      </Button>
+                      <Button type="primary" loading={attributeSaving} onClick={handleSaveAttribute}>
+                        Сохранить
+                      </Button>
+                    </Space>
+                  </Form>
+                ) : (
+                  <Empty description="Выберите поле слева или добавьте новое" />
+                )}
+              </Card>
             </Col>
           </Row>
-          <Row gutter={12}>
-            <Col xs={24} md={12}>
-              <Form.Item label="Порядок в паспорте" name="sort_order">
-                <InputNumber style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item label="Показывать в фильтрах" name="is_filterable" valuePropName="checked">
-                <Switch />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item label="Обязательное поле" name="is_required" valuePropName="checked">
-                <Switch />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item shouldUpdate noStyle>
-            {({ getFieldValue }) =>
-              ["select", "multiselect"].includes(getFieldValue("value_type")) ? (
-                <Form.Item label="Варианты для выбора" name="options_text">
-                  <Input.TextArea rows={4} placeholder={"Мелкая\nСредняя\nКрупная"} />
-                </Form.Item>
-              ) : null
-            }
-          </Form.Item>
-          <Form.Item label="Подсказка для заполнения" name="help_text">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-        </Form>
+        </Space>
       </Modal>
 
       <Modal
