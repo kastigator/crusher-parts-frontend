@@ -2819,6 +2819,15 @@ export default function EquipmentClassifierMain() {
   const getAttributeDisplayName = (row) =>
     row?.unit ? `${row.label || "—"}, ${formatMeasurementUnitShort(row.unit)}` : row?.label || "—"
 
+  const getAttributeMetaText = (row) =>
+    [
+      row?.is_filterable ? "в фильтрах" : null,
+      row?.is_required ? "обязательное" : null,
+      row?.value_type === "select" || row?.value_type === "multiselect" ? "список значений" : null,
+    ]
+      .filter(Boolean)
+      .join(" · ")
+
   const attributeColumns = [
     {
       title: "Поле паспорта",
@@ -2826,11 +2835,9 @@ export default function EquipmentClassifierMain() {
         <Space direction="vertical" size={4}>
           <Typography.Text strong>{getAttributeDisplayName(row)}</Typography.Text>
           {row.help_text ? <Typography.Text type="secondary">{row.help_text}</Typography.Text> : null}
-          <Space wrap size={4}>
-            {row.is_filterable ? <Tag color="cyan">показывается в фильтрах</Tag> : null}
-            {row.is_required ? <Tag color="orange">обязательное поле</Tag> : null}
-            {row.value_type === "select" || row.value_type === "multiselect" ? <Tag>список значений</Tag> : null}
-          </Space>
+          {getAttributeMetaText(row) ? (
+            <Typography.Text type="secondary">{getAttributeMetaText(row)}</Typography.Text>
+          ) : null}
           {Number(row.classifier_node_id) !== Number(selectedNode?.id) ? (
             <Typography.Text type="secondary">
               Наследуется из раздела: {row.source_node_name || "родительский раздел"}
@@ -2842,12 +2849,12 @@ export default function EquipmentClassifierMain() {
     {
       title: "Действия",
       key: "actions",
-      width: 230,
+      width: 170,
       render: (_, row) => {
         const inherited = Number(row.classifier_node_id) !== Number(selectedNode?.id)
         return (
           <Space wrap>
-            <Button size="small" onClick={() => openEditAttribute(row)}>
+            <Button size="small" type="link" onClick={() => openEditAttribute(row)} style={{ paddingInline: 0 }}>
               {inherited ? "Изменить в источнике" : "Настроить"}
             </Button>
             <Popconfirm
@@ -2861,7 +2868,7 @@ export default function EquipmentClassifierMain() {
               cancelText="Отмена"
               onConfirm={() => handleDeleteAttribute(row)}
             >
-              <Button size="small" danger>
+              <Button size="small" type="link" danger style={{ paddingInline: 0 }}>
                 {inherited ? "Убрать в источнике" : "Убрать"}
               </Button>
             </Popconfirm>
@@ -5607,12 +5614,10 @@ export default function EquipmentClassifierMain() {
         destroyOnHidden
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <Alert
-            type="info"
-            showIcon
-            message="Поля ниже формируют паспорт карточек в этом разделе."
-            description="Единицы измерения, тип значения и варианты списка настраиваются внутри поля. В общем списке оставлены только сведения, которые помогают читать паспорт."
-          />
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            Эти поля формируют паспорт карточек в выбранном разделе. Единицы измерения, тип значения и варианты
+            списка настраиваются внутри поля.
+          </Typography.Paragraph>
           <Table
             size="small"
             rowKey="id"
