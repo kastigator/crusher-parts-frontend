@@ -104,6 +104,7 @@ const CARD_KIND_OPTIONS = [
     description: "Раздел не задает собственный тип карточек. Он наследует тип родителя или работает как папка.",
     when: "Для промежуточных разделов, которые только группируют дочерние классы.",
     opens: "Раздел показывает обзор ветки: подразделы, модели и/или товарные карточки.",
+    primaryCard: "Не задается",
     tabs: ["Обзор раздела", "Списки внутри раздела", "Фильтры по найденному содержимому"],
   },
   {
@@ -112,6 +113,7 @@ const CARD_KIND_OPTIONS = [
     description: "Ветка предназначена для моделей машин или оборудования.",
     when: "Для верхних веток и классов вроде Горное оборудование, Грохоты, Питатели, Дробилки конусные.",
     opens: "При клике открывается карточка конкретной модели оборудования.",
+    primaryCard: "Модель оборудования",
     tabs: ["Паспорт модели", "BOM модели", "Машины клиентов", "Клиентские исполнения"],
   },
   {
@@ -120,6 +122,7 @@ const CARD_KIND_OPTIONS = [
     description: "Ветка предназначена для товарных и номенклатурных карточек: детали, материалы, крепеж, расходники.",
     when: "Для верхних веток и классов вроде Крепеж, Болты, Подшипники, Рукава, Масла, Электрокомпоненты.",
     opens: "При клике открывается карточка товара/позиции классификатора.",
+    primaryCard: "Карточка товара",
     tabs: ["Паспорт товара", "Где используется в BOM", "Поставщики", "Документы"],
   },
 ]
@@ -140,6 +143,15 @@ const CARD_KIND_COLORS = {
   catalog_position: "purple",
   service: "cyan",
   material: "orange",
+}
+
+const PRIMARY_CARD_LABELS = {
+  auto: "По содержимому раздела",
+  mixed: "По содержимому раздела",
+  equipment_model: "Модель оборудования",
+  catalog_position: "Карточка товара",
+  service: "Карточка услуги",
+  material: "Карточка материала",
 }
 
 const EMPTY_FORM = {
@@ -3677,6 +3689,12 @@ export default function EquipmentClassifierMain() {
                   <Tag>задан здесь</Tag>
                 )}
               </Space>
+              <Space wrap>
+                <Typography.Text strong>Основная карточка</Typography.Text>
+                <Tag color={CARD_KIND_COLORS[selectedEffectiveCardKind] || "default"}>
+                  {PRIMARY_CARD_LABELS[selectedEffectiveCardKind] || PRIMARY_CARD_LABELS.auto}
+                </Tag>
+              </Space>
               <Typography.Text type="secondary">
                 {getCardKindDescription(selectedEffectiveCardKind)}
               </Typography.Text>
@@ -3803,23 +3821,23 @@ export default function EquipmentClassifierMain() {
       </Space>
 
       <Card size="small" title="Технические параметры">
-          <Table
-            size="small"
-            rowKey={(row) => row.attribute_id}
-            columns={modelDetailsAttributeColumns}
-            dataSource={Array.isArray(currentModel?.attribute_values) ? currentModel.attribute_values : []}
-            pagination={false}
-            locale={{ emptyText: "У модели пока не заполнены характеристики" }}
-          />
+        <Table
+          size="small"
+          rowKey={(row) => row.attribute_id}
+          columns={modelDetailsAttributeColumns}
+          dataSource={Array.isArray(currentModel?.attribute_values) ? currentModel.attribute_values : []}
+          pagination={false}
+          locale={{ emptyText: "У модели пока не заполнены характеристики" }}
+        />
       </Card>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
-          <Space direction="vertical" size={8} style={{ width: "100%" }}>
-            <Space style={{ width: "100%", justifyContent: "space-between" }}>
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                Документы
-              </Typography.Title>
+          <Card
+            size="small"
+            title="Документы"
+            loading={modelDocumentsLoading}
+            extra={
               <Upload
                 accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,text/plain"
                 showUploadList={false}
@@ -3829,80 +3847,81 @@ export default function EquipmentClassifierMain() {
                   Загрузить
                 </Button>
               </Upload>
-            </Space>
-                {modelDocuments.length ? (
-                  <Table
-                    size="small"
-                    rowKey="id"
-                    pagination={false}
-                    loading={modelDocumentsLoading}
-                    dataSource={modelDocuments}
-                    columns={[
-                      {
-                        title: "Документ",
-                        render: (_, row) => (
-                          <Space direction="vertical" size={0}>
-                            <a href={resolveAssetUrl(row.file_url)} target="_blank" rel="noreferrer">
-                              {row.file_name || "Документ"}
-                            </a>
-                            {row.description ? <Typography.Text type="secondary">{row.description}</Typography.Text> : null}
-                          </Space>
-                        ),
-                      },
-                      {
-                        title: "",
-                        width: 90,
-                        render: (_, row) => (
-                          <Button size="small" danger onClick={() => handleDeleteModelDocument(row.id)}>
-                            Удалить
-                          </Button>
-                        ),
-                      },
-                    ]}
-                  />
-                ) : (
-                  <Empty description="Документы модели пока не загружены" />
-                )}
-          </Space>
+            }
+          >
+            {modelDocuments.length ? (
+              <Table
+                size="small"
+                rowKey="id"
+                pagination={false}
+                dataSource={modelDocuments}
+                columns={[
+                  {
+                    title: "Документ",
+                    render: (_, row) => (
+                      <Space direction="vertical" size={0}>
+                        <a href={resolveAssetUrl(row.file_url)} target="_blank" rel="noreferrer">
+                          {row.file_name || "Документ"}
+                        </a>
+                        {row.description ? <Typography.Text type="secondary">{row.description}</Typography.Text> : null}
+                      </Space>
+                    ),
+                  },
+                  {
+                    title: "",
+                    width: 90,
+                    render: (_, row) => (
+                      <Button size="small" danger onClick={() => handleDeleteModelDocument(row.id)}>
+                        Удалить
+                      </Button>
+                    ),
+                  },
+                ]}
+              />
+            ) : (
+              <Empty description="Документы модели пока не загружены" />
+            )}
+          </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Space direction="vertical" size={8} style={{ width: "100%" }}>
-            <Space style={{ width: "100%", justifyContent: "space-between" }}>
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                Фото
-              </Typography.Title>
+          <Card
+            size="small"
+            title="Фото"
+            loading={modelMediaLoading}
+            extra={
               <Upload accept="image/*" showUploadList={false} customRequest={handleUploadModelMedia}>
                 <Button size="small" loading={modelMediaUploading}>
                   Загрузить
                 </Button>
               </Upload>
-            </Space>
-                {modelMedia.length ? (
-                  <Row gutter={[8, 8]}>
-                    {modelMedia.map((item) => (
-                      <Col key={item.id} xs={24} sm={12}>
-                        <Space direction="vertical" size={6} style={{ width: "100%" }}>
-                          <Image
-                            src={resolveAssetUrl(item.file_url)}
-                            alt={item.caption || item.file_name || "Фото модели"}
-                            width="100%"
-                            height={96}
-                            style={{ objectFit: "cover", borderRadius: 6 }}
-                          />
-                          <Typography.Text type="secondary" ellipsis={{ tooltip: item.caption || item.file_name }}>
-                            {item.caption || item.file_name || "Фото"}
-                          </Typography.Text>
-                          <Button size="small" danger onClick={() => handleDeleteModelMedia(item.id)}>
-                            Удалить
-                          </Button>
-                        </Space>
-                      </Col>
-                    ))}
-                  </Row>
-                ) : (
-                  <Empty description="Фото модели пока не загружены" />
-                )}
-          </Space>
+            }
+          >
+            {modelMedia.length ? (
+              <Row gutter={[8, 8]}>
+                {modelMedia.map((item) => (
+                  <Col key={item.id} xs={24} sm={12}>
+                    <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                      <Image
+                        src={resolveAssetUrl(item.file_url)}
+                        alt={item.caption || item.file_name || "Фото модели"}
+                        width="100%"
+                        height={96}
+                        style={{ objectFit: "cover", borderRadius: 6 }}
+                      />
+                      <Typography.Text type="secondary" ellipsis={{ tooltip: item.caption || item.file_name }}>
+                        {item.caption || item.file_name || "Фото"}
+                      </Typography.Text>
+                      <Button size="small" danger onClick={() => handleDeleteModelMedia(item.id)}>
+                        Удалить
+                      </Button>
+                    </Space>
+                  </Col>
+                ))}
+              </Row>
+            ) : (
+              <Empty description="Фото модели пока не загружены" />
+            )}
+          </Card>
         </Col>
       </Row>
 
@@ -5501,6 +5520,9 @@ export default function EquipmentClassifierMain() {
               <Typography.Text>{nodeCardKindOption.description}</Typography.Text>
               <Typography.Text type="secondary">
                 <b>Когда использовать:</b> {nodeCardKindOption.when}
+              </Typography.Text>
+              <Typography.Text type="secondary">
+                <b>Основная карточка:</b> {nodeCardKindOption.primaryCard}
               </Typography.Text>
               <Typography.Text type="secondary">
                 <b>Что откроется:</b> {nodeCardKindOption.opens}
