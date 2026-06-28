@@ -5247,14 +5247,6 @@ export default function EquipmentClassifierMain() {
           layout="vertical"
           initialValues={{ link_classifier: false, row_kind: "assembly", quantity: 1 }}
         >
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 12 }}
-            message="Заполните строку так, как она написана в каталоге производителя"
-            description="Обычно начинают с каталожного номера и названия из parts book. Затем выбирают, что это по смыслу: узел, деталь, комплект, документ, услуга или материал. Связь с классификатором можно оставить пустой и добавить позже, когда будет понятно, какая это универсальная позиция системы."
-          />
-
           <Row gutter={12}>
             <Col span={16}>
               <Form.Item
@@ -5295,12 +5287,12 @@ export default function EquipmentClassifierMain() {
                   }),
                 ]}
               >
-                <Input placeholder="Например: Adjustment Ring" />
+                <Input.TextArea autoSize={{ minRows: 1, maxRows: 4 }} placeholder="Например: Adjustment Ring" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item label="Название RU" name="manufacturer_part_name_ru">
-                <Input placeholder="Например: Регулировочное кольцо" />
+                <Input.TextArea autoSize={{ minRows: 1, maxRows: 4 }} placeholder="Например: Регулировочное кольцо" />
               </Form.Item>
             </Col>
           </Row>
@@ -5368,23 +5360,47 @@ export default function EquipmentClassifierMain() {
               valuePropName="checked"
               style={{ marginBottom: bomLinkClassifier ? 12 : 0 }}
             >
-              <Switch checkedChildren="Связать" unCheckedChildren="Не связывать" />
+              <Switch
+                checkedChildren="Связать"
+                unCheckedChildren="Не связывать"
+                onChange={(checked) => {
+                  if (!checked) return
+                  const seed =
+                    bomItemForm.getFieldValue("manufacturer_part_number") ||
+                    bomItemForm.getFieldValue("manufacturer_part_name_en") ||
+                    bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
+                    ""
+                  loadCatalogPositions(seed)
+                }}
+              />
             </Form.Item>
             <Typography.Paragraph type="secondary" style={{ marginTop: -4, marginBottom: bomLinkClassifier ? 12 : 0 }}>
-              Оставьте выключенным, если пока просто переносите строку из каталога. Включите, если уже понятно,
-              какая это позиция классификатора.
+              Включайте, когда строка BOM соответствует уже заведенной универсальной позиции: стандартному изделию,
+              материалу, услуге или типовой детали. Поиск лучше начинать с номера, размера, стандарта или ключевых слов
+              из названия.
             </Typography.Paragraph>
             {bomLinkClassifier ? (
             <Form.Item
               label="Найти позицию в классификаторе"
               name="catalog_position_id"
               rules={[{ required: true, message: "Выберите позицию классификатора" }]}
+              extra="Если подходящей позиции нет, сохраните строку без связи и создайте/уточните карточку классификатора позже."
             >
               <Select
                 showSearch
                 filterOption={false}
                 loading={catalogPositionsLoading}
-                placeholder="Начните вводить: болт, M20, DIN..."
+                placeholder="Введите номер, размер, стандарт или название"
+                notFoundContent={catalogPositionsLoading ? "Идет поиск..." : "Ничего не найдено"}
+                onFocus={() => {
+                  if (catalogPositionOptions.length) return
+                  const seed =
+                    bomItemForm.getFieldValue("manufacturer_part_number") ||
+                    bomItemForm.getFieldValue("manufacturer_part_name_en") ||
+                    bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
+                    ""
+                  loadCatalogPositions(seed)
+                }}
                 onSearch={loadCatalogPositions}
                 onChange={(value) => {
                   const row = catalogPositionOptions.find((item) => Number(item.id) === Number(value))
@@ -5395,8 +5411,19 @@ export default function EquipmentClassifierMain() {
                 }}
                 options={catalogPositionOptions.map((row) => ({
                   value: row.id,
-                  label: `${row.display_name}${row.classifier_node_name ? ` / ${row.classifier_node_name}` : ""}`,
+                  label: row.display_name || row.position_code || `Позиция #${row.id}`,
+                  positionCode: row.position_code,
+                  classifierNodeName: row.classifier_node_name,
                 }))}
+                optionRender={(option) => (
+                  <Space direction="vertical" size={0}>
+                    <Typography.Text strong>{option.data.label}</Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {[option.data.positionCode, option.data.classifierNodeName].filter(Boolean).join(" / ") ||
+                        "Позиция классификатора"}
+                    </Typography.Text>
+                  </Space>
+                )}
               />
             </Form.Item>
             ) : null}
