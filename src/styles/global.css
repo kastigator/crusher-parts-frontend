@@ -168,6 +168,27 @@ body,
   border-radius: 6px;
 }
 
+/* Equipment model BOM tree */
+.model-bom-tree .ant-tree-treenode {
+  width: 100%;
+  align-items: flex-start;
+}
+
+.model-bom-tree .ant-tree-node-content-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-bom-tree .ant-tree-title {
+  display: block;
+  width: 100%;
+}
+
+.model-bom-tree .ant-tree-node-content-wrapper:hover,
+.model-bom-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background-color: #f5faff;
+}
+
 /* Collapsed sidebar flyout for the nested Catalogs menu.
    AntD renders this submenu as a separate popup, so it needs its own layer and row metrics. */
 .sidebar-catalog-popup {

@@ -18,6 +18,7 @@ import {
   Modal,
   Popconfirm,
   Row,
+  Segmented,
   Select,
   Space,
   Switch,
@@ -29,6 +30,7 @@ import {
   Upload,
   message,
 } from "antd"
+import { DeleteOutlined, EditOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
@@ -341,65 +343,98 @@ const flattenBomTreeRows = (rows, level = 0, acc = []) => {
 const buildBomTreeData = (rows, actions = {}) =>
   (rows || []).map((row) => {
     const effectiveKind = getBomEffectiveRowKind(row)
-    const isGroup = effectiveKind === "assembly"
+    const children = Array.isArray(row.children) ? row.children : []
+    const isGroup = children.length > 0 || effectiveKind === "assembly"
     const label = getBomItemLabel(row)
     const itemName = getBomItemName(row)
+    const linkLabel = row.catalog_position_id
+      ? `связано: ${row.catalog_position_name || row.catalog_position_code || "классификатор"}`
+      : "без связи с классификатором"
     const secondary = [
-      row.catalog_position_id ? `классификатор: ${row.catalog_position_name || row.catalog_position_code}` : null,
-      row.client_part_id ? `чертеж клиента: ${row.client_part_name || row.client_part_number || row.client_part_drawing_number}` : null,
-      row.description_ru || row.description_en || row.catalog_position_description,
-      row.drawing_number ? `чертеж: ${row.drawing_number}` : null,
+      itemName && itemName !== label ? itemName : null,
+      children.length ? `${children.length} поз. внутри` : null,
+      linkLabel,
     ].filter(Boolean)
     const uom = row.uom || row.catalog_position_uom || "шт"
+    const menuItems = [
+      { key: "open", label: "Открыть карточку" },
+      { key: "edit", label: "Изменить строку", icon: <EditOutlined /> },
+      { key: "add", label: "Добавить внутрь", icon: <PlusOutlined /> },
+      { type: "divider" },
+      { key: "delete", label: "Удалить", danger: true, icon: <DeleteOutlined /> },
+    ]
 
     return {
       key: row.id,
       title: (
-        <Space direction="vertical" size={0}>
-          <Space size={8} wrap>
-            {row.item_no ? <Typography.Text type="secondary">{row.item_no}</Typography.Text> : null}
-            <Typography.Link
-              strong={isGroup || (Array.isArray(row.children) && row.children.length > 0)}
-              onClick={() => actions.onOpen?.(row)}
-            >
-              {label}
-            </Typography.Link>
-            {itemName && itemName !== label ? <Typography.Text>{itemName}</Typography.Text> : null}
-            <Tag title="Количество в этом месте BOM">
-              {Number(row.quantity || 0).toLocaleString("ru-RU")} {uom}
-            </Tag>
-            {row.catalog_position_id ? <Tag color="blue">позиция классификатора</Tag> : null}
-            <Tag>{BOM_ROW_KIND_LABELS[effectiveKind] || "строка каталога"}</Tag>
-            {actions.onEdit ? (
-              <Button size="small" type="link" onClick={() => actions.onEdit(row)}>
-                Изменить строку
-              </Button>
-            ) : null}
-            {actions.onAddChild ? (
-              <Button size="small" type="link" onClick={() => actions.onAddChild(row)}>
-                Добавить внутрь
-              </Button>
-            ) : null}
-            {actions.onDelete ? (
-              <Popconfirm
-                title="Удалить строку из BOM?"
-                description="Будет удалено только это место применения в BOM модели. Если внутри есть дочерние позиции, удалится весь подузел."
-                okText="Удалить"
-                cancelText="Отмена"
-                onConfirm={() => actions.onDelete(row)}
-              >
-                <Button size="small" type="link" danger>
-                  Удалить
-                </Button>
-              </Popconfirm>
-            ) : null}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+            width: "100%",
+            padding: "3px 0",
+          }}
+        >
+          <Space direction="vertical" size={1} style={{ minWidth: 0, flex: 1 }}>
+            <Space size={8} wrap>
+              {row.item_no ? <Typography.Text type="secondary">{row.item_no}</Typography.Text> : null}
+              <Typography.Link strong={isGroup} onClick={() => actions.onOpen?.(row)}>
+                {label}
+              </Typography.Link>
+              {itemName && itemName !== label ? <Typography.Text>{itemName}</Typography.Text> : null}
+              <Tag title="Количество в этом месте BOM">
+                {Number(row.quantity || 0).toLocaleString("ru-RU")} {uom}
+              </Tag>
+            </Space>
+            <Space size={6} wrap>
+              {secondary.map((item, index) => (
+                <Typography.Text key={`${row.id}-${index}`} type="secondary" style={{ fontSize: 12 }}>
+                  {item}
+                </Typography.Text>
+              ))}
+            </Space>
           </Space>
-          <Typography.Text type="secondary">
-            {secondary.join(" / ") || (isGroup ? "сборка или раздел BOM" : "—")}
-          </Typography.Text>
-        </Space>
+
+          <Space size={4} onClick={(event) => event.stopPropagation()}>
+            {actions.onAddChild ? (
+              <Button
+                size="small"
+                icon={<PlusOutlined />}
+                title="Добавить внутрь"
+                onClick={() => actions.onAddChild(row)}
+              />
+            ) : null}
+            <Dropdown
+              trigger={["click"]}
+              menu={{
+                items: menuItems,
+                onClick: ({ key, domEvent }) => {
+                  domEvent.stopPropagation()
+                  if (key === "open") actions.onOpen?.(row)
+                  if (key === "edit") actions.onEdit?.(row)
+                  if (key === "add") actions.onAddChild?.(row)
+                  if (key === "delete") {
+                    Modal.confirm({
+                      title: "Удалить строку из BOM?",
+                      content:
+                        "Будет удалено только это место применения в BOM модели. Если внутри есть дочерние позиции, удалится весь подузел.",
+                      okText: "Удалить",
+                      cancelText: "Отмена",
+                      okButtonProps: { danger: true },
+                      onOk: () => actions.onDelete?.(row),
+                    })
+                  }
+                },
+              }}
+            >
+              <Button size="small" icon={<MoreOutlined />} title="Действия" />
+            </Dropdown>
+          </Space>
+        </div>
       ),
-      children: buildBomTreeData(row.children || [], actions),
+      children: buildBomTreeData(children, actions),
     }
   })
 
@@ -468,6 +503,8 @@ export default function EquipmentClassifierMain() {
   const [bomImportWarnings, setBomImportWarnings] = useState([])
   const [bomImportSourceRows, setBomImportSourceRows] = useState([])
   const [bomImportReplace, setBomImportReplace] = useState(false)
+  const [bomSearchQuery, setBomSearchQuery] = useState("")
+  const [bomFilter, setBomFilter] = useState("all")
   const [bomItemModalOpen, setBomItemModalOpen] = useState(false)
   const [bomItemSaving, setBomItemSaving] = useState(false)
   const [editingBomItem, setEditingBomItem] = useState(null)
@@ -2005,6 +2042,60 @@ export default function EquipmentClassifierMain() {
 
   const currentModelBomTree = useMemo(() => buildBomTree(modelBomItems), [modelBomItems])
   const currentModelBomRows = useMemo(() => flattenBomTreeRows(currentModelBomTree), [currentModelBomTree])
+  const currentModelBomStats = useMemo(() => {
+    const rows = currentModelBomRows
+    const groups = rows.filter((row) => row.bom_has_children || getBomEffectiveRowKind(row) === "assembly").length
+    const linked = rows.filter((row) => row.catalog_position_id).length
+    return {
+      total: rows.length,
+      groups,
+      positions: Math.max(rows.length - groups, 0),
+      linked,
+      unlinked: Math.max(rows.length - linked, 0),
+    }
+  }, [currentModelBomRows])
+  const filteredModelBomTree = useMemo(() => {
+    const query = bomSearchQuery.trim().toLowerCase()
+    const matchesSearch = (row) => {
+      if (!query) return true
+      return [
+        row.item_no,
+        row.manufacturer_part_number,
+        row.manufacturer_part_name,
+        row.manufacturer_part_name_en,
+        row.manufacturer_part_name_ru,
+        row.title,
+        row.part_number,
+        row.description_ru,
+        row.description_en,
+        row.catalog_position_name,
+        row.catalog_position_code,
+        row.client_part_name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    }
+    const matchesFilter = (row) => {
+      const children = Array.isArray(row.children) ? row.children : []
+      if (bomFilter === "linked") return Boolean(row.catalog_position_id)
+      if (bomFilter === "unlinked") return !row.catalog_position_id
+      if (bomFilter === "groups") return children.length > 0 || getBomEffectiveRowKind(row) === "assembly"
+      if (bomFilter === "leaves") return children.length === 0
+      return true
+    }
+    const walk = (rows) =>
+      (rows || [])
+        .map((row) => {
+          const children = walk(row.children || [])
+          const selfMatches = matchesSearch(row) && matchesFilter(row)
+          if (!selfMatches && !children.length) return null
+          return { ...row, children }
+        })
+        .filter(Boolean)
+    return walk(currentModelBomTree)
+  }, [bomFilter, bomSearchQuery, currentModelBomTree])
   const selectedBomParent = useMemo(() => {
     if (!selectedBomItem?.parent_item_id) return null
     return currentModelBomRows.find((row) => Number(row.id) === Number(selectedBomItem.parent_item_id)) || null
@@ -2252,7 +2343,7 @@ export default function EquipmentClassifierMain() {
 
   const currentModelBomTreeData = useMemo(
     () =>
-      buildBomTreeData(currentModelBomTree, {
+      buildBomTreeData(filteredModelBomTree, {
         onOpen: (row) => {
           setSelectedBomItem(row)
           setBomItemCardOpen(true)
@@ -2261,7 +2352,7 @@ export default function EquipmentClassifierMain() {
         onAddChild: (row) => openBomItemModal(null, row),
         onDelete: (row) => handleDeleteBomItem(row),
       }),
-    [currentModelBomTree, openBomItemModal, handleDeleteBomItem],
+    [filteredModelBomTree, openBomItemModal, handleDeleteBomItem],
   )
 
   const bomImportColumns = useMemo(
@@ -4081,14 +4172,46 @@ export default function EquipmentClassifierMain() {
           </Space>
         }
       >
-        <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-          Клик по названию открывает карточку строки. Через «Изменить строку» меняются количество, номер на схеме,
-          родительский узел и связь с деталью/классификатором.
-        </Typography.Paragraph>
+        <Space direction="vertical" size={10} style={{ width: "100%", marginBottom: 12 }}>
+          <Space wrap>
+            <Tag>{currentModelBomStats.total} строк</Tag>
+            <Tag>{currentModelBomStats.groups} узлов</Tag>
+            <Tag>{currentModelBomStats.positions} позиций</Tag>
+            <Tag color={currentModelBomStats.linked ? "blue" : "default"}>
+              {currentModelBomStats.linked} связаны
+            </Tag>
+            <Tag color={currentModelBomStats.unlinked ? "orange" : "default"}>
+              {currentModelBomStats.unlinked} без связи
+            </Tag>
+          </Space>
+          <Space wrap style={{ width: "100%", justifyContent: "space-between" }}>
+            <Input
+              allowClear
+              prefix={<SearchOutlined />}
+              placeholder="Поиск в BOM: номер, название, классификатор..."
+              value={bomSearchQuery}
+              onChange={(event) => setBomSearchQuery(event.target.value)}
+              style={{ width: 360, maxWidth: "100%" }}
+            />
+            <Segmented
+              size="small"
+              value={bomFilter}
+              onChange={setBomFilter}
+              options={[
+                { label: "Все", value: "all" },
+                { label: "Без связи", value: "unlinked" },
+                { label: "Связанные", value: "linked" },
+                { label: "Узлы", value: "groups" },
+                { label: "Позиции", value: "leaves" },
+              ]}
+            />
+          </Space>
+        </Space>
         {modelBomLoading ? (
           <Table size="small" loading columns={modelBomColumns} dataSource={[]} pagination={false} />
         ) : currentModelBomTreeData.length ? (
           <Tree
+            className="model-bom-tree"
             showLine
             defaultExpandAll
             treeData={currentModelBomTreeData}
