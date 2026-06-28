@@ -4520,7 +4520,21 @@ export default function EquipmentClassifierMain() {
               cursor: "col-resize",
               zIndex: 2,
             }}
-          />
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: 4,
+                transform: "translateY(-50%)",
+                width: 3,
+                height: 44,
+                borderRadius: 4,
+                background: "#d9d9d9",
+                boxShadow: "0 0 0 1px #f5f5f5",
+              }}
+            />
+          </div>
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>

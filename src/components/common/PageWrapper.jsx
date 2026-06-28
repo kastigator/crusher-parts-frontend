@@ -8,6 +8,7 @@ import AppPageHeader from "@/components/common/AppPageHeader"
  *  - title?: string        — основной заголовок страницы
  *  - extra?: ReactNode     — блок справа от заголовка (ссылки, кнопки)
  *  - helpText?: string     — подсказка под заголовком (горячие клавиши и т.п.)
+ *  - padding?: string      — внутренние отступы страницы
  *  - children: ReactNode   — контент страницы
  */
 export default function PageWrapper({
@@ -19,12 +20,13 @@ export default function PageWrapper({
   secondaryActions,
   helpText,
   helpSummary,
+  padding = "24px",
   children,
 }) {
   return (
     <div
       style={{
-        padding: "24px 24px 24px 24px",
+        padding,
         width: "100%",
         maxWidth: "100%",
         minWidth: 0,
