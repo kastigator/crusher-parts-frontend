@@ -458,6 +458,15 @@ export default function EquipmentClassifierMain() {
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
   const [manufacturerFilter, setManufacturerFilter] = useState(null)
   const [branchSectionFilter, setBranchSectionFilter] = useState(null)
+  const [classifierTreeWidth, setClassifierTreeWidth] = useState(() => {
+    if (typeof window === "undefined") return 300
+    const saved = Number(window.localStorage.getItem("equipmentClassifier.treeWidth"))
+    return Number.isFinite(saved) && saved >= 240 && saved <= 520 ? saved : 300
+  })
+  const [filtersPanelOpen, setFiltersPanelOpen] = useState(() => {
+    if (typeof window === "undefined") return false
+    return window.localStorage.getItem("equipmentClassifier.filtersOpen") === "1"
+  })
 
   const loadTree = useCallback(async () => {
     setLoading(true)
@@ -1815,6 +1824,49 @@ export default function EquipmentClassifierMain() {
       }),
     [attributeFilters],
   )
+  const activeFiltersCount = useMemo(() => {
+    let count = 0
+    if (manufacturerFilter) count += 1
+    if (branchSectionFilter) count += 1
+    Object.values(attributeFilters).forEach((filter) => {
+      if (!filter) return
+      if (filter.min !== undefined && filter.min !== null && filter.min !== "") count += 1
+      if (filter.max !== undefined && filter.max !== null && filter.max !== "") count += 1
+      if (Array.isArray(filter.value) && filter.value.length) count += 1
+      if (!Array.isArray(filter.value) && filter.value !== undefined && filter.value !== null && filter.value !== "") count += 1
+    })
+    return count
+  }, [attributeFilters, branchSectionFilter, manufacturerFilter])
+
+  const setStoredFiltersPanelOpen = (open) => {
+    setFiltersPanelOpen(open)
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("equipmentClassifier.filtersOpen", open ? "1" : "0")
+    }
+  }
+
+  const handleTreeResizeStart = (event) => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = classifierTreeWidth
+    const handleMouseMove = (moveEvent) => {
+      const nextWidth = Math.min(520, Math.max(240, startWidth + moveEvent.clientX - startX))
+      setClassifierTreeWidth(nextWidth)
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("equipmentClassifier.treeWidth", String(nextWidth))
+      }
+    }
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove)
+      document.removeEventListener("mouseup", handleMouseUp)
+      document.body.style.cursor = ""
+      document.body.style.userSelect = ""
+    }
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+    document.addEventListener("mousemove", handleMouseMove)
+    document.addEventListener("mouseup", handleMouseUp)
+  }
 
   const setAttributeFilterValue = (attributeId, patch) => {
     setAttributeFilters((prev) => {
@@ -4384,19 +4436,18 @@ export default function EquipmentClassifierMain() {
   }
 
   const sidePanelBodyStyle = {
-    height: "calc(100vh - 270px)",
+    height: "calc(100vh - 230px)",
     minHeight: 440,
     overflowY: "auto",
   }
   const sidePanelStyle = {
     position: "sticky",
-    top: 12,
-    borderLeft: "3px solid #f0f0f0",
+    top: 8,
   }
 
   return (
-    <Space direction="vertical" size={12} style={{ width: "100%" }}>
-      <Card size="small" title="Поиск">
+    <Space direction="vertical" size={10} style={{ width: "100%" }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <Input.Search
           allowClear
           enterButton="Найти"
@@ -4412,11 +4463,18 @@ export default function EquipmentClassifierMain() {
           }}
           onSearch={handleNsiSearch}
           loading={nsiSearchLoading}
+          style={{ flex: 1, minWidth: 0 }}
         />
-      </Card>
+        <Button
+          onClick={() => setStoredFiltersPanelOpen(!filtersPanelOpen)}
+          type={filtersPanelOpen || activeFiltersCount ? "primary" : "default"}
+        >
+          {activeFiltersCount ? `Фильтры: ${activeFiltersCount}` : "Фильтры"}
+        </Button>
+      </div>
 
-      <Row gutter={[12, 12]} align="top">
-        <Col xs={24} xl={4}>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", width: "100%" }}>
+        <div style={{ width: classifierTreeWidth, flex: `0 0 ${classifierTreeWidth}px`, position: "relative" }}>
           <Card
             title="Дерево классификатора"
             extra={
@@ -4448,9 +4506,24 @@ export default function EquipmentClassifierMain() {
               <Empty description="Классификатор пока пуст" />
             )}
           </Card>
-        </Col>
+          <div
+            role="separator"
+            aria-label="Изменить ширину дерева классификатора"
+            onMouseDown={handleTreeResizeStart}
+            title="Потяните, чтобы изменить ширину дерева"
+            style={{
+              position: "absolute",
+              top: 0,
+              right: -6,
+              width: 10,
+              height: "100%",
+              cursor: "col-resize",
+              zIndex: 2,
+            }}
+          />
+        </div>
 
-        <Col xs={24} xl={15}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <Card
             title={contextTitle}
             size="small"
@@ -4458,17 +4531,32 @@ export default function EquipmentClassifierMain() {
           >
             {renderContextContent()}
           </Card>
-        </Col>
+        </div>
 
-        <Col xs={24} xl={5}>
+        {filtersPanelOpen ? (
+          <div style={{ width: 320, flex: "0 0 320px" }}>
           <Card
             title="Фильтры"
             extra={
-              selectedNodeIsLeaf ? (
-                <Button size="small" onClick={openManageAttributes}>
-                  Настроить
-                </Button>
-              ) : null
+              <Space size={6}>
+                {hasActiveAttributeFilters || manufacturerFilter || branchSectionFilter ? (
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setManufacturerFilter(null)
+                      setBranchSectionFilter(null)
+                      setAttributeFilters({})
+                    }}
+                  >
+                    Сбросить
+                  </Button>
+                ) : null}
+                {selectedNodeIsLeaf ? (
+                  <Button size="small" onClick={openManageAttributes}>
+                    Настроить
+                  </Button>
+                ) : null}
+              </Space>
             }
             size="small"
             style={sidePanelStyle}
@@ -4476,8 +4564,9 @@ export default function EquipmentClassifierMain() {
           >
             {renderFiltersPanel()}
           </Card>
-        </Col>
-      </Row>
+          </div>
+        ) : null}
+      </div>
 
       <Drawer
         open={modelDetailsOpen}
