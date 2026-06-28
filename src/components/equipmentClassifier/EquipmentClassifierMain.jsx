@@ -5347,14 +5347,6 @@ export default function EquipmentClassifierMain() {
           </Form.Item>
 
           <Form.Item
-            label="№ на схеме"
-            name="item_no"
-            extra="Позиция из бумажного или PDF-каталога: 1, 2, 14A, 3.1. Можно оставить пустым, если в источнике нет номера позиции."
-          >
-            <Input placeholder="1, 2, 14A" />
-          </Form.Item>
-
-          <Form.Item
             label="Название по каталогу (старое поле)"
             name="manufacturer_part_name"
             hidden
