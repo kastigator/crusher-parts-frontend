@@ -5255,13 +5255,27 @@ export default function EquipmentClassifierMain() {
             description="Обычно начинают с каталожного номера и названия из parts book. Затем выбирают, что это по смыслу: узел, деталь, комплект, документ, услуга или материал. Связь с классификатором можно оставить пустой и добавить позже, когда будет понятно, какая это универсальная позиция системы."
           />
 
-          <Form.Item
-            label="Каталожный номер производителя"
-            name="manufacturer_part_number"
-            extra="Официальный номер производителя именно в этом каталоге модели. Например: 1093080129 или MM0200329."
-          >
-            <Input placeholder="Например: 1093080129" />
-          </Form.Item>
+          <Row gutter={12}>
+            <Col span={16}>
+              <Form.Item
+                label="Каталожный номер производителя"
+                name="manufacturer_part_number"
+                extra="Официальный номер производителя именно в этом каталоге модели. Например: 1093080129 или MM0200329."
+              >
+                <Input placeholder="Например: 1093080129" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label="Количество"
+                name="quantity"
+                rules={[{ required: true }]}
+                extra="Сколько таких позиций входит в выбранный узел."
+              >
+                <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
+              </Form.Item>
+            </Col>
+          </Row>
 
           <Row gutter={12}>
             <Col span={12}>
@@ -5395,18 +5409,6 @@ export default function EquipmentClassifierMain() {
             </Form.Item>
             ) : null}
           </Card>
-
-          <Form.Item label="Чертеж / документ" name="drawing_number">
-            <Input placeholder="Например: 11093075008" />
-          </Form.Item>
-
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item label="Количество" name="quantity" rules={[{ required: true }]}>
-                <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
-              </Form.Item>
-            </Col>
-          </Row>
 
           <Form.Item label="Заметки" name="notes">
             <Input.TextArea rows={3} />
