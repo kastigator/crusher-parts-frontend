@@ -1,6 +1,5 @@
 import React from "react"
 import { Button, Card, Descriptions, Empty, Space, Statistic, Table, Tabs, Tag, Typography } from "antd"
-import { resolveAppHref } from "@/utils/resolveAppHref"
 
 const textOrDash = (value) => {
   const v = String(value || "").trim()
@@ -9,11 +8,8 @@ const textOrDash = (value) => {
 
 export default function OEMPartDetailDock({ part, onCreateRequestForUnit }) {
   const fitments = Array.isArray(part?.fitments) ? part.fitments : []
-  const standardParts = Array.isArray(part?.standard_parts) ? part.standard_parts : []
   const clientUsage = Array.isArray(part?.client_usage) ? part.client_usage : []
   const stats = part?.stats || {}
-  const primaryStandardPart =
-    standardParts.find((row) => Number(row.is_primary || 0) > 0) || standardParts[0] || null
 
   if (!part?.id) {
     return (
@@ -55,39 +51,6 @@ export default function OEMPartDetailDock({ part, onCreateRequestForUnit }) {
                   </Descriptions.Item>
                   <Descriptions.Item label="Тех. описание" span={2}>
                     {textOrDash(part.tech_description)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Каноническая стандартная деталь" span={2}>
-                    {primaryStandardPart ? (
-                      <Space wrap size={8}>
-                        <Tag color="green">{textOrDash(primaryStandardPart.class_name)}</Tag>
-                        <Typography.Text strong>
-                          {textOrDash(primaryStandardPart.display_name)}
-                        </Typography.Text>
-                        {primaryStandardPart.designation ? (
-                          <Tag>{primaryStandardPart.designation}</Tag>
-                        ) : null}
-                        <Typography.Link
-                          href={resolveAppHref("/standard-parts")}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Открыть каталог стандартных деталей
-                        </Typography.Link>
-                      </Space>
-                    ) : (
-                      <Space wrap size={8}>
-                        <Typography.Text type="secondary">
-                          Стандартная деталь не назначена
-                        </Typography.Text>
-                        <Typography.Link
-                          href={resolveAppHref("/standard-parts")}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Открыть каталог стандартных деталей
-                        </Typography.Link>
-                      </Space>
-                    )}
                   </Descriptions.Item>
                 </Descriptions>
 

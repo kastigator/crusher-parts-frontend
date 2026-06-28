@@ -40,7 +40,6 @@ const ICON_BY_PATH = {
   "/suppliers": "suppliers",
   "/supplier-parts": "supplier-parts",
   "/original-parts": "original-parts",
-  "/standard-parts": "standard-parts",
   "/equipment-classifier": "equipment-classifier",
   "/glossary": "catalogs",
   "/materials": "materials",

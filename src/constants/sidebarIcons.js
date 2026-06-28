@@ -65,7 +65,6 @@ export const SIDEBAR_ICONS = [
   { key: "clients", label: "Клиенты", path: buildIconPath("clients") },
   { key: "suppliers", label: "Поставщики", path: buildIconPath("suppliers") },
   { key: "supplier-parts", label: "Детали поставщиков", path: buildIconPath("supplier-parts") },
-  { key: "standard-parts", label: "Стандартные детали", path: buildIconPath("standard-parts") },
   { key: "materials", label: "Материалы", path: buildIconPath("materials") },
   { key: "tnved-codes", label: "Коды ТН ВЭД", path: buildIconPath("tnved-codes") },
   { key: "logistics-route-templates", label: "Шаблоны доставки", path: buildIconPath("logistics-route-templates") },

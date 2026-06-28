@@ -14,7 +14,6 @@ const SUPPLIER_LOOKUP_PATHS = new Set([
 ])
 const MASTER_DATA_LOOKUP_PATHS = new Set([
   "/original-parts",
-  "/standard-parts",
 ])
 
 export default function TabAccessRoute({

@@ -9,7 +9,6 @@ import BundleTab from "./bundle/BundleTab"
 import OriginalPartDocumentsTab from "./OriginalPartDocumentsTab"
 import OriginalPartMaterialsTab from "./OriginalPartMaterialsTab"
 import OriginalPartPresentationProfileTab from "./OriginalPartPresentationProfileTab"
-import OriginalPartStandardPartsTab from "./OriginalPartStandardPartsTab"
 import OriginalPartUnitOverridesTab from "./OriginalPartUnitOverridesTab"
 
 const { Text } = Typography
@@ -97,11 +96,6 @@ export default function DetailDock({
             key: "presentation-profile",
             label: "Номера и видимость",
             children: <OriginalPartPresentationProfileTab partId={partId} />,
-          },
-          {
-            key: "standard-parts",
-            label: "Стандартные детали",
-            children: <OriginalPartStandardPartsTab partId={partId} />,
           },
           {
             key: "unit-overrides",

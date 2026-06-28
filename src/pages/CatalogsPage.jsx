@@ -27,7 +27,6 @@ const catalogLinks = [
   { path: "/suppliers", label: "Поставщики" },
   { path: "/supplier-parts", label: "Детали поставщиков" },
   { path: "/original-parts", label: "OEM детали" },
-  { path: "/standard-parts", label: "Стандартные детали" },
   { path: "/equipment-classifier", label: "Классификатор" },
   { path: "/materials", label: "Материалы" },
   { path: "/tnved-codes", label: "Коды ТН ВЭД" },
@@ -42,18 +41,6 @@ const countMeta = [
     description: "Модель есть, но не лежит в дереве оборудования.",
   },
   {
-    key: "oem_without_standard_link",
-    title: "OEM без standard-link",
-    tone: "orange",
-    description: "OEM детали не связаны с центральным стандартным изделием.",
-  },
-  {
-    key: "supplier_parts_without_standard_link",
-    title: "Supplier parts без standard-link",
-    tone: "orange",
-    description: "Поставщицкие позиции не связаны со standard part.",
-  },
-  {
     key: "oem_missing_logistics",
     title: "OEM без веса/габаритов",
     tone: "gold",
@@ -65,18 +52,6 @@ const countMeta = [
     tone: "gold",
     description: "Нет веса или одной из габаритных величин.",
   },
-  {
-    key: "standard_classes_without_fields",
-    title: "Классы без полей",
-    tone: "blue",
-    description: "Класс создан, но форма standard part еще не описана.",
-  },
-  {
-    key: "standard_parts_without_links",
-    title: "Standard parts без связей",
-    tone: "cyan",
-    description: "Стандартная деталь пока не связана ни с OEM, ни с поставщиком.",
-  },
 ]
 
 const toneToColor = {
@@ -84,7 +59,6 @@ const toneToColor = {
   orange: "#d46b08",
   gold: "#d48806",
   blue: "#1677ff",
-  cyan: "#08979c",
 }
 
 const nodeTypeLabels = {
@@ -259,52 +233,6 @@ export default function CatalogsPage() {
     },
   ]
 
-  const oemColumns = [
-    {
-      title: "OEM деталь",
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Link to={`/original-parts/${row.id}`}>{row.part_number || `#${row.id}`}</Link>
-          <Text type="secondary">{row.description_ru || row.description_en || "—"}</Text>
-        </Space>
-      ),
-    },
-    { title: "Производитель", dataIndex: "manufacturer_name", width: 170 },
-    { title: "Поставщики", dataIndex: "supplier_links_count", width: 110, align: "center" },
-  ]
-
-  const supplierColumns = [
-    {
-      title: "Деталь поставщика",
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Link to={`/supplier-parts/${row.id}`}>{row.supplier_part_number || `#${row.id}`}</Link>
-          <Text type="secondary">{row.description_ru || row.description_en || "—"}</Text>
-        </Space>
-      ),
-    },
-    { title: "Поставщик", dataIndex: "supplier_name", width: 180 },
-    {
-      title: "Логистика",
-      dataIndex: "missing_logistics",
-      width: 110,
-      render: (value) => value ? <Tag color="gold">неполная</Tag> : <Tag color="green">есть</Tag>,
-    },
-  ]
-
-  const classColumns = [
-    {
-      title: "Класс",
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Text strong>{row.name}</Text>
-          <Text type="secondary">{row.parent_name || "Корневой класс"} · {row.code}</Text>
-        </Space>
-      ),
-    },
-    { title: "Деталей", dataIndex: "parts_count", width: 100, align: "center" },
-  ]
-
   return (
     <PageWrapper
       title="Каталоги"
@@ -319,7 +247,7 @@ export default function CatalogsPage() {
               </Typography.Title>
               <Paragraph type="secondary" style={{ marginBottom: 0 }}>
                 Контрольный слой показывает, где центральная логика еще не собрана:
-                классификатор оборудования, связи OEM/supplier с standard parts и логистика.
+                классификатор оборудования, связи поставщиков и логистика.
               </Paragraph>
             </div>
             <Button onClick={loadHealth} loading={loadingHealth}>
@@ -361,39 +289,6 @@ export default function CatalogsPage() {
                 rowKey="id"
                 columns={modelColumns}
                 dataSource={queues.equipment_models_without_classifier || []}
-                pagination={false}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} xl={12}>
-            <Card title="Классы standard parts без полей" loading={loadingHealth}>
-              <Table
-                size="small"
-                rowKey="id"
-                columns={classColumns}
-                dataSource={queues.standard_classes_without_fields || []}
-                pagination={false}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} xl={12}>
-            <Card title="OEM детали без связи со standard part" loading={loadingHealth}>
-              <Table
-                size="small"
-                rowKey="id"
-                columns={oemColumns}
-                dataSource={queues.oem_without_standard_link || []}
-                pagination={false}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} xl={12}>
-            <Card title="Детали поставщиков без связи со standard part" loading={loadingHealth}>
-              <Table
-                size="small"
-                rowKey="id"
-                columns={supplierColumns}
-                dataSource={queues.supplier_parts_without_standard_link || []}
                 pagination={false}
               />
             </Card>

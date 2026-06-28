@@ -246,13 +246,25 @@ const getBomItemName = (row) =>
   row?.description_ru ||
   row?.description_en ||
   row?.catalog_position_name ||
+  row?.client_part_name ||
   row?.title ||
   ""
 
+const BOM_ROW_KIND_LABELS = {
+  assembly: "Сборка",
+  part: "Деталь",
+  kit: "Комплект",
+  document: "Документ",
+  service: "Услуга",
+  material: "Материал",
+  unknown: "Не определено",
+}
+
 const getBomItemTypeLabel = (row) => {
-  if (row?.catalog_position_id) return "Позиция классификатора"
+  if (row?.catalog_position_id) return "Связано с классификатором"
+  if (row?.client_part_id || row?.bom_client_part_id) return "Деталь по чертежу клиента"
   if (row?.oem_part_id) return "Деталь производителя"
-  return "Сборка / узел производителя"
+  return BOM_ROW_KIND_LABELS[row?.row_kind] || "Строка каталога производителя"
 }
 
 const flattenBomTreeRows = (rows, level = 0, acc = []) => {
@@ -271,11 +283,12 @@ const flattenBomTreeRows = (rows, level = 0, acc = []) => {
 
 const buildBomTreeData = (rows, actions = {}) =>
   (rows || []).map((row) => {
-    const isGroup = !row.oem_part_id && !row.catalog_position_id
+    const isGroup = row.row_kind === "assembly" || (!row.oem_part_id && !row.catalog_position_id && !row.client_part_id)
     const label = getBomItemLabel(row)
     const itemName = getBomItemName(row)
     const secondary = [
       row.catalog_position_id ? `классификатор: ${row.catalog_position_name || row.catalog_position_code}` : null,
+      row.client_part_id ? `чертеж клиента: ${row.client_part_name || row.client_part_number || row.client_part_drawing_number}` : null,
       row.description_ru || row.description_en || row.catalog_position_description,
       row.drawing_number ? `чертеж: ${row.drawing_number}` : null,
     ].filter(Boolean)
@@ -298,6 +311,7 @@ const buildBomTreeData = (rows, actions = {}) =>
               {Number(row.quantity || 0).toLocaleString("ru-RU")} {uom}
             </Tag>
             {row.catalog_position_id ? <Tag color="blue">позиция классификатора</Tag> : null}
+            <Tag>{BOM_ROW_KIND_LABELS[row.row_kind] || "строка каталога"}</Tag>
             {actions.onEdit ? (
               <Button size="small" type="link" onClick={() => actions.onEdit(row)}>
                 Изменить строку
@@ -440,19 +454,19 @@ export default function EquipmentClassifierMain() {
   const bomItemKind = Form.useWatch("kind", bomItemForm)
   const bomItemKindHelp = {
     group: {
-      message: "Создать узел или сборку",
+      message: "Добавить строку каталога производителя",
       description:
-        "Подходит для разделов parts book, сборок и подсборок. Внутрь такого узла можно добавлять детали.",
+        "Так можно добавить сборку, деталь, комплект, документ или услугу. Связать с классификатором можно позже.",
     },
     oem_part: {
-      message: "Добавить деталь производителя",
+      message: "Legacy-связь со старой деталью производителя",
       description:
-        "Выберите деталь из каталога производителя. Номер на схеме, количество и родитель относятся к текущему месту в BOM.",
+        "Оставлено для старых данных. Новые строки лучше вести как строку каталога или связь с классификатором.",
     },
     catalog_position: {
-      message: "Добавить позицию из классификатора",
+      message: "Связать строку с позицией классификатора",
       description:
-        "Используйте для стандартных и типовых изделий. Номер производителя задается именно для этого места в BOM.",
+        "Используйте, когда строка BOM соответствует уже заведенной детали, материалу, услуге или другой позиции классификатора.",
     },
   }
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
@@ -1965,6 +1979,7 @@ export default function EquipmentClassifierMain() {
       const kind = item?.catalog_position_id ? "catalog_position" : item?.oem_part_id ? "oem_part" : "group"
       bomItemForm.setFieldsValue({
         kind,
+        row_kind: item?.row_kind || (item?.catalog_position_id || item?.oem_part_id ? "part" : "assembly"),
         parent_item_id: item ? item.parent_item_id || null : parent?.id || null,
         item_no: item?.item_no || "",
         manufacturer_part_number: item?.manufacturer_part_number || item?.part_number || "",
@@ -1994,13 +2009,24 @@ export default function EquipmentClassifierMain() {
       const values = await bomItemForm.validateFields()
       setBomItemSaving(true)
       const payload = {
-        item_type: values.kind,
+        row_kind: values.row_kind || "assembly",
+        item_type:
+          values.kind === "catalog_position"
+            ? "catalog_position"
+            : values.kind === "oem_part"
+              ? "oem_part"
+              : values.row_kind === "part"
+                ? "unlinked"
+                : "group",
         parent_item_id: values.parent_item_id || null,
         item_no: values.item_no || null,
         manufacturer_part_number: values.manufacturer_part_number || null,
         manufacturer_part_name: values.manufacturer_part_name || null,
         drawing_number: values.drawing_number || null,
-        title: values.kind === "group" ? values.title || values.manufacturer_part_name || values.manufacturer_part_number : null,
+        title:
+          values.kind === "group"
+            ? values.title || values.manufacturer_part_name || values.manufacturer_part_number
+            : values.title || null,
         oem_part_id: values.kind === "oem_part" ? values.oem_part_id : null,
         catalog_position_id: values.kind === "catalog_position" ? values.catalog_position_id : null,
         quantity: values.quantity || 1,
@@ -5145,7 +5171,7 @@ export default function EquipmentClassifierMain() {
         }}
         destroyOnHidden
       >
-        <Form form={bomItemForm} layout="vertical" initialValues={{ kind: "group", quantity: 1 }}>
+        <Form form={bomItemForm} layout="vertical" initialValues={{ kind: "group", row_kind: "assembly", quantity: 1 }}>
           <Form.Item name="kind" rules={[{ required: true }]} hidden>
             <Input />
           </Form.Item>
@@ -5155,23 +5181,18 @@ export default function EquipmentClassifierMain() {
               {[
                 {
                   value: "group",
-                  title: "Создать узел / сборку",
-                  text: "Для раздела parts book, сборки или подсборки производителя.",
-                },
-                {
-                  value: "oem_part",
-                  title: "Добавить деталь производителя",
-                  text: "Выбрать деталь производителя из каталога этой модели.",
+                  title: "Строка каталога",
+                  text: "Сборка, деталь, комплект, документ или услуга без обязательной привязки.",
                 },
                 {
                   value: "catalog_position",
-                  title: "Добавить из классификатора",
-                  text: "Выбрать стандартную или типовую позицию классификатора.",
+                  title: "Связать с классификатором",
+                  text: "Когда уже понятно, какая это позиция классификатора.",
                 },
               ].map((option) => {
                 const active = bomItemKind === option.value
                 return (
-                  <Col span={8} key={option.value}>
+                  <Col span={12} key={option.value}>
                     <button
                       type="button"
                       disabled={Boolean(editingBomItem)}
@@ -5205,9 +5226,27 @@ export default function EquipmentClassifierMain() {
             />
             {editingBomItem ? (
               <Typography.Text type="secondary">
-                Тип строки уже выбран при создании. Сейчас можно менять место в дереве, номер, количество и описание.
+                Связь строки уже выбрана при создании. Сейчас можно менять место в дереве, смысл строки, номер, количество и описание.
               </Typography.Text>
             ) : null}
+          </Form.Item>
+
+          <Form.Item
+            label="Тип строки по смыслу"
+            name="row_kind"
+            rules={[{ required: true, message: "Выберите тип строки" }]}
+            extra="Это не связь с базой, а смысл строки в каталоге производителя."
+          >
+            <Select
+              options={[
+                { value: "assembly", label: "Сборка / узел" },
+                { value: "part", label: "Деталь / позиция" },
+                { value: "kit", label: "Комплект" },
+                { value: "document", label: "Документ / схема / чертеж" },
+                { value: "service", label: "Услуга / работа" },
+                { value: "material", label: "Материал" },
+              ]}
+            />
           </Form.Item>
 
           <Form.Item

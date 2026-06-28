@@ -71,7 +71,6 @@ const QUICK_FILTERS = [
       "supplier_parts",
       "supplier_part_materials",
       "supplier_part_oem_parts",
-      "supplier_part_standard_parts",
       "supplier_part_prices",
       "supplier_price_lists",
       "supplier_price_list_lines",
@@ -94,7 +93,6 @@ const QUICK_FILTERS = [
       "oem_part_alt_items",
       "oem_part_documents",
       "oem_part_presentation_profiles",
-      "oem_part_standard_parts",
       "oem_part_unit_overrides",
       "oem_part_unit_material_overrides",
       "oem_part_unit_material_specs",
@@ -108,11 +106,6 @@ const QUICK_FILTERS = [
       "material_properties",
       "material_property_curves",
       "material_aliases",
-      "standard_parts",
-      "standard_part_values",
-      "standard_part_classes",
-      "standard_part_class_fields",
-      "standard_part_field_options",
       "tnved_codes",
       "logistics_route_templates",
       "equipment_manufacturers",
@@ -254,14 +247,6 @@ function buildMeaningLines(entityType, snapshot, record) {
     case "logistics_route_templates":
       return [
         title !== "—" ? `Шаблон: ${title}` : null,
-        formatSnapshotValue(snapshot.description) !== "—"
-          ? `Описание: ${formatSnapshotValue(snapshot.description)}`
-          : null,
-      ].filter(Boolean)
-    case "standard_parts":
-      return [
-        title !== "—" ? `Стандартная деталь: ${title}` : null,
-        formatSnapshotValue(snapshot.article) !== "—" ? `Артикул: ${formatSnapshotValue(snapshot.article)}` : null,
         formatSnapshotValue(snapshot.description) !== "—"
           ? `Описание: ${formatSnapshotValue(snapshot.description)}`
           : null,
@@ -445,11 +430,6 @@ function resolveTrashNavigationTarget(record) {
       return rootId > 0 ? `/supplier-parts/${rootId}` : "/supplier-parts"
     case "materials":
       return "/materials"
-    case "standard_parts":
-    case "standard_part_classes":
-    case "standard_part_class_fields":
-    case "standard_part_field_options":
-      return "/standard-parts"
     case "tnved_codes":
       return "/tnved-codes"
     case "logistics_route_templates":
@@ -469,7 +449,6 @@ function resolveTrashNavigationTarget(record) {
     case "oem_part_alt_items":
     case "oem_part_documents":
     case "oem_part_presentation_profiles":
-    case "oem_part_standard_parts":
     case "oem_part_unit_overrides":
     case "oem_part_unit_material_overrides":
     case "oem_part_unit_material_specs":
@@ -477,7 +456,6 @@ function resolveTrashNavigationTarget(record) {
     case "supplier_price_lists":
     case "supplier_part_prices":
     case "supplier_part_oem_parts":
-    case "supplier_part_standard_parts":
     case "supplier_part_materials":
     case "supplier_bundles":
     case "supplier_bundle_items":

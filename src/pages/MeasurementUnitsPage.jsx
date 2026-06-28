@@ -40,14 +40,12 @@ const dimensionLabel = (value) =>
 const usageSourceHelp = {
   "oem_parts.uom": "Единица в карточке OEM детали.",
   "oem_part_model_fitments.uom": "Единица применяемости OEM детали к модели оборудования.",
-  "standard_parts.uom": "Единица в карточке стандартной детали.",
   "supplier_parts.uom": "Единица в карточке детали поставщика.",
   "rfq_items.uom": "Единица позиции RFQ.",
   "rfq_supplier_line_selections.uom": "Единица выбранной строки поставщика в RFQ.",
   "rfq_coverage_option_lines.uom": "Единица строки покрытия RFQ.",
   "client_request_revision_items.uom": "Единица строки заявки клиента.",
   "material_properties.unit": "Единица свойства материала.",
-  "standard_part_class_fields.unit": "Единица поля класса стандартных деталей.",
   "rfq_econ2_scenario_other_costs.unit": "Единица прочего расхода в экономике RFQ.",
   "supplier_procurement_rules.enforce_uom": "Единица, которую требует правило закупки поставщика.",
 }
