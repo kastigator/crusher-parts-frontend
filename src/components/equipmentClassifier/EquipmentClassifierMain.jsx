@@ -260,11 +260,20 @@ const BOM_ROW_KIND_LABELS = {
   unknown: "Не определено",
 }
 
+const getBomEffectiveRowKind = (row) => {
+  if (Array.isArray(row?.children) && row.children.length > 0) return "assembly"
+  return row?.row_kind || "unknown"
+}
+
 const getBomItemTypeLabel = (row) => {
+  return BOM_ROW_KIND_LABELS[getBomEffectiveRowKind(row)] || "Строка каталога"
+}
+
+const getBomLinkStatusLabel = (row) => {
   if (row?.catalog_position_id) return "Связано с классификатором"
   if (row?.client_part_id || row?.bom_client_part_id) return "Деталь по чертежу клиента"
-  if (row?.oem_part_id) return "Деталь производителя"
-  return BOM_ROW_KIND_LABELS[row?.row_kind] || "Строка каталога производителя"
+  if (row?.oem_part_id) return "Legacy-связь"
+  return "Не классифицировано"
 }
 
 const flattenBomTreeRows = (rows, level = 0, acc = []) => {
@@ -283,7 +292,8 @@ const flattenBomTreeRows = (rows, level = 0, acc = []) => {
 
 const buildBomTreeData = (rows, actions = {}) =>
   (rows || []).map((row) => {
-    const isGroup = row.row_kind === "assembly" || (!row.oem_part_id && !row.catalog_position_id && !row.client_part_id)
+    const effectiveKind = getBomEffectiveRowKind(row)
+    const isGroup = effectiveKind === "assembly"
     const label = getBomItemLabel(row)
     const itemName = getBomItemName(row)
     const secondary = [
@@ -311,7 +321,7 @@ const buildBomTreeData = (rows, actions = {}) =>
               {Number(row.quantity || 0).toLocaleString("ru-RU")} {uom}
             </Tag>
             {row.catalog_position_id ? <Tag color="blue">позиция классификатора</Tag> : null}
-            <Tag>{BOM_ROW_KIND_LABELS[row.row_kind] || "строка каталога"}</Tag>
+            <Tag>{BOM_ROW_KIND_LABELS[effectiveKind] || "строка каталога"}</Tag>
             {actions.onEdit ? (
               <Button size="small" type="link" onClick={() => actions.onEdit(row)}>
                 Изменить строку
@@ -451,24 +461,7 @@ export default function EquipmentClassifierMain() {
   const [unitAttributesForm] = Form.useForm()
   const [unitBomOverrideForm] = Form.useForm()
   const [bomItemForm] = Form.useForm()
-  const bomItemKind = Form.useWatch("kind", bomItemForm)
-  const bomItemKindHelp = {
-    group: {
-      message: "Добавить строку каталога производителя",
-      description:
-        "Так можно добавить сборку, деталь, комплект, документ или услугу. Связать с классификатором можно позже.",
-    },
-    oem_part: {
-      message: "Legacy-связь со старой деталью производителя",
-      description:
-        "Оставлено для старых данных. Новые строки лучше вести как строку каталога или связь с классификатором.",
-    },
-    catalog_position: {
-      message: "Связать строку с позицией классификатора",
-      description:
-        "Используйте, когда строка BOM соответствует уже заведенной детали, материалу, услуге или другой позиции классификатора.",
-    },
-  }
+  const bomLinkClassifier = Form.useWatch("link_classifier", bomItemForm)
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
   const [manufacturerFilter, setManufacturerFilter] = useState(null)
   const [branchSectionFilter, setBranchSectionFilter] = useState(null)
@@ -1976,9 +1969,8 @@ export default function EquipmentClassifierMain() {
     (item = null, parent = null) => {
       if (!currentModel?.id) return
       setEditingBomItem(item)
-      const kind = item?.catalog_position_id ? "catalog_position" : item?.oem_part_id ? "oem_part" : "group"
       bomItemForm.setFieldsValue({
-        kind,
+        link_classifier: Boolean(item?.catalog_position_id),
         row_kind: item?.row_kind || (item?.catalog_position_id || item?.oem_part_id ? "part" : "assembly"),
         parent_item_id: item ? item.parent_item_id || null : parent?.id || null,
         item_no: item?.item_no || "",
@@ -2008,27 +2000,28 @@ export default function EquipmentClassifierMain() {
     try {
       const values = await bomItemForm.validateFields()
       setBomItemSaving(true)
+      const linkClassifier = Boolean(values.link_classifier && values.catalog_position_id)
+      const preserveLegacyOem = Boolean(editingBomItem?.oem_part_id && !linkClassifier)
       const payload = {
         row_kind: values.row_kind || "assembly",
-        item_type:
-          values.kind === "catalog_position"
-            ? "catalog_position"
-            : values.kind === "oem_part"
-              ? "oem_part"
-              : values.row_kind === "part"
-                ? "unlinked"
-                : "group",
+        item_type: linkClassifier
+          ? "catalog_position"
+          : preserveLegacyOem
+            ? "oem_part"
+            : values.row_kind === "part"
+              ? "unlinked"
+              : "group",
         parent_item_id: values.parent_item_id || null,
         item_no: values.item_no || null,
         manufacturer_part_number: values.manufacturer_part_number || null,
         manufacturer_part_name: values.manufacturer_part_name || null,
         drawing_number: values.drawing_number || null,
         title:
-          values.kind === "group"
+          !linkClassifier
             ? values.title || values.manufacturer_part_name || values.manufacturer_part_number
             : values.title || null,
-        oem_part_id: values.kind === "oem_part" ? values.oem_part_id : null,
-        catalog_position_id: values.kind === "catalog_position" ? values.catalog_position_id : null,
+        oem_part_id: preserveLegacyOem ? editingBomItem.oem_part_id : null,
+        catalog_position_id: linkClassifier ? values.catalog_position_id : null,
         quantity: values.quantity || 1,
         sort_order: values.sort_order ?? editingBomItem?.sort_order ?? 0,
         notes: values.notes || null,
@@ -4901,6 +4894,9 @@ export default function EquipmentClassifierMain() {
                 <Descriptions.Item label="Тип строки">
                   {getBomItemTypeLabel(selectedBomItem)}
                 </Descriptions.Item>
+                <Descriptions.Item label="Связь">
+                  {getBomLinkStatusLabel(selectedBomItem)}
+                </Descriptions.Item>
                 <Descriptions.Item label="№ позиции">
                   {selectedBomItem.item_no || "—"}
                 </Descriptions.Item>
@@ -4974,10 +4970,10 @@ export default function EquipmentClassifierMain() {
 
                 {!selectedBomItem.oem_part_id && !selectedBomItem.catalog_position_id ? (
                   <>
-                    <Descriptions.Item label="Название узла">
+                    <Descriptions.Item label="Название строки">
                       {selectedBomItem.title || selectedBomItem.manufacturer_part_name || "—"}
                     </Descriptions.Item>
-                    <Descriptions.Item label="Внутри узла">
+                    <Descriptions.Item label="Внутри">
                       {selectedBomChildren.length
                         ? `${selectedBomChildren.length} поз.`
                         : "Дочерних позиций пока нет"}
@@ -5171,71 +5167,24 @@ export default function EquipmentClassifierMain() {
         }}
         destroyOnHidden
       >
-        <Form form={bomItemForm} layout="vertical" initialValues={{ kind: "group", row_kind: "assembly", quantity: 1 }}>
-          <Form.Item name="kind" rules={[{ required: true }]} hidden>
-            <Input />
-          </Form.Item>
-
-          <Form.Item label="Что добавить в BOM">
-            <Row gutter={10}>
-              {[
-                {
-                  value: "group",
-                  title: "Строка каталога",
-                  text: "Сборка, деталь, комплект, документ или услуга без обязательной привязки.",
-                },
-                {
-                  value: "catalog_position",
-                  title: "Связать с классификатором",
-                  text: "Когда уже понятно, какая это позиция классификатора.",
-                },
-              ].map((option) => {
-                const active = bomItemKind === option.value
-                return (
-                  <Col span={12} key={option.value}>
-                    <button
-                      type="button"
-                      disabled={Boolean(editingBomItem)}
-                      onClick={() => bomItemForm.setFieldsValue({ kind: option.value })}
-                      style={{
-                        width: "100%",
-                        minHeight: 112,
-                        padding: 12,
-                        textAlign: "left",
-                        border: active ? "1px solid #1677ff" : "1px solid #d9d9d9",
-                        borderRadius: 6,
-                        background: active ? "#e6f4ff" : "#fff",
-                        cursor: editingBomItem ? "default" : "pointer",
-                      }}
-                    >
-                      <Typography.Text strong>{option.title}</Typography.Text>
-                      <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0", fontSize: 12 }}>
-                        {option.text}
-                      </Typography.Paragraph>
-                    </button>
-                  </Col>
-                )
-              })}
-            </Row>
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginTop: 12 }}
-              message={bomItemKindHelp[bomItemKind || "group"].message}
-              description={bomItemKindHelp[bomItemKind || "group"].description}
-            />
-            {editingBomItem ? (
-              <Typography.Text type="secondary">
-                Связь строки уже выбрана при создании. Сейчас можно менять место в дереве, смысл строки, номер, количество и описание.
-              </Typography.Text>
-            ) : null}
-          </Form.Item>
+        <Form
+          form={bomItemForm}
+          layout="vertical"
+          initialValues={{ link_classifier: false, row_kind: "assembly", quantity: 1 }}
+        >
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="Добавьте строку из каталога производителя"
+            description="Сначала внесите то, что написано в parts book: тип строки, номер, название, количество и место в дереве. Если уже понятно, что это за позиция в классификаторе, включите связь ниже."
+          />
 
           <Form.Item
-            label="Тип строки по смыслу"
+            label="Что это за строка"
             name="row_kind"
             rules={[{ required: true, message: "Выберите тип строки" }]}
-            extra="Это не связь с базой, а смысл строки в каталоге производителя."
+            extra="Например: Main Frame — сборка, Hex bolt — деталь, Wiring Schematic — документ."
           >
             <Select
               options={[
@@ -5280,11 +5229,7 @@ export default function EquipmentClassifierMain() {
               <Form.Item
                 label="Каталожный номер производителя"
                 name="manufacturer_part_number"
-                extra={
-                  bomItemKind === "catalog_position"
-                    ? "Например, свой номер Metso для стандартного болта из классификатора."
-                    : "Официальный номер производителя в каталоге этой модели."
-                }
+                extra="Официальный номер производителя в этой строке BOM. Например: 1093080129 или MM0200329."
               >
                 <Input placeholder="Например: 1093080129" />
               </Form.Item>
@@ -5297,10 +5242,9 @@ export default function EquipmentClassifierMain() {
             rules={[
               ({ getFieldValue }) => ({
                 validator(_, value) {
-                  const kind = getFieldValue("kind")
                   const hasNumber = getFieldValue("manufacturer_part_number")
                   const hasTitle = getFieldValue("title")
-                  if (kind !== "group" || value || hasNumber || hasTitle) return Promise.resolve()
+                  if (value || hasNumber || hasTitle) return Promise.resolve()
                   return Promise.reject(new Error("Укажите название или каталожный номер"))
                 },
               }),
@@ -5309,43 +5253,27 @@ export default function EquipmentClassifierMain() {
             <Input placeholder="Например: Adjustment Ring" />
           </Form.Item>
 
-          {bomItemKind === "group" ? (
-            <Form.Item
-              label="Название в системе, если отличается"
-              name="title"
-              extra="Обычно можно оставить пустым: тогда будет показано название по каталогу."
-            >
-              <Input placeholder="Можно оставить пустым" />
-            </Form.Item>
-          ) : null}
+          <Form.Item
+            label="Название в системе, если отличается"
+            name="title"
+            extra="Обычно можно оставить пустым: тогда будет показано название по каталогу."
+          >
+            <Input placeholder="Можно оставить пустым" />
+          </Form.Item>
 
-          {bomItemKind === "oem_part" ? (
+          <Card size="small" title="Связь с классификатором" style={{ marginBottom: 12 }}>
             <Form.Item
-              label="Найти деталь производителя в каталоге модели"
-              name="oem_part_id"
-              rules={[{ required: true, message: "Выберите деталь производителя" }]}
+              name="link_classifier"
+              valuePropName="checked"
+              style={{ marginBottom: bomLinkClassifier ? 12 : 0 }}
             >
-              <Select
-                showSearch
-                optionFilterProp="label"
-                placeholder="Начните вводить номер или описание детали"
-                onChange={(value) => {
-                  const row = currentModelOemParts.find((item) => Number(item.id) === Number(value))
-                  if (!row) return
-                  bomItemForm.setFieldsValue({
-                    manufacturer_part_number: row.part_number || "",
-                    manufacturer_part_name: row.description_ru || row.description_en || row.tech_description || "",
-                  })
-                }}
-                options={currentModelOemParts.map((row) => ({
-                  value: row.id,
-                  label: `${row.part_number || "без номера"}${row.description_ru || row.description_en ? ` — ${row.description_ru || row.description_en}` : ""}`,
-                }))}
-              />
+              <Switch checkedChildren="Связать" unCheckedChildren="Не связывать" />
             </Form.Item>
-          ) : null}
-
-          {bomItemKind === "catalog_position" ? (
+            <Typography.Paragraph type="secondary" style={{ marginTop: -4, marginBottom: bomLinkClassifier ? 12 : 0 }}>
+              Оставьте выключенным, если пока просто переносите строку из каталога. Включите, если уже понятно,
+              какая это позиция классификатора.
+            </Typography.Paragraph>
+            {bomLinkClassifier ? (
             <Form.Item
               label="Найти позицию в классификаторе"
               name="catalog_position_id"
@@ -5370,7 +5298,8 @@ export default function EquipmentClassifierMain() {
                 }))}
               />
             </Form.Item>
-          ) : null}
+            ) : null}
+          </Card>
 
           <Form.Item label="Чертеж / документ" name="drawing_number">
             <Input placeholder="Например: 11093075008" />
