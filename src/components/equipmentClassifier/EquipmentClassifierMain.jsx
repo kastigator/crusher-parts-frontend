@@ -2851,16 +2851,13 @@ export default function EquipmentClassifierMain() {
       ),
     },
     {
-      title: "Действия",
+      title: "",
       key: "actions",
-      width: 170,
+      width: 80,
       render: (_, row) => {
         const inherited = Number(row.classifier_node_id) !== Number(selectedNode?.id)
         return (
-          <Space wrap>
-            <Button size="small" type="link" onClick={() => openEditAttribute(row)} style={{ paddingInline: 0 }}>
-              {inherited ? "Изменить в источнике" : "Настроить"}
-            </Button>
+          <span onClick={(event) => event.stopPropagation()}>
             <Popconfirm
               title={inherited ? "Убрать поле из родительского паспорта?" : "Убрать поле из паспорта?"}
               description={
@@ -2876,7 +2873,7 @@ export default function EquipmentClassifierMain() {
                 {inherited ? "Убрать в источнике" : "Убрать"}
               </Button>
             </Popconfirm>
-          </Space>
+          </span>
         )
       },
     },
@@ -5649,6 +5646,16 @@ export default function EquipmentClassifierMain() {
                   loading={attributesLoading}
                   pagination={false}
                   locale={{ emptyText: "Поля паспорта для этого раздела пока не настроены" }}
+                  onRow={(row) => ({
+                    onClick: () => openEditAttribute(row),
+                    style: {
+                      cursor: "pointer",
+                      background:
+                        attributeEditorMode === "edit" && Number(editingAttribute?.id) === Number(row.id)
+                          ? "#f5f5f5"
+                          : undefined,
+                    },
+                  })}
                 />
               </Card>
             </Col>
