@@ -242,6 +242,8 @@ const getBomItemLabel = (row) =>
   "—"
 
 const getBomItemName = (row) =>
+  row?.manufacturer_part_name_en ||
+  row?.manufacturer_part_name_ru ||
   row?.manufacturer_part_name ||
   row?.description_ru ||
   row?.description_en ||
@@ -259,6 +261,52 @@ const BOM_ROW_KIND_LABELS = {
   material: "Материал",
   unknown: "Не определено",
 }
+
+const BOM_ROW_KIND_OPTIONS = [
+  {
+    value: "assembly",
+    label: "Сборка / узел",
+    description: "Контейнер в parts book: внутрь добавляют детали, комплекты, материалы или документы.",
+    example: "Main Frame, Adjustment Ring",
+  },
+  {
+    value: "part",
+    label: "Деталь / позиция",
+    description: "Обычная строка каталога, которую можно купить, изготовить или заменить аналогом.",
+    example: "Piston, Hex bolt, Bearing",
+  },
+  {
+    value: "kit",
+    label: "Комплект",
+    description: "Набор, который производитель ведет как одну строку каталога.",
+    example: "Seal kit, Repair kit",
+  },
+  {
+    value: "document",
+    label: "Документ / схема / чертеж",
+    description: "Схема, чертеж или документ из каталога. Обычно не является закупочной деталью.",
+    example: "Wiring Schematic",
+  },
+  {
+    value: "service",
+    label: "Услуга / работа",
+    description: "Работа или операция, которую можно заказать как услугу.",
+    example: "Inspection, machining, repair",
+  },
+  {
+    value: "material",
+    label: "Материал",
+    description: "Расходуемый материал или сырье, которое используется в узле.",
+    example: "Loctite, grease, plate steel",
+  },
+]
+
+const BOM_ROW_KIND_HELP = Object.fromEntries(
+  BOM_ROW_KIND_OPTIONS.map((item) => [
+    item.value,
+    `${item.description} Например: ${item.example}.`,
+  ]),
+)
 
 const getBomEffectiveRowKind = (row) => {
   if (Array.isArray(row?.children) && row.children.length > 0) return "assembly"
@@ -462,6 +510,7 @@ export default function EquipmentClassifierMain() {
   const [unitBomOverrideForm] = Form.useForm()
   const [bomItemForm] = Form.useForm()
   const bomLinkClassifier = Form.useWatch("link_classifier", bomItemForm)
+  const bomRowKind = Form.useWatch("row_kind", bomItemForm)
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
   const [manufacturerFilter, setManufacturerFilter] = useState(null)
   const [branchSectionFilter, setBranchSectionFilter] = useState(null)
@@ -1975,6 +2024,13 @@ export default function EquipmentClassifierMain() {
         parent_item_id: item ? item.parent_item_id || null : parent?.id || null,
         item_no: item?.item_no || "",
         manufacturer_part_number: item?.manufacturer_part_number || item?.part_number || "",
+        manufacturer_part_name_en:
+          item?.manufacturer_part_name_en ||
+          item?.manufacturer_part_name ||
+          item?.description_en ||
+          item?.catalog_position_name ||
+          "",
+        manufacturer_part_name_ru: item?.manufacturer_part_name_ru || item?.description_ru || "",
         manufacturer_part_name:
           item?.manufacturer_part_name ||
           item?.description_ru ||
@@ -2002,6 +2058,8 @@ export default function EquipmentClassifierMain() {
       setBomItemSaving(true)
       const linkClassifier = Boolean(values.link_classifier && values.catalog_position_id)
       const preserveLegacyOem = Boolean(editingBomItem?.oem_part_id && !linkClassifier)
+      const manufacturerPartName =
+        values.manufacturer_part_name_en || values.manufacturer_part_name_ru || values.manufacturer_part_name
       const payload = {
         row_kind: values.row_kind || "assembly",
         item_type: linkClassifier
@@ -2014,11 +2072,13 @@ export default function EquipmentClassifierMain() {
         parent_item_id: values.parent_item_id || null,
         item_no: values.item_no || null,
         manufacturer_part_number: values.manufacturer_part_number || null,
-        manufacturer_part_name: values.manufacturer_part_name || null,
+        manufacturer_part_name: manufacturerPartName || null,
+        manufacturer_part_name_en: values.manufacturer_part_name_en || null,
+        manufacturer_part_name_ru: values.manufacturer_part_name_ru || null,
         drawing_number: values.drawing_number || null,
         title:
           !linkClassifier
-            ? values.title || values.manufacturer_part_name || values.manufacturer_part_number
+            ? values.title || manufacturerPartName || values.manufacturer_part_number
             : values.title || null,
         oem_part_id: preserveLegacyOem ? editingBomItem.oem_part_id : null,
         catalog_position_id: linkClassifier ? values.catalog_position_id : null,
@@ -2092,10 +2152,16 @@ export default function EquipmentClassifierMain() {
       "Ключ": "item_key",
       "Родительский ключ": "parent_key",
       "Тип": "item_type",
+      "Тип строки": "row_kind",
+      "Связь": "item_type",
+      "Тип связи": "item_type",
       "№ позиции": "item_no",
       "Позиция": "item_no",
       "Каталожный номер": "manufacturer_part_number",
       "Название по каталогу": "manufacturer_part_name",
+      "Название EN": "manufacturer_part_name_en",
+      "Name EN": "manufacturer_part_name_en",
+      "Название RU": "manufacturer_part_name_ru",
       "Чертеж": "drawing_number",
       "Код детали производителя": "oem_part_number",
       "Код OEM": "oem_part_number",
@@ -2105,8 +2171,10 @@ export default function EquipmentClassifierMain() {
       "Порядок": "sort_order",
       "Заметки": "notes",
     }
-    const requiredHeaders = ["Уровень", "Тип", "Количество"]
-    const missingHeaders = requiredHeaders.filter((header) => !headerRow.includes(header))
+    const missingHeaders = ["Уровень", "Количество"].filter((header) => !headerRow.includes(header))
+    if (!headerRow.includes("Тип") && !headerRow.includes("Тип строки")) {
+      missingHeaders.push("Тип строки")
+    }
     if (missingHeaders.length) {
       throw new Error(`В файле нет обязательных колонок: ${missingHeaders.join(", ")}`)
     }
@@ -2237,7 +2305,12 @@ export default function EquipmentClassifierMain() {
         render: (value, row) => (
           <Space direction="vertical" size={0}>
             <Typography.Text strong>
-              {row.manufacturer_part_name || value || row.title || row.item_key}
+              {row.manufacturer_part_name_en ||
+                row.manufacturer_part_name_ru ||
+                row.manufacturer_part_name ||
+                value ||
+                row.title ||
+                row.item_key}
             </Typography.Text>
             {row.resolved_subtitle ? <Typography.Text type="secondary">{row.resolved_subtitle}</Typography.Text> : null}
             {row.drawing_number ? <Typography.Text type="secondary">Чертеж: {row.drawing_number}</Typography.Text> : null}
@@ -4903,12 +4976,14 @@ export default function EquipmentClassifierMain() {
                 <Descriptions.Item label="Каталожный номер производителя">
                   {selectedBomItem.manufacturer_part_number || selectedBomItem.part_number || "—"}
                 </Descriptions.Item>
-                <Descriptions.Item label="Название по каталогу">
-                  {selectedBomItem.manufacturer_part_name ||
-                    selectedBomItem.description_ru ||
+                <Descriptions.Item label="Название EN">
+                  {selectedBomItem.manufacturer_part_name_en ||
+                    selectedBomItem.manufacturer_part_name ||
                     selectedBomItem.description_en ||
-                    selectedBomItem.title ||
                     "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Название RU">
+                  {selectedBomItem.manufacturer_part_name_ru || selectedBomItem.description_ru || "—"}
                 </Descriptions.Item>
                 <Descriptions.Item label="Количество">
                   {Number(selectedBomItem.quantity || 0).toLocaleString("ru-RU")}{" "}
@@ -5176,25 +5251,67 @@ export default function EquipmentClassifierMain() {
             type="info"
             showIcon
             style={{ marginBottom: 12 }}
-            message="Добавьте строку из каталога производителя"
-            description="Сначала внесите то, что написано в parts book: тип строки, номер, название, количество и место в дереве. Если уже понятно, что это за позиция в классификаторе, включите связь ниже."
+            message="Заполните строку так, как она написана в каталоге производителя"
+            description="Обычно начинают с каталожного номера и названия из parts book. Затем выбирают, что это по смыслу: узел, деталь, комплект, документ, услуга или материал. Связь с классификатором можно оставить пустой и добавить позже, когда будет понятно, какая это универсальная позиция системы."
           />
+
+          <Form.Item
+            label="Каталожный номер производителя"
+            name="manufacturer_part_number"
+            extra="Официальный номер производителя именно в этом каталоге модели. Например: 1093080129 или MM0200329."
+          >
+            <Input placeholder="Например: 1093080129" />
+          </Form.Item>
+
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item
+                label="Название EN"
+                name="manufacturer_part_name_en"
+                rules={[
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      const hasNumber = getFieldValue("manufacturer_part_number")
+                      const hasRuName = getFieldValue("manufacturer_part_name_ru")
+                      const hasLegacyName = getFieldValue("manufacturer_part_name")
+                      const hasTitle = getFieldValue("title")
+                      if (value || hasNumber || hasRuName || hasLegacyName || hasTitle) return Promise.resolve()
+                      return Promise.reject(new Error("Укажите название или каталожный номер"))
+                    },
+                  }),
+                ]}
+              >
+                <Input placeholder="Например: Adjustment Ring" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="Название RU" name="manufacturer_part_name_ru">
+                <Input placeholder="Например: Регулировочное кольцо" />
+              </Form.Item>
+            </Col>
+          </Row>
 
           <Form.Item
             label="Что это за строка"
             name="row_kind"
             rules={[{ required: true, message: "Выберите тип строки" }]}
-            extra="Например: Main Frame — сборка, Hex bolt — деталь, Wiring Schematic — документ."
+            extra={BOM_ROW_KIND_HELP[bomRowKind || "assembly"]}
           >
             <Select
-              options={[
-                { value: "assembly", label: "Сборка / узел" },
-                { value: "part", label: "Деталь / позиция" },
-                { value: "kit", label: "Комплект" },
-                { value: "document", label: "Документ / схема / чертеж" },
-                { value: "service", label: "Услуга / работа" },
-                { value: "material", label: "Материал" },
-              ]}
+              options={BOM_ROW_KIND_OPTIONS.map((item) => ({
+                value: item.value,
+                label: item.label,
+                description: item.description,
+                example: item.example,
+              }))}
+              optionRender={(option) => (
+                <Space direction="vertical" size={0}>
+                  <Typography.Text strong>{option.data.label}</Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {option.data.description} Например: {option.data.example}.
+                  </Typography.Text>
+                </Space>
+              )}
             />
           </Form.Item>
 
@@ -5215,48 +5332,26 @@ export default function EquipmentClassifierMain() {
             />
           </Form.Item>
 
-          <Row gutter={12}>
-            <Col span={8}>
-              <Form.Item
-                label="№ на схеме"
-                name="item_no"
-                extra="Позиция из бумажного или PDF-каталога: 1, 2, 14A, 3.1."
-              >
-                <Input placeholder="1, 2, 14A" />
-              </Form.Item>
-            </Col>
-            <Col span={16}>
-              <Form.Item
-                label="Каталожный номер производителя"
-                name="manufacturer_part_number"
-                extra="Официальный номер производителя в этой строке BOM. Например: 1093080129 или MM0200329."
-              >
-                <Input placeholder="Например: 1093080129" />
-              </Form.Item>
-            </Col>
-          </Row>
-
           <Form.Item
-            label="Название по каталогу"
-            name="manufacturer_part_name"
-            rules={[
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  const hasNumber = getFieldValue("manufacturer_part_number")
-                  const hasTitle = getFieldValue("title")
-                  if (value || hasNumber || hasTitle) return Promise.resolve()
-                  return Promise.reject(new Error("Укажите название или каталожный номер"))
-                },
-              }),
-            ]}
+            label="№ на схеме"
+            name="item_no"
+            extra="Позиция из бумажного или PDF-каталога: 1, 2, 14A, 3.1. Можно оставить пустым, если в источнике нет номера позиции."
           >
-            <Input placeholder="Например: Adjustment Ring" />
+            <Input placeholder="1, 2, 14A" />
           </Form.Item>
 
           <Form.Item
-            label="Название в системе, если отличается"
+            label="Название по каталогу (старое поле)"
+            name="manufacturer_part_name"
+            hidden
+          >
+            <Input />
+          </Form.Item>
+
+          <Form.Item
+            label="Внутреннее название, если нужно отличить от каталога"
             name="title"
-            extra="Обычно можно оставить пустым: тогда будет показано название по каталогу."
+            extra="Обычно оставляют пустым: в BOM будет показано название производителя. Заполняйте, если нужна внутренняя пометка или рабочее название."
           >
             <Input placeholder="Можно оставить пустым" />
           </Form.Item>
@@ -5289,7 +5384,7 @@ export default function EquipmentClassifierMain() {
                   const row = catalogPositionOptions.find((item) => Number(item.id) === Number(value))
                   if (!row) return
                   bomItemForm.setFieldsValue({
-                    manufacturer_part_name: row.display_name || "",
+                    manufacturer_part_name_en: row.display_name || "",
                   })
                 }}
                 options={catalogPositionOptions.map((row) => ({
