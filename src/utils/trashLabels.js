@@ -52,6 +52,9 @@ export const TRASH_ENTITY_LABELS = {
 
   equipment_manufacturers: "Производитель оборудования",
   equipment_models: "Модель оборудования",
+  equipment_model_bom_items: "Строка BOM модели",
+  equipment_model_bom_child_items: "Дочерняя строка BOM модели",
+  equipment_model_bom_descendants: "Вложенная строка BOM модели",
   equipment_classifier_nodes: "Узел классификатора оборудования",
 
   client_requests: "Заявка клиента",

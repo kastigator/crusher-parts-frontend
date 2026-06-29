@@ -359,7 +359,6 @@ const buildBomTreeData = (rows, actions = {}) =>
     const menuItems = [
       { key: "open", label: "Открыть карточку" },
       { key: "edit", label: "Изменить строку", icon: <EditOutlined /> },
-      { key: "add", label: "Добавить внутрь", icon: <PlusOutlined /> },
       { type: "divider" },
       { key: "delete", label: "Удалить", danger: true, icon: <DeleteOutlined /> },
     ]
@@ -414,18 +413,7 @@ const buildBomTreeData = (rows, actions = {}) =>
                   domEvent.stopPropagation()
                   if (key === "open") actions.onOpen?.(row)
                   if (key === "edit") actions.onEdit?.(row)
-                  if (key === "add") actions.onAddChild?.(row)
-                  if (key === "delete") {
-                    Modal.confirm({
-                      title: "Удалить строку из BOM?",
-                      content:
-                        "Будет удалено только это место применения в BOM модели. Если внутри есть дочерние позиции, удалится весь подузел.",
-                      okText: "Удалить",
-                      cancelText: "Отмена",
-                      okButtonProps: { danger: true },
-                      onOk: () => actions.onDelete?.(row),
-                    })
-                  }
+                  if (key === "delete") actions.onDelete?.(row)
                 },
               }}
             >
@@ -2196,13 +2184,18 @@ export default function EquipmentClassifierMain() {
   const handleDeleteBomItem = useCallback(async (item) => {
     if (!currentModel?.id || !item?.id) return
     try {
-      const { data } = await axios.delete(`/equipment-models/${currentModel.id}/bom/items/${item.id}`)
-      setModelBomItems(Array.isArray(data?.items) ? data.items : [])
+      const result = await runTrashDeleteFlow({
+        entityType: "equipment_model_bom_items",
+        entityId: item.id,
+        deleteUrl: `/equipment-models/${currentModel.id}/bom/items/${item.id}`,
+        successMessage: "Строка удалена из BOM модели",
+      })
+      if (!result?.deleted) return
+      setModelBomItems(Array.isArray(result.response?.items) ? result.response.items : [])
       if (Number(selectedBomItem?.id) === Number(item.id)) {
         setBomItemCardOpen(false)
         setSelectedBomItem(null)
       }
-      message.success("Строка удалена из BOM модели")
     } catch (err) {
       console.error("DELETE equipment model BOM item error:", err)
       message.error(err?.response?.data?.message || "Не удалось удалить строку BOM")
@@ -5058,17 +5051,13 @@ export default function EquipmentClassifierMain() {
               <Button size="small" onClick={() => openBomItemModal(selectedBomItem)}>
                 Изменить строку
               </Button>
-              <Popconfirm
-                title="Удалить строку из BOM?"
-                description="Удаляется только это место применения в BOM модели. Коммерческие связи и история детали не удаляются."
-                okText="Удалить"
-                cancelText="Отмена"
-                onConfirm={() => handleDeleteBomItem(selectedBomItem)}
+              <Button
+                size="small"
+                danger
+                onClick={() => handleDeleteBomItem(selectedBomItem)}
               >
-                <Button size="small" danger>
-                  Удалить
-                </Button>
-              </Popconfirm>
+                Удалить
+              </Button>
             </Space>
           ) : null
         }
