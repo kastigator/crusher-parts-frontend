@@ -64,7 +64,6 @@ const SEARCH_TYPE_LABELS = {
   classifier_node: "Раздел",
   equipment_model: "Модель",
   catalog_position: "Карточка товара",
-  oem_part: "Деталь производителя",
   client_equipment_unit: "Машина клиента",
   client_part: "Деталь клиента",
 }
@@ -73,7 +72,6 @@ const SEARCH_TYPE_COLORS = {
   classifier_node: "blue",
   equipment_model: "green",
   catalog_position: "purple",
-  oem_part: "geekblue",
   client_equipment_unit: "orange",
   client_part: "cyan",
 }
@@ -82,7 +80,6 @@ const SEARCH_TYPE_ORDER = [
   "classifier_node",
   "equipment_model",
   "catalog_position",
-  "oem_part",
   "client_equipment_unit",
   "client_part",
 ]
@@ -320,10 +317,9 @@ const getBomItemTypeLabel = (row) => {
 }
 
 const getBomLinkStatusLabel = (row) => {
-  if (row?.catalog_position_id) return "Связано с классификатором"
+  if (row?.catalog_position_id) return "Карточка позиции"
   if (row?.client_part_id || row?.bom_client_part_id) return "Деталь по чертежу клиента"
-  if (row?.oem_part_id) return "Legacy-связь"
-  return "Не классифицировано"
+  return "Карточка будет создана"
 }
 
 const flattenBomTreeRows = (rows, level = 0, acc = []) => {
@@ -348,8 +344,8 @@ const buildBomTreeData = (rows, actions = {}) =>
     const label = getBomItemLabel(row)
     const itemName = getBomItemName(row)
     const linkLabel = row.catalog_position_id
-      ? `связано: ${row.catalog_position_name || row.catalog_position_code || "классификатор"}`
-      : "без связи с классификатором"
+      ? `карточка: ${row.catalog_position_name || row.catalog_position_code || "позиция BOM"}`
+      : "карточка позиции BOM"
     const secondary = [
       itemName && itemName !== label ? itemName : null,
       children.length ? `${children.length} поз. внутри` : null,
@@ -776,10 +772,6 @@ export default function EquipmentClassifierMain() {
   const openSearchResult = useCallback(async (row) => {
     if (!row) return
     setNsiSearchActive(false)
-    if (row.entity_type === "oem_part" && row.oem_part_id) {
-      navigate(`/original-parts/${row.oem_part_id}`)
-      return
-    }
     if (row.entity_type === "client_part" && row.client_id) {
       navigate(`/clients/${row.client_id}`)
       return
@@ -2014,12 +2006,6 @@ export default function EquipmentClassifierMain() {
     return rawWorkspaceCatalogPositions.find((row) => Number(row.id) === Number(selectedTreeEntity.id)) || null
   }, [rawWorkspaceCatalogPositions, selectedTreeEntity])
 
-  const currentModelOemParts = useMemo(() => {
-    if (!currentModel?.id) return []
-    const modelId = Number(currentModel.id)
-    return rawWorkspaceOemParts.filter((row) => splitIds(row.model_ids).includes(modelId))
-  }, [currentModel, rawWorkspaceOemParts])
-
   useEffect(() => {
     if (selectedTreeEntity.type !== "catalog_position" || !selectedTreeEntity.id) {
       setCatalogPositionUsage([])
@@ -2099,7 +2085,7 @@ export default function EquipmentClassifierMain() {
       setEditingBomItem(item)
       bomItemForm.setFieldsValue({
         link_classifier: Boolean(item?.catalog_position_id),
-        row_kind: item?.row_kind || (item?.catalog_position_id || item?.oem_part_id ? "part" : "assembly"),
+        row_kind: item?.row_kind || (item?.catalog_position_id ? "part" : "assembly"),
         parent_item_id: item ? item.parent_item_id || null : parent?.id || null,
         item_no: item?.item_no || "",
         manufacturer_part_number: item?.manufacturer_part_number || item?.part_number || "",
@@ -2117,7 +2103,6 @@ export default function EquipmentClassifierMain() {
           item?.catalog_position_name ||
           "",
         drawing_number: item?.drawing_number || "",
-        oem_part_id: item?.oem_part_id || null,
         title: item?.title || "",
         catalog_position_id: item?.catalog_position_id || null,
         quantity: item?.quantity || 1,
@@ -2136,18 +2121,15 @@ export default function EquipmentClassifierMain() {
       const values = await bomItemForm.validateFields()
       setBomItemSaving(true)
       const linkClassifier = Boolean(values.link_classifier && values.catalog_position_id)
-      const preserveLegacyOem = Boolean(editingBomItem?.oem_part_id && !linkClassifier)
       const manufacturerPartName =
         values.manufacturer_part_name_en || values.manufacturer_part_name_ru || values.manufacturer_part_name
       const payload = {
         row_kind: values.row_kind || "assembly",
         item_type: linkClassifier
           ? "catalog_position"
-          : preserveLegacyOem
-            ? "oem_part"
-            : values.row_kind === "part"
-              ? "unlinked"
-              : "group",
+          : values.row_kind === "part"
+            ? "unlinked"
+            : "group",
         parent_item_id: values.parent_item_id || null,
         item_no: values.item_no || null,
         manufacturer_part_number: values.manufacturer_part_number || null,
@@ -2159,7 +2141,6 @@ export default function EquipmentClassifierMain() {
           !linkClassifier
             ? values.title || manufacturerPartName || values.manufacturer_part_number
             : values.title || null,
-        oem_part_id: preserveLegacyOem ? editingBomItem.oem_part_id : null,
         catalog_position_id: linkClassifier ? values.catalog_position_id : null,
         quantity: values.quantity || 1,
         sort_order: values.sort_order ?? editingBomItem?.sort_order ?? 0,
@@ -2247,8 +2228,7 @@ export default function EquipmentClassifierMain() {
       "Name EN": "manufacturer_part_name_en",
       "Название RU": "manufacturer_part_name_ru",
       "Чертеж": "drawing_number",
-      "Код детали производителя": "oem_part_number",
-      "Код OEM": "oem_part_number",
+      "Код детали производителя": "manufacturer_part_number",
       "Код классификатора": "catalog_position_code",
       "Название": "title",
       "Количество": "quantity",
@@ -2367,9 +2347,9 @@ export default function EquipmentClassifierMain() {
         render: (value) =>
           value === "catalog_position"
             ? "Позиция классификатора"
-            : value === "oem_part"
-              ? "Деталь производителя"
-              : "Сборка",
+            : value === "client_part"
+              ? "Деталь клиента"
+              : "Строка каталога",
       },
       {
         title: "№",
@@ -2381,7 +2361,7 @@ export default function EquipmentClassifierMain() {
         title: "Каталожный номер",
         dataIndex: "manufacturer_part_number",
         width: 180,
-        render: (value, row) => value || row.oem_part_number || row.catalog_position_code || "—",
+        render: (value, row) => value || row.catalog_position_code || "—",
       },
       {
         title: "Название",
@@ -2414,16 +2394,6 @@ export default function EquipmentClassifierMain() {
       },
     ],
     [],
-  )
-
-  const currentModelStructuredPartIds = useMemo(
-    () => new Set(modelBomItems.map((item) => Number(item.oem_part_id)).filter(Boolean)),
-    [modelBomItems],
-  )
-
-  const currentModelOemPartsOutsideBom = useMemo(
-    () => currentModelOemParts.filter((row) => !currentModelStructuredPartIds.has(Number(row.id))),
-    [currentModelOemParts, currentModelStructuredPartIds],
   )
 
   const currentModelUnits = useMemo(() => {
@@ -2547,15 +2517,6 @@ export default function EquipmentClassifierMain() {
     }
     setSelectedTreeEntity({ type: "model", id: Number(row.id) })
     setNsiSearchActive(false)
-  }
-
-  const openModelOemCatalog = (row) => {
-    if (!row?.id) return
-    navigate(
-      `/original-parts?equipment_model_id=${encodeURIComponent(row.id)}${
-        row.classifier_node_id ? `&classifier_node_id=${encodeURIComponent(row.classifier_node_id)}` : ""
-      }`,
-    )
   }
 
   const handleSaveModelDetails = async () => {
@@ -3026,7 +2987,7 @@ export default function EquipmentClassifierMain() {
       width: 120,
       render: (_, row) => (
         <Button size="small" onClick={() => openSearchResult(row)}>
-          {row.entity_type === "oem_part" ? "Деталь производителя" : row.entity_type === "client_part" ? "Клиент" : "Показать"}
+          {row.entity_type === "client_part" ? "Клиент" : "Показать"}
         </Button>
       ),
     },
@@ -3297,11 +3258,7 @@ export default function EquipmentClassifierMain() {
     {
       title: "Действие",
       width: 100,
-      render: (_, row) => (
-        <Button size="small" onClick={() => navigate(`/original-parts/${row.id}`)}>
-          Карточка
-        </Button>
-      ),
+      render: () => <Typography.Text type="secondary">Перенесено в BOM</Typography.Text>,
     },
   ]
 
@@ -3350,11 +3307,6 @@ export default function EquipmentClassifierMain() {
       width: 190,
       render: (_, row) => (
         <Space wrap size={8}>
-          {row.oem_part_id ? (
-            <Button size="small" onClick={() => navigate(`/original-parts/${row.oem_part_id}`)}>
-              Открыть
-            </Button>
-          ) : null}
           <Button size="small" onClick={() => message.info("Редактирование строки BOM добавим следующим проходом")}>
             Изменить
           </Button>
@@ -4215,17 +4167,6 @@ export default function EquipmentClassifierMain() {
         )}
       </Card>
 
-      <Card size="small" title={`Детали производителя вне BOM (${currentModelOemPartsOutsideBom.length})`}>
-        <Table
-          size="small"
-          rowKey="id"
-          columns={compactOemColumns}
-          dataSource={currentModelOemPartsOutsideBom}
-          loading={workspaceLoading}
-          pagination={{ pageSize: 10, showSizeChanger: false }}
-          locale={{ emptyText: "Все привязанные к модели детали производителя уже входят в BOM" }}
-        />
-      </Card>
     </Space>
   )
 
@@ -4812,8 +4753,8 @@ export default function EquipmentClassifierMain() {
               <Descriptions.Item label="Раздел классификатора">
                 {detailsModel.classifier_node_name || "—"}
               </Descriptions.Item>
-              <Descriptions.Item label="Деталей производителя">
-                {Number(detailsModel.oem_parts_count) || 0}
+              <Descriptions.Item label="Позиции BOM">
+                {Number(currentModelBomStats.total) || 0}
               </Descriptions.Item>
               <Descriptions.Item label="Машин клиентов">
                 {Number(detailsModel.units_count) || 0}
@@ -5117,30 +5058,27 @@ export default function EquipmentClassifierMain() {
 
             <Card size="small" title="Инженерные данные">
               <Descriptions size="small" bordered column={1}>
-                {selectedBomItem.oem_part_id ? (
-                  <>
-                    <Descriptions.Item label="Производитель">
-                      {selectedBomItem.manufacturer_name || currentModel?.manufacturer_name || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Номер производителя">
-                      {selectedBomItem.part_number || selectedBomItem.manufacturer_part_number || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Описание производителя">
-                      {selectedBomItem.description_ru ||
-                        selectedBomItem.description_en ||
-                        selectedBomItem.tech_description ||
-                        selectedBomItem.manufacturer_part_name ||
-                        "—"}
-                    </Descriptions.Item>
-                  </>
-                ) : null}
+                <Descriptions.Item label="Производитель">
+                  {selectedBomItem.manufacturer_name || currentModel?.manufacturer_name || "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Номер производителя">
+                  {selectedBomItem.part_number || selectedBomItem.manufacturer_part_number || "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Описание производителя">
+                  {selectedBomItem.description_ru ||
+                    selectedBomItem.description_en ||
+                    selectedBomItem.tech_description ||
+                    selectedBomItem.manufacturer_part_name ||
+                    selectedBomItem.catalog_position_description ||
+                    "—"}
+                </Descriptions.Item>
 
                 {selectedBomItem.catalog_position_id ? (
                   <>
-                    <Descriptions.Item label="Позиция классификатора">
+                    <Descriptions.Item label="Карточка позиции">
                       {selectedBomItem.catalog_position_name || "—"}
                     </Descriptions.Item>
-                    <Descriptions.Item label="Код классификатора">
+                    <Descriptions.Item label="Код карточки">
                       {selectedBomItem.catalog_position_code || "—"}
                     </Descriptions.Item>
                     <Descriptions.Item label="Раздел классификатора">
@@ -5155,7 +5093,7 @@ export default function EquipmentClassifierMain() {
                   </>
                 ) : null}
 
-                {!selectedBomItem.oem_part_id && !selectedBomItem.catalog_position_id ? (
+                {!selectedBomItem.catalog_position_id ? (
                   <>
                     <Descriptions.Item label="Название строки">
                       {selectedBomItem.title || selectedBomItem.manufacturer_part_name || "—"}
@@ -5216,22 +5154,12 @@ export default function EquipmentClassifierMain() {
               </Card>
             ) : null}
 
-            {selectedBomItem.oem_part_id ? (
-              <Card
-                size="small"
-                title="Связи с поставщиками"
-                extra={
-                  <Button size="small" onClick={() => navigate(`/original-parts/${selectedBomItem.oem_part_id}`)}>
-                    Коммерческие связи
-                  </Button>
-                }
-              >
-                <Typography.Text type="secondary">
-                  Аналоги поставщиков, предложения и цены относятся к коммерческому слою. Здесь фиксируется только
-                  инженерная строка BOM и деталь производителя.
-                </Typography.Text>
-              </Card>
-            ) : null}
+            <Card size="small" title="Связи с поставщиками">
+              <Typography.Text type="secondary">
+                Здесь будут показаны детали поставщиков, аналоги, предложения и складские остатки для этой карточки
+                позиции. Старый переход в OEM-каталог отключен: рабочий путь остается внутри классификатора.
+              </Typography.Text>
+            </Card>
           </Space>
         ) : (
           <Empty description="Строка BOM не выбрана" />
