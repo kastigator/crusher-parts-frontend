@@ -557,6 +557,10 @@ export default function EquipmentClassifierMain() {
   const bomLinkClassifier = Form.useWatch("link_classifier", bomItemForm)
   const bomRowKind = Form.useWatch("row_kind", bomItemForm)
   const editingBomOwnCard = isBomOwnCatalogPosition(editingBomItem)
+  const selectableCatalogPositionOptions = useMemo(
+    () => catalogPositionOptions.filter((row) => row.source_kind !== "model_bom"),
+    [catalogPositionOptions],
+  )
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
   const [manufacturerFilter, setManufacturerFilter] = useState(null)
   const [branchSectionFilter, setBranchSectionFilter] = useState(null)
@@ -742,6 +746,7 @@ export default function EquipmentClassifierMain() {
         params: {
           q: query || undefined,
           limit: 100,
+          exclude_model_bom: 1,
         },
       })
       setCatalogPositionOptions(Array.isArray(data) ? data : [])
@@ -2157,10 +2162,7 @@ export default function EquipmentClassifierMain() {
         manufacturer_part_name_en: values.manufacturer_part_name_en || null,
         manufacturer_part_name_ru: values.manufacturer_part_name_ru || null,
         drawing_number: values.drawing_number || null,
-        title:
-          !linkClassifier
-            ? values.title || manufacturerPartName || values.manufacturer_part_number
-            : values.title || null,
+        title: values.title || null,
         catalog_position_id: linkClassifier
           ? values.catalog_position_id
           : keepOwnCatalogPosition
@@ -5372,24 +5374,24 @@ export default function EquipmentClassifierMain() {
             <Input placeholder="Можно оставить пустым" />
           </Form.Item>
 
-          <Card size="small" title="Карточка позиции" style={{ marginBottom: 12 }}>
+          <Card size="small" title="Связь с нормализованной позицией" style={{ marginBottom: 12 }}>
             {editingBomOwnCard ? (
               <Alert
                 type="info"
                 showIcon
                 style={{ marginBottom: 12 }}
-                message="У этой строки уже есть своя карточка"
-                description="Изменяйте номер, название, тип и количество выше. Карточка позиции обновится вместе со строкой BOM."
+                message="Эта позиция BOM ведется самостоятельно"
+                description="Изменяйте номер, название, тип и количество выше. Когда вы откроете позицию из дерева BOM, система покажет эти данные в ее карточке."
               />
             ) : null}
             <Form.Item
-              label="Выбрать уже существующую карточку"
+              label="Связать с уже заведенной нормализованной позицией"
               name="link_classifier"
               valuePropName="checked"
               style={{ marginBottom: bomLinkClassifier ? 12 : 0 }}
             >
               <Switch
-                checkedChildren="Выбрать"
+                checkedChildren="Связать"
                 unCheckedChildren="Нет"
                 onChange={(checked) => {
                   if (!checked) return
@@ -5403,16 +5405,16 @@ export default function EquipmentClassifierMain() {
               />
             </Form.Item>
             <Typography.Paragraph type="secondary" style={{ marginTop: -4, marginBottom: bomLinkClassifier ? 12 : 0 }}>
-              Обычно строка BOM ведется как отдельная карточка этой модели. Включайте выбор существующей карточки только
-              когда это универсальная позиция, которая может повторяться в разных моделях: стандартное изделие, материал,
-              услуга или типовая деталь. Поиск лучше начинать с номера, размера, стандарта или ключевых слов из названия.
+              Обычно позиция BOM ведется как позиция именно этой модели. Включайте связь только если вы точно понимаете,
+              что это уже заведенная общая позиция классификатора: стандартное изделие, материал, услуга или типовая
+              деталь. Позиции из других BOM здесь не показываются.
             </Typography.Paragraph>
             {bomLinkClassifier ? (
             <Form.Item
-              label="Найти существующую карточку"
+              label="Найти нормализованную позицию"
               name="catalog_position_id"
-              rules={[{ required: true, message: "Выберите карточку позиции" }]}
-              extra="Если подходящей карточки нет, выключите переключатель: система создаст новую карточку из этой строки BOM."
+              rules={[{ required: true, message: "Выберите нормализованную позицию" }]}
+              extra="Если подходящей общей позиции нет, выключите переключатель: эта позиция BOM будет вестись самостоятельно."
             >
               <Select
                 showSearch
@@ -5421,7 +5423,7 @@ export default function EquipmentClassifierMain() {
                 placeholder="Введите номер, размер, стандарт или название"
                 notFoundContent={catalogPositionsLoading ? "Идет поиск..." : "Ничего не найдено"}
                 onFocus={() => {
-                  if (catalogPositionOptions.length) return
+                  if (selectableCatalogPositionOptions.length) return
                   const seed =
                     bomItemForm.getFieldValue("manufacturer_part_number") ||
                     bomItemForm.getFieldValue("manufacturer_part_name_en") ||
@@ -5430,18 +5432,12 @@ export default function EquipmentClassifierMain() {
                   loadCatalogPositions(seed)
                 }}
                 onSearch={loadCatalogPositions}
-                onChange={(value) => {
-                  const row = catalogPositionOptions.find((item) => Number(item.id) === Number(value))
-                  if (!row) return
-                  bomItemForm.setFieldsValue({
-                    manufacturer_part_name_en: row.display_name || "",
-                  })
-                }}
-                options={catalogPositionOptions.map((row) => ({
+                options={selectableCatalogPositionOptions.map((row) => ({
                   value: row.id,
                   label: row.display_name || row.position_code || `Позиция #${row.id}`,
                   positionCode: row.position_code,
                   classifierNodeName: row.classifier_node_name,
+                  sourceKind: row.source_kind,
                 }))}
                 optionRender={(option) => (
                   <Space direction="vertical" size={0}>
