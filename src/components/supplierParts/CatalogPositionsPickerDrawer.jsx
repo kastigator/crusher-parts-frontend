@@ -21,36 +21,29 @@ import {
   SearchOutlined,
   LinkOutlined,
   ReloadOutlined,
-  ApartmentOutlined,
   StopOutlined,
 } from "@ant-design/icons";
 import axios from "@/api/axiosInstance";
-import ManufacturerModelPicker from "@/components/originalParts/ManufacturerModelPicker";
 
 const { Text } = Typography;
 
 /**
- * Drawer-подборщик OEM деталей и сборок.
+ * Drawer-подборщик позиций классификатора и BOM.
  *
  * Props:
  * - open: boolean
  * - onClose: () => void
- * - excludeIds?: number[]      // ids оригиналов, уже привязанных (делаем disabled)
+ * - excludeIds?: number[]      // ids позиций, уже привязанных
  * - onPick?: (rows: any[]) => void  // вызовется при подтверждении "Привязать выбранные"
  */
-export default function OriginalsPickerDrawer({
+export default function CatalogPositionsPickerDrawer({
   open,
   onClose,
   excludeIds = [],
-  title = "Подбор OEM деталей и сборок",
+  title = "Подбор позиций каталога",
   confirmLabel = "Привязать выбранные",
   onPick,
 }) {
-  const [manufacturer, setManufacturer] = useState(null);
-  const [model, setModel] = useState(null);
-
-  const [pickerOpen, setPickerOpen] = useState(false);
-
   const [q, setQ] = useState("");
   const [onlyAssemblies, setOnlyAssemblies] = useState(false);
   const [onlyParts, setOnlyParts] = useState(false);
@@ -73,8 +66,8 @@ export default function OriginalsPickerDrawer({
   const fetchList = useCallback(async () => {
     if (!open) return;
 
-    // Без фильтров и поиска не тянем всю БД
-    if (!model?.id && !manufacturer?.id && !q.trim()) {
+    // Без поиска не тянем весь каталог.
+    if (!q.trim()) {
       setRows([]);
       return;
     }
@@ -86,13 +79,12 @@ export default function OriginalsPickerDrawer({
     setLoading(true);
     try {
       const params = {};
-      if (manufacturer?.id) params.manufacturer_id = manufacturer.id;
-      if (model?.id) params.equipment_model_id = model.id;
       if (q.trim()) params.q = q.trim();
       if (onlyAssemblies) params.only_assemblies = 1;
       if (onlyParts) params.only_parts = 1;
+      params.limit = 100;
 
-      const { data } = await axios.get("/original-parts", {
+      const { data } = await axios.get("/catalog-positions", {
         params,
         signal: controller.signal,
       });
@@ -108,11 +100,11 @@ export default function OriginalsPickerDrawer({
     } catch (e) {
       if (e?.name === "CanceledError" || e?.code === "ERR_CANCELED") return;
       console.error(e);
-      message.error("Не удалось загрузить OEM детали");
+      message.error("Не удалось загрузить позиции каталога");
     } finally {
       setLoading(false);
     }
-  }, [open, manufacturer?.id, model?.id, q, onlyAssemblies, onlyParts, excludeIds]);
+  }, [open, q, onlyAssemblies, onlyParts, excludeIds]);
 
   // авто-загрузка при изменении фильтров/поиска
   useEffect(() => {
@@ -130,14 +122,14 @@ export default function OriginalsPickerDrawer({
   const columns = useMemo(
     () => [
       {
-        title: "Part number",
-        dataIndex: "cat_number",
-        key: "cat_number",
+        title: "Номер / код",
+        dataIndex: "manufacturer_part_number",
+        key: "manufacturer_part_number",
         width: 180,
         render: (v, r) => (
           <Space direction="vertical" size={2}>
             <Space size={6} wrap>
-              <Text strong>{v}</Text>
+              <Text strong>{v || r.position_code || "—"}</Text>
               {r._disabled && (
                 <Tooltip title="Уже привязано — выбор отключён">
                   <StopOutlined style={{ opacity: 0.65 }} />
@@ -149,32 +141,28 @@ export default function OriginalsPickerDrawer({
                 <Tag color="geekblue">{r.manufacturer_name}</Tag>
               )}
               {r.model_name && <Tag>{r.model_name}</Tag>}
-              {r.children_count > 0 && <Tag color="gold">Сборка</Tag>}
+              {r.source_kind === "model_bom" && <Tag color="blue">BOM модели</Tag>}
+              {r.position_kind === "assembly" && <Tag color="gold">Сборка</Tag>}
             </Space>
           </Space>
         ),
       },
       {
-        title: "Описание",
-        dataIndex: "description_ru",
-        key: "description_ru",
+        title: "Название",
+        dataIndex: "display_name",
+        key: "display_name",
         ellipsis: true,
         render: (v, r) =>
-          v || r.description_en || r.tech_description || (
+          r.display_name_ru || r.display_name_en || v || r.description || (
             <Text type="secondary">—</Text>
           ),
       },
       {
-        title: "ТН ВЭД",
-        dataIndex: "tnved_code_text",
-        key: "tnved_code_text",
-        width: 120,
-        render: (v) =>
-          v ? (
-            <Tag color="processing">{v}</Tag>
-          ) : (
-            <Text type="secondary">—</Text>
-          ),
+        title: "Раздел",
+        dataIndex: "classifier_node_name",
+        key: "classifier_node_name",
+        width: 220,
+        render: (v) => v || <Text type="secondary">—</Text>,
       },
     ],
     []
@@ -225,7 +213,6 @@ export default function OriginalsPickerDrawer({
     setQ("");
     setOnlyAssemblies(false);
     setOnlyParts(false);
-    // производителя/модель НЕ сбрасываем — это основное ограничение каталога
     fetchList();
   };
 
@@ -234,7 +221,7 @@ export default function OriginalsPickerDrawer({
       <Input
         allowClear
         style={{ width: 280 }}
-        placeholder="Поиск по номеру и описанию"
+        placeholder="Номер, название, раздел классификатора"
         value={q}
         prefix={<SearchOutlined />}
         onChange={(e) => setQ(e.target.value)}
@@ -262,18 +249,6 @@ export default function OriginalsPickerDrawer({
       </Checkbox>
 
       <Space style={{ marginLeft: "auto" }} wrap align="center">
-        {manufacturer && (
-          <Tag color="geekblue">Производитель: {manufacturer.name}</Tag>
-        )}
-        {model && <Tag color="blue">Модель: {model.model_name}</Tag>}
-
-        <Button
-          icon={<ApartmentOutlined />}
-          onClick={() => setPickerOpen(true)}
-        >
-          Выбрать произв./модель
-        </Button>
-
         {(q || onlyAssemblies || onlyParts) && (
           <Button icon={<ReloadOutlined />} onClick={resetFilters}>
             Сбросить фильтры
@@ -326,14 +301,6 @@ export default function OriginalsPickerDrawer({
         />
       </Drawer>
 
-      <ManufacturerModelPicker
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onPick={(mf, md) => {
-          setManufacturer(mf);
-          setModel(md);
-        }}
-      />
     </>
   );
 }

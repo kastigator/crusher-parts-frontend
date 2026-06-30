@@ -24,7 +24,7 @@ import confirmAction from "@/utils/confirmAction"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
 import { formatUomLabel } from "@/utils/uom"
 import { useLocation } from "react-router-dom"
-import OriginalsPickerDrawer from "@/components/supplierParts/OriginalsPickerDrawer"
+import CatalogPositionsPickerDrawer from "@/components/supplierParts/CatalogPositionsPickerDrawer"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 
 const { Text } = Typography
@@ -349,6 +349,10 @@ export default function RfqPage() {
 
   const handleAddComponents = async (item, rows) => {
     if (!activeRfq?.id || !item?.rfq_item_id || !rows?.length) return
+    if (rows.some((row) => row?.catalog_position_id || row?.position_code || row?.source_kind)) {
+      message.warning("Добавление RFQ-компонентов через позиции каталога будет включено после миграции RFQ на catalog_position_id")
+      return
+    }
     setAddingComponentItemId(item.rfq_item_id)
     try {
       for (const row of rows) {
@@ -1354,7 +1358,7 @@ export default function RfqPage() {
         />
       </Drawer>
 
-      <OriginalsPickerDrawer
+      <CatalogPositionsPickerDrawer
         open={componentPickerOpen}
         onClose={() => {
           setComponentPickerOpen(false)

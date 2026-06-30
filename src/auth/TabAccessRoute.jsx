@@ -12,9 +12,7 @@ const SUPPLIER_LOOKUP_PATHS = new Set([
   "/tnved-codes",
   "/logistics-route-templates",
 ])
-const MASTER_DATA_LOOKUP_PATHS = new Set([
-  "/original-parts",
-])
+const MASTER_DATA_LOOKUP_PATHS = new Set([])
 
 export default function TabAccessRoute({
   tabKey,

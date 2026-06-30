@@ -26,8 +26,6 @@ const ClientsPage = lazy(() => import('../pages/ClientsPage'))
 const ClientDetailPage = lazy(() => import('../pages/ClientDetailPage'))
 const SuppliersPage = lazy(() => import('../pages/SuppliersPage'))
 const SupplierDetailPage = lazy(() => import('../pages/SupplierDetailPage'))
-const OriginalPartsPage = lazy(() => import('../pages/OriginalPartsPage'))
-const OriginalPartDetailPage = lazy(() => import('../pages/OriginalPartDetailPage'))
 const SupplierPartsPage = lazy(() => import('@/pages/SupplierPartsPage'))
 const SupplierPartDetailPage = lazy(() => import('@/pages/SupplierPartDetailPage'))
 const MaterialsPage = lazy(() => import('@/pages/MaterialsPage'))
@@ -76,8 +74,6 @@ const AppRouter = () => (
         <Route path="clients/:id" element={<TabAccessRoute path="/clients" title="Клиенты"><ClientDetailPage /></TabAccessRoute>} />
         <Route path="suppliers" element={<TabAccessRoute path="/suppliers" title="Поставщики"><SuppliersPage /></TabAccessRoute>} />
         <Route path="suppliers/:id" element={<TabAccessRoute path="/suppliers" title="Поставщики"><SupplierDetailPage /></TabAccessRoute>} />
-        <Route path="original-parts" element={<TabAccessRoute path="/original-parts" title="OEM детали"><OriginalPartsPage /></TabAccessRoute>} />
-        <Route path="original-parts/:id" element={<TabAccessRoute path="/original-parts" title="OEM детали"><OriginalPartDetailPage /></TabAccessRoute>} />
         <Route path="supplier-parts" element={<TabAccessRoute path="/supplier-parts" title="Детали поставщиков"><SupplierPartsPage /></TabAccessRoute>} />
         <Route path="supplier-parts/:id" element={<TabAccessRoute path="/supplier-parts" title="Детали поставщиков"><SupplierPartDetailPage /></TabAccessRoute>} />
         <Route path="equipment-classifier" element={<TabAccessRoute path="/equipment-classifier" title="Классификатор"><EquipmentClassifierPage /></TabAccessRoute>} />

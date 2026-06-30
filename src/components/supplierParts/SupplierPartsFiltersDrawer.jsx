@@ -139,7 +139,7 @@ export default function SupplierPartsFiltersDrawer({
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item name="originals_mode" label="Привязки к оригиналам">
+            <Form.Item name="originals_mode" label="Связи с каталогом">
               <Select
                 options={[
                   { value: "any", label: "Все" },

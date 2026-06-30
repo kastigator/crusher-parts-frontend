@@ -26,7 +26,6 @@ const catalogLinks = [
   { path: "/clients", label: "Клиенты" },
   { path: "/suppliers", label: "Поставщики" },
   { path: "/supplier-parts", label: "Детали поставщиков" },
-  { path: "/original-parts", label: "OEM детали" },
   { path: "/equipment-classifier", label: "Классификатор" },
   { path: "/materials", label: "Материалы" },
   { path: "/tnved-codes", label: "Коды ТН ВЭД" },

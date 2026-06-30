@@ -12,13 +12,13 @@ import useTableScrollHints from "@/utils/useTableScrollHints"
 import { formatPrice } from "@/utils/priceFormat"
 import { formatUomLabel } from "@/utils/uom"
 
-function OriginalsCell({ row }) {
+function CatalogLinksCell({ row }) {
   const [items, setItems] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  const cats = row.original_cat_numbers
-    ? String(row.original_cat_numbers)
+  const cats = row.catalog_position_numbers
+    ? String(row.catalog_position_numbers)
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean)
@@ -28,17 +28,17 @@ function OriginalsCell({ row }) {
     return <Tag color="default">нет</Tag>
   }
 
-  const loadOriginals = async () => {
+  const loadCatalogLinks = async () => {
     if (items !== null || loading) return
     try {
       setLoading(true)
       setError(null)
-      const { data } = await axios.get(`/supplier-parts/${row.id}/originals`)
+      const { data } = await axios.get(`/supplier-parts/${row.id}/catalog-positions`)
       setItems(Array.isArray(data) ? data : [])
     } catch (e) {
       console.error(e)
-      setError("Не удалось загрузить привязки")
-      message.error("Не удалось загрузить привязки к оригиналам")
+      setError("Не удалось загрузить связи с каталогом")
+      message.error("Не удалось загрузить связи с каталогом")
       setItems([])
     } finally {
       setLoading(false)
@@ -46,7 +46,7 @@ function OriginalsCell({ row }) {
   }
 
   const handleOpenChange = (open) => {
-    if (open) loadOriginals()
+    if (open) loadCatalogLinks()
   }
 
   let tooltipContent = null
@@ -70,7 +70,7 @@ function OriginalsCell({ row }) {
       </div>
     )
   } else {
-    tooltipContent = "Привязок не найдено"
+    tooltipContent = "Связей с каталогом не найдено"
   }
 
   return (
@@ -147,7 +147,7 @@ export default function SupplierPartsTable({
 
       const f = filters || {}
       if (f.part_type) params.part_type = f.part_type
-      if (f.originals_mode && f.originals_mode !== "any") params.originals_mode = f.originals_mode
+      if (f.originals_mode && f.originals_mode !== "any") params.catalog_links_mode = f.originals_mode
       if (f.is_overweight) params.is_overweight = 1
       if (f.is_oversize) params.is_oversize = 1
       if (f.weight_min != null) params.weight_min = f.weight_min
@@ -593,16 +593,16 @@ export default function SupplierPartsTable({
     })
 
     cols.push({
-      key: "original_links",
-      title: "Привязки",
+      key: "catalog_links",
+      title: "Связи с каталогом",
       dataIndex: "id",
-      width: getColumnWidth("original_links", 180),
+      width: getColumnWidth("catalog_links", 180),
       minWidth: 120,
       maxWidth: 320,
       onCell: () => ({
         style: { overflow: "hidden" },
       }),
-      render: (_, row) => <OriginalsCell row={row} />,
+      render: (_, row) => <CatalogLinksCell row={row} />,
     })
 
     cols.push({
@@ -637,7 +637,7 @@ export default function SupplierPartsTable({
         "latest_price",
         "lead_time_days",
         "min_order_qty",
-        "original_links",
+        "catalog_links",
         "actions",
       ].filter((key) => columnDefs.some((column) => column.key === key)),
     [columnDefs, showAll],

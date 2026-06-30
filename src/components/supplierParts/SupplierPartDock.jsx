@@ -1,7 +1,7 @@
 // src/components/supplierParts/SupplierPartDock.jsx
 import React, { useMemo, useState, Suspense, lazy } from "react"
 import { Card, Tabs, Space, Tag, Typography, Empty } from "antd"
-import OriginalsLinkTab from "./OriginalsLinkTab"
+import CatalogPositionLinksTab from "./CatalogPositionLinksTab"
 import SupplierPartMaterialsTab from "./SupplierPartMaterialsTab"
 
 const PriceHistoryTab = lazy(() => import("./PriceHistoryTab"))
@@ -75,13 +75,13 @@ export default function SupplierPartDock({
             key: "links",
             label: (
               <Space size={6}>
-                Привязки к деталям
+                Связи с каталогом
                   <Tag color="blue">
-                    {part.original_cat_numbers ? part.original_cat_numbers.split(",").length : 0}
+                    {part.catalog_position_numbers ? part.catalog_position_numbers.split(",").length : 0}
                   </Tag>
                 </Space>
               ),
-              children: <OriginalsLinkTab supplierPartId={part.id} onChanged={onChanged} />,
+              children: <CatalogPositionLinksTab supplierPartId={part.id} onChanged={onChanged} />,
             },
           ]}
         />

@@ -258,14 +258,6 @@ export const logSchemas = {
     ],
   },
 
-  // === Связи «деталь поставщика ↔ оригинальная деталь» ===
-  supplier_part_originals: {
-    fields: {
-      supplier_part_id: "Деталь поставщика",
-      original_part_id: "Оригинальная деталь",
-    },
-    excludeFields: [],
-  },
 }
 
 // ---- Алиасы для совместимости старых логов ----

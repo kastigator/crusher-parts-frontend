@@ -141,7 +141,7 @@ export default function SupplierPartsMain() {
         "lead_time_days",
         "min_order_qty",
         "packaging",
-        "original_links",
+        "catalog_links",
       ])
 
       if (viewKey === "showAll") {

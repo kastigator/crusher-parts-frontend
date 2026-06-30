@@ -70,7 +70,7 @@ const QUICK_FILTERS = [
       "supplier_bank_details",
       "supplier_parts",
       "supplier_part_materials",
-      "supplier_part_oem_parts",
+      "supplier_part_catalog_positions",
       "supplier_part_prices",
       "supplier_price_lists",
       "supplier_price_list_lines",
@@ -425,7 +425,7 @@ function resolveTrashNavigationTarget(record) {
     case "part_suppliers":
       return rootId > 0 ? `/suppliers/${rootId}` : "/suppliers"
     case "oem_parts":
-      return rootId > 0 ? `/original-parts/${rootId}` : "/original-parts"
+      return "/equipment-classifier"
     case "supplier_parts":
       return rootId > 0 ? `/supplier-parts/${rootId}` : "/supplier-parts"
     case "materials":
@@ -452,10 +452,10 @@ function resolveTrashNavigationTarget(record) {
     case "oem_part_unit_overrides":
     case "oem_part_unit_material_overrides":
     case "oem_part_unit_material_specs":
-      return rootId > 0 ? `/original-parts/${rootId}` : "/original-parts"
+      return "/equipment-classifier"
     case "supplier_price_lists":
     case "supplier_part_prices":
-    case "supplier_part_oem_parts":
+    case "supplier_part_catalog_positions":
     case "supplier_part_materials":
     case "supplier_bundles":
     case "supplier_bundle_items":

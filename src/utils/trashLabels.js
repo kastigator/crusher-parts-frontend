@@ -18,7 +18,7 @@ export const TRASH_ENTITY_LABELS = {
   supplier_bank_details: "Банковские реквизиты поставщика",
   supplier_parts: "Деталь поставщика",
   supplier_part_materials: "Материал детали поставщика",
-  supplier_part_oem_parts: "Связь детали поставщика с OEM-деталью",
+  supplier_part_catalog_positions: "Связь детали поставщика с позицией каталога",
   supplier_part_prices: "Запись цены детали поставщика",
   supplier_price_lists: "Прайс-лист поставщика",
   supplier_price_list_lines: "Строка прайс-листа поставщика",

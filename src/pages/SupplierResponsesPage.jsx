@@ -159,21 +159,8 @@ export default function SupplierResponsesPage() {
       setSuggestedParts([])
       return
     }
-    setSuggestedPartsLoading(true)
-    try {
-      const { data } = await axios.get("/supplier-part-originals/of-original", {
-        params: { original_part_id: originalPartId },
-      })
-      const list = Array.isArray(data) ? data : []
-      setSuggestedParts(
-        list.filter((item) => item.supplier_id === activeResponse.supplier_id),
-      )
-    } catch (e) {
-      console.error(e)
-      setSuggestedParts([])
-    } finally {
-      setSuggestedPartsLoading(false)
-    }
+    setSuggestedParts([])
+    setSuggestedPartsLoading(false)
   }
 
   const loadRfqSuppliers = async (rfqId) => {
