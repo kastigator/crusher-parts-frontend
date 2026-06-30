@@ -251,6 +251,23 @@ const getBomItemName = (row) =>
   row?.title ||
   ""
 
+const normalizeBomText = (value) => String(value || "").trim().toLowerCase()
+
+const getBomCardHint = (row, label, itemName) => {
+  if (!row?.catalog_position_id) return "нужна карточка"
+  const cardName = row.catalog_position_name || ""
+  const cardCode = row.catalog_position_code || ""
+  const normalizedCardName = normalizeBomText(cardName)
+  const normalizedItemName = normalizeBomText(itemName)
+  const normalizedLabel = normalizeBomText(label)
+  if (normalizedCardName && (normalizedCardName === normalizedItemName || normalizedCardName === normalizedLabel)) {
+    return null
+  }
+  if (cardName) return `карточка: ${cardName}`
+  if (cardCode && normalizeBomText(cardCode) !== normalizedLabel) return `карточка: ${cardCode}`
+  return null
+}
+
 const BOM_ROW_KIND_LABELS = {
   assembly: "Сборка",
   part: "Деталь",
@@ -343,13 +360,11 @@ const buildBomTreeData = (rows, actions = {}) =>
     const isGroup = children.length > 0 || effectiveKind === "assembly"
     const label = getBomItemLabel(row)
     const itemName = getBomItemName(row)
-    const linkLabel = row.catalog_position_id
-      ? `карточка: ${row.catalog_position_name || row.catalog_position_code || "позиция BOM"}`
-      : "требует уточнения карточки"
+    const cardHint = getBomCardHint(row, label, itemName)
     const secondary = [
       itemName && itemName !== label ? itemName : null,
       children.length ? `${children.length} поз. внутри` : null,
-      linkLabel,
+      cardHint,
     ].filter(Boolean)
     const uom = row.uom || row.catalog_position_uom || "шт"
     const menuItems = [
