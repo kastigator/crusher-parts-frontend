@@ -345,7 +345,7 @@ const buildBomTreeData = (rows, actions = {}) =>
     const itemName = getBomItemName(row)
     const linkLabel = row.catalog_position_id
       ? `карточка: ${row.catalog_position_name || row.catalog_position_code || "позиция BOM"}`
-      : "карточка позиции BOM"
+      : "требует уточнения карточки"
     const secondary = [
       itemName && itemName !== label ? itemName : null,
       children.length ? `${children.length} поз. внутри` : null,
@@ -2012,13 +2012,13 @@ export default function EquipmentClassifierMain() {
   const currentModelBomStats = useMemo(() => {
     const rows = currentModelBomRows
     const groups = rows.filter((row) => row.bom_has_children || getBomEffectiveRowKind(row) === "assembly").length
-    const linked = rows.filter((row) => row.catalog_position_id).length
+    const cardRows = rows.filter((row) => row.catalog_position_id).length
     return {
       total: rows.length,
       groups,
       positions: Math.max(rows.length - groups, 0),
-      linked,
-      unlinked: Math.max(rows.length - linked, 0),
+      cardRows,
+      needsReview: Math.max(rows.length - cardRows, 0),
     }
   }, [currentModelBomRows])
   const filteredModelBomTree = useMemo(() => {
@@ -4088,13 +4088,17 @@ export default function EquipmentClassifierMain() {
             <Tag>{currentModelBomStats.total} строк</Tag>
             <Tag>{currentModelBomStats.groups} узлов</Tag>
             <Tag>{currentModelBomStats.positions} позиций</Tag>
-            <Tag color={currentModelBomStats.linked ? "blue" : "default"}>
-              {currentModelBomStats.linked} связаны
+            <Tag color={currentModelBomStats.cardRows ? "blue" : "default"}>
+              {currentModelBomStats.cardRows} карточек
             </Tag>
-            <Tag color={currentModelBomStats.unlinked ? "orange" : "default"}>
-              {currentModelBomStats.unlinked} без связи
+            <Tag color={currentModelBomStats.needsReview ? "orange" : "default"}>
+              {currentModelBomStats.needsReview} требуют уточнения
             </Tag>
           </Space>
+          <Typography.Text type="secondary">
+            Каждая строка BOM ведет к карточке позиции. В карточке дальше заполняют характеристики, материалы,
+            документы, ТН ВЭД, поставщиков и склад.
+          </Typography.Text>
           <Space wrap style={{ width: "100%", justifyContent: "space-between" }}>
             <Input
               allowClear
@@ -4110,8 +4114,8 @@ export default function EquipmentClassifierMain() {
               onChange={setBomFilter}
               options={[
                 { label: "Все", value: "all" },
-                { label: "Без связи", value: "unlinked" },
-                { label: "Связанные", value: "linked" },
+                { label: "Требуют уточнения", value: "unlinked" },
+                { label: "С карточкой", value: "linked" },
                 { label: "Узлы", value: "groups" },
                 { label: "Позиции", value: "leaves" },
               ]}
@@ -5337,15 +5341,15 @@ export default function EquipmentClassifierMain() {
             <Input placeholder="Можно оставить пустым" />
           </Form.Item>
 
-          <Card size="small" title="Связь с классификатором" style={{ marginBottom: 12 }}>
+          <Card size="small" title="Карточка позиции" style={{ marginBottom: 12 }}>
             <Form.Item
               name="link_classifier"
               valuePropName="checked"
               style={{ marginBottom: bomLinkClassifier ? 12 : 0 }}
             >
               <Switch
-                checkedChildren="Связать"
-                unCheckedChildren="Не связывать"
+                checkedChildren="Выбрать"
+                unCheckedChildren="Создать"
                 onChange={(checked) => {
                   if (!checked) return
                   const seed =
@@ -5358,16 +5362,16 @@ export default function EquipmentClassifierMain() {
               />
             </Form.Item>
             <Typography.Paragraph type="secondary" style={{ marginTop: -4, marginBottom: bomLinkClassifier ? 12 : 0 }}>
-              Включайте, когда строка BOM соответствует уже заведенной универсальной позиции: стандартному изделию,
-              материалу, услуге или типовой детали. Поиск лучше начинать с номера, размера, стандарта или ключевых слов
-              из названия.
+              Обычно система создаст карточку из этой строки BOM автоматически. Включите выбор существующей карточки,
+              если это уже заведенная универсальная позиция: стандартное изделие, материал, услуга или типовая деталь.
+              Поиск лучше начинать с номера, размера, стандарта или ключевых слов из названия.
             </Typography.Paragraph>
             {bomLinkClassifier ? (
             <Form.Item
-              label="Найти позицию в классификаторе"
+              label="Найти существующую карточку"
               name="catalog_position_id"
-              rules={[{ required: true, message: "Выберите позицию классификатора" }]}
-              extra="Если подходящей позиции нет, сохраните строку без связи и создайте/уточните карточку классификатора позже."
+              rules={[{ required: true, message: "Выберите карточку позиции" }]}
+              extra="Если подходящей карточки нет, выключите переключатель: система создаст новую карточку из этой строки BOM."
             >
               <Select
                 showSearch
