@@ -496,6 +496,7 @@ export default function EquipmentClassifierMain() {
   const [bomItemModalOpen, setBomItemModalOpen] = useState(false)
   const [bomItemSaving, setBomItemSaving] = useState(false)
   const [editingBomItem, setEditingBomItem] = useState(null)
+  const [reuseBomSource, setReuseBomSource] = useState(null)
   const [bomItemCardOpen, setBomItemCardOpen] = useState(false)
   const [selectedBomItem, setSelectedBomItem] = useState(null)
   const [catalogPositionOptions, setCatalogPositionOptions] = useState([])
@@ -2093,6 +2094,7 @@ export default function EquipmentClassifierMain() {
         sourceItem?.catalog_position_id && (reuseFrom || !isBomOwnCatalogPosition(sourceItem)),
       )
       setEditingBomItem(item)
+      setReuseBomSource(reuseFrom)
       bomItemForm.resetFields()
       bomItemForm.setFieldsValue({
         link_classifier: usesExistingCatalogPosition,
@@ -2171,6 +2173,7 @@ export default function EquipmentClassifierMain() {
       setModelBomItems(Array.isArray(data?.items) ? data.items : [])
       setBomItemModalOpen(false)
       setEditingBomItem(null)
+      setReuseBomSource(null)
       message.success(editingBomItem?.id ? "Строка BOM изменена" : "Строка BOM добавлена")
     } catch (err) {
       if (err?.errorFields) return
@@ -5227,7 +5230,7 @@ export default function EquipmentClassifierMain() {
 
       <Modal
         open={bomItemModalOpen}
-        title={editingBomItem ? "Строка BOM" : "Новая строка BOM"}
+        title={reuseBomSource ? "Добавить применение позиции" : editingBomItem ? "Строка BOM" : "Новая строка BOM"}
         width={760}
         okText="Сохранить"
         cancelText="Отмена"
@@ -5236,6 +5239,7 @@ export default function EquipmentClassifierMain() {
         onCancel={() => {
           setBomItemModalOpen(false)
           setEditingBomItem(null)
+          setReuseBomSource(null)
         }}
         destroyOnHidden
       >
@@ -5244,164 +5248,238 @@ export default function EquipmentClassifierMain() {
           layout="vertical"
           initialValues={{ link_classifier: false, row_kind: "assembly", quantity: 1 }}
         >
-          <Row gutter={12}>
-            <Col span={16}>
-              <Form.Item
-                label="Каталожный номер производителя"
-                name="manufacturer_part_number"
-                extra="Официальный номер производителя именно в этом каталоге модели. Например: 1093080129 или MM0200329."
-              >
-                <Input placeholder="Например: 1093080129" />
+          {reuseBomSource ? (
+            <>
+              <Form.Item name="link_classifier" hidden>
+                <Input />
               </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                label="Количество"
-                name="quantity"
-                rules={[{ required: true }]}
-                extra="Сколько таких позиций входит в выбранный узел."
-              >
-                <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
+              <Form.Item name="catalog_position_id" hidden>
+                <Input />
               </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item
-                label="Название EN"
-                name="manufacturer_part_name_en"
-                rules={[
-                  ({ getFieldValue }) => ({
-                    validator(_, value) {
-                      const hasNumber = getFieldValue("manufacturer_part_number")
-                      const hasRuName = getFieldValue("manufacturer_part_name_ru")
-                      if (value || hasNumber || hasRuName) return Promise.resolve()
-                      return Promise.reject(new Error("Укажите название или каталожный номер"))
-                    },
-                  }),
-                ]}
-              >
-                <Input.TextArea autoSize={{ minRows: 1, maxRows: 4 }} placeholder="Например: Adjustment Ring" />
+              <Form.Item name="row_kind" hidden>
+                <Input />
               </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Название RU" name="manufacturer_part_name_ru">
-                <Input.TextArea autoSize={{ minRows: 1, maxRows: 4 }} placeholder="Например: Регулировочное кольцо" />
+              <Form.Item name="item_no" hidden>
+                <Input />
               </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item
-            label="Что это за строка"
-            name="row_kind"
-            rules={[{ required: true, message: "Выберите тип строки" }]}
-            extra={BOM_ROW_KIND_HELP[bomRowKind || "assembly"]}
-          >
-            <Select
-              options={BOM_ROW_KIND_OPTIONS.map((item) => ({
-                value: item.value,
-                label: item.label,
-                description: item.description,
-                example: item.example,
-              }))}
-              optionRender={(option) => (
-                <Space direction="vertical" size={0}>
-                  <Typography.Text strong>{option.data.label}</Typography.Text>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {option.data.description} Например: {option.data.example}.
-                  </Typography.Text>
-                </Space>
-              )}
-            />
-          </Form.Item>
-
-          <Form.Item
-            label="Куда добавить в дереве BOM"
-            name="parent_item_id"
-            extra="Оставьте пустым, если строка должна быть на верхнем уровне модели."
-          >
-            <Select
-              allowClear
-              placeholder="В корень модели"
-              options={currentModelBomRows
-                .filter((row) => Number(row.id) !== Number(editingBomItem?.id))
-                .map((row) => ({
-                  value: row.id,
-                  label: `${"— ".repeat(row.bom_level || 0)}${row.item_no ? `${row.item_no}. ` : ""}${getBomItemLabel(row)}${getBomItemName(row) ? ` — ${getBomItemName(row)}` : ""}`,
-                }))}
-            />
-          </Form.Item>
-
-          <Card size="small" title="Связь с существующей карточкой" style={{ marginBottom: 12 }}>
-            <Form.Item
-              label="Использовать уже заведенную карточку"
-              name="link_classifier"
-              valuePropName="checked"
-              style={{ marginBottom: bomLinkClassifier ? 12 : 0 }}
-            >
-              <Switch
-                checkedChildren="Связать"
-                unCheckedChildren="Нет"
-                onChange={(checked) => {
-                  if (!checked) return
-                  const seed =
-                    bomItemForm.getFieldValue("manufacturer_part_number") ||
-                    bomItemForm.getFieldValue("manufacturer_part_name_en") ||
-                    bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
-                    ""
-                  loadCatalogPositions(seed, currentModel?.id)
-                }}
-              />
-            </Form.Item>
-            <Typography.Paragraph type="secondary" style={{ marginTop: -4, marginBottom: bomLinkClassifier ? 12 : 0 }}>
-              Обычно новая строка получает свою карточку автоматически. Включайте выбор, если это та же самая позиция:
-              например, деталь уже есть в другой сборке этой модели, либо это стандартное изделие, материал или услуга
-              из классификатора.
-            </Typography.Paragraph>
-            {bomLinkClassifier ? (
-            <Form.Item
-              label="Найти существующую карточку"
-              name="catalog_position_id"
-              rules={[{ required: true, message: "Выберите существующую карточку" }]}
-              extra="Если подходящей карточки нет, выключите переключатель: система создаст новую карточку из этой строки BOM."
-            >
-              <Select
-                showSearch
-                filterOption={false}
-                loading={catalogPositionsLoading}
-                placeholder="Введите номер, размер, стандарт или название"
-                notFoundContent={catalogPositionsLoading ? "Идет поиск..." : "Ничего не найдено"}
-                onFocus={() => {
-                  if (selectableCatalogPositionOptions.length) return
-                  const seed =
-                    bomItemForm.getFieldValue("manufacturer_part_number") ||
-                    bomItemForm.getFieldValue("manufacturer_part_name_en") ||
-                    bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
-                    ""
-                  loadCatalogPositions(seed, currentModel?.id)
-                }}
-                onSearch={(value) => loadCatalogPositions(value, currentModel?.id)}
-                options={selectableCatalogPositionOptions.map((row) => ({
-                  value: row.id,
-                  label: row.display_name || row.position_code || `Позиция #${row.id}`,
-                  positionCode: row.position_code,
-                  classifierNodeName: row.classifier_node_name,
-                  sourceKind: row.source_kind,
-                }))}
-                optionRender={(option) => (
-                  <Space direction="vertical" size={0}>
-                    <Typography.Text strong>{option.data.label}</Typography.Text>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      {[option.data.positionCode, option.data.classifierNodeName].filter(Boolean).join(" / ") ||
-                        "Позиция классификатора"}
+              <Form.Item name="manufacturer_part_number" hidden>
+                <Input />
+              </Form.Item>
+              <Form.Item name="manufacturer_part_name_en" hidden>
+                <Input />
+              </Form.Item>
+              <Form.Item name="manufacturer_part_name_ru" hidden>
+                <Input />
+              </Form.Item>
+              <Form.Item name="manufacturer_part_name" hidden>
+                <Input />
+              </Form.Item>
+              <Form.Item name="drawing_number" hidden>
+                <Input />
+              </Form.Item>
+              <Card size="small" style={{ marginBottom: 12 }}>
+                <Space direction="vertical" size={2}>
+                  <Typography.Text type="secondary">Позиция</Typography.Text>
+                  <Space size={8} wrap>
+                    <Typography.Text strong>
+                      {reuseBomSource.manufacturer_part_number || reuseBomSource.part_number || getBomItemLabel(reuseBomSource)}
                     </Typography.Text>
+                    <Typography.Text>{getBomItemName(reuseBomSource) || getBomItemLabel(reuseBomSource)}</Typography.Text>
+                    <Tag>{BOM_ROW_KIND_LABELS[reuseBomSource.row_kind] || "Строка BOM"}</Tag>
                   </Space>
-                )}
-              />
-            </Form.Item>
-            ) : null}
-          </Card>
+                </Space>
+              </Card>
+
+              <Row gutter={12}>
+                <Col span={16}>
+                  <Form.Item
+                    label="Куда добавить"
+                    name="parent_item_id"
+                    rules={[{ required: true, message: "Выберите сборку, куда добавить позицию" }]}
+                  >
+                    <Select
+                      placeholder="Выберите сборку"
+                      options={currentModelBomRows
+                        .filter((row) => {
+                          if (Number(row.id) === Number(reuseBomSource.id)) return false
+                          return row.bom_has_children || getBomEffectiveRowKind(row) === "assembly"
+                        })
+                        .map((row) => ({
+                          value: row.id,
+                          label: `${"— ".repeat(row.bom_level || 0)}${row.item_no ? `${row.item_no}. ` : ""}${getBomItemLabel(row)}${getBomItemName(row) ? ` — ${getBomItemName(row)}` : ""}`,
+                        }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item label="Количество" name="quantity" rules={[{ required: true }]}>
+                    <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </>
+          ) : (
+            <>
+              <Row gutter={12}>
+                <Col span={16}>
+                  <Form.Item
+                    label="Каталожный номер производителя"
+                    name="manufacturer_part_number"
+                    extra="Официальный номер производителя именно в этом каталоге модели. Например: 1093080129 или MM0200329."
+                  >
+                    <Input placeholder="Например: 1093080129" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    label="Количество"
+                    name="quantity"
+                    rules={[{ required: true }]}
+                    extra="Сколько таких позиций входит в выбранный узел."
+                  >
+                    <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form.Item
+                    label="Название EN"
+                    name="manufacturer_part_name_en"
+                    rules={[
+                      ({ getFieldValue }) => ({
+                        validator(_, value) {
+                          const hasNumber = getFieldValue("manufacturer_part_number")
+                          const hasRuName = getFieldValue("manufacturer_part_name_ru")
+                          if (value || hasNumber || hasRuName) return Promise.resolve()
+                          return Promise.reject(new Error("Укажите название или каталожный номер"))
+                        },
+                      }),
+                    ]}
+                  >
+                    <Input.TextArea autoSize={{ minRows: 1, maxRows: 4 }} placeholder="Например: Adjustment Ring" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item label="Название RU" name="manufacturer_part_name_ru">
+                    <Input.TextArea autoSize={{ minRows: 1, maxRows: 4 }} placeholder="Например: Регулировочное кольцо" />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Form.Item
+                label="Что это за строка"
+                name="row_kind"
+                rules={[{ required: true, message: "Выберите тип строки" }]}
+                extra={BOM_ROW_KIND_HELP[bomRowKind || "assembly"]}
+              >
+                <Select
+                  options={BOM_ROW_KIND_OPTIONS.map((item) => ({
+                    value: item.value,
+                    label: item.label,
+                    description: item.description,
+                    example: item.example,
+                  }))}
+                  optionRender={(option) => (
+                    <Space direction="vertical" size={0}>
+                      <Typography.Text strong>{option.data.label}</Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        {option.data.description} Например: {option.data.example}.
+                      </Typography.Text>
+                    </Space>
+                  )}
+                />
+              </Form.Item>
+
+              <Form.Item
+                label="Куда добавить в дереве BOM"
+                name="parent_item_id"
+                extra="Оставьте пустым, если строка должна быть на верхнем уровне модели."
+              >
+                <Select
+                  allowClear
+                  placeholder="В корень модели"
+                  options={currentModelBomRows
+                    .filter((row) => Number(row.id) !== Number(editingBomItem?.id))
+                    .map((row) => ({
+                      value: row.id,
+                      label: `${"— ".repeat(row.bom_level || 0)}${row.item_no ? `${row.item_no}. ` : ""}${getBomItemLabel(row)}${getBomItemName(row) ? ` — ${getBomItemName(row)}` : ""}`,
+                    }))}
+                />
+              </Form.Item>
+
+              <Card size="small" title="Связь с существующей карточкой" style={{ marginBottom: 12 }}>
+                <Form.Item
+                  label="Использовать уже заведенную карточку"
+                  name="link_classifier"
+                  valuePropName="checked"
+                  style={{ marginBottom: bomLinkClassifier ? 12 : 0 }}
+                >
+                  <Switch
+                    checkedChildren="Связать"
+                    unCheckedChildren="Нет"
+                    onChange={(checked) => {
+                      if (!checked) return
+                      const seed =
+                        bomItemForm.getFieldValue("manufacturer_part_number") ||
+                        bomItemForm.getFieldValue("manufacturer_part_name_en") ||
+                        bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
+                        ""
+                      loadCatalogPositions(seed, currentModel?.id)
+                    }}
+                  />
+                </Form.Item>
+                <Typography.Paragraph type="secondary" style={{ marginTop: -4, marginBottom: bomLinkClassifier ? 12 : 0 }}>
+                  Обычно новая строка получает свою карточку автоматически. Включайте выбор, если это та же самая позиция:
+                  например, деталь уже есть в другой сборке этой модели, либо это стандартное изделие, материал или услуга
+                  из классификатора.
+                </Typography.Paragraph>
+                {bomLinkClassifier ? (
+                <Form.Item
+                  label="Найти существующую карточку"
+                  name="catalog_position_id"
+                  rules={[{ required: true, message: "Выберите существующую карточку" }]}
+                  extra="Если подходящей карточки нет, выключите переключатель: система создаст новую карточку из этой строки BOM."
+                >
+                  <Select
+                    showSearch
+                    filterOption={false}
+                    loading={catalogPositionsLoading}
+                    placeholder="Введите номер, размер, стандарт или название"
+                    notFoundContent={catalogPositionsLoading ? "Идет поиск..." : "Ничего не найдено"}
+                    onFocus={() => {
+                      if (selectableCatalogPositionOptions.length) return
+                      const seed =
+                        bomItemForm.getFieldValue("manufacturer_part_number") ||
+                        bomItemForm.getFieldValue("manufacturer_part_name_en") ||
+                        bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
+                        ""
+                      loadCatalogPositions(seed, currentModel?.id)
+                    }}
+                    onSearch={(value) => loadCatalogPositions(value, currentModel?.id)}
+                    options={selectableCatalogPositionOptions.map((row) => ({
+                      value: row.id,
+                      label: row.display_name || row.position_code || `Позиция #${row.id}`,
+                      positionCode: row.position_code,
+                      classifierNodeName: row.classifier_node_name,
+                      sourceKind: row.source_kind,
+                    }))}
+                    optionRender={(option) => (
+                      <Space direction="vertical" size={0}>
+                        <Typography.Text strong>{option.data.label}</Typography.Text>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {[option.data.positionCode, option.data.classifierNodeName].filter(Boolean).join(" / ") ||
+                            "Позиция классификатора"}
+                        </Typography.Text>
+                      </Space>
+                    )}
+                  />
+                </Form.Item>
+                ) : null}
+              </Card>
+            </>
+          )}
 
           <Form.Item label="Заметки" name="notes">
             <Input.TextArea rows={3} />
