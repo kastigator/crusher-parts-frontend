@@ -255,6 +255,7 @@ const normalizeBomText = (value) => String(value || "").trim().toLowerCase()
 
 const getBomCardHint = (row, label, itemName) => {
   if (!row?.catalog_position_id) return "нужна карточка"
+  if (isBomOwnCatalogPosition(row)) return null
   const cardName = row.catalog_position_name || ""
   const cardCode = row.catalog_position_code || ""
   const normalizedCardName = normalizeBomText(cardName)
@@ -266,6 +267,13 @@ const getBomCardHint = (row, label, itemName) => {
   if (cardName) return `карточка: ${cardName}`
   if (cardCode && normalizeBomText(cardCode) !== normalizedLabel) return `карточка: ${cardCode}`
   return null
+}
+
+const isBomOwnCatalogPosition = (row) => {
+  if (!row?.catalog_position_id) return false
+  if (row.catalog_position_source_kind !== "model_bom") return false
+  const sourceBomItemId = Number(row.catalog_position_source_bom_item_id || 0)
+  return !sourceBomItemId || sourceBomItemId === Number(row.id)
 }
 
 const BOM_ROW_KIND_LABELS = {
@@ -334,7 +342,8 @@ const getBomItemTypeLabel = (row) => {
 }
 
 const getBomLinkStatusLabel = (row) => {
-  if (row?.catalog_position_id) return "Карточка позиции"
+  if (isBomOwnCatalogPosition(row)) return "Своя карточка строки BOM"
+  if (row?.catalog_position_id) return "Существующая карточка классификатора"
   if (row?.client_part_id || row?.bom_client_part_id) return "Деталь по чертежу клиента"
   return "Карточка будет создана"
 }
@@ -547,6 +556,7 @@ export default function EquipmentClassifierMain() {
   const [bomItemForm] = Form.useForm()
   const bomLinkClassifier = Form.useWatch("link_classifier", bomItemForm)
   const bomRowKind = Form.useWatch("row_kind", bomItemForm)
+  const editingBomOwnCard = isBomOwnCatalogPosition(editingBomItem)
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
   const [manufacturerFilter, setManufacturerFilter] = useState(null)
   const [branchSectionFilter, setBranchSectionFilter] = useState(null)
@@ -2090,10 +2100,11 @@ export default function EquipmentClassifierMain() {
   const openBomItemModal = useCallback(
     (item = null, parent = null) => {
       if (!currentModel?.id) return
+      const usesExistingCatalogPosition = Boolean(item?.catalog_position_id && !isBomOwnCatalogPosition(item))
       setEditingBomItem(item)
       bomItemForm.setFieldsValue({
-        link_classifier: Boolean(item?.catalog_position_id),
-        row_kind: item?.row_kind || (item?.catalog_position_id ? "part" : "assembly"),
+        link_classifier: usesExistingCatalogPosition,
+        row_kind: item?.row_kind || "assembly",
         parent_item_id: item ? item.parent_item_id || null : parent?.id || null,
         item_no: item?.item_no || "",
         manufacturer_part_number: item?.manufacturer_part_number || item?.part_number || "",
@@ -2112,7 +2123,7 @@ export default function EquipmentClassifierMain() {
           "",
         drawing_number: item?.drawing_number || "",
         title: item?.title || "",
-        catalog_position_id: item?.catalog_position_id || null,
+        catalog_position_id: usesExistingCatalogPosition ? item?.catalog_position_id || null : null,
         quantity: item?.quantity || 1,
         sort_order: item?.sort_order || 0,
         notes: item?.notes || "",
@@ -2129,11 +2140,12 @@ export default function EquipmentClassifierMain() {
       const values = await bomItemForm.validateFields()
       setBomItemSaving(true)
       const linkClassifier = Boolean(values.link_classifier && values.catalog_position_id)
+      const keepOwnCatalogPosition = Boolean(editingBomItem?.id && !linkClassifier && isBomOwnCatalogPosition(editingBomItem))
       const manufacturerPartName =
         values.manufacturer_part_name_en || values.manufacturer_part_name_ru || values.manufacturer_part_name
       const payload = {
         row_kind: values.row_kind || "assembly",
-        item_type: linkClassifier
+        item_type: linkClassifier || keepOwnCatalogPosition
           ? "catalog_position"
           : values.row_kind === "part"
             ? "unlinked"
@@ -2149,7 +2161,11 @@ export default function EquipmentClassifierMain() {
           !linkClassifier
             ? values.title || manufacturerPartName || values.manufacturer_part_number
             : values.title || null,
-        catalog_position_id: linkClassifier ? values.catalog_position_id : null,
+        catalog_position_id: linkClassifier
+          ? values.catalog_position_id
+          : keepOwnCatalogPosition
+            ? editingBomItem.catalog_position_id
+            : null,
         quantity: values.quantity || 1,
         sort_order: values.sort_order ?? editingBomItem?.sort_order ?? 0,
         notes: values.notes || null,
@@ -5357,14 +5373,24 @@ export default function EquipmentClassifierMain() {
           </Form.Item>
 
           <Card size="small" title="Карточка позиции" style={{ marginBottom: 12 }}>
+            {editingBomOwnCard ? (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message="У этой строки уже есть своя карточка"
+                description="Изменяйте номер, название, тип и количество выше. Карточка позиции обновится вместе со строкой BOM."
+              />
+            ) : null}
             <Form.Item
+              label="Выбрать уже существующую карточку"
               name="link_classifier"
               valuePropName="checked"
               style={{ marginBottom: bomLinkClassifier ? 12 : 0 }}
             >
               <Switch
                 checkedChildren="Выбрать"
-                unCheckedChildren="Создать"
+                unCheckedChildren="Нет"
                 onChange={(checked) => {
                   if (!checked) return
                   const seed =
@@ -5377,9 +5403,9 @@ export default function EquipmentClassifierMain() {
               />
             </Form.Item>
             <Typography.Paragraph type="secondary" style={{ marginTop: -4, marginBottom: bomLinkClassifier ? 12 : 0 }}>
-              Обычно система создаст карточку из этой строки BOM автоматически. Включите выбор существующей карточки,
-              если это уже заведенная универсальная позиция: стандартное изделие, материал, услуга или типовая деталь.
-              Поиск лучше начинать с номера, размера, стандарта или ключевых слов из названия.
+              Обычно строка BOM ведется как отдельная карточка этой модели. Включайте выбор существующей карточки только
+              когда это универсальная позиция, которая может повторяться в разных моделях: стандартное изделие, материал,
+              услуга или типовая деталь. Поиск лучше начинать с номера, размера, стандарта или ключевых слов из названия.
             </Typography.Paragraph>
             {bomLinkClassifier ? (
             <Form.Item
