@@ -30,7 +30,7 @@ import {
   Upload,
   message,
 } from "antd"
-import { DeleteOutlined, EditOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons"
+import { CopyOutlined, DeleteOutlined, EditOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
@@ -251,24 +251,6 @@ const getBomItemName = (row) =>
   row?.title ||
   ""
 
-const normalizeBomText = (value) => String(value || "").trim().toLowerCase()
-
-const getBomCardHint = (row, label, itemName) => {
-  if (!row?.catalog_position_id) return "нужна карточка"
-  if (isBomOwnCatalogPosition(row)) return null
-  const cardName = row.catalog_position_name || ""
-  const cardCode = row.catalog_position_code || ""
-  const normalizedCardName = normalizeBomText(cardName)
-  const normalizedItemName = normalizeBomText(itemName)
-  const normalizedLabel = normalizeBomText(label)
-  if (normalizedCardName && (normalizedCardName === normalizedItemName || normalizedCardName === normalizedLabel)) {
-    return null
-  }
-  if (cardName) return `карточка: ${cardName}`
-  if (cardCode && normalizeBomText(cardCode) !== normalizedLabel) return `карточка: ${cardCode}`
-  return null
-}
-
 const isBomOwnCatalogPosition = (row) => {
   if (!row?.catalog_position_id) return false
   if (row.catalog_position_source_kind !== "model_bom") return false
@@ -369,16 +351,14 @@ const buildBomTreeData = (rows, actions = {}) =>
     const isGroup = children.length > 0 || effectiveKind === "assembly"
     const label = getBomItemLabel(row)
     const itemName = getBomItemName(row)
-    const cardHint = getBomCardHint(row, label, itemName)
     const secondary = [
       itemName && itemName !== label ? itemName : null,
       children.length ? `${children.length} поз. внутри` : null,
-      cardHint,
     ].filter(Boolean)
     const uom = row.uom || row.catalog_position_uom || "шт"
     const menuItems = [
-      { key: "open", label: "Открыть карточку" },
       { key: "edit", label: "Изменить строку", icon: <EditOutlined /> },
+      { key: "reuse", label: "Добавить эту же позицию в другой узел", icon: <CopyOutlined /> },
       { type: "divider" },
       { key: "delete", label: "Удалить", danger: true, icon: <DeleteOutlined /> },
     ]
@@ -431,8 +411,8 @@ const buildBomTreeData = (rows, actions = {}) =>
                 items: menuItems,
                 onClick: ({ key, domEvent }) => {
                   domEvent.stopPropagation()
-                  if (key === "open") actions.onOpen?.(row)
                   if (key === "edit") actions.onEdit?.(row)
+                  if (key === "reuse") actions.onReuse?.(row)
                   if (key === "delete") actions.onDelete?.(row)
                 },
               }}
@@ -556,11 +536,15 @@ export default function EquipmentClassifierMain() {
   const [bomItemForm] = Form.useForm()
   const bomLinkClassifier = Form.useWatch("link_classifier", bomItemForm)
   const bomRowKind = Form.useWatch("row_kind", bomItemForm)
-  const editingBomOwnCard = isBomOwnCatalogPosition(editingBomItem)
-  const selectableCatalogPositionOptions = useMemo(
-    () => catalogPositionOptions.filter((row) => row.source_kind !== "model_bom"),
-    [catalogPositionOptions],
-  )
+  const selectableCatalogPositionOptions = useMemo(() => {
+    const activeModelId = selectedTreeEntity.type === "model" ? Number(selectedTreeEntity.id) : null
+    const currentItemId = Number(editingBomItem?.id || 0)
+    return catalogPositionOptions.filter((row) => {
+      if (row.source_kind !== "model_bom") return true
+      if (activeModelId && Number(row.equipment_model_id) !== activeModelId) return false
+      return Number(row.source_bom_item_id || 0) !== currentItemId
+    })
+  }, [catalogPositionOptions, editingBomItem?.id, selectedTreeEntity])
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
   const [manufacturerFilter, setManufacturerFilter] = useState(null)
   const [branchSectionFilter, setBranchSectionFilter] = useState(null)
@@ -739,14 +723,14 @@ export default function EquipmentClassifierMain() {
     }
   }, [])
 
-  const loadCatalogPositions = useCallback(async (query = "") => {
+  const loadCatalogPositions = useCallback(async (query = "", modelId = null) => {
     setCatalogPositionsLoading(true)
     try {
       const { data } = await axios.get("/catalog-positions", {
         params: {
           q: query || undefined,
           limit: 100,
-          exclude_model_bom: 1,
+          model_bom_model_id: modelId || undefined,
         },
       })
       setCatalogPositionOptions(Array.isArray(data) ? data : [])
@@ -2076,8 +2060,6 @@ export default function EquipmentClassifierMain() {
     }
     const matchesFilter = (row) => {
       const children = Array.isArray(row.children) ? row.children : []
-      if (bomFilter === "linked") return Boolean(row.catalog_position_id)
-      if (bomFilter === "unlinked") return !row.catalog_position_id
       if (bomFilter === "groups") return children.length > 0 || getBomEffectiveRowKind(row) === "assembly"
       if (bomFilter === "leaves") return children.length === 0
       return true
@@ -2103,37 +2085,48 @@ export default function EquipmentClassifierMain() {
   )
 
   const openBomItemModal = useCallback(
-    (item = null, parent = null) => {
+    (item = null, parent = null, options = {}) => {
       if (!currentModel?.id) return
-      const usesExistingCatalogPosition = Boolean(item?.catalog_position_id && !isBomOwnCatalogPosition(item))
+      const reuseFrom = options?.reuseFrom || null
+      const sourceItem = reuseFrom || item
+      const usesExistingCatalogPosition = Boolean(
+        sourceItem?.catalog_position_id && (reuseFrom || !isBomOwnCatalogPosition(sourceItem)),
+      )
       setEditingBomItem(item)
+      bomItemForm.resetFields()
       bomItemForm.setFieldsValue({
         link_classifier: usesExistingCatalogPosition,
-        row_kind: item?.row_kind || "assembly",
+        row_kind: sourceItem?.row_kind || "assembly",
         parent_item_id: item ? item.parent_item_id || null : parent?.id || null,
-        item_no: item?.item_no || "",
-        manufacturer_part_number: item?.manufacturer_part_number || item?.part_number || "",
+        item_no: reuseFrom ? "" : item?.item_no || "",
+        manufacturer_part_number: sourceItem?.manufacturer_part_number || sourceItem?.part_number || "",
         manufacturer_part_name_en:
-          item?.manufacturer_part_name_en ||
-          item?.manufacturer_part_name ||
-          item?.description_en ||
-          item?.catalog_position_name ||
+          sourceItem?.manufacturer_part_name_en ||
+          sourceItem?.manufacturer_part_name ||
+          sourceItem?.description_en ||
+          sourceItem?.catalog_position_name ||
           "",
-        manufacturer_part_name_ru: item?.manufacturer_part_name_ru || item?.description_ru || "",
+        manufacturer_part_name_ru: sourceItem?.manufacturer_part_name_ru || sourceItem?.description_ru || "",
         manufacturer_part_name:
-          item?.manufacturer_part_name ||
-          item?.description_ru ||
-          item?.description_en ||
-          item?.catalog_position_name ||
+          sourceItem?.manufacturer_part_name ||
+          sourceItem?.description_ru ||
+          sourceItem?.description_en ||
+          sourceItem?.catalog_position_name ||
           "",
-        drawing_number: item?.drawing_number || "",
-        title: item?.title || "",
-        catalog_position_id: usesExistingCatalogPosition ? item?.catalog_position_id || null : null,
-        quantity: item?.quantity || 1,
+        drawing_number: sourceItem?.drawing_number || "",
+        catalog_position_id: usesExistingCatalogPosition ? sourceItem?.catalog_position_id || null : null,
+        quantity: sourceItem?.quantity || 1,
         sort_order: item?.sort_order || 0,
-        notes: item?.notes || "",
+        notes: reuseFrom ? "" : item?.notes || "",
       })
-      if (!catalogPositionOptions.length) loadCatalogPositions()
+      const seed =
+        sourceItem?.manufacturer_part_number ||
+        sourceItem?.part_number ||
+        sourceItem?.manufacturer_part_name_en ||
+        sourceItem?.manufacturer_part_name ||
+        sourceItem?.catalog_position_name ||
+        ""
+      if (usesExistingCatalogPosition || !catalogPositionOptions.length) loadCatalogPositions(seed, currentModel.id)
       setBomItemModalOpen(true)
     },
     [bomItemForm, catalogPositionOptions.length, currentModel?.id, loadCatalogPositions],
@@ -2162,7 +2155,7 @@ export default function EquipmentClassifierMain() {
         manufacturer_part_name_en: values.manufacturer_part_name_en || null,
         manufacturer_part_name_ru: values.manufacturer_part_name_ru || null,
         drawing_number: values.drawing_number || null,
-        title: values.title || null,
+        title: null,
         catalog_position_id: linkClassifier
           ? values.catalog_position_id
           : keepOwnCatalogPosition
@@ -2349,6 +2342,7 @@ export default function EquipmentClassifierMain() {
         },
         onEdit: (row) => openBomItemModal(row),
         onAddChild: (row) => openBomItemModal(null, row),
+        onReuse: (row) => openBomItemModal(null, null, { reuseFrom: row }),
         onDelete: (row) => handleDeleteBomItem(row),
       }),
     [filteredModelBomTree, openBomItemModal, handleDeleteBomItem],
@@ -4117,21 +4111,6 @@ export default function EquipmentClassifierMain() {
         }
       >
         <Space direction="vertical" size={10} style={{ width: "100%", marginBottom: 12 }}>
-          <Space wrap>
-            <Tag>{currentModelBomStats.total} строк</Tag>
-            <Tag>{currentModelBomStats.groups} узлов</Tag>
-            <Tag>{currentModelBomStats.positions} позиций</Tag>
-            <Tag color={currentModelBomStats.cardRows ? "blue" : "default"}>
-              {currentModelBomStats.cardRows} карточек
-            </Tag>
-            <Tag color={currentModelBomStats.needsReview ? "orange" : "default"}>
-              {currentModelBomStats.needsReview} требуют уточнения
-            </Tag>
-          </Space>
-          <Typography.Text type="secondary">
-            Каждая строка BOM ведет к карточке позиции. В карточке дальше заполняют характеристики, материалы,
-            документы, ТН ВЭД, поставщиков и склад.
-          </Typography.Text>
           <Space wrap style={{ width: "100%", justifyContent: "space-between" }}>
             <Input
               allowClear
@@ -4147,10 +4126,8 @@ export default function EquipmentClassifierMain() {
               onChange={setBomFilter}
               options={[
                 { label: "Все", value: "all" },
-                { label: "Требуют уточнения", value: "unlinked" },
-                { label: "С карточкой", value: "linked" },
-                { label: "Узлы", value: "groups" },
-                { label: "Позиции", value: "leaves" },
+                { label: "Сборки", value: "groups" },
+                { label: "Детали", value: "leaves" },
               ]}
             />
           </Space>
@@ -5299,9 +5276,7 @@ export default function EquipmentClassifierMain() {
                     validator(_, value) {
                       const hasNumber = getFieldValue("manufacturer_part_number")
                       const hasRuName = getFieldValue("manufacturer_part_name_ru")
-                      const hasLegacyName = getFieldValue("manufacturer_part_name")
-                      const hasTitle = getFieldValue("title")
-                      if (value || hasNumber || hasRuName || hasLegacyName || hasTitle) return Promise.resolve()
+                      if (value || hasNumber || hasRuName) return Promise.resolve()
                       return Promise.reject(new Error("Укажите название или каталожный номер"))
                     },
                   }),
@@ -5358,34 +5333,9 @@ export default function EquipmentClassifierMain() {
             />
           </Form.Item>
 
-          <Form.Item
-            label="Название по каталогу (старое поле)"
-            name="manufacturer_part_name"
-            hidden
-          >
-            <Input />
-          </Form.Item>
-
-          <Form.Item
-            label="Внутреннее название, если нужно отличить от каталога"
-            name="title"
-            extra="Обычно оставляют пустым: в BOM будет показано название производителя. Заполняйте, если нужна внутренняя пометка или рабочее название."
-          >
-            <Input placeholder="Можно оставить пустым" />
-          </Form.Item>
-
-          <Card size="small" title="Связь с нормализованной позицией" style={{ marginBottom: 12 }}>
-            {editingBomOwnCard ? (
-              <Alert
-                type="info"
-                showIcon
-                style={{ marginBottom: 12 }}
-                message="Эта позиция BOM ведется самостоятельно"
-                description="Изменяйте номер, название, тип и количество выше. Когда вы откроете позицию из дерева BOM, система покажет эти данные в ее карточке."
-              />
-            ) : null}
+          <Card size="small" title="Связь с существующей карточкой" style={{ marginBottom: 12 }}>
             <Form.Item
-              label="Связать с уже заведенной нормализованной позицией"
+              label="Использовать уже заведенную карточку"
               name="link_classifier"
               valuePropName="checked"
               style={{ marginBottom: bomLinkClassifier ? 12 : 0 }}
@@ -5400,21 +5350,21 @@ export default function EquipmentClassifierMain() {
                     bomItemForm.getFieldValue("manufacturer_part_name_en") ||
                     bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
                     ""
-                  loadCatalogPositions(seed)
+                  loadCatalogPositions(seed, currentModel?.id)
                 }}
               />
             </Form.Item>
             <Typography.Paragraph type="secondary" style={{ marginTop: -4, marginBottom: bomLinkClassifier ? 12 : 0 }}>
-              Обычно позиция BOM ведется как позиция именно этой модели. Включайте связь только если вы точно понимаете,
-              что это уже заведенная общая позиция классификатора: стандартное изделие, материал, услуга или типовая
-              деталь. Позиции из других BOM здесь не показываются.
+              Обычно новая строка получает свою карточку автоматически. Включайте выбор, если это та же самая позиция:
+              например, деталь уже есть в другой сборке этой модели, либо это стандартное изделие, материал или услуга
+              из классификатора.
             </Typography.Paragraph>
             {bomLinkClassifier ? (
             <Form.Item
-              label="Найти нормализованную позицию"
+              label="Найти существующую карточку"
               name="catalog_position_id"
-              rules={[{ required: true, message: "Выберите нормализованную позицию" }]}
-              extra="Если подходящей общей позиции нет, выключите переключатель: эта позиция BOM будет вестись самостоятельно."
+              rules={[{ required: true, message: "Выберите существующую карточку" }]}
+              extra="Если подходящей карточки нет, выключите переключатель: система создаст новую карточку из этой строки BOM."
             >
               <Select
                 showSearch
@@ -5429,9 +5379,9 @@ export default function EquipmentClassifierMain() {
                     bomItemForm.getFieldValue("manufacturer_part_name_en") ||
                     bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
                     ""
-                  loadCatalogPositions(seed)
+                  loadCatalogPositions(seed, currentModel?.id)
                 }}
-                onSearch={loadCatalogPositions}
+                onSearch={(value) => loadCatalogPositions(value, currentModel?.id)}
                 options={selectableCatalogPositionOptions.map((row) => ({
                   value: row.id,
                   label: row.display_name || row.position_code || `Позиция #${row.id}`,
