@@ -1877,7 +1877,6 @@ export default function EquipmentClassifierMain() {
   const rawWorkspaceCatalogPositions = Array.isArray(workspace?.catalog_positions) ? workspace.catalog_positions : []
   const rawWorkspaceManufacturers = Array.isArray(workspace?.manufacturers) ? workspace.manufacturers : []
   const rawWorkspaceUnits = Array.isArray(workspace?.client_equipment_units) ? workspace.client_equipment_units : []
-  const rawWorkspaceOemParts = Array.isArray(workspace?.oem_parts) ? workspace.oem_parts : []
   const rawWorkspaceClientParts = Array.isArray(workspace?.client_parts) ? workspace.client_parts : []
   const filterableAttributes = useMemo(
     () =>
@@ -1973,12 +1972,6 @@ export default function EquipmentClassifierMain() {
       .split(",")
       .map((item) => Number(item.trim()))
       .filter(Boolean)
-
-  const selectedModelOemParts = useMemo(() => {
-    if (!detailsModel?.id) return []
-    const modelId = Number(detailsModel.id)
-    return rawWorkspaceOemParts.filter((row) => splitIds(row.model_ids).includes(modelId))
-  }, [detailsModel, rawWorkspaceOemParts])
 
   const selectedModelUnits = useMemo(() => {
     if (!detailsModel?.id) return []
@@ -2433,12 +2426,6 @@ export default function EquipmentClassifierMain() {
     loadModelBom(currentModel.id)
     loadModelClientExecutions(currentModel.id)
   }, [currentModel, loadModelBom, loadModelClientExecutions, loadModelDocuments, loadModelMedia, modelDetailsForm, selectedTreeEntity.type])
-
-  const currentUnitOemParts = useMemo(() => {
-    if (!selectedUnitFromTree?.equipment_model_id) return []
-    const modelId = Number(selectedUnitFromTree.equipment_model_id)
-    return rawWorkspaceOemParts.filter((row) => splitIds(row.model_ids).includes(modelId))
-  }, [rawWorkspaceOemParts, selectedUnitFromTree])
 
   const currentUnitClientParts = useMemo(() => {
     if (!selectedUnitFromTree?.id && !selectedUnitFromTree?.equipment_model_id) return []
@@ -3238,27 +3225,6 @@ export default function EquipmentClassifierMain() {
       dataIndex: "display_value",
       width: 220,
       render: (value) => value || "—",
-    },
-  ]
-
-  const compactOemColumns = [
-    {
-      title: "Каталожный номер производителя",
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text strong>{row.part_number || "—"}</Typography.Text>
-          <Typography.Text type="secondary">{row.manufacturer_name || "—"}</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: "Описание",
-      render: (_, row) => row.description_ru || row.description_en || row.tech_description || "—",
-    },
-    {
-      title: "Действие",
-      width: 100,
-      render: () => <Typography.Text type="secondary">Перенесено в BOM</Typography.Text>,
     },
   ]
 
@@ -4337,18 +4303,6 @@ export default function EquipmentClassifierMain() {
         />
       </Card>
 
-      <Card size="small" title={`Детали производителя по модели (${currentUnitOemParts.length})`}>
-        <Table
-          size="small"
-          rowKey="id"
-          columns={compactOemColumns}
-          dataSource={currentUnitOemParts}
-          loading={workspaceLoading}
-          pagination={{ pageSize: 8, showSizeChanger: false }}
-          locale={{ emptyText: "Для модели этой машины пока нет деталей производителя" }}
-        />
-      </Card>
-
       <Card size="small" title={`Особенности и детали клиента (${currentUnitClientParts.length})`}>
         <Table
           size="small"
@@ -4840,17 +4794,6 @@ export default function EquipmentClassifierMain() {
                 dataSource={Array.isArray(detailsModel.attribute_values) ? detailsModel.attribute_values : []}
                 pagination={false}
                 locale={{ emptyText: "У модели пока не заполнены характеристики" }}
-              />
-            </Card>
-
-            <Card size="small" title={`Детали производителя (${selectedModelOemParts.length})`}>
-              <Table
-                size="small"
-                rowKey="id"
-                columns={compactOemColumns}
-                dataSource={selectedModelOemParts}
-                pagination={{ pageSize: 6, showSizeChanger: false }}
-                locale={{ emptyText: "Для этой модели пока нет деталей производителя" }}
               />
             </Card>
 
