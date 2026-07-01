@@ -350,14 +350,10 @@ const buildBomTreeData = (rows, actions = {}) =>
     const isGroup = children.length > 0 || effectiveKind === "assembly"
     const label = getBomItemLabel(row)
     const itemName = getBomItemName(row)
-    const secondary = [
-      children.length ? `${children.length} поз. внутри` : null,
-    ].filter(Boolean)
     const uom = row.uom || row.catalog_position_uom || "шт"
     const menuItems = [
       { key: "edit", label: "Изменить строку", icon: <EditOutlined /> },
-      { key: "reuse", label: "Добавить эту же позицию в другой узел", icon: <CopyOutlined /> },
-      { key: "reuseModel", label: "Добавить в другую модель", icon: <CopyOutlined /> },
+      { key: "reuse", label: "Добавить применение", icon: <CopyOutlined /> },
       { type: "divider" },
       { key: "delete", label: "Удалить", danger: true, icon: <DeleteOutlined /> },
     ]
@@ -377,7 +373,6 @@ const buildBomTreeData = (rows, actions = {}) =>
         >
           <Space direction="vertical" size={1} style={{ minWidth: 0, flex: 1 }}>
             <Space size={8} wrap>
-              {row.item_no ? <Typography.Text type="secondary">{row.item_no}</Typography.Text> : null}
               <Typography.Link strong={isGroup} onClick={() => actions.onOpen?.(row)}>
                 {label}
               </Typography.Link>
@@ -385,13 +380,6 @@ const buildBomTreeData = (rows, actions = {}) =>
               <Tag title="Количество в этом месте BOM">
                 {Number(row.quantity || 0).toLocaleString("ru-RU")} {uom}
               </Tag>
-            </Space>
-            <Space size={6} wrap>
-              {secondary.map((item, index) => (
-                <Typography.Text key={`${row.id}-${index}`} type="secondary" style={{ fontSize: 12 }}>
-                  {item}
-                </Typography.Text>
-              ))}
             </Space>
           </Space>
 
@@ -404,7 +392,6 @@ const buildBomTreeData = (rows, actions = {}) =>
                   domEvent.stopPropagation()
                   if (key === "edit") actions.onEdit?.(row)
                   if (key === "reuse") actions.onReuse?.(row)
-                  if (key === "reuseModel") actions.onReuseModel?.(row)
                   if (key === "delete") actions.onDelete?.(row)
                 },
               }}
@@ -2112,12 +2099,17 @@ export default function EquipmentClassifierMain() {
   )
   const crossModelOptions = useMemo(
     () => allModels
-      .filter((model) => Number(model.id) !== Number(currentModel?.id))
       .map((model) => ({
         value: Number(model.id),
-        label: [model.manufacturer_name, model.model_name].filter(Boolean).join(" ") || `Модель #${model.id}`,
+        label: `${[model.manufacturer_name, model.model_name].filter(Boolean).join(" ") || `Модель #${model.id}`}${
+          Number(model.id) === Number(currentModel?.id) ? " (текущая модель)" : ""
+        }`,
+        isCurrent: Number(model.id) === Number(currentModel?.id),
       }))
-      .sort((a, b) => String(a.label).localeCompare(String(b.label), "ru")),
+      .sort((a, b) => {
+        if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1
+        return String(a.label).localeCompare(String(b.label), "ru")
+      }),
     [allModels, currentModel?.id],
   )
 
@@ -2199,11 +2191,11 @@ export default function EquipmentClassifierMain() {
     setCrossModelBomRows([])
     bomCrossModelForm.resetFields()
     bomCrossModelForm.setFieldsValue({
-      target_model_id: null,
+      target_model_id: currentModel?.id ? Number(currentModel.id) : null,
       parent_item_id: null,
       quantity: item.quantity || 1,
     })
-  }, [bomCrossModelForm])
+  }, [bomCrossModelForm, currentModel?.id])
 
   const handleAddBomItemToAnotherModel = async () => {
     if (!crossModelBomSource?.catalog_position_id) return
@@ -2237,11 +2229,11 @@ export default function EquipmentClassifierMain() {
       setCrossModelBomSource(null)
       setCrossModelBomRows([])
       bomCrossModelForm.resetFields()
-      message.success("Позиция добавлена в выбранную модель")
+      message.success("Применение позиции добавлено")
     } catch (err) {
       if (err?.errorFields) return
       console.error("ADD BOM item to another model error:", err)
-      message.error(err?.response?.data?.message || "Не удалось добавить позицию в другую модель")
+      message.error(err?.response?.data?.message || "Не удалось добавить применение позиции")
     } finally {
       setCrossModelBomSaving(false)
     }
@@ -2509,8 +2501,7 @@ export default function EquipmentClassifierMain() {
           setBomItemCardOpen(true)
         },
         onEdit: (row) => openBomItemModal(row),
-        onReuse: (row) => openBomItemModal(null, null, { reuseFrom: row }),
-        onReuseModel: (row) => openCrossModelBomModal(row),
+        onReuse: (row) => openCrossModelBomModal(row),
         onDelete: (row) => handleDeleteBomItem(row),
       }),
     [filteredModelBomTree, openBomItemModal, openCrossModelBomModal, handleDeleteBomItem],
@@ -5422,7 +5413,7 @@ export default function EquipmentClassifierMain() {
 
       <Modal
         open={Boolean(crossModelBomSource)}
-        title="Добавить позицию в другую модель"
+        title="Добавить применение позиции"
         width={720}
         okText="Добавить"
         cancelText="Отмена"
@@ -5439,7 +5430,7 @@ export default function EquipmentClassifierMain() {
           {crossModelBomSource ? (
             <Card size="small" style={{ marginBottom: 12 }}>
               <Space direction="vertical" size={2}>
-                <Typography.Text type="secondary">Добавляем эту же карточку позиции</Typography.Text>
+                <Typography.Text type="secondary">Добавляем эту же позицию в BOM</Typography.Text>
                 <Space size={8} wrap>
                   <Typography.Text strong>
                     {crossModelBomSource.manufacturer_part_number ||
@@ -5462,7 +5453,7 @@ export default function EquipmentClassifierMain() {
           >
             <Select
               showSearch
-              placeholder="Например: Metso HP 300"
+              placeholder="Выберите модель"
               optionFilterProp="label"
               options={crossModelOptions}
               onChange={() => {
