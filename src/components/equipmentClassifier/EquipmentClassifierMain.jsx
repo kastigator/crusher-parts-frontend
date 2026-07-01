@@ -18,7 +18,6 @@ import {
   Modal,
   Popconfirm,
   Row,
-  Segmented,
   Select,
   Space,
   Switch,
@@ -30,7 +29,7 @@ import {
   Upload,
   message,
 } from "antd"
-import { CopyOutlined, DeleteOutlined, EditOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons"
+import { CopyOutlined, DeleteOutlined, EditOutlined, MoreOutlined, SearchOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
@@ -352,7 +351,6 @@ const buildBomTreeData = (rows, actions = {}) =>
     const label = getBomItemLabel(row)
     const itemName = getBomItemName(row)
     const secondary = [
-      itemName && itemName !== label ? itemName : null,
       children.length ? `${children.length} поз. внутри` : null,
     ].filter(Boolean)
     const uom = row.uom || row.catalog_position_uom || "шт"
@@ -397,14 +395,6 @@ const buildBomTreeData = (rows, actions = {}) =>
           </Space>
 
           <Space size={4} onClick={(event) => event.stopPropagation()}>
-            {actions.onAddChild ? (
-              <Button
-                size="small"
-                icon={<PlusOutlined />}
-                title="Добавить внутрь"
-                onClick={() => actions.onAddChild(row)}
-              />
-            ) : null}
             <Dropdown
               trigger={["click"]}
               menu={{
@@ -492,7 +482,7 @@ export default function EquipmentClassifierMain() {
   const [bomImportSourceRows, setBomImportSourceRows] = useState([])
   const [bomImportReplace, setBomImportReplace] = useState(false)
   const [bomSearchQuery, setBomSearchQuery] = useState("")
-  const [bomFilter, setBomFilter] = useState("all")
+  const [bomExpandedKeys, setBomExpandedKeys] = useState([])
   const [bomItemModalOpen, setBomItemModalOpen] = useState(false)
   const [bomItemSaving, setBomItemSaving] = useState(false)
   const [editingBomItem, setEditingBomItem] = useState(null)
@@ -549,6 +539,7 @@ export default function EquipmentClassifierMain() {
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
   const [manufacturerFilter, setManufacturerFilter] = useState(null)
   const [branchSectionFilter, setBranchSectionFilter] = useState(null)
+  const [branchSubsectionsOpen, setBranchSubsectionsOpen] = useState(false)
   const [classifierTreeWidth, setClassifierTreeWidth] = useState(() => {
     if (typeof window === "undefined") return 300
     const saved = Number(window.localStorage.getItem("equipmentClassifier.treeWidth"))
@@ -2022,6 +2013,10 @@ export default function EquipmentClassifierMain() {
     loadCatalogPositionUsage(selectedTreeEntity.id)
   }, [loadCatalogPositionUsage, selectedTreeEntity])
 
+  useEffect(() => {
+    setBranchSubsectionsOpen(false)
+  }, [selectedNode?.id])
+
   const currentModelBomTree = useMemo(() => buildBomTree(modelBomItems), [modelBomItems])
   const currentModelBomRows = useMemo(() => flattenBomTreeRows(currentModelBomTree), [currentModelBomTree])
   const currentModelBomStats = useMemo(() => {
@@ -2059,23 +2054,27 @@ export default function EquipmentClassifierMain() {
         .toLowerCase()
         .includes(query)
     }
-    const matchesFilter = (row) => {
-      const children = Array.isArray(row.children) ? row.children : []
-      if (bomFilter === "groups") return children.length > 0 || getBomEffectiveRowKind(row) === "assembly"
-      if (bomFilter === "leaves") return children.length === 0
-      return true
-    }
     const walk = (rows) =>
       (rows || [])
         .map((row) => {
           const children = walk(row.children || [])
-          const selfMatches = matchesSearch(row) && matchesFilter(row)
+          const selfMatches = matchesSearch(row)
           if (!selfMatches && !children.length) return null
           return { ...row, children }
         })
         .filter(Boolean)
     return walk(currentModelBomTree)
-  }, [bomFilter, bomSearchQuery, currentModelBomTree])
+  }, [bomSearchQuery, currentModelBomTree])
+  const currentModelBomExpandableKeys = useMemo(
+    () => currentModelBomRows
+      .filter((row) => Array.isArray(row.children) && row.children.length > 0)
+      .map((row) => row.id),
+    [currentModelBomRows],
+  )
+
+  useEffect(() => {
+    setBomExpandedKeys(currentModelBomExpandableKeys)
+  }, [currentModel?.id, currentModelBomExpandableKeys])
   const selectedBomParent = useMemo(() => {
     if (!selectedBomItem?.parent_item_id) return null
     return currentModelBomRows.find((row) => Number(row.id) === Number(selectedBomItem.parent_item_id)) || null
@@ -2134,7 +2133,7 @@ export default function EquipmentClassifierMain() {
     [bomItemForm, catalogPositionOptions.length, currentModel?.id, loadCatalogPositions],
   )
 
-  const handleSaveBomItem = async () => {
+  const handleSaveBomItem = async (confirmedOtherManufacturerDuplicate = false) => {
     if (!currentModel?.id) return
     try {
       const values = await bomItemForm.validateFields()
@@ -2166,6 +2165,7 @@ export default function EquipmentClassifierMain() {
         quantity: values.quantity || 1,
         sort_order: values.sort_order ?? editingBomItem?.sort_order ?? 0,
         notes: values.notes || null,
+        confirm_duplicate_part_number: confirmedOtherManufacturerDuplicate,
       }
       const { data } = editingBomItem?.id
         ? await axios.put(`/equipment-models/${currentModel.id}/bom/items/${editingBomItem.id}`, payload)
@@ -2178,6 +2178,32 @@ export default function EquipmentClassifierMain() {
     } catch (err) {
       if (err?.errorFields) return
       console.error("SAVE equipment model BOM item error:", err)
+      const errorData = err?.response?.data
+      if (err?.response?.status === 409 && errorData?.type === "duplicate_part_number_other_manufacturer") {
+        const duplicateText = Array.isArray(errorData.duplicates)
+          ? errorData.duplicates
+              .slice(0, 3)
+              .map((row) => [row.manufacturer_name, row.display_name || row.position_code].filter(Boolean).join(" — "))
+              .filter(Boolean)
+              .join("; ")
+          : ""
+        Modal.confirm({
+          title: "Такой номер есть у другого производителя",
+          content: (
+            <Space direction="vertical" size={8}>
+              <Typography.Text>
+                {errorData.message || "Номер уже встречается у другого производителя."}
+              </Typography.Text>
+              {duplicateText ? <Typography.Text type="secondary">{duplicateText}</Typography.Text> : null}
+              <Typography.Text>Создать отдельную карточку для текущего производителя?</Typography.Text>
+            </Space>
+          ),
+          okText: "Создать",
+          cancelText: "Отмена",
+          onOk: () => handleSaveBomItem(true),
+        })
+        return
+      }
       message.error(err?.response?.data?.message || "Не удалось сохранить строку BOM")
     } finally {
       setBomItemSaving(false)
@@ -2344,7 +2370,6 @@ export default function EquipmentClassifierMain() {
           setBomItemCardOpen(true)
         },
         onEdit: (row) => openBomItemModal(row),
-        onAddChild: (row) => openBomItemModal(null, row),
         onReuse: (row) => openBomItemModal(null, null, { reuseFrom: row }),
         onDelete: (row) => handleDeleteBomItem(row),
       }),
@@ -2830,6 +2855,29 @@ export default function EquipmentClassifierMain() {
     }
     setSelectedTreeEntity({ type: "catalog_position", id: Number(row.id) })
     setNsiSearchActive(false)
+  }
+
+  const openBomItemCatalogPosition = async (row) => {
+    const catalogPositionId = Number(row?.catalog_position_id || 0)
+    if (!catalogPositionId) {
+      message.warning("У этой строки еще нет карточки позиции")
+      return
+    }
+    const classifierNodeId =
+      row.catalog_position_classifier_node_id ||
+      row.catalog_classifier_node_id ||
+      row.catalog_position_node_id ||
+      row.classifier_node_id ||
+      row.model_classifier_node_id ||
+      selectedId
+    if (classifierNodeId) {
+      setSelectedId(String(classifierNodeId))
+      setSelectedTreeKey(treeKey.catalogPosition(catalogPositionId))
+      await loadWorkspace(String(classifierNodeId))
+    }
+    setBomItemCardOpen(false)
+    setSelectedBomItem(null)
+    setSelectedTreeEntity({ type: "catalog_position", id: catalogPositionId })
   }
 
   const openUsageModel = async (row) => {
@@ -3707,7 +3755,6 @@ export default function EquipmentClassifierMain() {
 
   const renderBranchOverview = () => {
     const manufacturerIds = new Set(branchModelsRaw.map((model) => Number(model.manufacturer_id)).filter(Boolean))
-    const leafNodeIds = new Set(branchModelsRaw.map((model) => Number(model.classifier_node_id)).filter(Boolean))
     return (
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
         <Row gutter={[8, 8]}>
@@ -3751,7 +3798,6 @@ export default function EquipmentClassifierMain() {
             <Space wrap>
               <Typography.Text strong>Модели в выбранной ветке</Typography.Text>
               <Tag>{branchModels.length} из {branchModelsRaw.length}</Tag>
-              <Tag>{leafNodeIds.size} классов</Tag>
             </Space>
           }
         >
@@ -3769,9 +3815,18 @@ export default function EquipmentClassifierMain() {
           />
         </Card>
 
-        <Card size="small" title="Подразделы">
-          {renderChildSectionCards()}
-          {!selectedNodeChildren.length ? <Empty description="В этом разделе пока нет подразделов" /> : null}
+        <Card
+          size="small"
+          title={
+            <Button type="link" style={{ padding: 0 }} onClick={() => setBranchSubsectionsOpen((value) => !value)}>
+              Подразделы ({selectedNodeChildren.length})
+            </Button>
+          }
+        >
+          {branchSubsectionsOpen ? renderChildSectionCards() : null}
+          {branchSubsectionsOpen && !selectedNodeChildren.length ? (
+            <Empty description="В этом разделе пока нет подразделов" />
+          ) : null}
         </Card>
       </Space>
     )
@@ -4123,16 +4178,14 @@ export default function EquipmentClassifierMain() {
               onChange={(event) => setBomSearchQuery(event.target.value)}
               style={{ width: 360, maxWidth: "100%" }}
             />
-            <Segmented
-              size="small"
-              value={bomFilter}
-              onChange={setBomFilter}
-              options={[
-                { label: "Все", value: "all" },
-                { label: "Сборки", value: "groups" },
-                { label: "Детали", value: "leaves" },
-              ]}
-            />
+            <Space size={8}>
+              <Button size="small" onClick={() => setBomExpandedKeys(currentModelBomExpandableKeys)}>
+                Развернуть все
+              </Button>
+              <Button size="small" onClick={() => setBomExpandedKeys([])}>
+                Свернуть все
+              </Button>
+            </Space>
           </Space>
         </Space>
         {modelBomLoading ? (
@@ -4141,7 +4194,8 @@ export default function EquipmentClassifierMain() {
           <Tree
             className="model-bom-tree"
             showLine
-            defaultExpandAll
+            expandedKeys={bomExpandedKeys}
+            onExpand={(keys) => setBomExpandedKeys(keys)}
             treeData={currentModelBomTreeData}
             style={{ background: "transparent" }}
           />
@@ -4232,16 +4286,6 @@ export default function EquipmentClassifierMain() {
               key: "model-bom",
               label: `BOM модели (${modelBomItems.length})`,
               children: renderModelBomTab(),
-            },
-            {
-              key: "client-units",
-              label: `Машины клиентов (${currentModelUnits.length})`,
-              children: renderModelUnitsTab(),
-            },
-            {
-              key: "client-executions",
-              label: `Клиентские исполнения (${modelClientExecutions.length})`,
-              children: renderModelClientExecutionsTab(),
             },
           ]}
         />
@@ -5022,7 +5066,13 @@ export default function EquipmentClassifierMain() {
                   {selectedBomItem.manufacturer_name || currentModel?.manufacturer_name || "—"}
                 </Descriptions.Item>
                 <Descriptions.Item label="Номер производителя">
-                  {selectedBomItem.part_number || selectedBomItem.manufacturer_part_number || "—"}
+                  {selectedBomItem.catalog_position_id ? (
+                    <Typography.Link strong onClick={() => openBomItemCatalogPosition(selectedBomItem)}>
+                      {selectedBomItem.part_number || selectedBomItem.manufacturer_part_number || "Открыть карточку"}
+                    </Typography.Link>
+                  ) : (
+                    selectedBomItem.part_number || selectedBomItem.manufacturer_part_number || "—"
+                  )}
                 </Descriptions.Item>
                 <Descriptions.Item label="Описание производителя">
                   {selectedBomItem.description_ru ||
@@ -5036,7 +5086,9 @@ export default function EquipmentClassifierMain() {
                 {selectedBomItem.catalog_position_id ? (
                   <>
                     <Descriptions.Item label="Карточка позиции">
-                      {selectedBomItem.catalog_position_name || "—"}
+                      <Typography.Link onClick={() => openBomItemCatalogPosition(selectedBomItem)}>
+                        {selectedBomItem.catalog_position_name || "Открыть карточку"}
+                      </Typography.Link>
                     </Descriptions.Item>
                     <Descriptions.Item label="Код карточки">
                       {selectedBomItem.catalog_position_code || "—"}
@@ -5302,6 +5354,12 @@ export default function EquipmentClassifierMain() {
                       options={currentModelBomRows
                         .filter((row) => {
                           if (Number(row.id) === Number(reuseBomSource.id)) return false
+                          if (
+                            reuseBomSource.catalog_position_id &&
+                            Number(row.catalog_position_id) === Number(reuseBomSource.catalog_position_id)
+                          ) {
+                            return false
+                          }
                           return row.bom_has_children || getBomEffectiveRowKind(row) === "assembly"
                         })
                         .map((row) => ({
