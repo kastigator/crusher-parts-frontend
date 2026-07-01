@@ -11,40 +11,32 @@ export const logSchemas = {
     excludeFields: ["created_at", "updated_at", "id"],
   },
 
-  // === Оригинальные детали ===
-  original_parts: {
+  catalog_positions: {
     fields: {
-      cat_number: "Part number",
-      description_ru: "Описание (RU)",
-      description_en: "Description (EN)",
-      tech_description: "Тех. описание",
-      weight_kg: "Вес, кг",
+      position_code: "Код карточки",
+      manufacturer_part_number: "Номер производителя",
+      display_name: "Название",
+      display_name_en: "Название EN",
+      display_name_ru: "Название RU",
+      position_kind: "Тип позиции",
       uom: "Ед. изм.",
-      tnved_code_id: "ТН ВЭД",
-      equipment_model_id: "Модель оборудования",
+      description: "Описание",
     },
-    excludeFields: [
-      "id",
-      "created_at",
-      "updated_at",
-      "version",
-      // оставляем tnved_code_id видимым — по нему и строим подсказку
-    ],
-    // Подсказки по значениям (универсальный механизм для тултипов в истории)
-    valueHints: {
-      // Для ТН ВЭД: если значение выглядит как сам код (>=4 цифр),
-      // подтягиваем его описание из справочника через /tnved-codes/search?q=<code>
-      tnved_code_id: {
-        endpoint: "/tnved-codes/search",
-        param: "q",
-        match: (v) => /^\d{4,}$/.test(String(v || "").trim()),
-        pick: (data, value) => {
-          const arr = Array.isArray(data) ? data : []
-          const hit = arr.find((x) => String(x.code) === String(value))
-          return hit ? `${hit.code}${hit.description ? " — " + hit.description : ""}` : null
-        },
-      },
+    excludeFields: ["id", "created_at", "updated_at", "meta_json"],
+  },
+
+  equipment_model_bom_items: {
+    fields: {
+      manufacturer_part_number: "Номер производителя",
+      manufacturer_part_name: "Название производителя",
+      manufacturer_part_name_en: "Название EN",
+      manufacturer_part_name_ru: "Название RU",
+      row_kind: "Тип строки",
+      quantity: "Количество",
+      uom: "Ед. изм.",
+      notes: "Заметки",
     },
+    excludeFields: ["id", "created_at", "updated_at", "oem_part_id"],
   },
 
   clients: {
@@ -169,7 +161,7 @@ export const logSchemas = {
       min_order_qty: "Мин. партия",
       packaging: "Упаковка",
       active: "Активна",
-      original_part_cat_number: "Ориг. номер (текст)",
+      original_part_cat_number: "Номер производителя (текст)",
 
       // события/служебные поля для истории (из роутов цен/связей)
       latest_price: "Последняя цена",
@@ -234,7 +226,7 @@ export const logSchemas = {
   // === Позиции заказа клиента ===
   client_order_items: {
     fields: {
-      original_part_id: "Оригинальная деталь",
+      original_part_id: "Позиция каталога",
       equipment_model_id: "Модель оборудования",
       client_part_number: "Номер клиента",
       client_description: "Описание клиента",

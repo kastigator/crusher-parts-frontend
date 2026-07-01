@@ -41,9 +41,9 @@ const countMeta = [
   },
   {
     key: "oem_missing_logistics",
-    title: "OEM без веса/габаритов",
+    title: "Позиции каталога без веса/габаритов",
     tone: "gold",
-    description: "Нет полного логистического набора по fitment.",
+    description: "Нет полного логистического набора в карточках позиций.",
   },
   {
     key: "supplier_parts_missing_logistics",
@@ -219,7 +219,7 @@ export default function CatalogsPage() {
         </Space>
       ),
     },
-    { title: "OEM", dataIndex: "oem_parts_count", width: 90, align: "center" },
+    { title: "Позиции каталога", dataIndex: "catalog_positions_count", width: 140, align: "center" },
     { title: "Машин", dataIndex: "client_units_count", width: 90, align: "center" },
     {
       title: "Действие",

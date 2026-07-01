@@ -294,18 +294,6 @@ export default function ClientEquipmentUnitsMain({ clientId, onChanged }) {
           >
             Создать заявку
           </Button>
-          <Button
-            size="small"
-            onClick={() =>
-              navigate(
-                `/original-parts?manufacturer_id=${encodeURIComponent(
-                  row.manufacturer_id || "",
-                )}&equipment_model_id=${encodeURIComponent(row.equipment_model_id || "")}`,
-              )
-            }
-          >
-            OEM детали
-          </Button>
           <Button size="small" onClick={() => openEdit(row)}>
             Изменить
           </Button>

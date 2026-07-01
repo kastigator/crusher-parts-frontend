@@ -74,28 +74,6 @@ const QUICK_FILTERS = [
       "supplier_part_prices",
       "supplier_price_lists",
       "supplier_price_list_lines",
-      "supplier_bundles",
-      "supplier_bundle_items",
-      "supplier_bundle_item_links",
-    ],
-  },
-  {
-    key: "oem",
-    label: "OEM-детали",
-    types: [
-      "oem_parts",
-      "original_part_groups",
-      "oem_part_model_fitments",
-      "oem_part_model_bom",
-      "oem_part_materials",
-      "oem_part_material_specs",
-      "oem_part_alt_groups",
-      "oem_part_alt_items",
-      "oem_part_documents",
-      "oem_part_presentation_profiles",
-      "oem_part_unit_overrides",
-      "oem_part_unit_material_overrides",
-      "oem_part_unit_material_specs",
     ],
   },
   {
@@ -203,22 +181,6 @@ function buildMeaningLines(entityType, snapshot, record) {
         formatSnapshotValue(snapshot.valid_from) !== "—" || formatSnapshotValue(snapshot.valid_to) !== "—"
           ? `Период действия: ${formatSnapshotValue(snapshot.valid_from)} - ${formatSnapshotValue(snapshot.valid_to)}`
           : null,
-      ].filter(Boolean)
-    case "oem_part_model_fitments":
-      return [
-        title !== "—" ? `Связь: ${title}` : null,
-        subtitle !== "—" ? `Контекст: ${subtitle}` : null,
-      ].filter(Boolean)
-    case "oem_part_materials":
-      return [
-        title !== "—" ? `Материал: ${title}` : null,
-        formatSnapshotValue(snapshot.note) !== "—" ? `Примечание: ${formatSnapshotValue(snapshot.note)}` : null,
-      ].filter(Boolean)
-    case "oem_parts":
-      return [
-        title !== "—" ? `OEM-деталь: ${title}` : null,
-        subtitle !== "—" ? `Контекст: ${subtitle}` : null,
-        formatSnapshotValue(snapshot.code) !== "—" ? `Код: ${formatSnapshotValue(snapshot.code)}` : null,
       ].filter(Boolean)
     case "client_contacts":
     case "supplier_contacts":
@@ -424,8 +386,6 @@ function resolveTrashNavigationTarget(record) {
       return "/clients"
     case "part_suppliers":
       return rootId > 0 ? `/suppliers/${rootId}` : "/suppliers"
-    case "oem_parts":
-      return "/equipment-classifier"
     case "supplier_parts":
       return rootId > 0 ? `/supplier-parts/${rootId}` : "/supplier-parts"
     case "materials":
@@ -442,24 +402,10 @@ function resolveTrashNavigationTarget(record) {
     case "roles":
     case "tabs":
       return "/users"
-    case "original_part_groups":
-    case "oem_part_materials":
-    case "oem_part_model_bom":
-    case "oem_part_alt_groups":
-    case "oem_part_alt_items":
-    case "oem_part_documents":
-    case "oem_part_presentation_profiles":
-    case "oem_part_unit_overrides":
-    case "oem_part_unit_material_overrides":
-    case "oem_part_unit_material_specs":
-      return "/equipment-classifier"
     case "supplier_price_lists":
     case "supplier_part_prices":
     case "supplier_part_catalog_positions":
     case "supplier_part_materials":
-    case "supplier_bundles":
-    case "supplier_bundle_items":
-    case "supplier_bundle_item_links":
       return "/supplier-parts"
     case "procurement_kpi_targets":
     case "sales_kpi_targets":

@@ -11,6 +11,8 @@ const { Sider } = Layout
 
 const CATALOG_ROOT_PATH = "/catalogs"
 const HIDDEN_LEGACY_PATHS = new Set([
+  "/original-parts",
+  "/oem-parts",
   "/standard-parts",
   "/tnved-origin-rules",
   "/logistics-routes",

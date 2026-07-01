@@ -78,7 +78,7 @@ export default function AddPositionsModal({
                 setModalSearch(value)
                 setModalSelectedPart(option.part || null)
               }}
-              placeholder="Глобальный поиск по OEM деталям"
+              placeholder="Глобальный поиск по позициям каталога"
               notFoundContent={modalLoading ? "Поиск..." : "Нет совпадений"}
             >
               <Input

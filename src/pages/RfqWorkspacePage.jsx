@@ -1346,24 +1346,8 @@ export default function RfqWorkspacePage() {
       setAltPartsMap({})
       return {}
     }
-    try {
-      const { data } = await axios.get("/original-part-alt/bulk", {
-        params: { part_ids: ids.join(",") },
-      })
-      const list = Array.isArray(data) ? data : Array.isArray(data?.parts) ? data.parts : []
-      const nextMap = {}
-      list.forEach((row) => {
-        if (!row?.original_part_id) return
-        nextMap[row.original_part_id] = Array.isArray(row.alt_parts) ? row.alt_parts : []
-      })
-      setAltPartsMap(nextMap)
-      return nextMap
-    } catch (e) {
-      console.error(e)
-      message.error("Не удалось загрузить альтернативы")
-      setAltPartsMap({})
-      return {}
-    }
+    setAltPartsMap({})
+    return {}
   }, [])
 
   const loadLineStatuses = async (rfqId, supplierId) => {
@@ -1532,27 +1516,8 @@ export default function RfqWorkspacePage() {
   const loadAltPartsForPart = async (partId) => {
     if (!partId) return []
     if (altPartsMap[partId]) return altPartsMap[partId]
-    try {
-      const { data } = await axios.get("/original-part-alt", {
-        params: { original_part_id: partId },
-      })
-      const groups = Array.isArray(data) ? data : []
-      const flat = []
-      const seen = new Set()
-      groups.forEach((g) => {
-        ;(g.items || []).forEach((item) => {
-          if (seen.has(item.alt_part_id)) return
-          seen.add(item.alt_part_id)
-          flat.push(item)
-        })
-      })
-      setAltPartsMap((prev) => ({ ...prev, [partId]: flat }))
-      return flat
-    } catch (e) {
-      console.error(e)
-      message.error("Не удалось загрузить альтернативы")
-      return []
-    }
+    setAltPartsMap((prev) => ({ ...prev, [partId]: [] }))
+    return []
   }
 
   const openAltModal = async (partId) => {

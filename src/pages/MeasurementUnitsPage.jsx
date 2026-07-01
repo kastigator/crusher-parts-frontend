@@ -38,8 +38,8 @@ const dimensionLabel = (value) =>
   DIMENSION_OPTIONS.find((item) => item.value === value)?.label || value || "—"
 
 const usageSourceHelp = {
-  "oem_parts.uom": "Единица в карточке OEM детали.",
-  "oem_part_model_fitments.uom": "Единица применяемости OEM детали к модели оборудования.",
+  "catalog_positions.uom": "Единица в карточке позиции каталога.",
+  "equipment_model_bom_items.uom": "Единица строки BOM модели.",
   "supplier_parts.uom": "Единица в карточке детали поставщика.",
   "rfq_items.uom": "Единица позиции RFQ.",
   "rfq_supplier_line_selections.uom": "Единица выбранной строки поставщика в RFQ.",
@@ -304,8 +304,8 @@ export default function MeasurementUnitsPage() {
         description={
           <Space direction="vertical" size={4}>
             <Text>
-              После создания активная единица появляется в полях <Text strong>Ед. изм.</Text> в OEM деталях,
-              стандартных деталях, деталях поставщиков, заявках клиентов и RFQ.
+              После создания активная единица появляется в полях <Text strong>Ед. изм.</Text> в позициях каталога,
+              деталях поставщиков, заявках клиентов и RFQ.
             </Text>
             <Text>
               При сохранении записи система хранит ее короткий код, например <Text code>шт</Text>, <Text code>кг</Text>{" "}

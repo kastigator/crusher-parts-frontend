@@ -445,21 +445,8 @@ export default function ClientRequestsPage() {
   }
 
   const loadFrequentParts = async (clientId) => {
-    if (!clientId) {
-      setFrequentParts([])
-      return
-    }
-    setFrequentLoading(true)
-    try {
-      const { data } = await axios.get("/original-parts/frequent", {
-        params: { client_id: clientId, limit: 12 },
-      })
-      setFrequentParts(Array.isArray(data) ? data : [])
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setFrequentLoading(false)
-    }
+    setFrequentParts([])
+    setFrequentLoading(false)
   }
 
   const handleCreateClientChange = async (value) => {
@@ -546,19 +533,7 @@ export default function ClientRequestsPage() {
     const timer = setTimeout(async () => {
       setOriginalLoading(true)
       try {
-        const params = { q: originalSearch }
-        if (selectedActiveEquipmentUnit?.equipment_model_id) {
-          params.equipment_model_id = selectedActiveEquipmentUnit.equipment_model_id
-        }
-        if (selectedActiveEquipmentUnit?.manufacturer_id) {
-          params.manufacturer_id = selectedActiveEquipmentUnit.manufacturer_id
-        }
-        const { data } = await axios.get("/oem-parts", {
-          params,
-        })
-        setOriginalResults(
-          Array.isArray(data) ? data.slice(0, 50).map(normalizeCatalogPart) : [],
-        )
+        setOriginalResults([])
       } catch (e) {
         console.error(e)
       } finally {
@@ -577,19 +552,7 @@ export default function ClientRequestsPage() {
     const timer = setTimeout(async () => {
       setQuickLoading(true)
       try {
-        const params = { q: quickSearch }
-        if (selectedActiveEquipmentUnit?.equipment_model_id) {
-          params.equipment_model_id = selectedActiveEquipmentUnit.equipment_model_id
-        }
-        if (selectedActiveEquipmentUnit?.manufacturer_id) {
-          params.manufacturer_id = selectedActiveEquipmentUnit.manufacturer_id
-        }
-        const { data } = await axios.get("/oem-parts", {
-          params,
-        })
-        setQuickResults(
-          Array.isArray(data) ? data.slice(0, 20).map(normalizeCatalogPart) : [],
-        )
+        setQuickResults([])
       } catch (e) {
         console.error(e)
       } finally {
@@ -632,18 +595,7 @@ export default function ClientRequestsPage() {
     const timer = setTimeout(async () => {
       setCatalogLoading(true)
       try {
-        const params = {}
-        if (modelId) {
-          params.equipment_model_id = modelId
-        }
-        if (manufacturerId) {
-          params.manufacturer_id = manufacturerId
-        }
-        if (catalogSearch && catalogSearch.length >= 2) {
-          params.q = catalogSearch
-        }
-        const { data } = await axios.get("/oem-parts", { params })
-        setCatalogResults(Array.isArray(data) ? data.map(normalizeCatalogPart) : [])
+        setCatalogResults([])
       } catch (e) {
         console.error(e)
       } finally {
@@ -681,15 +633,7 @@ export default function ClientRequestsPage() {
     const timer = setTimeout(async () => {
       setModalLoading(true)
       try {
-        const params = { q: modalSearch }
-        if (modelId) params.equipment_model_id = modelId
-        if (manufacturerId) params.manufacturer_id = manufacturerId
-        const { data } = await axios.get("/oem-parts", {
-          params,
-        })
-        setModalResults(
-          Array.isArray(data) ? data.slice(0, 20).map(normalizeCatalogPart) : [],
-        )
+        setModalResults([])
       } catch (e) {
         console.error(e)
       } finally {

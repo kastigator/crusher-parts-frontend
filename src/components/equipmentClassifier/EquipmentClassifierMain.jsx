@@ -3138,7 +3138,7 @@ export default function EquipmentClassifierMain() {
       title: "Родитель",
       width: 190,
       render: (_, row) =>
-        [row.parent_item_no, row.parent_title || row.parent_manufacturer_part_name || row.parent_catalog_position_name || row.parent_oem_part_number]
+        [row.parent_item_no, row.parent_title || row.parent_manufacturer_part_name || row.parent_catalog_position_name]
           .filter(Boolean)
           .join(" / ") || "Корень модели",
     },
@@ -3616,12 +3616,12 @@ export default function EquipmentClassifierMain() {
       render: (_, row) => (
         <Space direction="vertical" size={0}>
           <Typography.Text strong>
-            {[row.item_no, row.manufacturer_part_number || row.oem_part_number || row.catalog_position_code || row.title]
+            {[row.item_no, row.manufacturer_part_number || row.catalog_position_code || row.title]
               .filter(Boolean)
               .join(" / ") || `BOM #${row.equipment_model_bom_item_id}`}
           </Typography.Text>
           <Typography.Text type="secondary">
-            {[row.manufacturer_part_name || row.oem_part_name || row.catalog_position_name, row.difference_summary]
+            {[row.manufacturer_part_name || row.catalog_position_name, row.difference_summary]
               .filter(Boolean)
               .join(" / ") || "—"}
           </Typography.Text>

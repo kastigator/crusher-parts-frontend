@@ -131,35 +131,9 @@ export default function ClientPartsMain({ clientId, onChanged }) {
     }
   }, [clientId])
 
-  const searchOemParts = useCallback(async (value) => {
-    const q = String(value || "").trim()
-    if (q.length < 2) {
-      setOemOptions([])
-      return
-    }
-    setOemLoading(true)
-    try {
-      const { data } = await axios.get("/original-parts", {
-        params: { q },
-      })
-      setOemOptions(
-        (Array.isArray(data) ? data : []).slice(0, 30).map((row) => ({
-          value: row.id,
-          label: [
-            row.cat_number,
-            row.manufacturer_name,
-            row.description_ru || row.description_en,
-          ]
-            .filter(Boolean)
-            .join(" / "),
-        })),
-      )
-    } catch (err) {
-      console.error("GET /original-parts search error:", err)
-      message.error("Не удалось найти OEM-детали")
-    } finally {
-      setOemLoading(false)
-    }
+  const searchOemParts = useCallback(async () => {
+    setOemOptions([])
+    setOemLoading(false)
   }, [])
 
   useEffect(() => {
@@ -436,19 +410,6 @@ export default function ClientPartsMain({ clientId, onChanged }) {
       ),
     },
     {
-      title: "Базовая OEM",
-      width: 180,
-      render: (_, row) =>
-        row.base_oem_part_id ? (
-          <Space direction="vertical" size={0}>
-            <Typography.Text>{row.base_oem_part_number || `#${row.base_oem_part_id}`}</Typography.Text>
-            <Typography.Text type="secondary">{row.base_oem_manufacturer_name || "—"}</Typography.Text>
-          </Space>
-        ) : (
-          "—"
-        ),
-    },
-    {
       title: "Отличие",
       dataIndex: "difference_summary",
       width: 220,
@@ -509,7 +470,7 @@ export default function ClientPartsMain({ clientId, onChanged }) {
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
         <Space style={{ justifyContent: "space-between", width: "100%" }} wrap>
           <Typography.Text type="secondary">
-            Детали клиента по чертежам живут отдельно от OEM-каталога. Модель или конкретная машина указываются только если это нужно.
+            Детали клиента по чертежам живут отдельно от каталога модели. Модель или конкретная машина указываются только если это нужно.
           </Typography.Text>
           <Button type="primary" onClick={openCreate}>
             Добавить деталь
@@ -559,17 +520,6 @@ export default function ClientPartsMain({ clientId, onChanged }) {
             </Form.Item>
             <Form.Item label="Тип детали клиента" name="relationship_type" style={{ width: 220 }}>
               <Select options={RELATIONSHIP_OPTIONS} />
-            </Form.Item>
-            <Form.Item label="Базовая OEM-деталь" name="base_oem_part_id" style={{ width: 460 }}>
-              <Select
-                allowClear
-                showSearch
-                filterOption={false}
-                onSearch={searchOemParts}
-                loading={oemLoading}
-                placeholder="Введите OEM-номер или название"
-                options={oemOptions}
-              />
             </Form.Item>
             <Form.Item label="Номер клиента" name="client_part_number" style={{ width: 220 }}>
               <Input />
