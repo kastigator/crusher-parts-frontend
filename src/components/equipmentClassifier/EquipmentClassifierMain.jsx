@@ -357,6 +357,7 @@ const buildBomTreeData = (rows, actions = {}) =>
     const menuItems = [
       { key: "edit", label: "Изменить строку", icon: <EditOutlined /> },
       { key: "reuse", label: "Добавить эту же позицию в другой узел", icon: <CopyOutlined /> },
+      { key: "reuseModel", label: "Добавить в другую модель", icon: <CopyOutlined /> },
       { type: "divider" },
       { key: "delete", label: "Удалить", danger: true, icon: <DeleteOutlined /> },
     ]
@@ -403,6 +404,7 @@ const buildBomTreeData = (rows, actions = {}) =>
                   domEvent.stopPropagation()
                   if (key === "edit") actions.onEdit?.(row)
                   if (key === "reuse") actions.onReuse?.(row)
+                  if (key === "reuseModel") actions.onReuseModel?.(row)
                   if (key === "delete") actions.onDelete?.(row)
                 },
               }}
@@ -487,6 +489,10 @@ export default function EquipmentClassifierMain() {
   const [bomItemSaving, setBomItemSaving] = useState(false)
   const [editingBomItem, setEditingBomItem] = useState(null)
   const [reuseBomSource, setReuseBomSource] = useState(null)
+  const [crossModelBomSource, setCrossModelBomSource] = useState(null)
+  const [crossModelBomRows, setCrossModelBomRows] = useState([])
+  const [crossModelBomLoading, setCrossModelBomLoading] = useState(false)
+  const [crossModelBomSaving, setCrossModelBomSaving] = useState(false)
   const [bomItemCardOpen, setBomItemCardOpen] = useState(false)
   const [selectedBomItem, setSelectedBomItem] = useState(null)
   const [catalogPositionOptions, setCatalogPositionOptions] = useState([])
@@ -525,17 +531,17 @@ export default function EquipmentClassifierMain() {
   const [unitAttributesForm] = Form.useForm()
   const [unitBomOverrideForm] = Form.useForm()
   const [bomItemForm] = Form.useForm()
+  const [bomCrossModelForm] = Form.useForm()
   const bomLinkClassifier = Form.useWatch("link_classifier", bomItemForm)
+  const bomCrossModelTargetId = Form.useWatch("target_model_id", bomCrossModelForm)
   const bomRowKind = Form.useWatch("row_kind", bomItemForm)
   const selectableCatalogPositionOptions = useMemo(() => {
-    const activeModelId = selectedTreeEntity.type === "model" ? Number(selectedTreeEntity.id) : null
     const currentItemId = Number(editingBomItem?.id || 0)
     return catalogPositionOptions.filter((row) => {
       if (row.source_kind !== "model_bom") return true
-      if (activeModelId && Number(row.equipment_model_id) !== activeModelId) return false
       return Number(row.source_bom_item_id || 0) !== currentItemId
     })
-  }, [catalogPositionOptions, editingBomItem?.id, selectedTreeEntity])
+  }, [catalogPositionOptions, editingBomItem?.id])
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
   const [manufacturerFilter, setManufacturerFilter] = useState(null)
   const [branchSectionFilter, setBranchSectionFilter] = useState(null)
@@ -694,6 +700,24 @@ export default function EquipmentClassifierMain() {
       setModelBomItems([])
     } finally {
       setModelBomLoading(false)
+    }
+  }, [])
+
+  const loadCrossModelBomRows = useCallback(async (modelId) => {
+    if (!modelId) {
+      setCrossModelBomRows([])
+      return
+    }
+    setCrossModelBomLoading(true)
+    try {
+      const { data } = await axios.get(`/equipment-models/${modelId}/bom`)
+      setCrossModelBomRows(flattenBomTreeRows(buildBomTree(Array.isArray(data?.items) ? data.items : [])))
+    } catch (err) {
+      console.error("GET target /equipment-models/:id/bom error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить BOM выбранной модели")
+      setCrossModelBomRows([])
+    } finally {
+      setCrossModelBomLoading(false)
     }
   }, [])
 
@@ -2071,10 +2095,43 @@ export default function EquipmentClassifierMain() {
       .map((row) => row.id),
     [currentModelBomRows],
   )
+  const crossModelBomParentOptions = useMemo(
+    () => crossModelBomRows
+      .filter((row) => {
+        if (crossModelBomSource?.catalog_position_id &&
+          Number(row.catalog_position_id) === Number(crossModelBomSource.catalog_position_id)) {
+          return false
+        }
+        return row.bom_has_children || getBomEffectiveRowKind(row) === "assembly"
+      })
+      .map((row) => ({
+        value: row.id,
+        label: `${"— ".repeat(row.bom_level || 0)}${row.item_no ? `${row.item_no}. ` : ""}${getBomItemLabel(row)}${getBomItemName(row) ? ` — ${getBomItemName(row)}` : ""}`,
+      })),
+    [crossModelBomRows, crossModelBomSource],
+  )
+  const crossModelOptions = useMemo(
+    () => allModels
+      .filter((model) => Number(model.id) !== Number(currentModel?.id))
+      .map((model) => ({
+        value: Number(model.id),
+        label: [model.manufacturer_name, model.model_name].filter(Boolean).join(" ") || `Модель #${model.id}`,
+      }))
+      .sort((a, b) => String(a.label).localeCompare(String(b.label), "ru")),
+    [allModels, currentModel?.id],
+  )
 
   useEffect(() => {
     setBomExpandedKeys(currentModelBomExpandableKeys)
   }, [currentModel?.id, currentModelBomExpandableKeys])
+
+  useEffect(() => {
+    if (!crossModelBomSource || !bomCrossModelTargetId) {
+      setCrossModelBomRows([])
+      return
+    }
+    loadCrossModelBomRows(bomCrossModelTargetId)
+  }, [bomCrossModelTargetId, crossModelBomSource, loadCrossModelBomRows])
   const selectedBomParent = useMemo(() => {
     if (!selectedBomItem?.parent_item_id) return null
     return currentModelBomRows.find((row) => Number(row.id) === Number(selectedBomItem.parent_item_id)) || null
@@ -2133,12 +2190,69 @@ export default function EquipmentClassifierMain() {
     [bomItemForm, catalogPositionOptions.length, currentModel?.id, loadCatalogPositions],
   )
 
-  const handleSaveBomItem = async (confirmedOtherManufacturerDuplicate = false) => {
+  const openCrossModelBomModal = useCallback((item) => {
+    if (!item?.catalog_position_id) {
+      message.warning("У этой строки еще нет карточки позиции")
+      return
+    }
+    setCrossModelBomSource(item)
+    setCrossModelBomRows([])
+    bomCrossModelForm.resetFields()
+    bomCrossModelForm.setFieldsValue({
+      target_model_id: null,
+      parent_item_id: null,
+      quantity: item.quantity || 1,
+    })
+  }, [bomCrossModelForm])
+
+  const handleAddBomItemToAnotherModel = async () => {
+    if (!crossModelBomSource?.catalog_position_id) return
+    try {
+      const values = await bomCrossModelForm.validateFields()
+      setCrossModelBomSaving(true)
+      const targetModelId = Number(values.target_model_id)
+      const payload = {
+        parent_item_id: values.parent_item_id || null,
+        row_kind: crossModelBomSource.row_kind || "part",
+        item_type: "catalog_position",
+        item_no: values.item_no || null,
+        manufacturer_part_number:
+          crossModelBomSource.manufacturer_part_number || crossModelBomSource.part_number || null,
+        manufacturer_part_name:
+          getBomItemName(crossModelBomSource) || crossModelBomSource.catalog_position_name || null,
+        manufacturer_part_name_en:
+          crossModelBomSource.manufacturer_part_name_en ||
+          crossModelBomSource.description_en ||
+          crossModelBomSource.catalog_position_name ||
+          null,
+        manufacturer_part_name_ru: crossModelBomSource.manufacturer_part_name_ru || crossModelBomSource.description_ru || null,
+        catalog_position_id: crossModelBomSource.catalog_position_id,
+        quantity: values.quantity || 1,
+        notes: values.notes || null,
+      }
+      await axios.post(`/equipment-models/${targetModelId}/bom/items`, payload)
+      if (Number(targetModelId) === Number(currentModel?.id)) {
+        await loadModelBom(currentModel.id)
+      }
+      setCrossModelBomSource(null)
+      setCrossModelBomRows([])
+      bomCrossModelForm.resetFields()
+      message.success("Позиция добавлена в выбранную модель")
+    } catch (err) {
+      if (err?.errorFields) return
+      console.error("ADD BOM item to another model error:", err)
+      message.error(err?.response?.data?.message || "Не удалось добавить позицию в другую модель")
+    } finally {
+      setCrossModelBomSaving(false)
+    }
+  }
+
+  const handleSaveBomItem = async (confirmedOtherManufacturerDuplicate = false, forcedCatalogPositionId = null) => {
     if (!currentModel?.id) return
     try {
       const values = await bomItemForm.validateFields()
       setBomItemSaving(true)
-      const linkClassifier = Boolean(values.link_classifier && values.catalog_position_id)
+      const linkClassifier = Boolean((values.link_classifier && values.catalog_position_id) || forcedCatalogPositionId)
       const keepOwnCatalogPosition = Boolean(editingBomItem?.id && !linkClassifier && isBomOwnCatalogPosition(editingBomItem))
       const manufacturerPartName =
         values.manufacturer_part_name_en || values.manufacturer_part_name_ru || values.manufacturer_part_name
@@ -2158,7 +2272,7 @@ export default function EquipmentClassifierMain() {
         drawing_number: values.drawing_number || null,
         title: null,
         catalog_position_id: linkClassifier
-          ? values.catalog_position_id
+          ? forcedCatalogPositionId || values.catalog_position_id
           : keepOwnCatalogPosition
             ? editingBomItem.catalog_position_id
             : null,
@@ -2179,6 +2293,31 @@ export default function EquipmentClassifierMain() {
       if (err?.errorFields) return
       console.error("SAVE equipment model BOM item error:", err)
       const errorData = err?.response?.data
+      if (err?.response?.status === 409 && errorData?.type === "duplicate_part_number_same_manufacturer") {
+        const duplicate = Array.isArray(errorData.duplicates) ? errorData.duplicates[0] : null
+        if (duplicate?.id) {
+          Modal.confirm({
+            title: "Такая карточка уже есть у этого производителя",
+            content: (
+              <Space direction="vertical" size={8}>
+                <Typography.Text>
+                  {errorData.message || "У этого производителя уже есть карточка с таким номером."}
+                </Typography.Text>
+                <Typography.Text type="secondary">
+                  {[duplicate.manufacturer_name, duplicate.equipment_model_name, duplicate.display_name || duplicate.position_code]
+                    .filter(Boolean)
+                    .join(" — ")}
+                </Typography.Text>
+                <Typography.Text>Использовать существующую карточку в этой строке BOM?</Typography.Text>
+              </Space>
+            ),
+            okText: "Использовать",
+            cancelText: "Отмена",
+            onOk: () => handleSaveBomItem(false, duplicate.id),
+          })
+          return
+        }
+      }
       if (err?.response?.status === 409 && errorData?.type === "duplicate_part_number_other_manufacturer") {
         const duplicateText = Array.isArray(errorData.duplicates)
           ? errorData.duplicates
@@ -2371,9 +2510,10 @@ export default function EquipmentClassifierMain() {
         },
         onEdit: (row) => openBomItemModal(row),
         onReuse: (row) => openBomItemModal(null, null, { reuseFrom: row }),
+        onReuseModel: (row) => openCrossModelBomModal(row),
         onDelete: (row) => handleDeleteBomItem(row),
       }),
-    [filteredModelBomTree, openBomItemModal, handleDeleteBomItem],
+    [filteredModelBomTree, openBomItemModal, openCrossModelBomModal, handleDeleteBomItem],
   )
 
   const bomImportColumns = useMemo(
@@ -5278,6 +5418,87 @@ export default function EquipmentClassifierMain() {
             locale={{ emptyText: "Загрузите Excel, чтобы увидеть предварительный разбор BOM" }}
           />
         </Space>
+      </Modal>
+
+      <Modal
+        open={Boolean(crossModelBomSource)}
+        title="Добавить позицию в другую модель"
+        width={720}
+        okText="Добавить"
+        cancelText="Отмена"
+        confirmLoading={crossModelBomSaving}
+        onOk={handleAddBomItemToAnotherModel}
+        onCancel={() => {
+          setCrossModelBomSource(null)
+          setCrossModelBomRows([])
+          bomCrossModelForm.resetFields()
+        }}
+        destroyOnHidden
+      >
+        <Form form={bomCrossModelForm} layout="vertical" initialValues={{ quantity: 1 }}>
+          {crossModelBomSource ? (
+            <Card size="small" style={{ marginBottom: 12 }}>
+              <Space direction="vertical" size={2}>
+                <Typography.Text type="secondary">Добавляем эту же карточку позиции</Typography.Text>
+                <Space size={8} wrap>
+                  <Typography.Text strong>
+                    {crossModelBomSource.manufacturer_part_number ||
+                      crossModelBomSource.part_number ||
+                      getBomItemLabel(crossModelBomSource)}
+                  </Typography.Text>
+                  <Typography.Text>
+                    {getBomItemName(crossModelBomSource) || crossModelBomSource.catalog_position_name || "—"}
+                  </Typography.Text>
+                  <Tag>{getBomItemTypeLabel(crossModelBomSource)}</Tag>
+                </Space>
+              </Space>
+            </Card>
+          ) : null}
+
+          <Form.Item
+            label="В какую модель добавить"
+            name="target_model_id"
+            rules={[{ required: true, message: "Выберите модель" }]}
+          >
+            <Select
+              showSearch
+              placeholder="Например: Metso HP 300"
+              optionFilterProp="label"
+              options={crossModelOptions}
+              onChange={() => {
+                bomCrossModelForm.setFieldsValue({ parent_item_id: null })
+              }}
+            />
+          </Form.Item>
+
+          <Row gutter={12}>
+            <Col span={16}>
+              <Form.Item
+                label="Куда добавить в BOM выбранной модели"
+                name="parent_item_id"
+                extra="Оставьте пустым, если позиция должна быть на верхнем уровне модели."
+              >
+                <Select
+                  allowClear
+                  loading={crossModelBomLoading}
+                  disabled={!bomCrossModelTargetId}
+                  placeholder={bomCrossModelTargetId ? "В корень модели" : "Сначала выберите модель"}
+                  options={crossModelBomParentOptions}
+                  notFoundContent={crossModelBomLoading ? "Загружаем BOM..." : "В этой модели пока нет узлов"}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item label="Количество" name="quantity" rules={[{ required: true }]}>
+                <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item label="Заметки" name="notes">
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} />
+          </Form.Item>
+        </Form>
       </Modal>
 
       <Modal
