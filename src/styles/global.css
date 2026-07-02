@@ -189,6 +189,15 @@ body,
   background-color: #f5faff;
 }
 
+.bom-card-tabs .ant-tabs-nav-list {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.bom-card-tabs .ant-tabs-tab {
+  margin-top: 0;
+}
+
 /* Collapsed sidebar flyout for the nested Catalogs menu.
    AntD renders this submenu as a separate popup, so it needs its own layer and row metrics. */
 .sidebar-catalog-popup {
