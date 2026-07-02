@@ -391,6 +391,14 @@ const parseJsonObject = (value) => {
 
 const getBomRowCardMeta = (row) => parseJsonObject(row?.catalog_position_meta_json || row?.meta_json)
 
+const hasBomExtraValue = (value) => value !== undefined && value !== null && value !== "" && value !== "null"
+
+const makeBomExtraField = (key, label, value) => ({
+  key,
+  label,
+  value: hasBomExtraValue(value) ? value : "—",
+})
+
 const getBomRowExtraFields = (row, visibleFields = []) => {
   if (!Array.isArray(visibleFields) || !visibleFields.length) return []
   const meta = getBomRowCardMeta(row)
@@ -399,14 +407,12 @@ const getBomRowExtraFields = (row, visibleFields = []) => {
 
   if (hasField("tnved")) {
     const value = row?.catalog_position_tnved_code || row?.tnved_code || meta.tnved_code
-    if (value) result.push({ key: "tnved", label: "ТН ВЭД", value })
+    result.push(makeBomExtraField("tnved", "ТН ВЭД", value))
   }
 
   if (hasField("weight")) {
     const value = row?.catalog_position_weight_kg ?? row?.weight_kg ?? meta.weight_kg
-    if (value !== undefined && value !== null && value !== "") {
-      result.push({ key: "weight", label: "Масса", value: formatNullableNumber(value, "кг") })
-    }
+    result.push(makeBomExtraField("weight", "Масса", hasBomExtraValue(value) ? formatNullableNumber(value, "кг") : null))
   }
 
   if (hasField("dimensions")) {
@@ -415,17 +421,17 @@ const getBomRowExtraFields = (row, visibleFields = []) => {
       width_cm: row?.catalog_position_width_cm ?? row?.width_cm ?? meta.width_cm,
       height_cm: row?.catalog_position_height_cm ?? row?.height_cm ?? meta.height_cm,
     })
-    if (dimensions !== "—") result.push({ key: "dimensions", label: "Габариты", value: dimensions })
+    result.push(makeBomExtraField("dimensions", "Габариты", dimensions !== "—" ? dimensions : null))
   }
 
   if (hasField("material")) {
     const value = row?.catalog_position_materials_summary || row?.materials_summary || meta.material || meta.material_name
-    if (value) result.push({ key: "material", label: "Материал", value })
+    result.push(makeBomExtraField("material", "Материал", value))
   }
 
   if (hasField("description")) {
     const value = row?.catalog_position_description || row?.description || row?.description_ru || row?.description_en
-    if (value) result.push({ key: "description", label: "Описание", value })
+    result.push(makeBomExtraField("description", "Описание", value))
   }
 
   return result
@@ -492,14 +498,29 @@ const buildBomTreeData = (rows, actions = {}) =>
               </Tag>
             </Space>
             {extraFields.length ? (
-              <Space size={[12, 4]} wrap>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(120px, max-content))",
+                  columnGap: 16,
+                  rowGap: 4,
+                  alignItems: "center",
+                }}
+              >
                 {extraFields.map((field) => (
-                  <Typography.Text key={field.key} type="secondary" style={{ fontSize: 12 }}>
+                  <Typography.Text
+                    key={field.key}
+                    type="secondary"
+                    style={{
+                      fontSize: 12,
+                      whiteSpace: field.key === "description" ? "normal" : "nowrap",
+                    }}
+                  >
                     <span style={{ color: "#8c8c8c" }}>{field.label}: </span>
                     {field.value}
                   </Typography.Text>
                 ))}
-              </Space>
+              </div>
             ) : null}
           </Space>
 
