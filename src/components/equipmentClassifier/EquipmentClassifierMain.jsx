@@ -532,6 +532,7 @@ export default function EquipmentClassifierMain() {
   const [selectedBomItem, setSelectedBomItem] = useState(null)
   const [bomPositionDetails, setBomPositionDetails] = useState(null)
   const [bomPositionDetailsLoading, setBomPositionDetailsLoading] = useState(false)
+  const [bomCardActiveTab, setBomCardActiveTab] = useState("main")
   const [bomCardSaving, setBomCardSaving] = useState(false)
   const [bomCardPhotoUploading, setBomCardPhotoUploading] = useState(false)
   const [bomMaterialModalOpen, setBomMaterialModalOpen] = useState(false)
@@ -5395,6 +5396,7 @@ export default function EquipmentClassifierMain() {
           setBomItemCardOpen(false)
           setSelectedBomItem(null)
           setBomPositionDetails(null)
+          setBomCardActiveTab("main")
         }}
         extra={
           selectedBomItem ? (
