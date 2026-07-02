@@ -347,6 +347,35 @@ const getBomTitleEn = (row) =>
 
 const getBomTitleRu = (row) => row?.manufacturer_part_name_ru || row?.description_ru || "—"
 
+const formatNullableNumber = (value, suffix = "") => {
+  if (value === undefined || value === null || value === "") return "—"
+  const number = Number(value)
+  if (!Number.isFinite(number)) return "—"
+  return `${number.toLocaleString("ru-RU", { maximumFractionDigits: 3 })}${suffix ? ` ${suffix}` : ""}`
+}
+
+const formatMoney = (value, currency) => {
+  if (value === undefined || value === null || value === "") return "—"
+  const number = Number(value)
+  if (!Number.isFinite(number)) return "—"
+  return `${number.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency || ""}`.trim()
+}
+
+const formatDimensions = (row) => {
+  const length = row?.length_cm
+  const width = row?.width_cm
+  const height = row?.height_cm
+  if ([length, width, height].some((value) => value === undefined || value === null || value === "")) return "—"
+  return `${formatNullableNumber(length, "см")} × ${formatNullableNumber(width, "см")} × ${formatNullableNumber(height, "см")}`
+}
+
+const getRelationshipLabel = (value) => {
+  if (value === "exact") return "Точное соответствие"
+  if (value === "analog") return "Аналог"
+  if (value === "can_supply") return "Может поставить"
+  return "Связь"
+}
+
 const flattenBomTreeRows = (rows, level = 0, acc = []) => {
   ;(rows || []).forEach((row, index) => {
     const children = Array.isArray(row.children) ? row.children : []
@@ -500,6 +529,8 @@ export default function EquipmentClassifierMain() {
   const [crossModelBomSaving, setCrossModelBomSaving] = useState(false)
   const [bomItemCardOpen, setBomItemCardOpen] = useState(false)
   const [selectedBomItem, setSelectedBomItem] = useState(null)
+  const [bomPositionDetails, setBomPositionDetails] = useState(null)
+  const [bomPositionDetailsLoading, setBomPositionDetailsLoading] = useState(false)
   const [catalogPositionOptions, setCatalogPositionOptions] = useState([])
   const [catalogPositionsLoading, setCatalogPositionsLoading] = useState(false)
   const [catalogPositionUsage, setCatalogPositionUsage] = useState([])
@@ -2150,6 +2181,45 @@ export default function EquipmentClassifierMain() {
     () => (Array.isArray(selectedBomItem?.children) ? selectedBomItem.children : []),
     [selectedBomItem],
   )
+  const bomCardMeta = useMemo(() => bomPositionDetails?.position?.meta || {}, [bomPositionDetails])
+  const bomCardSupplierParts = useMemo(
+    () => (Array.isArray(bomPositionDetails?.supplier_parts) ? bomPositionDetails.supplier_parts : []),
+    [bomPositionDetails],
+  )
+  const bomCardMaterials = useMemo(
+    () => (Array.isArray(bomPositionDetails?.materials) ? bomPositionDetails.materials : []),
+    [bomPositionDetails],
+  )
+  const bomCardUsage = useMemo(
+    () => (Array.isArray(bomPositionDetails?.usage) ? bomPositionDetails.usage : []),
+    [bomPositionDetails],
+  )
+
+  useEffect(() => {
+    if (!bomItemCardOpen || !selectedBomItem?.catalog_position_id) {
+      setBomPositionDetails(null)
+      setBomPositionDetailsLoading(false)
+      return
+    }
+    let cancelled = false
+    setBomPositionDetailsLoading(true)
+    axios
+      .get(`/catalog-positions/${selectedBomItem.catalog_position_id}/card`)
+      .then(({ data }) => {
+        if (!cancelled) setBomPositionDetails(data || null)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error("GET /catalog-positions/:id/card error:", err)
+        setBomPositionDetails(null)
+      })
+      .finally(() => {
+        if (!cancelled) setBomPositionDetailsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [bomItemCardOpen, selectedBomItem?.catalog_position_id])
 
   const openBomItemModal = useCallback(
     (item = null, parent = null, options = {}) => {
@@ -5146,6 +5216,7 @@ export default function EquipmentClassifierMain() {
         onClose={() => {
           setBomItemCardOpen(false)
           setSelectedBomItem(null)
+          setBomPositionDetails(null)
         }}
         extra={
           selectedBomItem ? (
@@ -5279,37 +5350,176 @@ export default function EquipmentClassifierMain() {
                 key: "properties",
                 label: "Характеристики",
                 children: (
-                  <Empty description="Здесь будут масса, габариты и другие характеристики позиции." />
+                  <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                    <Card size="small" title="Данные позиции" loading={bomPositionDetailsLoading}>
+                      <Descriptions size="small" bordered column={1}>
+                        <Descriptions.Item label="Масса">{formatNullableNumber(bomCardMeta.weight_kg, "кг")}</Descriptions.Item>
+                        <Descriptions.Item label="Габариты">
+                          {[bomCardMeta.length_cm, bomCardMeta.width_cm, bomCardMeta.height_cm].some(
+                            (value) => value !== undefined && value !== null && value !== "",
+                          )
+                            ? `${formatNullableNumber(bomCardMeta.length_cm, "см")} × ${formatNullableNumber(bomCardMeta.width_cm, "см")} × ${formatNullableNumber(bomCardMeta.height_cm, "см")}`
+                            : "—"}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Единица измерения">
+                          {selectedBomItem.uom || selectedBomItem.catalog_position_uom || bomPositionDetails?.position?.uom || "шт"}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Описание">
+                          {bomPositionDetails?.position?.description || selectedBomItem.notes || "—"}
+                        </Descriptions.Item>
+                      </Descriptions>
+                    </Card>
+                    <Card size="small" title="Что известно от поставщиков" loading={bomPositionDetailsLoading}>
+                      {bomCardSupplierParts.some((row) => row.weight_kg || row.length_cm || row.width_cm || row.height_cm) ? (
+                        <Table
+                          size="small"
+                          rowKey="id"
+                          pagination={false}
+                          dataSource={bomCardSupplierParts.filter((row) => row.weight_kg || row.length_cm || row.width_cm || row.height_cm)}
+                          columns={[
+                            { title: "Поставщик", dataIndex: "supplier_name" },
+                            { title: "Номер поставщика", dataIndex: "supplier_part_number" },
+                            { title: "Масса", render: (_, row) => formatNullableNumber(row.weight_kg, "кг") },
+                            { title: "Габариты", render: (_, row) => formatDimensions(row) },
+                          ]}
+                        />
+                      ) : (
+                        <Empty description="Масса и габариты пока не заполнены ни в карточке, ни в связанных деталях поставщиков." />
+                      )}
+                    </Card>
+                  </Space>
                 ),
               },
               {
                 key: "materials",
                 label: "Материалы и ТН ВЭД",
                 children: (
-                  <Empty description="Здесь будут материалы, варианты исполнения и коды ТН ВЭД." />
+                  <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                    <Card size="small" title="Материалы" loading={bomPositionDetailsLoading}>
+                      {bomCardMaterials.length ? (
+                        <Table
+                          size="small"
+                          rowKey={(row) => `${row.supplier_part_id}-${row.id}`}
+                          pagination={false}
+                          dataSource={bomCardMaterials}
+                          columns={[
+                            {
+                              title: "Материал",
+                              render: (_, row) =>
+                                [row.name, row.code, row.standard].filter(Boolean).join(" / ") || "—",
+                            },
+                            { title: "Источник", render: (_, row) => `${row.supplier_name || "Поставщик"}${row.supplier_part_number ? ` · ${row.supplier_part_number}` : ""}` },
+                            { title: "Примечание", render: (_, row) => row.note || (row.is_default ? "Основной" : "—") },
+                          ]}
+                        />
+                      ) : (
+                        <Empty description="Материал для этой позиции пока не выбран. Если он указан у детали поставщика, он появится здесь автоматически." />
+                      )}
+                    </Card>
+                    <Card size="small" title="ТН ВЭД" loading={bomPositionDetailsLoading}>
+                      {bomPositionDetails?.tnved ? (
+                        <Descriptions size="small" bordered column={1}>
+                          <Descriptions.Item label="Код">{bomPositionDetails.tnved.code || "—"}</Descriptions.Item>
+                          <Descriptions.Item label="Описание">{bomPositionDetails.tnved.description || "—"}</Descriptions.Item>
+                          <Descriptions.Item label="Пошлина">
+                            {bomPositionDetails.tnved.duty_rate !== undefined && bomPositionDetails.tnved.duty_rate !== null
+                              ? `${Number(bomPositionDetails.tnved.duty_rate).toLocaleString("ru-RU", { maximumFractionDigits: 2 })}%`
+                              : "—"}
+                          </Descriptions.Item>
+                        </Descriptions>
+                      ) : (
+                        <Empty description="Код ТН ВЭД для этой позиции пока не выбран." />
+                      )}
+                    </Card>
+                  </Space>
                 ),
               },
               {
                 key: "usage",
-                label: "Применяемость",
+                label: "Где используется",
                 children: (
-                  <Descriptions size="small" bordered column={1}>
-                    <Descriptions.Item label="Текущая модель">
-                      {[currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Текущее место в BOM">
-                      {selectedBomParent
-                        ? `${getBomItemLabel(selectedBomParent)} — ${getBomItemName(selectedBomParent) || "узел"}`
-                        : "Корень модели"}
-                    </Descriptions.Item>
-                  </Descriptions>
+                  <Card size="small" loading={bomPositionDetailsLoading}>
+                    {bomCardUsage.length ? (
+                      <Table
+                        size="small"
+                        rowKey="bom_item_id"
+                        pagination={false}
+                        dataSource={bomCardUsage}
+                        columns={[
+                          {
+                            title: "Модель",
+                            render: (_, row) => [row.manufacturer_name, row.model_name].filter(Boolean).join(" ") || "—",
+                          },
+                          {
+                            title: "Где в BOM",
+                            render: (_, row) =>
+                              row.parent_item_id
+                                ? [row.parent_manufacturer_part_number, row.parent_manufacturer_part_name || row.parent_title]
+                                    .filter(Boolean)
+                                    .join(" · ") || "В узле"
+                                : "В корне модели",
+                          },
+                          { title: "Количество", render: (_, row) => formatBomQuantity(row) },
+                        ]}
+                      />
+                    ) : (
+                      <Descriptions size="small" bordered column={1}>
+                        <Descriptions.Item label="Текущая модель">
+                          {[currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "—"}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Текущее место в BOM">
+                          {selectedBomParent
+                            ? `${getBomItemLabel(selectedBomParent)} — ${getBomItemName(selectedBomParent) || "узел"}`
+                            : "Корень модели"}
+                        </Descriptions.Item>
+                      </Descriptions>
+                    )}
+                  </Card>
                 ),
               },
               {
                 key: "suppliers",
                 label: "Поставщики",
                 children: (
-                  <Empty description="Здесь будут детали поставщиков, аналоги, цены и остатки." />
+                  <Card size="small" loading={bomPositionDetailsLoading}>
+                    {bomCardSupplierParts.length ? (
+                      <Table
+                        size="small"
+                        rowKey="id"
+                        pagination={false}
+                        dataSource={bomCardSupplierParts}
+                        columns={[
+                          {
+                            title: "Поставщик",
+                            render: (_, row) => (
+                              <Space direction="vertical" size={0}>
+                                <Typography.Text strong>{row.supplier_name || "—"}</Typography.Text>
+                                <Typography.Text type="secondary">{getRelationshipLabel(row.relationship_type)}</Typography.Text>
+                              </Space>
+                            ),
+                          },
+                          {
+                            title: "Деталь поставщика",
+                            render: (_, row) => (
+                              <Space direction="vertical" size={0}>
+                                <Typography.Text>{row.supplier_part_number || "—"}</Typography.Text>
+                                <Typography.Text type="secondary">{row.description || "—"}</Typography.Text>
+                              </Space>
+                            ),
+                          },
+                          { title: "Цена", render: (_, row) => formatMoney(row.price, row.currency) },
+                          {
+                            title: "Срок",
+                            render: (_, row) =>
+                              row.effective_lead_time_days ? `${row.effective_lead_time_days} дн.` : "—",
+                          },
+                          { title: "Материал", render: (_, row) => row.default_material_name || "—" },
+                        ]}
+                      />
+                    ) : (
+                      <Empty description="К этой позиции пока не привязаны детали поставщиков." />
+                    )}
+                  </Card>
                 ),
               },
               {
