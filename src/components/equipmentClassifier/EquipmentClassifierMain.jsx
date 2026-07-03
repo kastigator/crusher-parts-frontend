@@ -1100,20 +1100,6 @@ export default function EquipmentClassifierMain() {
   }, [selectedId])
 
   const nodeMap = useMemo(() => flattenTree(treeRows), [treeRows])
-  const getNodePathKeys = useCallback(
-    (nodeId) => {
-      const path = []
-      let current = nodeMap.get(Number(nodeId))
-      const guard = new Set()
-      while (current?.id && !guard.has(Number(current.id))) {
-        guard.add(Number(current.id))
-        path.unshift(treeKey.node(current.id))
-        current = current.parent_id ? nodeMap.get(Number(current.parent_id)) : null
-      }
-      return path
-    },
-    [nodeMap],
-  )
   const selectedNode = selectedId ? nodeMap.get(Number(selectedId)) || null : null
   const selectedNodeChildren = Array.isArray(selectedNode?.children) ? selectedNode.children : []
   const selectedNodeIsLeaf = !!selectedNode && selectedNodeChildren.length === 0
@@ -1332,12 +1318,18 @@ export default function EquipmentClassifierMain() {
   }, [attributes, measurementUnitOptions])
 
   const treeData = useMemo(() => {
+    const favoriteSet = new Set(classifierFavoriteKeys)
     const build = (nodes) =>
       [...(nodes || [])]
-        .sort((a, b) => compareClassifierNames(a?.name, b?.name))
+        .sort((a, b) => {
+          const aFavorite = favoriteSet.has(treeKey.node(a?.id))
+          const bFavorite = favoriteSet.has(treeKey.node(b?.id))
+          if (aFavorite !== bFavorite) return aFavorite ? -1 : 1
+          return compareClassifierNames(a?.name, b?.name)
+        })
         .map((node) => {
           const key = treeKey.node(node.id)
-          const isFavorite = classifierFavoriteKeys.includes(key)
+          const isFavorite = favoriteSet.has(key)
           return {
             key,
             title: (
@@ -1372,37 +1364,18 @@ export default function EquipmentClassifierMain() {
     return build(treeRows)
   }, [classifierFavoriteKeys, toggleClassifierFavorite, treeRows])
 
-  const classifierFavoriteItems = useMemo(() => {
-    const rows = classifierFavoriteKeys
-      .map((key) => {
-        const parsed = parseTreeKey(key)
-        if (parsed.type !== "node" || !parsed.id) return null
-        const node = nodeMap.get(Number(parsed.id))
-        if (!node) return null
-        return {
-          key,
-          node,
+  const plainTreeData = useMemo(() => {
+    const build = (nodes) =>
+      [...(nodes || [])]
+        .sort((a, b) => compareClassifierNames(a?.name, b?.name))
+        .map((node) => ({
+          key: treeKey.node(node.id),
           title: node.name,
-          path: getNodePathLabel(node.id),
-        }
-      })
-      .filter(Boolean)
-    return rows.sort((a, b) => compareClassifierNames(a.title, b.title))
-  }, [classifierFavoriteKeys, getNodePathLabel, nodeMap])
+          children: build(node.children || []),
+        }))
 
-  const openClassifierFavorite = useCallback(
-    (item) => {
-      if (!item?.node?.id) return
-      const key = treeKey.node(item.node.id)
-      const pathKeys = getNodePathKeys(item.node.id)
-      setClassifierExpandedKeys((current) => [...new Set([...current, ...pathKeys])])
-      setNsiSearchActive(false)
-      setSelectedTreeKey(key)
-      setSelectedTreeEntity({ type: "node", id: Number(item.node.id) })
-      setSelectedId(String(item.node.id))
-    },
-    [getNodePathKeys],
-  )
+    return build(treeRows)
+  }, [treeRows])
 
   const getDefaultNodeType = (parent) => {
     if (!parent) return "ROOT"
@@ -5618,68 +5591,6 @@ export default function EquipmentClassifierMain() {
             style={sidePanelStyle}
             styles={{ body: sidePanelBodyStyle }}
           >
-            {classifierFavoriteItems.length ? (
-              <>
-                <div style={{ marginBottom: 8 }}>
-                  <Typography.Text type="secondary" style={{ display: "block", fontSize: 12 }}>
-                    Избранное
-                  </Typography.Text>
-                  <Space direction="vertical" size={2} style={{ width: "100%", marginTop: 4 }}>
-                    {classifierFavoriteItems.map((item) => (
-                      <div
-                        key={item.key}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          padding: "2px 4px",
-                          borderRadius: 4,
-                          background: selectedTreeKey === item.key ? "#e6f4ff" : "transparent",
-                        }}
-                      >
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<StarFilled style={{ color: "#faad14" }} />}
-                          title="Убрать из избранного"
-                          aria-label="Убрать из избранного"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            toggleClassifierFavorite(item.key)
-                          }}
-                        />
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => openClassifierFavorite(item)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault()
-                              openClassifierFavorite(item)
-                            }
-                          }}
-                          style={{ minWidth: 0, flex: 1, cursor: "pointer" }}
-                        >
-                          <Typography.Text
-                            strong={selectedTreeKey === item.key}
-                            ellipsis
-                            style={{ display: "block" }}
-                          >
-                            {item.title}
-                          </Typography.Text>
-                          {item.path && item.path !== item.title ? (
-                            <Typography.Text type="secondary" ellipsis style={{ display: "block", fontSize: 11 }}>
-                              {item.path}
-                            </Typography.Text>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </Space>
-                </div>
-                <Divider style={{ margin: "8px 0" }} />
-              </>
-            ) : null}
             {treeData.length ? (
               <Tree
                 expandedKeys={classifierExpandedKeys}
@@ -7251,9 +7162,9 @@ export default function EquipmentClassifierMain() {
           <Typography.Text type="secondary">
             Выберите новый раздел классификатора. Все применения деталей производителя, BOM и машины клиентов останутся привязаны к этой модели.
           </Typography.Text>
-          {treeData.length ? (
+          {plainTreeData.length ? (
             <Tree
-              treeData={treeData}
+              treeData={plainTreeData}
               defaultExpandAll
               selectedKeys={moveTargetNodeId ? [treeKey.node(moveTargetNodeId)] : []}
               onSelect={(keys) => {
