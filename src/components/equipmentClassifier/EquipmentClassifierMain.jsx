@@ -553,7 +553,7 @@ const buildBomTreeData = (rows, actions = {}) =>
             padding: "3px 0",
           }}
         >
-          <Space direction="vertical" size={1} style={{ minWidth: 0, flex: 1 }}>
+          <Space direction="vertical" size={1} style={{ minWidth: 0, flex: 1, width: "100%" }}>
             <Space size={8} wrap>
               <Typography.Link strong={isGroup} onClick={() => actions.onOpen?.(row)}>
                 {label}
@@ -567,24 +567,42 @@ const buildBomTreeData = (rows, actions = {}) =>
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(120px, max-content))",
-                  columnGap: 16,
-                  rowGap: 4,
-                  alignItems: "center",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                  gap: "4px 18px",
+                  alignItems: "start",
+                  width: "100%",
+                  minWidth: 0,
+                  paddingRight: 12,
                 }}
               >
                 {extraFields.map((field) => (
-                  <Typography.Text
+                  <div
                     key={field.key}
-                    type="secondary"
                     style={{
-                      fontSize: 12,
-                      whiteSpace: field.key === "description" ? "normal" : "nowrap",
+                      display: "flex",
+                      gap: 4,
+                      minWidth: 0,
+                      alignItems: "baseline",
                     }}
                   >
-                    <span style={{ color: "#8c8c8c" }}>{field.label}: </span>
-                    {field.value}
-                  </Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
+                      {field.label}:
+                    </Typography.Text>
+                    <Typography.Text
+                      type="secondary"
+                      title={String(field.value)}
+                      style={{
+                        fontSize: 12,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        maxWidth: "100%",
+                      }}
+                    >
+                      {field.value}
+                    </Typography.Text>
+                  </div>
                 ))}
               </div>
             ) : null}
