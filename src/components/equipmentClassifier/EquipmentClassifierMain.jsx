@@ -380,12 +380,17 @@ const formatMoney = (value, currency) => {
   return `${number.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency || ""}`.trim()
 }
 
-const formatDimensions = (row) => {
-  const length = row?.length_cm
-  const width = row?.width_cm
-  const height = row?.height_cm
+const getUnitSymbol = (units, code, fallback) => {
+  const unit = (Array.isArray(units) ? units : []).find((item) => item.code === code)
+  return unit?.symbol || unit?.code || fallback
+}
+
+const formatDimensions = (row, unitSymbol = "мм") => {
+  const length = row?.length_mm
+  const width = row?.width_mm
+  const height = row?.height_mm
   if ([length, width, height].some((value) => value === undefined || value === null || value === "")) return "—"
-  return `${formatNullableNumber(length, "см")} × ${formatNullableNumber(width, "см")} × ${formatNullableNumber(height, "см")}`
+  return `${formatNullableNumber(length, unitSymbol)} × ${formatNullableNumber(width, unitSymbol)} × ${formatNullableNumber(height, unitSymbol)}`
 }
 
 const BOM_VISIBLE_FIELD_OPTIONS = [
@@ -423,22 +428,30 @@ const toBomNumber = (value) => {
   return Number.isFinite(number) ? number : null
 }
 
+const toLegacyCmAsMm = (value) => {
+  const number = toBomNumber(value)
+  return number === null ? null : number * 10
+}
+
 const getBomRowDimensions = (row) => {
   const meta = getBomRowCardMeta(row)
   return {
-    length_cm: toBomNumber(row?.catalog_position_length_cm ?? row?.length_cm ?? meta.length_cm),
-    width_cm: toBomNumber(row?.catalog_position_width_cm ?? row?.width_cm ?? meta.width_cm),
-    height_cm: toBomNumber(row?.catalog_position_height_cm ?? row?.height_cm ?? meta.height_cm),
+    length_mm:
+      toBomNumber(row?.catalog_position_length_mm ?? row?.length_mm ?? meta.length_mm) ?? toLegacyCmAsMm(meta.length_cm),
+    width_mm:
+      toBomNumber(row?.catalog_position_width_mm ?? row?.width_mm ?? meta.width_mm) ?? toLegacyCmAsMm(meta.width_cm),
+    height_mm:
+      toBomNumber(row?.catalog_position_height_mm ?? row?.height_mm ?? meta.height_mm) ?? toLegacyCmAsMm(meta.height_cm),
   }
 }
 
-const getBomRowDimensionsText = (row) => {
+const getBomRowDimensionsText = (row, unitSymbol = "мм") => {
   const dimensions = getBomRowDimensions(row)
   return formatDimensions({
-    length_cm: dimensions.length_cm,
-    width_cm: dimensions.width_cm,
-    height_cm: dimensions.height_cm,
-  })
+    length_mm: dimensions.length_mm,
+    width_mm: dimensions.width_mm,
+    height_mm: dimensions.height_mm,
+  }, unitSymbol)
 }
 
 const splitBomFilterValues = (value) =>
@@ -470,7 +483,7 @@ const makeBomExtraField = (key, label, value) => ({
   value: hasBomExtraValue(value) ? value : "—",
 })
 
-const getBomRowExtraFields = (row, visibleFields = []) => {
+const getBomRowExtraFields = (row, visibleFields = [], dimensionUnitSymbol = "мм") => {
   if (!Array.isArray(visibleFields) || !visibleFields.length) return []
   const result = []
   const hasField = (field) => visibleFields.includes(field)
@@ -486,7 +499,7 @@ const getBomRowExtraFields = (row, visibleFields = []) => {
   }
 
   if (hasField("dimensions")) {
-    const dimensions = getBomRowDimensionsText(row)
+    const dimensions = getBomRowDimensionsText(row, dimensionUnitSymbol)
     result.push(makeBomExtraField("dimensions", "Габариты", dimensions !== "—" ? dimensions : null))
   }
 
@@ -532,7 +545,7 @@ const buildBomTreeData = (rows, actions = {}) =>
     const label = getBomItemLabel(row)
     const itemName = getBomItemName(row)
     const uom = row.uom || row.catalog_position_uom || "шт"
-    const extraFields = getBomRowExtraFields(row, actions.visibleFields)
+    const extraFields = getBomRowExtraFields(row, actions.visibleFields, actions.dimensionUnitSymbol)
     const menuItems = [
       { key: "edit", label: "Изменить строку", icon: <EditOutlined /> },
       { key: "reuse", label: "Добавить применение", icon: <CopyOutlined /> },
@@ -633,6 +646,8 @@ const buildBomTreeData = (rows, actions = {}) =>
 export default function EquipmentClassifierMain() {
   const navigate = useNavigate()
   const { options: measurementUnitOptions, loading: measurementUnitsLoading } = useMeasurementUnits()
+  const { units: lengthMeasurementUnits } = useMeasurementUnits({ dimensionType: "length" })
+  const dimensionUnitSymbol = getUnitSymbol(lengthMeasurementUnits, "мм", "мм")
   const [treeRows, setTreeRows] = useState([])
   const [allModels, setAllModels] = useState([])
   const [allUnits, setAllUnits] = useState([])
@@ -2451,9 +2466,9 @@ export default function EquipmentClassifierMain() {
       if (!matchesNumberRange(weight, bomFilters.weightMin, bomFilters.weightMax)) return false
 
       const dimensions = getBomRowDimensions(row)
-      if (!matchesNumberRange(dimensions.length_cm, bomFilters.lengthMin, bomFilters.lengthMax)) return false
-      if (!matchesNumberRange(dimensions.width_cm, bomFilters.widthMin, bomFilters.widthMax)) return false
-      if (!matchesNumberRange(dimensions.height_cm, bomFilters.heightMin, bomFilters.heightMax)) return false
+      if (!matchesNumberRange(dimensions.length_mm, bomFilters.lengthMin, bomFilters.lengthMax)) return false
+      if (!matchesNumberRange(dimensions.width_mm, bomFilters.widthMin, bomFilters.widthMax)) return false
+      if (!matchesNumberRange(dimensions.height_mm, bomFilters.heightMin, bomFilters.heightMax)) return false
 
       if (Array.isArray(bomFilters.materialValues) && bomFilters.materialValues.length) {
         const rowMaterials = splitBomFilterValues(getBomRowFilterValue(row, "material"))
@@ -2642,9 +2657,9 @@ export default function EquipmentClassifierMain() {
     const meta = bomPositionDetails?.position?.meta || {}
     bomCardForm.setFieldsValue({
       weight_kg: meta.weight_kg ?? null,
-      length_cm: meta.length_cm ?? null,
-      width_cm: meta.width_cm ?? null,
-      height_cm: meta.height_cm ?? null,
+      length_mm: meta.length_mm ?? null,
+      width_mm: meta.width_mm ?? null,
+      height_mm: meta.height_mm ?? null,
       description: bomPositionDetails?.position?.description || "",
       tnved: bomPositionDetails?.tnved
         ? {
@@ -2688,9 +2703,9 @@ export default function EquipmentClassifierMain() {
       setBomCardSaving(true)
       await axios.patch(`/catalog-positions/${selectedBomItem.catalog_position_id}/card`, {
         weight_kg: values.weight_kg ?? null,
-        length_cm: values.length_cm ?? null,
-        width_cm: values.width_cm ?? null,
-        height_cm: values.height_cm ?? null,
+        length_mm: values.length_mm ?? null,
+        width_mm: values.width_mm ?? null,
+        height_mm: values.height_mm ?? null,
         description: values.description || null,
         tnved_code_id: values.tnved?.id || null,
       })
@@ -3151,8 +3166,9 @@ export default function EquipmentClassifierMain() {
         onReuse: (row) => openCrossModelBomModal(row),
         onDelete: (row) => handleDeleteBomItem(row),
         visibleFields: bomVisibleFields,
+        dimensionUnitSymbol,
       }),
-    [filteredModelBomTree, openBomItemModal, openCrossModelBomModal, handleDeleteBomItem, bomVisibleFields],
+    [filteredModelBomTree, openBomItemModal, openCrossModelBomModal, handleDeleteBomItem, bomVisibleFields, dimensionUnitSymbol],
   )
 
   const bomImportColumns = useMemo(
@@ -5393,7 +5409,7 @@ export default function EquipmentClassifierMain() {
 
       <div>
         <Typography.Text type="secondary" style={{ display: "block", marginBottom: 4 }}>
-          Габариты, см
+          Габариты, {dimensionUnitSymbol}
         </Typography.Text>
         <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
           Длина
@@ -6094,16 +6110,16 @@ export default function EquipmentClassifierMain() {
                               </Form.Item>
                             </Col>
                             <Col span={16}>
-                              <Form.Item label="Габариты, см">
+                              <Form.Item label={`Габариты, ${dimensionUnitSymbol}`}>
                                 <Space.Compact style={{ width: "100%" }}>
-                                  <Form.Item name="length_cm" noStyle>
-                                    <InputNumber min={0} precision={2} style={{ width: "33.33%" }} placeholder="Длина" />
+                                  <Form.Item name="length_mm" noStyle>
+                                    <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Длина" />
                                   </Form.Item>
-                                  <Form.Item name="width_cm" noStyle>
-                                    <InputNumber min={0} precision={2} style={{ width: "33.33%" }} placeholder="Ширина" />
+                                  <Form.Item name="width_mm" noStyle>
+                                    <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Ширина" />
                                   </Form.Item>
-                                  <Form.Item name="height_cm" noStyle>
-                                    <InputNumber min={0} precision={2} style={{ width: "33.33%" }} placeholder="Высота" />
+                                  <Form.Item name="height_mm" noStyle>
+                                    <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Высота" />
                                   </Form.Item>
                                 </Space.Compact>
                               </Form.Item>
