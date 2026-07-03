@@ -378,11 +378,6 @@ const BOM_VISIBLE_FIELD_OPTIONS = [
   { value: "description", label: "Описание" },
 ]
 
-const BOM_FIELD_STATUS_OPTIONS = [
-  { value: "filled", label: "Заполнено" },
-  { value: "empty", label: "Не заполнено" },
-]
-
 const parseJsonObject = (value) => {
   if (!value) return {}
   if (typeof value === "object") return value
@@ -405,14 +400,34 @@ const getBomRowWeight = (row) => {
   return Number.isFinite(number) ? number : null
 }
 
-const getBomRowDimensionsText = (row) => {
+const toBomNumber = (value) => {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+const getBomRowDimensions = (row) => {
   const meta = getBomRowCardMeta(row)
+  return {
+    length_cm: toBomNumber(row?.catalog_position_length_cm ?? row?.length_cm ?? meta.length_cm),
+    width_cm: toBomNumber(row?.catalog_position_width_cm ?? row?.width_cm ?? meta.width_cm),
+    height_cm: toBomNumber(row?.catalog_position_height_cm ?? row?.height_cm ?? meta.height_cm),
+  }
+}
+
+const getBomRowDimensionsText = (row) => {
+  const dimensions = getBomRowDimensions(row)
   return formatDimensions({
-    length_cm: row?.catalog_position_length_cm ?? row?.length_cm ?? meta.length_cm,
-    width_cm: row?.catalog_position_width_cm ?? row?.width_cm ?? meta.width_cm,
-    height_cm: row?.catalog_position_height_cm ?? row?.height_cm ?? meta.height_cm,
+    length_cm: dimensions.length_cm,
+    width_cm: dimensions.width_cm,
+    height_cm: dimensions.height_cm,
   })
 }
+
+const splitBomFilterValues = (value) =>
+  String(value || "")
+    .split(/[;,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
 
 const getBomRowFilterValue = (row, key) => {
   const meta = getBomRowCardMeta(row)
@@ -2118,13 +2133,16 @@ export default function EquipmentClassifierMain() {
   const activeBomFiltersCount = useMemo(() => {
     let count = 0
     if (bomFilters.rowKind) count += 1
-    if (bomFilters.tnvedStatus) count += 1
-    if (bomFilters.weightStatus) count += 1
+    if (Array.isArray(bomFilters.tnvedCodes) && bomFilters.tnvedCodes.length) count += 1
     if (bomFilters.weightMin !== undefined && bomFilters.weightMin !== null && bomFilters.weightMin !== "") count += 1
     if (bomFilters.weightMax !== undefined && bomFilters.weightMax !== null && bomFilters.weightMax !== "") count += 1
-    if (bomFilters.dimensionsStatus) count += 1
-    if (bomFilters.materialStatus) count += 1
-    if (bomFilters.descriptionStatus) count += 1
+    if (bomFilters.lengthMin !== undefined && bomFilters.lengthMin !== null && bomFilters.lengthMin !== "") count += 1
+    if (bomFilters.lengthMax !== undefined && bomFilters.lengthMax !== null && bomFilters.lengthMax !== "") count += 1
+    if (bomFilters.widthMin !== undefined && bomFilters.widthMin !== null && bomFilters.widthMin !== "") count += 1
+    if (bomFilters.widthMax !== undefined && bomFilters.widthMax !== null && bomFilters.widthMax !== "") count += 1
+    if (bomFilters.heightMin !== undefined && bomFilters.heightMin !== null && bomFilters.heightMin !== "") count += 1
+    if (bomFilters.heightMax !== undefined && bomFilters.heightMax !== null && bomFilters.heightMax !== "") count += 1
+    if (Array.isArray(bomFilters.materialValues) && bomFilters.materialValues.length) count += 1
     return count
   }, [bomFilters])
   const currentFiltersCount = isModelBomContext ? activeBomFiltersCount : activeFiltersCount
@@ -2240,6 +2258,25 @@ export default function EquipmentClassifierMain() {
 
   const currentModelBomTree = useMemo(() => buildBomTree(modelBomItems), [modelBomItems])
   const currentModelBomRows = useMemo(() => flattenBomTreeRows(currentModelBomTree), [currentModelBomTree])
+  const bomTnvedFilterOptions = useMemo(() => {
+    const values = new Set()
+    currentModelBomRows.forEach((row) => {
+      const value = getBomRowFilterValue(row, "tnved")
+      if (hasBomExtraValue(value)) values.add(String(value).trim())
+    })
+    return Array.from(values)
+      .sort((a, b) => a.localeCompare(b, "ru"))
+      .map((value) => ({ value, label: value }))
+  }, [currentModelBomRows])
+  const bomMaterialFilterOptions = useMemo(() => {
+    const values = new Set()
+    currentModelBomRows.forEach((row) => {
+      splitBomFilterValues(getBomRowFilterValue(row, "material")).forEach((value) => values.add(value))
+    })
+    return Array.from(values)
+      .sort((a, b) => a.localeCompare(b, "ru"))
+      .map((value) => ({ value, label: value }))
+  }, [currentModelBomRows])
   const currentModelBomStats = useMemo(() => {
     const rows = currentModelBomRows
     const groups = rows.filter((row) => row.bom_has_children || getBomEffectiveRowKind(row) === "assembly").length
@@ -2254,25 +2291,33 @@ export default function EquipmentClassifierMain() {
   }, [currentModelBomRows])
   const filteredModelBomTree = useMemo(() => {
     const query = bomSearchQuery.trim().toLowerCase()
-    const matchesFieldStatus = (row, key, status) => {
-      if (!status) return true
-      const value = getBomRowFilterValue(row, key)
-      const filled = hasBomExtraValue(value)
-      return status === "filled" ? filled : !filled
+    const matchesNumberRange = (value, minValue, maxValue) => {
+      const minNumber = minValue !== undefined && minValue !== "" ? Number(minValue) : null
+      const maxNumber = maxValue !== undefined && maxValue !== "" ? Number(maxValue) : null
+      if (Number.isFinite(minNumber) && (value === null || value < minNumber)) return false
+      if (Number.isFinite(maxNumber) && (value === null || value > maxNumber)) return false
+      return true
     }
     const matchesBomFilters = (row) => {
       if (bomFilters.rowKind && getBomEffectiveRowKind(row) !== bomFilters.rowKind) return false
-      if (!matchesFieldStatus(row, "tnved", bomFilters.tnvedStatus)) return false
-      if (!matchesFieldStatus(row, "weight", bomFilters.weightStatus)) return false
-      if (!matchesFieldStatus(row, "dimensions", bomFilters.dimensionsStatus)) return false
-      if (!matchesFieldStatus(row, "material", bomFilters.materialStatus)) return false
-      if (!matchesFieldStatus(row, "description", bomFilters.descriptionStatus)) return false
+
+      if (Array.isArray(bomFilters.tnvedCodes) && bomFilters.tnvedCodes.length) {
+        const tnved = getBomRowFilterValue(row, "tnved")
+        if (!tnved || !bomFilters.tnvedCodes.includes(String(tnved).trim())) return false
+      }
 
       const weight = getBomRowWeight(row)
-      const minWeight = bomFilters.weightMin !== undefined && bomFilters.weightMin !== "" ? Number(bomFilters.weightMin) : null
-      const maxWeight = bomFilters.weightMax !== undefined && bomFilters.weightMax !== "" ? Number(bomFilters.weightMax) : null
-      if (Number.isFinite(minWeight) && (weight === null || weight < minWeight)) return false
-      if (Number.isFinite(maxWeight) && (weight === null || weight > maxWeight)) return false
+      if (!matchesNumberRange(weight, bomFilters.weightMin, bomFilters.weightMax)) return false
+
+      const dimensions = getBomRowDimensions(row)
+      if (!matchesNumberRange(dimensions.length_cm, bomFilters.lengthMin, bomFilters.lengthMax)) return false
+      if (!matchesNumberRange(dimensions.width_cm, bomFilters.widthMin, bomFilters.widthMax)) return false
+      if (!matchesNumberRange(dimensions.height_cm, bomFilters.heightMin, bomFilters.heightMax)) return false
+
+      if (Array.isArray(bomFilters.materialValues) && bomFilters.materialValues.length) {
+        const rowMaterials = splitBomFilterValues(getBomRowFilterValue(row, "material"))
+        if (!rowMaterials.some((material) => bomFilters.materialValues.includes(material))) return false
+      }
 
       return true
     }
@@ -5172,10 +5217,13 @@ export default function EquipmentClassifierMain() {
         </Typography.Text>
         <Select
           allowClear
-          placeholder="Любой"
-          value={bomFilters.tnvedStatus}
-          onChange={(value) => setBomFilterValue("tnvedStatus", value)}
-          options={BOM_FIELD_STATUS_OPTIONS}
+          mode="multiple"
+          maxTagCount="responsive"
+          placeholder={bomTnvedFilterOptions.length ? "Выберите код" : "В этом BOM кодов пока нет"}
+          value={bomFilters.tnvedCodes || []}
+          onChange={(value) => setBomFilterValue("tnvedCodes", value)}
+          options={bomTnvedFilterOptions}
+          disabled={!bomTnvedFilterOptions.length}
           style={{ width: "100%" }}
         />
       </div>
@@ -5200,28 +5248,69 @@ export default function EquipmentClassifierMain() {
             style={{ width: "50%" }}
           />
         </Space.Compact>
-        <Select
-          allowClear
-          placeholder="Заполненность массы"
-          value={bomFilters.weightStatus}
-          onChange={(value) => setBomFilterValue("weightStatus", value)}
-          options={BOM_FIELD_STATUS_OPTIONS}
-          style={{ width: "100%", marginTop: 6 }}
-        />
       </div>
 
       <div>
         <Typography.Text type="secondary" style={{ display: "block", marginBottom: 4 }}>
-          Габариты
+          Габариты, см
         </Typography.Text>
-        <Select
-          allowClear
-          placeholder="Любые"
-          value={bomFilters.dimensionsStatus}
-          onChange={(value) => setBomFilterValue("dimensionsStatus", value)}
-          options={BOM_FIELD_STATUS_OPTIONS}
-          style={{ width: "100%" }}
-        />
+        <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+          Длина
+        </Typography.Text>
+        <Space.Compact style={{ width: "100%", marginBottom: 6 }}>
+          <InputNumber
+            placeholder="от"
+            min={0}
+            value={bomFilters.lengthMin}
+            onChange={(value) => setBomFilterValue("lengthMin", value)}
+            style={{ width: "50%" }}
+          />
+          <InputNumber
+            placeholder="до"
+            min={0}
+            value={bomFilters.lengthMax}
+            onChange={(value) => setBomFilterValue("lengthMax", value)}
+            style={{ width: "50%" }}
+          />
+        </Space.Compact>
+        <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+          Ширина
+        </Typography.Text>
+        <Space.Compact style={{ width: "100%", marginBottom: 6 }}>
+          <InputNumber
+            placeholder="от"
+            min={0}
+            value={bomFilters.widthMin}
+            onChange={(value) => setBomFilterValue("widthMin", value)}
+            style={{ width: "50%" }}
+          />
+          <InputNumber
+            placeholder="до"
+            min={0}
+            value={bomFilters.widthMax}
+            onChange={(value) => setBomFilterValue("widthMax", value)}
+            style={{ width: "50%" }}
+          />
+        </Space.Compact>
+        <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+          Высота
+        </Typography.Text>
+        <Space.Compact style={{ width: "100%" }}>
+          <InputNumber
+            placeholder="от"
+            min={0}
+            value={bomFilters.heightMin}
+            onChange={(value) => setBomFilterValue("heightMin", value)}
+            style={{ width: "50%" }}
+          />
+          <InputNumber
+            placeholder="до"
+            min={0}
+            value={bomFilters.heightMax}
+            onChange={(value) => setBomFilterValue("heightMax", value)}
+            style={{ width: "50%" }}
+          />
+        </Space.Compact>
       </div>
 
       <div>
@@ -5230,24 +5319,13 @@ export default function EquipmentClassifierMain() {
         </Typography.Text>
         <Select
           allowClear
-          placeholder="Любой"
-          value={bomFilters.materialStatus}
-          onChange={(value) => setBomFilterValue("materialStatus", value)}
-          options={BOM_FIELD_STATUS_OPTIONS}
-          style={{ width: "100%" }}
-        />
-      </div>
-
-      <div>
-        <Typography.Text type="secondary" style={{ display: "block", marginBottom: 4 }}>
-          Описание
-        </Typography.Text>
-        <Select
-          allowClear
-          placeholder="Любое"
-          value={bomFilters.descriptionStatus}
-          onChange={(value) => setBomFilterValue("descriptionStatus", value)}
-          options={BOM_FIELD_STATUS_OPTIONS}
+          mode="multiple"
+          maxTagCount="responsive"
+          placeholder={bomMaterialFilterOptions.length ? "Выберите материал" : "В этом BOM материалов пока нет"}
+          value={bomFilters.materialValues || []}
+          onChange={(value) => setBomFilterValue("materialValues", value)}
+          options={bomMaterialFilterOptions}
+          disabled={!bomMaterialFilterOptions.length}
           style={{ width: "100%" }}
         />
       </div>
