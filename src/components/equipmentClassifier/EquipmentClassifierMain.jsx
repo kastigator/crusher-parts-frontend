@@ -2250,21 +2250,42 @@ export default function EquipmentClassifierMain() {
       })),
     [crossModelBomRows, crossModelBomSource],
   )
-  const crossModelOptions = useMemo(
-    () => allModels
+  const crossModelOptions = useMemo(() => {
+    if (!currentModel?.id) return []
+
+    const currentModelId = Number(currentModel.id)
+    const currentManufacturerId = Number(currentModel.manufacturer_id)
+    const hasManufacturerId = Number.isFinite(currentManufacturerId) && currentManufacturerId > 0
+    const currentManufacturerName = String(currentModel.manufacturer_name || "").trim().toLowerCase()
+
+    return allModels
+      .filter((model) => {
+        const isCurrent = Number(model.id) === currentModelId
+        if (isCurrent) return true
+
+        const modelManufacturerId = Number(model.manufacturer_id)
+        if (hasManufacturerId && Number.isFinite(modelManufacturerId) && modelManufacturerId > 0) {
+          return modelManufacturerId === currentManufacturerId
+        }
+
+        if (currentManufacturerName) {
+          return String(model.manufacturer_name || "").trim().toLowerCase() === currentManufacturerName
+        }
+
+        return false
+      })
       .map((model) => ({
         value: Number(model.id),
         label: `${[model.manufacturer_name, model.model_name].filter(Boolean).join(" ") || `Модель #${model.id}`}${
-          Number(model.id) === Number(currentModel?.id) ? " (текущая модель)" : ""
+          Number(model.id) === currentModelId ? " (текущая модель)" : ""
         }`,
-        isCurrent: Number(model.id) === Number(currentModel?.id),
+        isCurrent: Number(model.id) === currentModelId,
       }))
       .sort((a, b) => {
         if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1
         return String(a.label).localeCompare(String(b.label), "ru")
-      }),
-    [allModels, currentModel?.id],
-  )
+      })
+  }, [allModels, currentModel?.id, currentModel?.manufacturer_id, currentModel?.manufacturer_name])
 
   useEffect(() => {
     setBomExpandedKeys(currentModelBomExpandableKeys)
@@ -6089,6 +6110,11 @@ export default function EquipmentClassifierMain() {
           <Form.Item
             label="В какую модель добавить"
             name="target_model_id"
+            extra={
+              currentModel?.manufacturer_name
+                ? `Показываем только модели производителя ${currentModel.manufacturer_name}.`
+                : "Показываем модели того же производителя, что и у текущей модели."
+            }
             rules={[{ required: true, message: "Выберите модель" }]}
           >
             <Select
@@ -6096,6 +6122,7 @@ export default function EquipmentClassifierMain() {
               placeholder="Выберите модель"
               optionFilterProp="label"
               options={crossModelOptions}
+              notFoundContent="У этого производителя нет других моделей"
               onChange={() => {
                 bomCrossModelForm.setFieldsValue({ parent_item_id: null })
               }}
