@@ -2511,8 +2511,8 @@ export default function ClientRequestsPage() {
   return (
     <PageWrapper
       title="Заявки клиентов"
-      subtitle="Операционный контур по клиентским заявкам: от первичной регистрации до передачи в закупку и перехода в RFQ."
-      helpSummary="Статусы: Черновик → В работе → Релиз в закупку → RFQ создан → RFQ отправлен → Ответы → Выбор → КП → Контракт."
+      subtitle="Рабочее место продажи: от клиентской потребности до закупочной базы, КП, контракта и исполнения."
+      helpSummary="Статусы: Черновик → В работе → Релиз в закупку → RFQ создан → RFQ отправлен → Ответы → Выбор → КП → Контракт → Исполнение."
       primaryActions={(
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateRequestOpen(true)}>
           Новая заявка
