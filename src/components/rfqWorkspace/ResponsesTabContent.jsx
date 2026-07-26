@@ -29,6 +29,7 @@ import { useNavigate } from "react-router-dom"
 import useCapabilities from "@/hooks/useCapabilities"
 import useTableScrollHints from "@/utils/useTableScrollHints"
 import { compactInputNumberProps } from "@/utils/numberFormat"
+import { cmToMm, mmToCm } from "@/utils/dimensions"
 import "@/styles/tableStyles.css"
 import {
   SUPPLIER_DEFAULT_CURRENCY_OPTIONS,
@@ -288,9 +289,9 @@ const hasPositiveDimensionValue = (value) => {
 
 const formatSupplierPartDimensions = (row) => {
   const values = [
-    row?.latest_supplier_part_length_cm,
-    row?.latest_supplier_part_width_cm,
-    row?.latest_supplier_part_height_cm,
+    cmToMm(row?.latest_supplier_part_length_cm),
+    cmToMm(row?.latest_supplier_part_width_cm),
+    cmToMm(row?.latest_supplier_part_height_cm),
   ]
   if (!values.some(hasPositiveDimensionValue)) return "—"
   return values.map(formatOptionalNumber).join(" × ")
@@ -1252,9 +1253,9 @@ export default function ResponsesTabContent({
           min_order_qty: values.moq ?? null,
           packaging: values.packaging || null,
           weight_kg: values.new_supplier_part_weight_kg ?? null,
-          length_cm: values.new_supplier_part_length_cm ?? null,
-          width_cm: values.new_supplier_part_width_cm ?? null,
-          height_cm: values.new_supplier_part_height_cm ?? null,
+          length_cm: mmToCm(values.new_supplier_part_length_cm),
+          width_cm: mmToCm(values.new_supplier_part_width_cm),
+          height_cm: mmToCm(values.new_supplier_part_height_cm),
           is_overweight:
             values.new_supplier_part_is_overweight === true
               ? 1
@@ -1274,9 +1275,9 @@ export default function ResponsesTabContent({
           min_order_qty: values.moq ?? null,
           packaging: values.packaging || null,
           weight_kg: values.supplier_part_weight_kg ?? null,
-          length_cm: values.supplier_part_length_cm ?? null,
-          width_cm: values.supplier_part_width_cm ?? null,
-          height_cm: values.supplier_part_height_cm ?? null,
+          length_cm: mmToCm(values.supplier_part_length_cm),
+          width_cm: mmToCm(values.supplier_part_width_cm),
+          height_cm: mmToCm(values.supplier_part_height_cm),
           is_overweight:
             values.supplier_part_is_overweight === true
               ? 1
@@ -1510,7 +1511,7 @@ export default function ResponsesTabContent({
     },
     {
       key: "dimensions",
-      title: "Габариты, см",
+      title: "Габариты, мм",
       width: 150,
       render: (_, r) => formatSupplierPartDimensions(r),
     },
@@ -1739,7 +1740,7 @@ export default function ResponsesTabContent({
     },
     {
       key: "dimensions",
-      title: "Габариты, см",
+      title: "Габариты, мм",
       width: 150,
       render: (_, r) => formatSupplierPartDimensions(r),
     },
@@ -2357,9 +2358,9 @@ export default function ResponsesTabContent({
                   }
                   manualForm.setFieldsValue({
                     supplier_part_weight_kg: option.meta.weight_kg ?? null,
-                    supplier_part_length_cm: option.meta.length_cm ?? null,
-                    supplier_part_width_cm: option.meta.width_cm ?? null,
-                    supplier_part_height_cm: option.meta.height_cm ?? null,
+                    supplier_part_length_cm: cmToMm(option.meta.length_cm),
+                    supplier_part_width_cm: cmToMm(option.meta.width_cm),
+                    supplier_part_height_cm: cmToMm(option.meta.height_cm),
                     supplier_part_is_overweight: Number(option.meta.is_overweight) === 1,
                     supplier_part_is_oversize: Number(option.meta.is_oversize) === 1,
                   })
@@ -2389,13 +2390,13 @@ export default function ResponsesTabContent({
                 <Form.Item name="supplier_part_weight_kg" label="Вес, кг">
                   <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
                 </Form.Item>
-                <Form.Item name="supplier_part_length_cm" label="Длина, см">
+                <Form.Item name="supplier_part_length_cm" label="Длина, мм">
                   <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
                 </Form.Item>
-                <Form.Item name="supplier_part_width_cm" label="Ширина, см">
+                <Form.Item name="supplier_part_width_cm" label="Ширина, мм">
                   <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
                 </Form.Item>
-                <Form.Item name="supplier_part_height_cm" label="Высота, см">
+                <Form.Item name="supplier_part_height_cm" label="Высота, мм">
                   <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
                 </Form.Item>
               </Space>
@@ -2439,13 +2440,13 @@ export default function ResponsesTabContent({
                 <Form.Item name="new_supplier_part_weight_kg" label="Вес, кг">
                   <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
                 </Form.Item>
-                <Form.Item name="new_supplier_part_length_cm" label="Длина, см">
+                <Form.Item name="new_supplier_part_length_cm" label="Длина, мм">
                   <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
                 </Form.Item>
-                <Form.Item name="new_supplier_part_width_cm" label="Ширина, см">
+                <Form.Item name="new_supplier_part_width_cm" label="Ширина, мм">
                   <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
                 </Form.Item>
-                <Form.Item name="new_supplier_part_height_cm" label="Высота, см">
+                <Form.Item name="new_supplier_part_height_cm" label="Высота, мм">
                   <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
                 </Form.Item>
               </Space>
