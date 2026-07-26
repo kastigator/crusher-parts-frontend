@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { Alert, Button, Card, Drawer, InputNumber, Select, Space, Table, Tag, Typography, message } from "antd"
+import { Alert, Button, Card, Drawer, InputNumber, Popconfirm, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
 import { getClientFacingDescription, getClientFacingPartNumber } from "@/components/rfqWorkspace/partDisplay"
@@ -95,6 +95,7 @@ export default function RequestMarginTabContent({ requestId }) {
   const [calculatorLineDefaults, setCalculatorLineDefaults] = useState(calculatorDefaultLineDefaults)
   const [calculatorPreview, setCalculatorPreview] = useState(null)
   const [calculatorLoading, setCalculatorLoading] = useState(false)
+  const [calculatorApplying, setCalculatorApplying] = useState(false)
   const loadQuotes = async () => {
     if (!requestId) return
     try {
@@ -288,6 +289,35 @@ export default function RequestMarginTabContent({ requestId }) {
       message.error(e?.response?.data?.message || "Не удалось рассчитать preview КП")
     } finally {
       setCalculatorLoading(false)
+    }
+  }
+
+  const applyCalculatorPreview = async () => {
+    if (!selectedRevisionId) return
+    if (dirtyLineIds.length) {
+      message.warning("Сначала сохраните изменения в строках КП")
+      return
+    }
+    setCalculatorApplying(true)
+    try {
+      const { data } = await axios.post(
+        `/sales-quotes/revisions/${selectedRevisionId}/calculation-apply`,
+        {
+          globals: calculatorGlobals,
+          line_defaults: calculatorLineDefaults,
+        }
+      )
+      setCalculatorPreview(data)
+      message.success(`Расчет применен к строкам КП: ${Number(data?.updated_line_count || 0)}`)
+      await loadLines(selectedRevisionId)
+      await loadQuotes()
+      await loadRevisions(selectedQuoteId)
+    } catch (e) {
+      const details = Array.isArray(e?.response?.data?.details) ? e.response.data.details.join(" ") : ""
+      const baseMessage = e?.response?.data?.message || "Не удалось применить расчет к КП"
+      message.error(details ? `${baseMessage}: ${details}` : baseMessage)
+    } finally {
+      setCalculatorApplying(false)
     }
   }
 
@@ -514,7 +544,9 @@ export default function RequestMarginTabContent({ requestId }) {
         title="Калькулятор цены КП"
         extra={
           <Space wrap>
-            <Tag color="blue">Preview без сохранения</Tag>
+            <Tag color={calculatorPreview?.applied ? "green" : "blue"}>
+              {calculatorPreview?.applied ? "Применено в КП" : "Preview без сохранения"}
+            </Tag>
             <Button size="small" onClick={resetCalculator}>
               Сбросить
             </Button>
@@ -527,6 +559,22 @@ export default function RequestMarginTabContent({ requestId }) {
             >
               Рассчитать
             </Button>
+            <Popconfirm
+              title="Применить расчет к КП?"
+              description="Продажные цены активных строк будут обновлены, а расчет сохранится как snapshot."
+              okText="Применить"
+              cancelText="Отмена"
+              onConfirm={applyCalculatorPreview}
+              disabled={!calculatorPreview || !canEditRevision || Boolean(dirtyLineIds.length)}
+            >
+              <Button
+                size="small"
+                loading={calculatorApplying}
+                disabled={!calculatorPreview || !canEditRevision || Boolean(dirtyLineIds.length)}
+              >
+                Применить в КП
+              </Button>
+            </Popconfirm>
           </Space>
         }
       >
