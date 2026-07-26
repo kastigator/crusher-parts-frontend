@@ -1,11 +1,9 @@
 // src/components/clients/ClientMetaCard.jsx
 import React, { useMemo, useState } from "react"
 import { EditOutlined } from "@ant-design/icons"
-import { Button, Card, Descriptions, Form, Space, Typography, message } from "antd"
+import { Button, Card, Descriptions, Form, message } from "antd"
 import axios from "@/api/axiosInstance"
 import ClientUpsertDrawer from "./ClientUpsertDrawer"
-
-const { Text } = Typography
 
 const trimOrNull = (v) => {
   const s = (v ?? "").toString().trim()
@@ -94,12 +92,7 @@ export default function ClientMetaCard({ client, onSaved }) {
           </Button>
         }
       >
-        <Space direction="vertical" style={{ width: "100%" }} size={10}>
-          <Text type="secondary">
-            Основные данные клиента вынесены в единое боковое окно создания/редактирования.
-          </Text>
-          <Descriptions size="small" column={2} items={summaryItems} />
-        </Space>
+        <Descriptions size="small" column={2} items={summaryItems} />
       </Card>
 
       <ClientUpsertDrawer

@@ -17,9 +17,9 @@ import axios from "@/api/axiosInstance"
 
 const RELATIONSHIP_OPTIONS = [
   { value: "client_drawing", label: "По чертежу клиента" },
-  { value: "oem_variant", label: "Отличается от OEM" },
-  { value: "oem_replacement", label: "Замена OEM" },
-  { value: "unknown_oem", label: "OEM неизвестен" },
+  { value: "oem_variant", label: "Вариант каталожной позиции" },
+  { value: "oem_replacement", label: "Замена каталожной позиции" },
+  { value: "unknown_oem", label: "Без известной позиции" },
 ]
 
 const RELATIONSHIP_LABELS = Object.fromEntries(RELATIONSHIP_OPTIONS.map((item) => [item.value, item.label]))
@@ -78,8 +78,6 @@ export default function ClientPartsMain({ clientId, onChanged }) {
   const [applications, setApplications] = useState([])
   const [applicationLoading, setApplicationLoading] = useState(false)
   const [classifierTree, setClassifierTree] = useState([])
-  const [oemOptions, setOemOptions] = useState([])
-  const [oemLoading, setOemLoading] = useState(false)
   const [equipmentModels, setEquipmentModels] = useState([])
   const [equipmentUnits, setEquipmentUnits] = useState([])
   const [form] = Form.useForm()
@@ -97,7 +95,7 @@ export default function ClientPartsMain({ clientId, onChanged }) {
       setRows(Array.isArray(data) ? data : [])
     } catch (err) {
       console.error("GET /client-parts error:", err)
-      message.error(err?.response?.data?.message || "Не удалось загрузить детали клиента")
+      message.error(err?.response?.data?.message || "Не удалось загрузить номенклатуру клиента")
     } finally {
       setLoading(false)
     }
@@ -131,11 +129,6 @@ export default function ClientPartsMain({ clientId, onChanged }) {
     }
   }, [clientId])
 
-  const searchOemParts = useCallback(async () => {
-    setOemOptions([])
-    setOemLoading(false)
-  }, [])
-
   useEffect(() => {
     loadRows()
   }, [loadRows])
@@ -150,7 +143,6 @@ export default function ClientPartsMain({ clientId, onChanged }) {
 
   const openCreate = () => {
     setEditingRow(null)
-    setOemOptions([])
     form.setFieldsValue(EMPTY_FORM)
     setModalOpen(true)
   }
@@ -172,22 +164,6 @@ export default function ClientPartsMain({ clientId, onChanged }) {
       status: row.status || "active",
       notes: row.notes || "",
     })
-    setOemOptions(
-      row.base_oem_part_id
-        ? [
-            {
-              value: row.base_oem_part_id,
-              label: [
-                row.base_oem_part_number,
-                row.base_oem_manufacturer_name,
-                row.base_oem_description_ru || row.base_oem_description_en,
-              ]
-                .filter(Boolean)
-                .join(" / "),
-            },
-          ]
-        : [],
-    )
     setModalOpen(true)
   }
 
@@ -214,10 +190,10 @@ export default function ClientPartsMain({ clientId, onChanged }) {
       setSaving(true)
       if (editingRow?.id) {
         await axios.put(`/client-parts/${editingRow.id}`, payload)
-        message.success("Деталь клиента обновлена")
+        message.success("Позиция клиента обновлена")
       } else {
         await axios.post("/client-parts", payload)
-        message.success("Деталь клиента добавлена")
+        message.success("Позиция клиента добавлена")
       }
       setModalOpen(false)
       await loadRows()
@@ -225,7 +201,7 @@ export default function ClientPartsMain({ clientId, onChanged }) {
     } catch (err) {
       if (err?.errorFields) return
       console.error("save client part error:", err)
-      message.error(err?.response?.data?.message || "Не удалось сохранить деталь клиента")
+      message.error(err?.response?.data?.message || "Не удалось сохранить позицию клиента")
     } finally {
       setSaving(false)
     }
@@ -234,12 +210,12 @@ export default function ClientPartsMain({ clientId, onChanged }) {
   const handleDelete = async (row) => {
     try {
       await axios.delete(`/client-parts/${row.id}`)
-      message.success("Деталь клиента перемещена в корзину")
+      message.success("Позиция клиента перемещена в корзину")
       await loadRows()
       onChanged?.()
     } catch (err) {
       console.error("DELETE /client-parts/:id error:", err)
-      message.error(err?.response?.data?.message || "Не удалось удалить деталь клиента")
+      message.error(err?.response?.data?.message || "Не удалось удалить позицию клиента")
     }
   }
 
@@ -383,7 +359,7 @@ export default function ClientPartsMain({ clientId, onChanged }) {
 
   const columns = [
     {
-      title: "Деталь клиента",
+      title: "Позиция клиента",
       render: (_, row) => (
         <Space direction="vertical" size={0}>
           <Typography.Text strong>{textOrDash(row.display_name)}</Typography.Text>
@@ -451,7 +427,7 @@ export default function ClientPartsMain({ clientId, onChanged }) {
             Применяемость
           </Button>
           <Popconfirm
-            title="Удалить деталь клиента?"
+            title="Удалить позицию клиента?"
             okText="Удалить"
             cancelText="Отмена"
             onConfirm={() => handleDelete(row)}
@@ -470,10 +446,10 @@ export default function ClientPartsMain({ clientId, onChanged }) {
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
         <Space style={{ justifyContent: "space-between", width: "100%" }} wrap>
           <Typography.Text type="secondary">
-            Детали клиента по чертежам живут отдельно от каталога модели. Модель или конкретная машина указываются только если это нужно.
+            Клиентская номенклатура хранит обозначения, чертежи и ревизии клиента рядом с применяемостью по модели или машине.
           </Typography.Text>
           <Button type="primary" onClick={openCreate}>
-            Добавить деталь
+            Добавить позицию
           </Button>
         </Space>
 
@@ -490,7 +466,7 @@ export default function ClientPartsMain({ clientId, onChanged }) {
 
       <Modal
         open={modalOpen}
-        title={editingRow ? "Редактирование детали клиента" : "Новая деталь клиента по чертежу"}
+        title={editingRow ? "Редактирование номенклатуры клиента" : "Новая позиция номенклатуры клиента"}
         onCancel={() => setModalOpen(false)}
         onOk={handleSubmit}
         confirmLoading={saving}
@@ -518,7 +494,7 @@ export default function ClientPartsMain({ clientId, onChanged }) {
                 options={classifierOptions}
               />
             </Form.Item>
-            <Form.Item label="Тип детали клиента" name="relationship_type" style={{ width: 220 }}>
+            <Form.Item label="Тип позиции клиента" name="relationship_type" style={{ width: 220 }}>
               <Select options={RELATIONSHIP_OPTIONS} />
             </Form.Item>
             <Form.Item label="Номер клиента" name="client_part_number" style={{ width: 220 }}>
@@ -543,8 +519,8 @@ export default function ClientPartsMain({ clientId, onChanged }) {
           <Form.Item label="Описание" name="description_ru">
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item label="Чем отличается / почему отдельная карточка" name="difference_summary">
-            <Input.TextArea rows={2} placeholder="Например: старая ревизия узла, другой материал, измененная посадка, замена оригинала" />
+          <Form.Item label="Чем отличается / почему отдельная позиция" name="difference_summary">
+            <Input.TextArea rows={2} placeholder="Например: старая ревизия узла, другой материал, измененная посадка, замена базовой позиции" />
           </Form.Item>
           <Form.Item label="Заметки" name="notes">
             <Input.TextArea rows={2} />

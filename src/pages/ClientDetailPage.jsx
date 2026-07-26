@@ -4,7 +4,6 @@ import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { Button, Card, Empty, Space, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import TabRendererPage from "@/components/common/TabRendererPage"
-import ClientMetaCard from "@/components/clients/ClientMetaCard"
 import ClientDock from "@/components/clients/ClientDock"
 
 const { Text } = Typography
@@ -74,13 +73,9 @@ export default function ClientDetailPage() {
             <Empty description="Клиент не найден" />
           </Card>
         ) : (
-          <>
-            <ClientMetaCard client={client} onSaved={load} />
-            <ClientDock client={client} onChanged={load} />
-          </>
+          <ClientDock client={client} onChanged={load} />
         )}
       </Space>
     </TabRendererPage>
   )
 }
-

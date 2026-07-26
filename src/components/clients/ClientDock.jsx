@@ -9,12 +9,13 @@ import ClientContactsMain from "./ClientContactsMain"
 import ClientOrdersTab from "./ClientOrdersTab"
 import ClientEquipmentUnitsMain from "./ClientEquipmentUnitsMain"
 import ClientPartsMain from "./ClientPartsMain"
+import ClientMetaCard from "./ClientMetaCard"
 
 const { Text } = Typography
 
 export default function ClientDock({ client, onChanged }) {
   const clientId = Number(client?.id)
-  const [activeKey, setActiveKey] = useState("contacts")
+  const [activeKey, setActiveKey] = useState("overview")
 
   const header = useMemo(() => {
     if (!client) return null
@@ -38,31 +39,36 @@ export default function ClientDock({ client, onChanged }) {
   }
 
   return (
-    <Card title={header} bodyStyle={{ paddingTop: 8 }}>
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid #f0f0f0",
+        borderRadius: 8,
+        padding: "12px 16px 16px",
+      }}
+    >
+      <div style={{ marginBottom: 8 }}>{header}</div>
       <Tabs
         activeKey={activeKey}
         onChange={setActiveKey}
         destroyInactiveTabPane
         items={[
           {
+            key: "overview",
+            label: "Обзор",
+            children: <ClientMetaCard client={client} onSaved={onChanged} />,
+          },
+          {
             key: "contacts",
-            label: "Контакты",
-            children: <ClientContactsMain clientId={clientId} onChanged={onChanged} />,
-          },
-          {
-            key: "billing",
-            label: "Юр. адреса",
-            children: <BillingAddressesMain clientId={clientId} onChanged={onChanged} />,
-          },
-          {
-            key: "shipping",
-            label: "Адреса доставки",
-            children: <ShippingAddressesMain clientId={clientId} onChanged={onChanged} />,
-          },
-          {
-            key: "bank",
-            label: "Банк. реквизиты",
-            children: <BankDetailsMain clientId={clientId} onChanged={onChanged} />,
+            label: "Контакты и адреса",
+            children: (
+              <Space direction="vertical" style={{ width: "100%" }} size={16}>
+                <ClientContactsMain clientId={clientId} onChanged={onChanged} />
+                <BillingAddressesMain clientId={clientId} onChanged={onChanged} />
+                <ShippingAddressesMain clientId={clientId} onChanged={onChanged} />
+                <BankDetailsMain clientId={clientId} onChanged={onChanged} />
+              </Space>
+            ),
           },
           {
             key: "equipment",
@@ -71,16 +77,16 @@ export default function ClientDock({ client, onChanged }) {
           },
           {
             key: "client-parts",
-            label: "Детали по чертежам",
+            label: "Номенклатура клиента",
             children: <ClientPartsMain clientId={clientId} onChanged={onChanged} />,
           },
           {
             key: "orders",
-            label: "История заказов",
+            label: "Заявки и сделки",
             children: <ClientOrdersTab clientId={clientId} />,
           },
         ]}
       />
-    </Card>
+    </div>
   )
 }

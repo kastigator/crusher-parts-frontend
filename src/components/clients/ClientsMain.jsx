@@ -1,15 +1,28 @@
 // src/components/clients/ClientsMain.jsx
 import React, { useCallback, useEffect, useRef, useState } from "react"
-import { Badge, Button, Card, Checkbox, Form, Popover, Space, message } from "antd"
-import { FilterOutlined, InboxOutlined, PlusOutlined } from "@ant-design/icons"
+import {
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  Empty,
+  Form,
+  Popover,
+  Segmented,
+  Space,
+  message,
+} from "antd"
+import { FilterOutlined } from "@ant-design/icons"
 import { useLocation, useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 
 import TableToolbar from "@/components/common/TableToolbar"
+import WorkspaceShell from "@/components/common/WorkspaceShell"
 import ClientsTable from "./ClientsTable"
 import ClientsFiltersDrawer from "./ClientsFiltersDrawer"
 import { countActiveFilters } from "./clientsFiltersUtils"
 import ClientUpsertDrawer from "./ClientUpsertDrawer"
+import ClientDock from "./ClientDock"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
 
 const trimOrNull = (v) => {
@@ -23,6 +36,8 @@ export default function ClientsMain() {
 
   const [loading, setLoading] = useState(false)
   const [rows, setRows] = useState([])
+  const [selectedClientId, setSelectedClientId] = useState(null)
+  const [selectedClient, setSelectedClient] = useState(null)
 
   const [search, setSearch] = useState("")
   const [filters, setFilters] = useState({})
@@ -51,6 +66,7 @@ export default function ClientsMain() {
   const columnsLoadStartedRef = useRef(false)
   const columnsHydratedRef = useRef(false)
   const columnsSaveTimerRef = useRef(null)
+  const abortRef = useRef(null)
 
   const restoreAppliedRef = useRef(false)
   useEffect(() => {
@@ -163,6 +179,14 @@ export default function ClientsMain() {
   }, [columnsByView, columnOrderByView])
 
   const fetchClients = useCallback(async () => {
+    try {
+      abortRef.current?.abort()
+    } catch {
+      // ignore abort errors
+    }
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setLoading(true)
     try {
       const params = { limit: 500, offset: 0 }
@@ -172,9 +196,19 @@ export default function ClientsMain() {
       if (f.has_email) params.has_email = 1
       if (f.has_tax_id) params.has_tax_id = 1
       if (f.has_website) params.has_website = 1
-      const { data } = await axios.get("/clients", { params })
+      const { data } = await axios.get("/clients", {
+        params,
+        signal: controller.signal,
+      })
       setRows(Array.isArray(data) ? data : [])
     } catch (e) {
+      if (
+        e?.name === "AbortError" ||
+        e?.name === "CanceledError" ||
+        e?.code === "ERR_CANCELED"
+      ) {
+        return
+      }
       console.error(e)
       message.error("Не удалось загрузить клиентов")
     } finally {
@@ -187,6 +221,56 @@ export default function ClientsMain() {
     const t = setTimeout(() => fetchClients(), 200)
     return () => clearTimeout(t)
   }, [fetchClients])
+
+  useEffect(() => {
+    if (!rows.length) {
+      setSelectedClientId(null)
+      setSelectedClient(null)
+      return
+    }
+
+    const current = selectedClientId
+      ? rows.find((row) => Number(row.id) === Number(selectedClientId))
+      : null
+    if (current) {
+      setSelectedClient(current)
+      return
+    }
+
+    setSelectedClientId(rows[0].id)
+    setSelectedClient(rows[0])
+  }, [rows, selectedClientId])
+
+  const selectClient = useCallback((record) => {
+    if (!record?.id) return
+    setSelectedClientId(Number(record.id))
+    setSelectedClient(record)
+  }, [])
+
+  const loadSelectedClient = useCallback(async () => {
+    if (!selectedClientId) return null
+    try {
+      const { data } = await axios.get(`/clients/${selectedClientId}`)
+      if (data?.id) {
+        setSelectedClient(data)
+        setRows((prev) =>
+          (Array.isArray(prev) ? prev : []).map((row) =>
+            Number(row.id) === Number(data.id) ? { ...row, ...data } : row,
+          ),
+        )
+      }
+      return data || null
+    } catch (e) {
+      console.error("Не удалось обновить карточку клиента", e)
+      message.error("Не удалось обновить карточку клиента")
+      return null
+    }
+  }, [selectedClientId])
+
+  const handleWorkspaceChanged = useCallback(async () => {
+    await loadSelectedClient()
+    await fetchClients()
+  }, [fetchClients, loadSelectedClient])
 
   const formInitialValues = useCallback(
     (record = null) => ({
@@ -237,6 +321,10 @@ export default function ClientsMain() {
       const { data: created } = await axios.post("/clients", payload)
       message.success("Клиент создан")
       flashRow(created?.id)
+      if (created?.id) {
+        setSelectedClientId(Number(created.id))
+        setSelectedClient(created)
+      }
       await fetchClients()
       if (createSubmitModeRef.current === "create_next") {
         createForm.setFieldsValue(formInitialValues())
@@ -264,6 +352,9 @@ export default function ClientsMain() {
       const { data: updated } = await axios.put(`/clients/${editingRow.id}`, payload)
       message.success("Клиент обновлен")
       flashRow(updated?.id || editingRow.id)
+      if (Number(selectedClientId) === Number(editingRow.id)) {
+        setSelectedClient(updated || { ...editingRow, ...payload })
+      }
       setEditOpen(false)
       setEditingRow(null)
       await fetchClients()
@@ -288,6 +379,10 @@ export default function ClientsMain() {
         successMessage: "Клиент перемещён в корзину",
       })
       if (result?.deleted) {
+        if (Number(selectedClientId) === Number(client.id)) {
+          setSelectedClientId(null)
+          setSelectedClient(null)
+        }
         await fetchClients()
       }
     } catch (e) {
@@ -301,114 +396,148 @@ export default function ClientsMain() {
     }
   }
 
-  return (
-    <Space direction="vertical" style={{ width: "100%" }} size={16}>
-      <Card bodyStyle={{ paddingTop: 8 }}>
-        <TableToolbar
-          placeholder="Поиск по клиентам (компания, контакт, телефон, e-mail)…"
-          search={search}
-          onSearch={setSearch}
-          onAdd={openCreateDrawer}
-          onShowDeleted={() => navigate("/trash")}
-          searchWidth="clamp(280px, 42vw, 620px)"
-          searchEnterButton="Найти"
-          extraActions={
-            <Space size={12} wrap>
-              <Badge count={countActiveFilters(filters)} size="small" offset={[-2, 6]}>
-                <Button icon={<FilterOutlined />} onClick={() => setFiltersOpen(true)}>
-                  Фильтры
-                </Button>
-              </Badge>
+  const quickCompleteness = filters?.has_phone
+    ? "phone"
+    : filters?.has_email
+      ? "email"
+      : filters?.has_tax_id
+        ? "tax"
+        : "all"
 
-              <Popover
-                open={columnsPopoverOpen}
-                onOpenChange={setColumnsPopoverOpen}
-                trigger="click"
-                placement="bottomRight"
-                content={
-                  <div style={{ width: 260 }}>
-                    <div style={{ fontWeight: 700, marginBottom: 8 }}>Колонки</div>
-                    <Space direction="vertical" size={6} style={{ width: "100%" }}>
-                      {(columnsMeta.options || []).map((opt) => {
-                        const base =
-                          Array.isArray(currentVisibleKeys) && currentVisibleKeys.length
-                            ? currentVisibleKeys
-                            : columnsMeta.defaultVisible
-                        const checked = base?.includes?.(opt.key)
-                        return (
-                          <Checkbox
-                            key={opt.key}
-                            checked={!!checked}
-                            onChange={(e) => {
-                              const next = e.target.checked
-                                ? [...(base || []), opt.key]
-                                : (base || []).filter((k) => k !== opt.key)
-                              setColumnsByView((prev) => ({
-                                ...(prev || {}),
-                                [columnsViewKey]: next,
-                              }))
-                            }}
-                          >
-                            {opt.label}
-                          </Checkbox>
-                        )
-                      })}
-                      <Space style={{ marginTop: 8 }}>
-                        <Button
-                          size="small"
-                          onClick={() => {
+  const listPane = (
+    <Card bodyStyle={{ paddingTop: 8 }}>
+      <TableToolbar
+        placeholder="Поиск по клиентам (компания, контакт, телефон, e-mail)…"
+        search={search}
+        onSearch={setSearch}
+        onAdd={openCreateDrawer}
+        onShowDeleted={() => navigate("/trash")}
+        searchWidth="clamp(280px, 42vw, 620px)"
+        searchEnterButton="Найти"
+        extraActions={
+          <Space size={12} wrap style={{ justifyContent: "flex-end" }}>
+            <Segmented
+              size="small"
+              value={quickCompleteness}
+              options={[
+                { label: "Все", value: "all" },
+                { label: "Телефон", value: "phone" },
+                { label: "E-mail", value: "email" },
+                { label: "ИНН", value: "tax" },
+              ]}
+              onChange={(value) => {
+                const next = String(value)
+                setFilters((prev) => ({
+                  ...(prev || {}),
+                  has_phone: next === "phone",
+                  has_email: next === "email",
+                  has_tax_id: next === "tax",
+                }))
+              }}
+            />
+
+            <Badge count={countActiveFilters(filters)} size="small" offset={[-2, 6]}>
+              <Button icon={<FilterOutlined />} onClick={() => setFiltersOpen(true)}>
+                Фильтры
+              </Button>
+            </Badge>
+
+            <Popover
+              open={columnsPopoverOpen}
+              onOpenChange={setColumnsPopoverOpen}
+              trigger="click"
+              placement="bottomRight"
+              content={
+                <div style={{ width: 260 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 8 }}>Колонки</div>
+                  <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                    {(columnsMeta.options || []).map((opt) => {
+                      const base =
+                        Array.isArray(currentVisibleKeys) && currentVisibleKeys.length
+                          ? currentVisibleKeys
+                          : columnsMeta.defaultVisible
+                      const checked = base?.includes?.(opt.key)
+                      return (
+                        <Checkbox
+                          key={opt.key}
+                          checked={!!checked}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...(base || []), opt.key]
+                              : (base || []).filter((k) => k !== opt.key)
                             setColumnsByView((prev) => ({
                               ...(prev || {}),
-                              [columnsViewKey]: columnsMeta.defaultVisible || [],
+                              [columnsViewKey]: next,
                             }))
                           }}
                         >
-                          Сбросить
-                        </Button>
-                        <Button size="small" onClick={() => setColumnsPopoverOpen(false)}>
-                          Готово
-                        </Button>
-                      </Space>
+                          {opt.label}
+                        </Checkbox>
+                      )
+                    })}
+                    <Space style={{ marginTop: 8 }}>
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setColumnsByView((prev) => ({
+                            ...(prev || {}),
+                            [columnsViewKey]: columnsMeta.defaultVisible || [],
+                          }))
+                        }}
+                      >
+                        Сбросить
+                      </Button>
+                      <Button size="small" onClick={() => setColumnsPopoverOpen(false)}>
+                        Готово
+                      </Button>
                     </Space>
-                  </div>
-                }
-              >
-                <Button>Колонки</Button>
-              </Popover>
-            </Space>
-          }
-        />
+                  </Space>
+                </div>
+              }
+            >
+              <Button>Колонки</Button>
+            </Popover>
+          </Space>
+        }
+      />
 
-        <div className="parts-table-wrap table-section">
-          <ClientsTable
-            data={rows}
-            loading={loading}
-            highlightRowId={highlightRowId}
-            visibleColumnKeys={currentVisibleKeys}
-            columnOrderKeys={currentOrderKeys}
-            onColumnsMeta={(meta) =>
-              setColumnsMeta(meta || { options: [], defaultVisible: [], lockedKeys: [] })
-            }
-            onColumnOrderKeysChange={(next) =>
-              setColumnOrderByView((prev) => ({
-                ...(prev || {}),
-                [columnsViewKey]: Array.isArray(next) ? next : [],
-              }))
-            }
-            onEditRecord={openEditDrawer}
-            onDelete={handleDelete}
-            onOpenDetail={(record) => {
-              if (!record?.id) return
-              navigate(`/clients/${record.id}`, {
-                state: {
-                  from: `${location.pathname}${location.search || ""}`,
-                  listState: { search, filters, columnsByView, columnOrderByView },
-                },
-              })
-            }}
-          />
-        </div>
-      </Card>
+      <div className="parts-table-wrap table-section">
+        <ClientsTable
+          data={rows}
+          loading={loading}
+          selectedRowId={selectedClientId}
+          highlightRowId={highlightRowId}
+          visibleColumnKeys={currentVisibleKeys}
+          columnOrderKeys={currentOrderKeys}
+          onColumnsMeta={(meta) =>
+            setColumnsMeta(meta || { options: [], defaultVisible: [], lockedKeys: [] })
+          }
+          onColumnOrderKeysChange={(next) =>
+            setColumnOrderByView((prev) => ({
+              ...(prev || {}),
+              [columnsViewKey]: Array.isArray(next) ? next : [],
+            }))
+          }
+          onEditRecord={openEditDrawer}
+          onDelete={handleDelete}
+          onSelectRecord={selectClient}
+          onOpenDetail={selectClient}
+        />
+      </div>
+    </Card>
+  )
+
+  const detailPane = selectedClient ? (
+    <ClientDock client={selectedClient} onChanged={handleWorkspaceChanged} />
+  ) : (
+    <Card bodyStyle={{ padding: 24 }}>
+      <Empty description="Выберите клиента в списке" />
+    </Card>
+  )
+
+  return (
+    <Space direction="vertical" style={{ width: "100%" }} size={16}>
+      <WorkspaceShell listWidth={520} listPane={listPane} detailPane={detailPane} />
 
       <ClientUpsertDrawer
         open={createOpen}

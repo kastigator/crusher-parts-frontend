@@ -16,6 +16,8 @@ export default function ClientsTable({
   onDelete,
   onEditRecord,
   onOpenDetail,
+  onSelectRecord,
+  selectedRowId = null,
   highlightRowId = null,
   visibleColumnKeys = null,
   onColumnsMeta = null,
@@ -173,10 +175,13 @@ export default function ClientsTable({
   ], [companyMetaText, handleDelete, onEditRecord])
 
   const defaultVisible = useMemo(() => ["company_name", "contact_person", "phone", "email"], [])
-  const defaultOrder = [
-    ...defaultVisible.filter((key) => key !== "actions"),
-    ...(defaultVisible.includes("actions") ? ["actions"] : []),
-  ]
+  const defaultOrder = useMemo(
+    () => [
+      ...defaultVisible.filter((key) => key !== "actions"),
+      ...(defaultVisible.includes("actions") ? ["actions"] : []),
+    ],
+    [defaultVisible],
+  )
   const effectiveVisibleKeys =
     Array.isArray(visibleColumnKeys) && visibleColumnKeys.length ? visibleColumnKeys : defaultVisible
   const effectiveOrderKeys = useMemo(
@@ -245,10 +250,29 @@ export default function ClientsTable({
           tableLayout="fixed"
           pagination={pagination}
           scroll={{ x: "max-content" }}
-          rowClassName={(record) =>
-            Number(record?.id) === Number(highlightRowId) ? "op-row-flash" : ""
-          }
+          rowClassName={(record) => {
+            const classes = []
+            if (Number(record?.id) === Number(selectedRowId)) {
+              classes.push("workspace-selector-row-active")
+            }
+            if (Number(record?.id) === Number(highlightRowId)) {
+              classes.push("op-row-flash")
+            }
+            return classes.join(" ")
+          }}
           onRow={(record) => ({
+            onClick: (e) => {
+              if (!onSelectRecord) return
+              const target = e?.target
+              if (
+                target?.closest?.(
+                  "button,a,input,textarea,select,.ant-btn,.ant-select,.ant-input,.ant-input-number,.ant-checkbox"
+                )
+              ) {
+                return
+              }
+              onSelectRecord(record)
+            },
             onDoubleClick: (e) => {
               if (!onOpenDetail) return
               const target = e?.target
