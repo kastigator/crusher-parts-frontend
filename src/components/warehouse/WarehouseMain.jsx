@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import dayjs from "dayjs"
 import {
   App as AntdApp,
@@ -70,6 +71,24 @@ const SOURCE_LABEL_BY_VALUE = SOURCE_TYPE_OPTIONS.reduce((acc, item) => {
   return acc
 }, {})
 
+const WAREHOUSE_MODE_OPTIONS = [
+  { key: "stock", label: "Остатки" },
+  { key: "reservations", label: "Резервы" },
+  { key: "documents", label: "Документы" },
+  { key: "places", label: "Адреса хранения" },
+]
+
+const WAREHOUSE_MODE_KEYS = new Set(WAREHOUSE_MODE_OPTIONS.map((item) => item.key))
+const POSITION_FILTER_QUERY_KEYS = [
+  "catalog_position_id",
+  "position_id",
+  "position_label",
+  "position_title",
+  "position_subtitle",
+  "uom",
+  "action",
+]
+
 const formatQuantity = (value) => {
   const n = Number(value || 0)
   if (!Number.isFinite(n)) return "0"
@@ -107,6 +126,8 @@ const normalizeSelectValue = (value) => {
 
 export default function WarehouseMain() {
   const { message } = AntdApp.useApp()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialMode = WAREHOUSE_MODE_KEYS.has(searchParams.get("mode")) ? searchParams.get("mode") : "stock"
   const [locations, setLocations] = useState([])
   const [places, setPlaces] = useState([])
   const [overview, setOverview] = useState({
@@ -115,8 +136,11 @@ export default function WarehouseMain() {
     documents: [],
     reservations: [],
   })
-  const [selectedWarehouse, setSelectedWarehouse] = useState("all")
-  const [search, setSearch] = useState("")
+  const [selectedWarehouse, setSelectedWarehouse] = useState(
+    normalizeSelectValue(searchParams.get("warehouse_id")) || "all"
+  )
+  const [search, setSearch] = useState(searchParams.get("q") || "")
+  const [activeMode, setActiveMode] = useState(initialMode)
   const [loading, setLoading] = useState(false)
   const [docModalOpen, setDocModalOpen] = useState(false)
   const [placeModalOpen, setPlaceModalOpen] = useState(false)
@@ -131,6 +155,7 @@ export default function WarehouseMain() {
   const [placeForm] = Form.useForm()
   const [warehouseForm] = Form.useForm()
   const searchTimerRef = useRef(null)
+  const urlActionHandledRef = useRef("")
 
   const docType = Form.useWatch("doc_type", docForm) || "receipt"
   const isReserveDoc = docType === "reserve" || docType === "unreserve"
@@ -149,6 +174,47 @@ export default function WarehouseMain() {
   )
 
   const selectedWarehouseId = selectedWarehouse === "all" ? null : Number(selectedWarehouse)
+  const selectedPositionFilter = useMemo(() => {
+    const id = Number(searchParams.get("catalog_position_id") || searchParams.get("position_id") || 0)
+    if (!Number.isFinite(id) || id <= 0) return null
+    const title = searchParams.get("position_title") || searchParams.get("position_label") || `#${id}`
+    return {
+      id,
+      title,
+      subtitle: searchParams.get("position_subtitle") || "",
+      uom: searchParams.get("uom") || "шт",
+    }
+  }, [searchParams])
+  const positionOptionFromFilter = useMemo(
+    () =>
+      selectedPositionFilter
+        ? {
+            id: selectedPositionFilter.id,
+            catalog_position_id: selectedPositionFilter.id,
+            manufacturer_part_number: selectedPositionFilter.title,
+            display_name: selectedPositionFilter.subtitle,
+            uom: selectedPositionFilter.uom,
+          }
+        : null,
+    [selectedPositionFilter]
+  )
+
+  const clearPositionFilter = () => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      POSITION_FILTER_QUERY_KEYS.forEach((key) => next.delete(key))
+      return next
+    })
+  }
+
+  const changeActiveMode = (mode) => {
+    setActiveMode(mode)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set("mode", mode)
+      return next
+    })
+  }
 
   const loadLocations = useCallback(async () => {
     try {
@@ -175,6 +241,7 @@ export default function WarehouseMain() {
     try {
       const params = { limit: 500 }
       if (selectedWarehouseId) params.warehouse_id = selectedWarehouseId
+      if (selectedPositionFilter?.id) params.catalog_position_id = selectedPositionFilter.id
       if (search.trim()) params.q = search.trim()
       const { data } = await axios.get("/warehouse/overview", { params })
       setOverview({
@@ -189,7 +256,7 @@ export default function WarehouseMain() {
     } finally {
       setLoading(false)
     }
-  }, [message, search, selectedWarehouseId])
+  }, [message, search, selectedPositionFilter?.id, selectedWarehouseId])
 
   useEffect(() => {
     loadLocations()
@@ -206,6 +273,15 @@ export default function WarehouseMain() {
     },
     []
   )
+
+  useEffect(() => {
+    const nextMode = searchParams.get("mode")
+    if (WAREHOUSE_MODE_KEYS.has(nextMode)) setActiveMode(nextMode)
+    const nextWarehouse = normalizeSelectValue(searchParams.get("warehouse_id"))
+    if (nextWarehouse) setSelectedWarehouse(nextWarehouse)
+    const nextSearch = searchParams.get("q")
+    if (nextSearch !== null) setSearch(nextSearch)
+  }, [searchParams])
 
   const refreshAll = () => {
     loadLocations()
@@ -249,76 +325,122 @@ export default function WarehouseMain() {
     [message]
   )
 
-  const openDocumentModal = (type = "receipt") => {
-    const defaultWarehouse = selectedWarehouseId || locations[0]?.id || null
-    const secondWarehouse = locations.find((item) => item.id !== defaultWarehouse)?.id || null
-    docForm.resetFields()
-    docForm.setFieldsValue({
-      doc_type: type,
-      document_date: dayjs(),
-      warehouse_id: defaultWarehouse,
-      source_warehouse_id: defaultWarehouse,
-      target_warehouse_id: secondWarehouse,
-      lines: [{ quantity: 1 }],
-    })
-    setPositionOptions([])
-    setDocModalOpen(true)
-  }
+  const openDocumentModal = useCallback(
+    (type = "receipt", defaults = {}) => {
+      const defaultWarehouse = selectedWarehouseId || locations[0]?.id || null
+      const secondWarehouse = locations.find((item) => item.id !== defaultWarehouse)?.id || null
+      const positionOption = defaults.positionOption || positionOptionFromFilter
+      const defaultLine = {
+        quantity: defaults.quantity || 1,
+        catalog_position_id: positionOption?.id || undefined,
+        storage_place_id: defaults.storage_place_id,
+        target_storage_place_id: defaults.target_storage_place_id,
+      }
+      if (positionOption) {
+        setPositionOptions((prev) => [
+          positionOption,
+          ...prev.filter((item) => String(item.id) !== String(positionOption.id)),
+        ])
+      } else {
+        setPositionOptions([])
+      }
+      docForm.resetFields()
+      docForm.setFieldsValue({
+        doc_type: type,
+        document_date: dayjs(),
+        warehouse_id: defaultWarehouse,
+        source_warehouse_id: defaultWarehouse,
+        target_warehouse_id: secondWarehouse,
+        basis_document:
+          defaults.basis_document ||
+          (positionOption ? `Карточка позиции ${positionTitle(positionOption)}` : undefined),
+        source_type: defaults.source_type || "manual",
+        source_id: defaults.source_id,
+        source_line_id: defaults.source_line_id,
+        source_label: defaults.source_label,
+        lines: [defaultLine],
+      })
+      setDocModalOpen(true)
+    },
+    [docForm, locations, positionOptionFromFilter, selectedWarehouseId]
+  )
 
-  const openReserveFromStock = (row, type = "reserve") => {
-    const positionOption = {
-      ...row,
-      id: row.catalog_position_id,
-    }
-    setPositionOptions((prev) => [
-      positionOption,
-      ...prev.filter((item) => String(item.id) !== String(positionOption.id)),
-    ])
-    docForm.resetFields()
-    docForm.setFieldsValue({
-      doc_type: type,
-      document_date: dayjs(),
-      warehouse_id: row.warehouse_id,
+  useEffect(() => {
+    const action = searchParams.get("action")
+    if (!action || !["receipt", "reserve", "writeoff"].includes(action)) return
+    if (!positionOptionFromFilter || !locations.length) return
+    const key = `${action}:${positionOptionFromFilter.id}:${locations.length}`
+    if (urlActionHandledRef.current === key) return
+    urlActionHandledRef.current = key
+    setActiveMode(action === "reserve" ? "reservations" : "stock")
+    openDocumentModal(action, {
+      positionOption: positionOptionFromFilter,
+      basis_document: `Карточка позиции ${positionTitle(positionOptionFromFilter)}`,
       source_type: "manual",
-      lines: [
-        {
-          catalog_position_id: row.catalog_position_id,
-          storage_place_id: row.storage_place_id,
-          quantity: Math.max(Math.min(Number(row.free_qty || 1), 1), 0.001),
-        },
-      ],
+      source_label: `Из карточки позиции ${positionTitle(positionOptionFromFilter)}`,
     })
-    setDocModalOpen(true)
-  }
+  }, [locations.length, openDocumentModal, positionOptionFromFilter, searchParams])
 
-  const openUnreserveFromReservation = (row) => {
-    const positionOption = {
-      ...row,
-      id: row.catalog_position_id,
-    }
-    setPositionOptions((prev) => [
-      positionOption,
-      ...prev.filter((item) => String(item.id) !== String(positionOption.id)),
-    ])
-    docForm.resetFields()
-    docForm.setFieldsValue({
-      doc_type: "unreserve",
-      document_date: dayjs(),
-      warehouse_id: row.warehouse_id,
-      source_type: row.source_type || "manual",
-      source_id: row.source_id || undefined,
-      source_line_id: row.source_line_id || undefined,
-      source_label: row.source_label || undefined,
-      lines: [
-        {
-          catalog_position_id: row.catalog_position_id,
-          storage_place_id: row.storage_place_id,
-          quantity: Number(row.reserved_qty || 1),
-        },
-      ],
-    })
-    setDocModalOpen(true)
-  }
+  const openReserveFromStock = useCallback(
+    (row, type = "reserve") => {
+      const positionOption = {
+        ...row,
+        id: row.catalog_position_id,
+      }
+      setPositionOptions((prev) => [
+        positionOption,
+        ...prev.filter((item) => String(item.id) !== String(positionOption.id)),
+      ])
+      docForm.resetFields()
+      docForm.setFieldsValue({
+        doc_type: type,
+        document_date: dayjs(),
+        warehouse_id: row.warehouse_id,
+        source_type: "manual",
+        lines: [
+          {
+            catalog_position_id: row.catalog_position_id,
+            storage_place_id: row.storage_place_id,
+            quantity: Math.max(Math.min(Number(row.free_qty || 1), 1), 0.001),
+          },
+        ],
+      })
+      setDocModalOpen(true)
+    },
+    [docForm]
+  )
+
+  const openUnreserveFromReservation = useCallback(
+    (row) => {
+      const positionOption = {
+        ...row,
+        id: row.catalog_position_id,
+      }
+      setPositionOptions((prev) => [
+        positionOption,
+        ...prev.filter((item) => String(item.id) !== String(positionOption.id)),
+      ])
+      docForm.resetFields()
+      docForm.setFieldsValue({
+        doc_type: "unreserve",
+        document_date: dayjs(),
+        warehouse_id: row.warehouse_id,
+        source_type: row.source_type || "manual",
+        source_id: row.source_id || undefined,
+        source_line_id: row.source_line_id || undefined,
+        source_label: row.source_label || undefined,
+        lines: [
+          {
+            catalog_position_id: row.catalog_position_id,
+            storage_place_id: row.storage_place_id,
+            quantity: Number(row.reserved_qty || 1),
+          },
+        ],
+      })
+      setDocModalOpen(true)
+    },
+    [docForm]
+  )
 
   const submitDocument = async () => {
     try {
@@ -509,7 +631,7 @@ export default function WarehouseMain() {
         ),
       },
     ],
-    []
+    [openReserveFromStock]
   )
 
   const documentColumns = useMemo(
@@ -649,6 +771,72 @@ export default function WarehouseMain() {
         ),
       },
     ],
+    [openUnreserveFromReservation]
+  )
+
+  const filteredPlaces = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return places.filter((place) => {
+      if (selectedWarehouseId && Number(place.warehouse_id) !== Number(selectedWarehouseId)) return false
+      if (!q) return true
+      return [place.code, place.zone, place.rack, place.section, place.tier, place.bin, place.notes, place.warehouse_name]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q))
+    })
+  }, [places, search, selectedWarehouseId])
+
+  const placeColumns = useMemo(
+    () => [
+      {
+        title: "Адрес",
+        dataIndex: "code",
+        width: 220,
+        render: (value, row) => (
+          <Space direction="vertical" size={0}>
+            <Text strong>{value}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {row.warehouse_name || "—"}
+            </Text>
+          </Space>
+        ),
+      },
+      {
+        title: "Зона",
+        dataIndex: "zone",
+        width: 110,
+        render: (value) => value || "—",
+      },
+      {
+        title: "Стеллаж",
+        dataIndex: "rack",
+        width: 110,
+        render: (value) => value || "—",
+      },
+      {
+        title: "Секция",
+        dataIndex: "section",
+        width: 110,
+        render: (value) => value || "—",
+      },
+      {
+        title: "Ярус",
+        dataIndex: "tier",
+        width: 100,
+        render: (value) => value || "—",
+      },
+      {
+        title: "Ячейка",
+        dataIndex: "bin",
+        width: 100,
+        render: (value) => value || "—",
+      },
+      {
+        title: "Примечание",
+        dataIndex: "notes",
+        ellipsis: true,
+        render: (value) => value || "—",
+      },
+    ],
     []
   )
 
@@ -689,9 +877,130 @@ export default function WarehouseMain() {
 
   const lineSourceWarehouse = docType === "transfer" ? sourceWarehouseId : warehouseId
 
+  const modeActions = (
+    <Space wrap>
+      {activeMode === "stock" && (
+        <>
+          <Button size="small" icon={<InboxOutlined />} onClick={() => openDocumentModal("receipt")}>
+            Приход
+          </Button>
+          <Button size="small" icon={<SwapOutlined />} onClick={() => openDocumentModal("transfer")}>
+            Перемещение
+          </Button>
+          <Button size="small" danger icon={<DeleteOutlined />} onClick={() => openDocumentModal("writeoff")}>
+            Списание
+          </Button>
+          <Button size="small" icon={<LockOutlined />} onClick={() => openDocumentModal("reserve")}>
+            Резерв
+          </Button>
+        </>
+      )}
+      {activeMode === "reservations" && (
+        <Button size="small" icon={<LockOutlined />} onClick={() => openDocumentModal("reserve")}>
+          Новый резерв
+        </Button>
+      )}
+      {activeMode === "documents" && (
+        <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => openDocumentModal("receipt")}>
+          Документ
+        </Button>
+      )}
+      {activeMode === "places" && (
+        <>
+          <Button size="small" icon={<EnvironmentOutlined />} onClick={openPlaceModal}>
+            Место
+          </Button>
+          <Button size="small" icon={<AppstoreAddOutlined />} onClick={openWarehouseModal}>
+            Склад
+          </Button>
+        </>
+      )}
+    </Space>
+  )
+
+  const warehouseModeItems = [
+    {
+      key: "stock",
+      label: `Остатки (${overview.stock.length})`,
+      children: (
+        <Table
+          rowKey={(row) => `${row.warehouse_id}-${row.storage_place_id || 0}-${row.catalog_position_id}`}
+          columns={stockColumns}
+          dataSource={overview.stock}
+          loading={loading}
+          size="small"
+          scroll={{ x: 1160 }}
+          pagination={{ pageSize: 12, showSizeChanger: false }}
+          locale={{
+            emptyText: (
+              <Empty description={selectedPositionFilter ? "Остатков по этой позиции пока нет" : "Остатков пока нет"}>
+                {selectedPositionFilter && (
+                  <Button size="small" icon={<InboxOutlined />} onClick={() => openDocumentModal("receipt")}>
+                    Оприходовать позицию
+                  </Button>
+                )}
+              </Empty>
+            ),
+          }}
+        />
+      ),
+    },
+    {
+      key: "reservations",
+      label: `Резервы (${overview.reservations.length})`,
+      children: (
+        <Table
+          rowKey="reservation_key"
+          columns={reservationColumns}
+          dataSource={overview.reservations}
+          loading={loading}
+          size="small"
+          scroll={{ x: 890 }}
+          pagination={{ pageSize: 10, showSizeChanger: false }}
+          locale={{ emptyText: <Empty description="Активных резервов пока нет" /> }}
+        />
+      ),
+    },
+    {
+      key: "documents",
+      label: `Документы (${overview.documents.length})`,
+      children: (
+        <Table
+          rowKey="id"
+          columns={documentColumns}
+          dataSource={overview.documents}
+          loading={loading}
+          size="small"
+          scroll={{ x: 980 }}
+          pagination={{ pageSize: 10, showSizeChanger: false }}
+          onRow={(record) => ({
+            onClick: () => openDocumentPreview(record),
+            style: { cursor: "pointer" },
+          })}
+          locale={{ emptyText: <Empty description="Документов пока нет" /> }}
+        />
+      ),
+    },
+    {
+      key: "places",
+      label: `Адреса (${filteredPlaces.length})`,
+      children: (
+        <Table
+          rowKey="id"
+          columns={placeColumns}
+          dataSource={filteredPlaces}
+          size="small"
+          scroll={{ x: 860 }}
+          pagination={{ pageSize: 12, showSizeChanger: false }}
+          locale={{ emptyText: <Empty description="Адресов хранения пока нет" /> }}
+        />
+      ),
+    },
+  ]
+
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <Card bodyStyle={{ padding: 16 }}>
+      <Card styles={{ body: { padding: 16 } }}>
         <Row gutter={[12, 12]} align="middle">
           <Col xs={24} md={8} lg={7}>
             <Select
@@ -722,19 +1031,34 @@ export default function WarehouseMain() {
               <Button icon={<ReloadOutlined />} onClick={refreshAll}>
                 Обновить
               </Button>
-              <Button icon={<EnvironmentOutlined />} onClick={openPlaceModal}>
-                Место
-              </Button>
-              <Button icon={<AppstoreAddOutlined />} onClick={openWarehouseModal}>
-                Склад
-              </Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => openDocumentModal("receipt")}>
-                Документ
-              </Button>
             </Space>
           </Col>
         </Row>
       </Card>
+
+      {selectedPositionFilter && (
+        <Card size="small" styles={{ body: { padding: "10px 16px" } }}>
+          <Space wrap style={{ width: "100%", justifyContent: "space-between" }}>
+            <Space direction="vertical" size={0}>
+              <Text type="secondary">Склад открыт по карточке позиции</Text>
+              <Text strong>{selectedPositionFilter.title}</Text>
+              {selectedPositionFilter.subtitle && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {selectedPositionFilter.subtitle}
+                </Text>
+              )}
+            </Space>
+            <Space wrap>
+              <Button size="small" icon={<InboxOutlined />} onClick={() => openDocumentModal("receipt")}>
+                Оприходовать
+              </Button>
+              <Button size="small" onClick={clearPositionFilter}>
+                Сбросить фильтр
+              </Button>
+            </Space>
+          </Space>
+        </Card>
+      )}
 
       <Row gutter={[12, 12]}>
         <Col xs={12} lg={6}>
@@ -759,87 +1083,15 @@ export default function WarehouseMain() {
         </Col>
       </Row>
 
-      <Row gutter={[16, 16]} align="top">
-        <Col xs={24} xl={14}>
-          <Card
-            title="Остатки"
-            extra={
-              <Space>
-                <Button size="small" icon={<InboxOutlined />} onClick={() => openDocumentModal("receipt")}>
-                  Приход
-                </Button>
-                <Button size="small" icon={<SwapOutlined />} onClick={() => openDocumentModal("transfer")}>
-                  Перемещение
-                </Button>
-                <Button size="small" danger icon={<DeleteOutlined />} onClick={() => openDocumentModal("writeoff")}>
-                  Списание
-                </Button>
-                <Button size="small" icon={<LockOutlined />} onClick={() => openDocumentModal("reserve")}>
-                  Резерв
-                </Button>
-              </Space>
-            }
-            bodyStyle={{ padding: 0 }}
-          >
-            <Table
-              rowKey={(row) => `${row.warehouse_id}-${row.storage_place_id || 0}-${row.catalog_position_id}`}
-              columns={stockColumns}
-              dataSource={overview.stock}
-              loading={loading}
-              size="small"
-              scroll={{ x: 1160 }}
-              pagination={{ pageSize: 12, showSizeChanger: false }}
-              locale={{ emptyText: <Empty description="Остатков пока нет" /> }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} xl={10}>
-          <Card title="Документы и резервы" bodyStyle={{ padding: 0 }}>
-            <Tabs
-              defaultActiveKey="documents"
-              tabBarStyle={{ padding: "0 16px", marginBottom: 0 }}
-              items={[
-                {
-                  key: "documents",
-                  label: `Журнал (${overview.documents.length})`,
-                  children: (
-                    <Table
-                      rowKey="id"
-                      columns={documentColumns}
-                      dataSource={overview.documents}
-                      loading={loading}
-                      size="small"
-                      scroll={{ x: 980 }}
-                      pagination={{ pageSize: 10, showSizeChanger: false }}
-                      onRow={(record) => ({
-                        onClick: () => openDocumentPreview(record),
-                        style: { cursor: "pointer" },
-                      })}
-                      locale={{ emptyText: <Empty description="Документов пока нет" /> }}
-                    />
-                  ),
-                },
-                {
-                  key: "reservations",
-                  label: `Резервы (${overview.reservations.length})`,
-                  children: (
-                    <Table
-                      rowKey="reservation_key"
-                      columns={reservationColumns}
-                      dataSource={overview.reservations}
-                      loading={loading}
-                      size="small"
-                      scroll={{ x: 890 }}
-                      pagination={{ pageSize: 10, showSizeChanger: false }}
-                      locale={{ emptyText: <Empty description="Активных резервов пока нет" /> }}
-                    />
-                  ),
-                },
-              ]}
-            />
-          </Card>
-        </Col>
-      </Row>
+      <Card styles={{ body: { padding: 0 } }}>
+        <Tabs
+          activeKey={activeMode}
+          onChange={changeActiveMode}
+          tabBarExtraContent={modeActions}
+          tabBarStyle={{ padding: "0 16px", marginBottom: 0 }}
+          items={warehouseModeItems}
+        />
+      </Card>
 
       <Modal
         title="Складской документ"
@@ -848,7 +1100,7 @@ export default function WarehouseMain() {
         onOk={submitDocument}
         okText="Провести"
         width={920}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={docForm} layout="vertical">
           <Row gutter={12}>
@@ -921,8 +1173,8 @@ export default function WarehouseMain() {
           <Form.List name="lines">
             {(fields, { add, remove }) => (
               <Space direction="vertical" size={8} style={{ width: "100%" }}>
-                {fields.map((field) => (
-                  <Row key={field.key} gutter={8} align="middle">
+                {fields.map(({ key, ...field }) => (
+                  <Row key={key} gutter={8} align="middle">
                     <Col xs={24} md={docType === "transfer" ? 9 : 11}>
                       <Form.Item
                         {...field}
@@ -1002,7 +1254,7 @@ export default function WarehouseMain() {
         onCancel={() => setPlaceModalOpen(false)}
         onOk={submitPlace}
         okText="Создать"
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={placeForm} layout="vertical">
           <Form.Item name="warehouse_id" label="Склад" rules={[{ required: true }]}>
@@ -1054,7 +1306,7 @@ export default function WarehouseMain() {
         onCancel={() => setWarehouseModalOpen(false)}
         onOk={submitWarehouse}
         okText="Создать"
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={warehouseForm} layout="vertical">
           <Row gutter={12}>
@@ -1099,7 +1351,7 @@ export default function WarehouseMain() {
         onCancel={() => setDocumentPreviewOpen(false)}
         footer={null}
         width={820}
-        destroyOnClose
+        destroyOnHidden
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Row gutter={12}>

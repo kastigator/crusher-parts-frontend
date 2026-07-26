@@ -34,6 +34,7 @@ import {
   CopyOutlined,
   DeleteOutlined,
   EditOutlined,
+  InboxOutlined,
   LockOutlined,
   MoreOutlined,
   ReloadOutlined,
@@ -2854,6 +2855,31 @@ export default function EquipmentClassifierMain() {
       source_id: row.source_id || "",
       source_line_id: row.source_line_id || "",
     })
+  }
+
+  const openBomWarehousePage = (action = null) => {
+    if (!selectedBomItem?.catalog_position_id) {
+      navigate("/warehouse")
+      return
+    }
+    const partNumber = getBomManufacturerNumber(selectedBomItem)
+    const title = partNumber && partNumber !== "—" ? partNumber : selectedBomItem.display_name || selectedBomItem.name_en || "Позиция"
+    const subtitle = [
+      selectedBomItem.display_name || selectedBomItem.name_en || selectedBomItem.name_ru,
+      currentModel?.manufacturer_name,
+      currentModel?.model_name,
+    ]
+      .filter(Boolean)
+      .join(" · ")
+    const params = new URLSearchParams({
+      mode: "stock",
+      position_id: String(selectedBomItem.catalog_position_id),
+      position_title: title,
+      position_subtitle: subtitle,
+      uom: selectedBomItem.uom || selectedBomItem.catalog_position_uom || "шт",
+    })
+    if (action) params.set("action", action)
+    navigate(`/warehouse?${params.toString()}`)
   }
 
   const handleSubmitBomWarehouseAction = async () => {
@@ -6507,7 +6533,10 @@ export default function EquipmentClassifierMain() {
                           <Button size="small" icon={<ReloadOutlined />} onClick={reloadBomWarehouseDetails}>
                             Обновить
                           </Button>
-                          <Button size="small" onClick={() => navigate("/warehouse")}>
+                          <Button size="small" icon={<InboxOutlined />} onClick={() => openBomWarehousePage("receipt")}>
+                            Оприходовать
+                          </Button>
+                          <Button size="small" onClick={() => openBomWarehousePage()}>
                             Открыть склад
                           </Button>
                         </Space>
@@ -6599,7 +6628,11 @@ export default function EquipmentClassifierMain() {
                           ]}
                         />
                       ) : (
-                        <Empty description="Остатков по этой позиции пока нет" />
+                        <Empty description="Остатков по этой позиции пока нет">
+                          <Button size="small" icon={<InboxOutlined />} onClick={() => openBomWarehousePage("receipt")}>
+                            Оприходовать эту позицию
+                          </Button>
+                        </Empty>
                       )}
                     </Card>
 
