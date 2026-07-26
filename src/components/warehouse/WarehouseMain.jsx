@@ -1099,6 +1099,7 @@ export default function WarehouseMain() {
         onCancel={() => setDocModalOpen(false)}
         onOk={submitDocument}
         okText="Провести"
+        cancelText="Отмена"
         width={920}
         destroyOnHidden
       >
@@ -1254,6 +1255,7 @@ export default function WarehouseMain() {
         onCancel={() => setPlaceModalOpen(false)}
         onOk={submitPlace}
         okText="Создать"
+        cancelText="Отмена"
         destroyOnHidden
       >
         <Form form={placeForm} layout="vertical">
@@ -1306,6 +1308,7 @@ export default function WarehouseMain() {
         onCancel={() => setWarehouseModalOpen(false)}
         onOk={submitWarehouse}
         okText="Создать"
+        cancelText="Отмена"
         destroyOnHidden
       >
         <Form form={warehouseForm} layout="vertical">
