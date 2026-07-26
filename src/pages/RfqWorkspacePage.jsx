@@ -23,9 +23,9 @@ import {
   buildPriceSourceText,
   formatDate,
   formatHintDate,
+  RFQ_WORKFLOW_LABELS,
   renderMatchTypes,
   rfqStatusLabel,
-  STEP_LABELS,
   STEP_TO_TAB,
   statusToColor,
   supplierStatusLabel,
@@ -2819,7 +2819,7 @@ export default function RfqWorkspacePage() {
     <PageWrapper
       title="Рабочее место RFQ"
       subtitle="Закупочный workspace: от структуры клиентской потребности до утвержденного выбора поставщиков."
-      helpSummary={`Последовательность этапов: ${STEP_LABELS.join(" → ")}. Расчет КП, контракт и исполнение ведутся в заявке клиента.`}
+      helpSummary={`Последовательность этапов: ${RFQ_WORKFLOW_LABELS.join(" → ")}. Расчет КП, контракт и исполнение ведутся в заявке клиента.`}
     >
       <RfqWorkspaceMainContent
         clientFilterOptions={clientFilterOptions}

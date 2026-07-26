@@ -198,6 +198,26 @@ body,
   margin-top: 0;
 }
 
+.rfq-stage-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.rfq-stage-switch {
+  max-width: 100%;
+}
+
+.rfq-stage-switch .ant-segmented-group {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.rfq-stage-content {
+  min-width: 0;
+}
+
 /* Collapsed sidebar flyout for the nested Catalogs menu.
    AntD renders this submenu as a separate popup, so it needs its own layer and row metrics. */
 .sidebar-catalog-popup {

@@ -25,6 +25,13 @@ export const STEP_LABELS = [
   "Выбор",
 ]
 
+export const RFQ_WORKFLOW_LABELS = [
+  "Состав RFQ",
+  "Поставщики и отправка",
+  "Ответы и покрытие",
+  "Сценарии, экономика и выбор",
+]
+
 export const STEP_TO_TAB = [
   "rfq",
   "suppliers",

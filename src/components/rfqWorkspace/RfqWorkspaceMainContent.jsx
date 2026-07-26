@@ -1,5 +1,5 @@
 import React from "react"
-import { Alert, Button, Card, Checkbox, Input, Select, Space, Table, Tabs, Tag, Typography } from "antd"
+import { Alert, Button, Card, Checkbox, Input, Select, Segmented, Space, Table, Tabs, Tag, Typography } from "antd"
 import { DeleteOutlined } from "@ant-design/icons"
 import RfqOverviewTabContent from "@/components/rfqWorkspace/RfqOverviewTabContent"
 import SuppliersTabContent from "@/components/rfqWorkspace/SuppliersTabContent"
@@ -26,6 +26,36 @@ const activeContractCount = (contracts) =>
   (Array.isArray(contracts) ? contracts : []).filter((row) =>
     ["signed", "in_execution", "completed"].includes(String(row?.status || "").trim().toLowerCase())
   ).length
+
+const RFQ_STAGE_DEFS = [
+  { key: "structure", label: "Состав RFQ", tabs: ["rfq"] },
+  { key: "supplier-flow", label: "Поставщики и отправка", tabs: ["suppliers"] },
+  { key: "responses-flow", label: "Ответы и покрытие", tabs: ["responses", "coverage"] },
+  { key: "decision-flow", label: "Сценарии и выбор", tabs: ["scenarios", "logistics", "economics", "selection"] },
+]
+
+const RFQ_TAB_LABELS = {
+  rfq: "Структура",
+  suppliers: "Поставщики",
+  responses: "Ответы",
+  coverage: "Покрытие",
+  scenarios: "Сценарии",
+  logistics: "Логистика",
+  economics: "Экономика",
+  selection: "Выбор",
+}
+
+const RFQ_TAB_TO_STAGE = RFQ_STAGE_DEFS.reduce((acc, stage) => {
+  stage.tabs.forEach((tabKey) => {
+    acc[tabKey] = stage.key
+  })
+  return acc
+}, {})
+
+const RFQ_STAGE_BY_KEY = RFQ_STAGE_DEFS.reduce((acc, stage) => {
+  acc[stage.key] = stage
+  return acc
+}, {})
 
 export default function RfqWorkspaceMainContent({
   clientFilterOptions,
@@ -114,6 +144,132 @@ export default function RfqWorkspaceMainContent({
   const openClientRequestTab = (tab) => {
     if (!requestId) return
     navigate(`/client-request-workspace?request_id=${requestId}&tab=${tab}`)
+  }
+  const effectiveStageKey = RFQ_TAB_TO_STAGE[effectiveActiveTabKey] || "structure"
+  const isStageDisabled = (stage) => stage.key !== "structure" && (!isStructureConfirmed || isRfqNeedsSync)
+  const handleStageChange = (stageKey) => {
+    const stage = RFQ_STAGE_BY_KEY[stageKey]
+    if (!stage || isStageDisabled(stage)) return
+    const nextTabKey = stage.tabs.includes(effectiveActiveTabKey) ? effectiveActiveTabKey : stage.tabs[0]
+    handleTabChange(nextTabKey)
+  }
+  const tabContentByKey = {
+    rfq: (
+      <RfqOverviewTabContent
+        structure={structure}
+        activeRfqId={activeRfqIdForTabs}
+        rfqTreeData={rfqTreeData}
+        openKitPreview={openKitPreview}
+        altPartsMap={altPartsMap}
+        openAltModal={openAltModal}
+      />
+    ),
+    suppliers: (
+      <SuppliersTabContent
+        suggestedSuppliers={suggestedSuppliers}
+        suggestedSelection={suggestedSelection}
+        setSuggestedSelection={setSuggestedSelection}
+        renderMatchTypes={renderMatchTypes}
+        handleAddSuggestedSuppliers={handleAddSuggestedSuppliers}
+        supplierForm={supplierForm}
+        handleAddSupplier={handleAddSupplier}
+        supplierOptions={supplierOptions}
+        setSupplierCreateOpen={setSupplierCreateOpen}
+        hasAnySupplierSent={hasAnySupplierSent}
+        totalNewLines={totalNewLines}
+        suppliers={suppliers}
+        selectedSupplierIds={selectedSupplierIds}
+        setSelectedSupplierIds={setSelectedSupplierIds}
+        handleSupplierLanguage={handleSupplierLanguage}
+        openSelectionModal={openSelectionModal}
+        dispatchSummaryMap={dispatchSummaryMap}
+        formatDate={formatDate}
+        supplierSendingId={supplierSendingId}
+        handleSendForSupplier={handleSendForSupplier}
+        statusToColor={statusToColor}
+        supplierStatusLabel={supplierStatusLabel}
+        handleSendRfq={handleSendRfq}
+        sending={sending}
+        activeRfqId={activeRfqIdForTabs}
+        loadDocuments={loadDocuments}
+        sendIncludePriced={sendIncludePriced}
+        setSendIncludePriced={setSendIncludePriced}
+        fileDispatches={fileDispatches}
+        docsLoading={docsLoading}
+        activeRfq={activeRfq}
+      />
+    ),
+    responses: (
+      <ResponsesTabContent
+        activeRfqId={activeRfqIdForTabs}
+        suppliers={suppliers}
+        items={items}
+        responseSuppliers={responseSuppliers}
+        responseSupplierFilter={responseSupplierFilter}
+        setResponseSupplierFilter={setResponseSupplierFilter}
+        reloadResponses={() => loadResponsesAndLines(activeRfqIdForTabs)}
+        showArchivedResponses={showArchivedResponses}
+        setShowArchivedResponses={setShowArchivedResponses}
+        importModal={importModal}
+        setImportModal={setImportModal}
+        workspaceRows={responseWorkspaceRows}
+        responseLines={responseLines}
+        formatDate={formatDate}
+      />
+    ),
+    coverage: (
+      <CoverageTabContent
+        rfqId={activeRfqIdForTabs}
+        onNavigateTab={handleTabChange}
+        coverageRows={coverageRows}
+        structure={structure}
+        workspaceRows={responseWorkspaceRows}
+        suppliers={suppliers}
+      />
+    ),
+    scenarios: <ScenariosTabContent rfqId={activeRfqIdForTabs} />,
+    logistics: (
+      <LogisticsTabContent
+        rfqId={activeRfqIdForTabs}
+        onNavigateTab={handleTabChange}
+      />
+    ),
+    economics: (
+      <EconomicsTabContent
+        rfqId={activeRfqIdForTabs}
+        onNavigateTab={handleTabChange}
+      />
+    ),
+    selection: (
+      <SelectionTabContent
+        rfqId={activeRfqIdForTabs}
+        selections={selections}
+        formatDate={formatDate}
+        onSelectionFinalized={onSelectionFinalized}
+      />
+    ),
+  }
+  const renderStageContent = (stage) => {
+    const leafKey = stage.tabs.includes(effectiveActiveTabKey) ? effectiveActiveTabKey : stage.tabs[0]
+    return (
+      <div className="rfq-stage-shell">
+        {stage.tabs.length > 1 ? (
+          <Segmented
+            className="rfq-stage-switch"
+            size="small"
+            value={leafKey}
+            options={stage.tabs.map((tabKey) => ({
+              label: RFQ_TAB_LABELS[tabKey],
+              value: tabKey,
+            }))}
+            onChange={(value) => handleTabChange(String(value))}
+          />
+        ) : null}
+        <div className="rfq-stage-content">
+          {tabContentByKey[leafKey]}
+        </div>
+      </div>
+    )
   }
   const rfqColumns = [
     {
@@ -281,144 +437,15 @@ export default function RfqWorkspaceMainContent({
               </div>
 
               <Tabs
-                activeKey={effectiveActiveTabKey}
-                onChange={handleTabChange}
+                activeKey={effectiveStageKey}
+                onChange={handleStageChange}
                 size="small"
-                items={[
-                {
-                  key: "rfq",
-                  label: "RFQ",
-                  children: (
-                    <RfqOverviewTabContent
-                      structure={structure}
-                      activeRfqId={activeRfqIdForTabs}
-                      rfqTreeData={rfqTreeData}
-                      openKitPreview={openKitPreview}
-                      altPartsMap={altPartsMap}
-                      openAltModal={openAltModal}
-                    />
-                  ),
-                },
-                {
-                  key: "suppliers",
-                  label: "Поставщики",
-                  disabled: !isStructureConfirmed || isRfqNeedsSync,
-                  children: (
-                    <SuppliersTabContent
-                      suggestedSuppliers={suggestedSuppliers}
-                      suggestedSelection={suggestedSelection}
-                      setSuggestedSelection={setSuggestedSelection}
-                      renderMatchTypes={renderMatchTypes}
-                      handleAddSuggestedSuppliers={handleAddSuggestedSuppliers}
-                      supplierForm={supplierForm}
-                      handleAddSupplier={handleAddSupplier}
-                      supplierOptions={supplierOptions}
-                      setSupplierCreateOpen={setSupplierCreateOpen}
-                      hasAnySupplierSent={hasAnySupplierSent}
-                      totalNewLines={totalNewLines}
-                      suppliers={suppliers}
-                      selectedSupplierIds={selectedSupplierIds}
-                      setSelectedSupplierIds={setSelectedSupplierIds}
-                      handleSupplierLanguage={handleSupplierLanguage}
-                      openSelectionModal={openSelectionModal}
-                      dispatchSummaryMap={dispatchSummaryMap}
-                      formatDate={formatDate}
-                      supplierSendingId={supplierSendingId}
-                      handleSendForSupplier={handleSendForSupplier}
-                      statusToColor={statusToColor}
-                      supplierStatusLabel={supplierStatusLabel}
-                      handleSendRfq={handleSendRfq}
-                      sending={sending}
-                      activeRfqId={activeRfqIdForTabs}
-                      loadDocuments={loadDocuments}
-                      sendIncludePriced={sendIncludePriced}
-                      setSendIncludePriced={setSendIncludePriced}
-                      fileDispatches={fileDispatches}
-                      docsLoading={docsLoading}
-                      activeRfq={activeRfq}
-                    />
-                  ),
-                },
-                {
-                  key: "responses",
-                  label: "Ответы",
-                  disabled: !isStructureConfirmed || isRfqNeedsSync,
-                  children: (
-                    <ResponsesTabContent
-                      activeRfqId={activeRfqIdForTabs}
-                      suppliers={suppliers}
-                      items={items}
-                      responseSuppliers={responseSuppliers}
-                      responseSupplierFilter={responseSupplierFilter}
-                      setResponseSupplierFilter={setResponseSupplierFilter}
-                      reloadResponses={() => loadResponsesAndLines(activeRfqIdForTabs)}
-                      showArchivedResponses={showArchivedResponses}
-                      setShowArchivedResponses={setShowArchivedResponses}
-                      importModal={importModal}
-                      setImportModal={setImportModal}
-                      workspaceRows={responseWorkspaceRows}
-                      responseLines={responseLines}
-                      formatDate={formatDate}
-                    />
-                  ),
-                },
-                {
-                  key: "coverage",
-                  label: "Покрытие",
-                  disabled: !isStructureConfirmed || isRfqNeedsSync,
-                  children: (
-                    <CoverageTabContent
-                      rfqId={activeRfqIdForTabs}
-                      onNavigateTab={setActiveTabKey}
-                      coverageRows={coverageRows}
-                      structure={structure}
-                      workspaceRows={responseWorkspaceRows}
-                      suppliers={suppliers}
-                    />
-                  ),
-                },
-                {
-                  key: "scenarios",
-                  label: "Сценарии",
-                  disabled: !isStructureConfirmed || isRfqNeedsSync,
-                  children: <ScenariosTabContent rfqId={activeRfqIdForTabs} />,
-                },
-                {
-                  key: "logistics",
-                  label: "Логистика",
-                  disabled: !isStructureConfirmed || isRfqNeedsSync,
-                  children: (
-                    <LogisticsTabContent
-                      rfqId={activeRfqIdForTabs}
-                      onNavigateTab={setActiveTabKey}
-                    />
-                  ),
-                },
-                {
-                  key: "economics",
-                  label: "Экономика",
-                  disabled: !isStructureConfirmed || isRfqNeedsSync,
-                  children: (
-                    <EconomicsTabContent
-                      rfqId={activeRfqIdForTabs}
-                      onNavigateTab={setActiveTabKey}
-                    />
-                  ),
-                },
-                {
-                  key: "selection",
-                  label: "Выбор",
-                  disabled: !isStructureConfirmed || isRfqNeedsSync,
-                  children: (
-                    <SelectionTabContent
-                      rfqId={activeRfqIdForTabs}
-                      selections={selections}
-                      formatDate={formatDate}
-                      onSelectionFinalized={onSelectionFinalized}
-                    />
-                  ),
-                },
-                ]}
+                items={RFQ_STAGE_DEFS.map((stage) => ({
+                  key: stage.key,
+                  label: stage.label,
+                  disabled: isStageDisabled(stage),
+                  children: renderStageContent(stage),
+                }))}
               />
             </Space>
           </Card>
