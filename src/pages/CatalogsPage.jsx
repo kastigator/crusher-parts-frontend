@@ -23,8 +23,6 @@ import axios from "@/api/axiosInstance"
 const { Paragraph, Text } = Typography
 
 const catalogLinks = [
-  { path: "/clients", label: "Клиенты" },
-  { path: "/suppliers", label: "Поставщики" },
   { path: "/equipment-classifier", label: "Классификатор" },
   { path: "/materials", label: "Материалы" },
   { path: "/tnved-codes", label: "Коды ТН ВЭД" },

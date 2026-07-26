@@ -26,8 +26,6 @@ const HIDDEN_LEGACY_PATHS = new Set([
   "/purchase-orders",
 ])
 const CATALOG_CHILD_PATHS = new Set([
-  "/clients",
-  "/suppliers",
   "/supplier-parts",
   "/materials",
   "/tnved-codes",
@@ -43,8 +41,16 @@ const WORKSPACE_NAV_GROUPS = [
     label: "Заявки клиентов",
   },
   {
+    paths: ["/clients"],
+    label: "Клиенты",
+  },
+  {
     paths: ["/rfq-workspace", "/rfq"],
     label: "RFQ закупка",
+  },
+  {
+    paths: ["/suppliers"],
+    label: "Поставщики",
   },
   {
     paths: ["/warehouse"],
@@ -54,8 +60,6 @@ const WORKSPACE_NAV_GROUPS = [
 const MASTER_DATA_NAV_PATHS = ["/equipment-classifier"]
 const CATALOG_NAV_PATHS = [
   CATALOG_ROOT_PATH,
-  "/clients",
-  "/suppliers",
   "/supplier-parts",
   "/materials",
   "/tnved-codes",

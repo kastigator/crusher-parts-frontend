@@ -703,10 +703,19 @@ export default function ResponsesTabContent({
   })
   const [manualForm] = Form.useForm()
   const [negotiationForm] = Form.useForm()
+  const [supplierPartLinkForm] = Form.useForm()
   const [createSupplierPart, setCreateSupplierPart] = useState(false)
   const [supplierPartSearch, setSupplierPartSearch] = useState("")
   const [supplierPartLoading, setSupplierPartLoading] = useState(false)
   const [supplierPartOptions, setSupplierPartOptions] = useState([])
+  const [supplierPartLinkModal, setSupplierPartLinkModal] = useState({
+    open: false,
+    row: null,
+    saving: false,
+  })
+  const [supplierPartLinkSearch, setSupplierPartLinkSearch] = useState("")
+  const [supplierPartLinkLoading, setSupplierPartLinkLoading] = useState(false)
+  const [supplierPartLinkOptions, setSupplierPartLinkOptions] = useState([])
   const [manualSelectionLoading, setManualSelectionLoading] = useState(false)
   const [manualSelectionOptions, setManualSelectionOptions] = useState([])
   const [manualSupplierLock, setManualSupplierLock] = useState(null)
@@ -715,6 +724,7 @@ export default function ResponsesTabContent({
   const manualRfqItemId = Form.useWatch("rfq_item_id", manualForm)
   const manualReplyStatus = Form.useWatch("supplier_reply_status", manualForm)
   const negotiationReplyStatus = Form.useWatch("supplier_reply_status", negotiationForm)
+  const supplierPartLinkMode = Form.useWatch("mode", supplierPartLinkForm)
   const manualSelectionLocked = Boolean(String(manualLineLock?.selectionKey || "").trim())
   const mainTableWrapRef = useRef(null)
 
@@ -1036,6 +1046,169 @@ export default function ResponsesTabContent({
         )}
       </Space>
     )
+  }
+
+  const closeSupplierPartLinkModal = (force = false) => {
+    if (supplierPartLinkModal.saving && !force) return
+    setSupplierPartLinkModal({ open: false, row: null, saving: false })
+    setSupplierPartLinkSearch("")
+    setSupplierPartLinkOptions([])
+    supplierPartLinkForm.resetFields()
+  }
+
+  const openSupplierPartLinkModal = (row) => {
+    if (!row?.latest_response_line_id) {
+      message.info("Сначала внесите ответ поставщика по этой строке")
+      return
+    }
+    const description = getRowDescriptionText(row)
+    supplierPartLinkForm.resetFields()
+    supplierPartLinkForm.setFieldsValue({
+      mode: "existing",
+      relationship_type: "can_supply",
+      reason: "Привязка детали поставщика к строке ответа",
+      new_supplier_part_description_ru: description && description !== "—" ? description : undefined,
+      new_supplier_part_type: row.latest_offer_type || "ANALOG",
+      new_supplier_part_is_overweight: false,
+      new_supplier_part_is_oversize: false,
+      supplier_part_is_overweight: false,
+      supplier_part_is_oversize: false,
+    })
+    setSupplierPartLinkSearch("")
+    setSupplierPartLinkOptions([])
+    setSupplierPartLinkModal({ open: true, row, saving: false })
+  }
+
+  const applySupplierPartLinkMeta = (meta) => {
+    if (!meta) {
+      supplierPartLinkForm.setFieldsValue({
+        supplier_part_weight_kg: null,
+        supplier_part_length_cm: null,
+        supplier_part_width_cm: null,
+        supplier_part_height_cm: null,
+        supplier_part_is_overweight: false,
+        supplier_part_is_oversize: false,
+      })
+      return
+    }
+    const partType = String(meta.part_type || "").toUpperCase()
+    supplierPartLinkForm.setFieldsValue({
+      new_supplier_part_type: ["OEM", "ANALOG", "UNKNOWN"].includes(partType)
+        ? partType
+        : supplierPartLinkForm.getFieldValue("new_supplier_part_type"),
+      supplier_part_weight_kg: meta.weight_kg ?? null,
+      supplier_part_length_cm: cmToMm(meta.length_cm),
+      supplier_part_width_cm: cmToMm(meta.width_cm),
+      supplier_part_height_cm: cmToMm(meta.height_cm),
+      supplier_part_is_overweight: Number(meta.is_overweight) === 1,
+      supplier_part_is_oversize: Number(meta.is_oversize) === 1,
+    })
+  }
+
+  useEffect(() => {
+    if (!supplierPartLinkModal.open || supplierPartLinkMode !== "existing") return
+    const supplierId = Number(supplierPartLinkModal.row?.supplier_id || 0)
+    const q = String(supplierPartLinkSearch || "").trim()
+    if (!Number.isFinite(supplierId) || supplierId <= 0 || q.length < 2) {
+      setSupplierPartLinkOptions([])
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      setSupplierPartLinkLoading(true)
+      try {
+        const { data } = await axios.get("/supplier-parts/search-lite", {
+          params: { q, supplier_id: supplierId, limit: 50 },
+        })
+        if (cancelled) return
+        const list = Array.isArray(data) ? data : []
+        setSupplierPartLinkOptions(
+          list.map((item) => ({
+            value: Number(item.id),
+            label: item.supplier_part_number
+              ? `${item.supplier_part_number} — ${item.description || ""}${
+                  item.price != null ? ` · ${formatPriceWithCurrency(item.price, item.currency)}` : ""
+                }`
+              : `Без номера — ${item.description || ""}`,
+            meta: item,
+          }))
+        )
+      } catch (e) {
+        if (!cancelled) console.error(e)
+      } finally {
+        if (!cancelled) setSupplierPartLinkLoading(false)
+      }
+    }, 250)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [
+    supplierPartLinkModal.open,
+    supplierPartLinkModal.row?.supplier_id,
+    supplierPartLinkMode,
+    supplierPartLinkSearch,
+  ])
+
+  const submitSupplierPartLink = async () => {
+    const row = supplierPartLinkModal.row
+    if (!row?.latest_response_line_id) return
+    try {
+      const values = await supplierPartLinkForm.validateFields()
+      const createNew = values.mode === "create"
+      const payload = {
+        create_supplier_part: createNew,
+        reason: values.reason || null,
+        relationship_type: values.relationship_type || "can_supply",
+      }
+      if (createNew) {
+        payload.supplier_part = {
+          supplier_part_number: values.new_supplier_part_number || null,
+          description_ru: values.new_supplier_part_description_ru || null,
+          description_en: values.new_supplier_part_description_en || null,
+          part_type: values.new_supplier_part_type || row.latest_offer_type || "UNKNOWN",
+          lead_time_days: row.latest_lead_time_days ?? null,
+          min_order_qty: row.latest_moq ?? null,
+          packaging: row.latest_packaging || null,
+          weight_kg: values.new_supplier_part_weight_kg ?? null,
+          length_cm: mmToCm(values.new_supplier_part_length_cm),
+          width_cm: mmToCm(values.new_supplier_part_width_cm),
+          height_cm: mmToCm(values.new_supplier_part_height_cm),
+          is_overweight: values.new_supplier_part_is_overweight === true ? 1 : 0,
+          is_oversize: values.new_supplier_part_is_oversize === true ? 1 : 0,
+        }
+      } else {
+        payload.supplier_part_id = values.supplier_part_id ? Number(values.supplier_part_id) : null
+        payload.supplier_part = {
+          lead_time_days: row.latest_lead_time_days ?? null,
+          min_order_qty: row.latest_moq ?? null,
+          packaging: row.latest_packaging || null,
+          weight_kg: values.supplier_part_weight_kg ?? null,
+          length_cm: mmToCm(values.supplier_part_length_cm),
+          width_cm: mmToCm(values.supplier_part_width_cm),
+          height_cm: mmToCm(values.supplier_part_height_cm),
+          is_overweight: values.supplier_part_is_overweight === true ? 1 : 0,
+          is_oversize: values.supplier_part_is_oversize === true ? 1 : 0,
+        }
+      }
+      setSupplierPartLinkModal((prev) => ({ ...prev, saving: true }))
+      const { data } = await axios.post(
+        `/supplier-responses/lines/${row.latest_response_line_id}/supplier-part`,
+        payload
+      )
+      message.success(
+        data?.supplier_part_created
+          ? "Деталь поставщика создана и привязана"
+          : "Деталь поставщика привязана"
+      )
+      closeSupplierPartLinkModal(true)
+      await reloadResponses()
+    } catch (e) {
+      if (e?.errorFields) return
+      console.error(e)
+      message.error(e?.response?.data?.message || "Не удалось привязать деталь поставщика")
+      setSupplierPartLinkModal((prev) => ({ ...prev, saving: false }))
+    }
   }
 
   useEffect(() => {
@@ -1611,29 +1784,10 @@ export default function ResponsesTabContent({
           ) : (
             <Button
               size="small"
-              disabled={!canWriteRfqMasterData}
-              onClick={() =>
-                openManualModal({
-                  supplier_id: r.supplier_id,
-                  rfq_item_id: r.rfq_item_id,
-                  supplier_name: r.supplier_name,
-                  rfq_line_number: r.rfq_line_number,
-                  requested_original_cat_number: r.requested_original_cat_number,
-                  requested_original_description_ru: r.requested_original_description_ru,
-                  requested_original_description_en: r.requested_original_description_en,
-                  client_description: r.client_description,
-                  workspace_status: r.workspace_status,
-                  rfq_item_component_id: r.selected_line_type === "BOM_COMPONENT"
-                    ? r.rfq_item_component_id
-                    : null,
-                  selected_selection_key: r.selected_selection_key,
-                  selected_bundle_id: r.selected_bundle_id,
-                  selected_line_type: r.selected_line_type,
-                  forceCreateSupplierPart: true,
-                })
-              }
+              disabled={!canWriteRfqMasterData || !r.latest_response_line_id}
+              onClick={() => openSupplierPartLinkModal(r)}
             >
-              Создать деталь
+              Создать/привязать
             </Button>
           )}
         </Space>
@@ -1835,29 +1989,10 @@ export default function ResponsesTabContent({
           ) : (
             <Button
               size="small"
-              disabled={!canWriteRfqMasterData}
-              onClick={() =>
-                openManualModal({
-                  supplier_id: r.supplier_id,
-                  rfq_item_id: r.rfq_item_id,
-                  supplier_name: r.supplier_name,
-                  rfq_line_number: r.rfq_line_number,
-                  requested_original_cat_number: r.requested_original_cat_number,
-                  requested_original_description_ru: r.requested_original_description_ru,
-                  requested_original_description_en: r.requested_original_description_en,
-                  client_description: r.client_description,
-                  workspace_status: r.workspace_status,
-                  rfq_item_component_id: r.selected_line_type === "BOM_COMPONENT"
-                    ? r.rfq_item_component_id
-                    : null,
-                  selected_selection_key: r.selected_selection_key,
-                  selected_bundle_id: r.selected_bundle_id,
-                  selected_line_type: r.selected_line_type,
-                  forceCreateSupplierPart: true,
-                })
-              }
+              disabled={!canWriteRfqMasterData || !r.latest_response_line_id}
+              onClick={() => openSupplierPartLinkModal(r)}
             >
-              Создать деталь
+              Создать/привязать
             </Button>
           )}
         </Space>
@@ -2452,6 +2587,167 @@ export default function ResponsesTabContent({
               </Space>
             </>
           ) : null}
+        </Form>
+      </Modal>
+
+      <Modal
+        open={supplierPartLinkModal.open}
+        title="Создать/привязать деталь поставщика"
+        onCancel={() => closeSupplierPartLinkModal()}
+        onOk={submitSupplierPartLink}
+        okText={supplierPartLinkMode === "create" ? "Создать и привязать" : "Привязать"}
+        confirmLoading={supplierPartLinkModal.saving}
+        width={760}
+      >
+        <Form layout="vertical" form={supplierPartLinkForm}>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="Нормализация уже полученной строки ответа"
+            description="Цена и условия остаются в ответе поставщика. Здесь строка закрепляется за деталью поставщика и карточкой позиции."
+          />
+          {supplierPartLinkModal.row ? (
+            <Space direction="vertical" size={2} style={{ marginBottom: 12 }}>
+              <Text strong>{supplierPartLinkModal.row.supplier_name || "Поставщик"}</Text>
+              <Text type="secondary">
+                Строка {getRfqLineDisplay(supplierPartLinkModal.row)} ·{" "}
+                {getSelectionDisplaySummary(supplierPartLinkModal.row)}
+              </Text>
+              <Text type="secondary">{getRowDescriptionText(supplierPartLinkModal.row)}</Text>
+            </Space>
+          ) : null}
+          <Form.Item name="mode" label="Что сделать">
+            <Radio.Group
+              optionType="button"
+              buttonStyle="solid"
+              options={[
+                { value: "existing", label: "Найти существующую" },
+                { value: "create", label: "Создать новую" },
+              ]}
+              onChange={() => {
+                supplierPartLinkForm.setFieldValue("supplier_part_id", undefined)
+                setSupplierPartLinkSearch("")
+                setSupplierPartLinkOptions([])
+              }}
+            />
+          </Form.Item>
+          <Form.Item name="relationship_type" label="Тип связи с карточкой позиции">
+            <Select
+              options={[
+                { value: "can_supply", label: "Может поставить" },
+                { value: "analog", label: "Аналог" },
+                { value: "exact", label: "Точное соответствие" },
+              ]}
+            />
+          </Form.Item>
+          {supplierPartLinkMode !== "create" ? (
+            <>
+              <Form.Item
+                name="supplier_part_id"
+                label="Деталь поставщика"
+                rules={[{ required: true, message: "Выберите деталь поставщика" }]}
+              >
+                <Select
+                  allowClear
+                  showSearch
+                  filterOption={false}
+                  placeholder="Номер или описание детали поставщика"
+                  options={supplierPartLinkOptions}
+                  loading={supplierPartLinkLoading}
+                  onSearch={setSupplierPartLinkSearch}
+                  notFoundContent={
+                    supplierPartLinkSearch?.trim()?.length >= 2
+                      ? "Ничего не найдено"
+                      : "Введите минимум 2 символа"
+                  }
+                  onChange={(_, option) => applySupplierPartLinkMeta(option?.meta)}
+                />
+              </Form.Item>
+              <Space style={{ display: "flex" }} align="start">
+                <Form.Item
+                  name="supplier_part_is_overweight"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Тяжелая</Checkbox>
+                </Form.Item>
+                <Form.Item
+                  name="supplier_part_is_oversize"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Негабарит</Checkbox>
+                </Form.Item>
+              </Space>
+              <Space style={{ display: "flex" }} align="start">
+                <Form.Item name="supplier_part_weight_kg" label="Вес, кг">
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
+                </Form.Item>
+                <Form.Item name="supplier_part_length_cm" label="Длина, мм">
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
+                </Form.Item>
+                <Form.Item name="supplier_part_width_cm" label="Ширина, мм">
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
+                </Form.Item>
+                <Form.Item name="supplier_part_height_cm" label="Высота, мм">
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
+                </Form.Item>
+              </Space>
+            </>
+          ) : (
+            <>
+              <Form.Item
+                name="new_supplier_part_number"
+                label="Номер поставщика"
+                rules={[{ required: true, message: "Введите номер поставщика" }]}
+              >
+                <Input />
+              </Form.Item>
+              <Form.Item name="new_supplier_part_description_ru" label="Описание RU">
+                <Input />
+              </Form.Item>
+              <Form.Item name="new_supplier_part_description_en" label="Описание EN">
+                <Input />
+              </Form.Item>
+              <Form.Item name="new_supplier_part_type" label="Тип предложения">
+                <Select options={OFFER_TYPE_OPTIONS} />
+              </Form.Item>
+              <Space style={{ display: "flex" }} align="start">
+                <Form.Item
+                  name="new_supplier_part_is_overweight"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Тяжелая</Checkbox>
+                </Form.Item>
+                <Form.Item
+                  name="new_supplier_part_is_oversize"
+                  valuePropName="checked"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox>Негабарит</Checkbox>
+                </Form.Item>
+              </Space>
+              <Space style={{ display: "flex" }} align="start">
+                <Form.Item name="new_supplier_part_weight_kg" label="Вес, кг">
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
+                </Form.Item>
+                <Form.Item name="new_supplier_part_length_cm" label="Длина, мм">
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
+                </Form.Item>
+                <Form.Item name="new_supplier_part_width_cm" label="Ширина, мм">
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
+                </Form.Item>
+                <Form.Item name="new_supplier_part_height_cm" label="Высота, мм">
+                  <InputNumber min={0} step={0.01} {...compactInputNumberProps} />
+                </Form.Item>
+              </Space>
+            </>
+          )}
+          <Form.Item name="reason" label="Комментарий">
+            <Input placeholder="Например: нормализация ответа поставщика после проверки" />
+          </Form.Item>
         </Form>
       </Modal>
 
