@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { Alert, Button, Card, Drawer, InputNumber, Popconfirm, Select, Space, Table, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { formatPriceWithCurrency } from "@/utils/priceFormat"
@@ -80,6 +80,11 @@ const percentInputGroups = [
 
 const percentToInput = (value) => Number(((Number(value || 0) || 0) * 100).toFixed(2))
 const inputToPercent = (value) => (Number(value || 0) || 0) / 100
+const formatDateTime = (value) => {
+  if (!value) return "—"
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("ru-RU")
+}
 
 export default function RequestMarginTabContent({ requestId }) {
   const [quotes, setQuotes] = useState([])
@@ -96,6 +101,11 @@ export default function RequestMarginTabContent({ requestId }) {
   const [calculatorPreview, setCalculatorPreview] = useState(null)
   const [calculatorLoading, setCalculatorLoading] = useState(false)
   const [calculatorApplying, setCalculatorApplying] = useState(false)
+  const [calculationHistory, setCalculationHistory] = useState([])
+  const [calculationHistoryLoading, setCalculationHistoryLoading] = useState(false)
+  const [calculationDetailOpen, setCalculationDetailOpen] = useState(false)
+  const [calculationDetail, setCalculationDetail] = useState(null)
+  const [calculationDetailLoading, setCalculationDetailLoading] = useState(false)
   const loadQuotes = async () => {
     if (!requestId) return
     try {
@@ -162,6 +172,25 @@ export default function RequestMarginTabContent({ requestId }) {
     }
   }
 
+  const loadCalculationHistory = async (revisionIdOverride) => {
+    const revisionId = Number(revisionIdOverride || selectedRevisionId || 0) || null
+    if (!revisionId) {
+      setCalculationHistory([])
+      return
+    }
+    setCalculationHistoryLoading(true)
+    try {
+      const { data } = await axios.get(`/sales-quotes/revisions/${revisionId}/calculations`)
+      const rows = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
+      setCalculationHistory(rows)
+    } catch (e) {
+      setCalculationHistory([])
+      message.error(e?.response?.data?.message || "Не удалось загрузить историю расчетов КП")
+    } finally {
+      setCalculationHistoryLoading(false)
+    }
+  }
+
   useEffect(() => {
     loadQuotes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -174,11 +203,14 @@ export default function RequestMarginTabContent({ requestId }) {
 
   useEffect(() => {
     loadLines()
+    loadCalculationHistory()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRevisionId])
 
   useEffect(() => {
     setCalculatorPreview(null)
+    setCalculationDetail(null)
+    setCalculationDetailOpen(false)
   }, [selectedRevisionId])
 
   const selectedQuote = useMemo(
@@ -190,6 +222,9 @@ export default function RequestMarginTabContent({ requestId }) {
     [quotes]
   )
   const quoteCurrency = selectedQuote?.currency || "USD"
+  const selectedCalculation = calculationDetail?.calculation || null
+  const selectedCalculationCurrency = selectedCalculation?.currency || quoteCurrency
+  const selectedCalculationTotals = selectedCalculation?.totals || null
   const isLatestRevisionSelected =
     Number(selectedRevisionId || 0) > 0 &&
     Number(selectedRevisionId || 0) === Number(selectedQuote?.latest_revision_id || 0)
@@ -310,6 +345,7 @@ export default function RequestMarginTabContent({ requestId }) {
       setCalculatorPreview(data)
       message.success(`Расчет применен к строкам КП: ${Number(data?.updated_line_count || 0)}`)
       await loadLines(selectedRevisionId)
+      await loadCalculationHistory(selectedRevisionId)
       await loadQuotes()
       await loadRevisions(selectedQuoteId)
     } catch (e) {
@@ -320,6 +356,23 @@ export default function RequestMarginTabContent({ requestId }) {
       setCalculatorApplying(false)
     }
   }
+
+  const openCalculationDetail = useCallback(async (calculationId) => {
+    const id = Number(calculationId || 0) || null
+    if (!id) return
+    setCalculationDetailOpen(true)
+    setCalculationDetail(null)
+    setCalculationDetailLoading(true)
+    try {
+      const { data } = await axios.get(`/sales-quotes/calculations/${id}`)
+      setCalculationDetail(data || null)
+    } catch (e) {
+      message.error(e?.response?.data?.message || "Не удалось открыть расчет КП")
+      setCalculationDetailOpen(false)
+    } finally {
+      setCalculationDetailLoading(false)
+    }
+  }, [])
 
   const calculatorPreviewColumns = useMemo(
     () => [
@@ -384,6 +437,190 @@ export default function RequestMarginTabContent({ requestId }) {
     ],
     [calculatorCurrency]
   )
+
+  const calculationHistoryColumns = useMemo(
+    () => [
+      {
+        title: "Расчет",
+        width: 190,
+        render: (_, row) => (
+          <Space direction="vertical" size={0}>
+            <Typography.Text strong>{`#${row.id}`}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {formatDateTime(row.applied_at || row.created_at)}
+            </Typography.Text>
+            {row.applied_by_name || row.created_by_name ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {row.applied_by_name || row.created_by_name}
+              </Typography.Text>
+            ) : null}
+          </Space>
+        ),
+      },
+      {
+        title: "Итог",
+        width: 240,
+        render: (_, row) => {
+          const totals = row.totals || {}
+          return (
+            <Space direction="vertical" size={0}>
+              <Typography.Text>
+                {formatPriceWithCurrency(totals.total_without_nds_eur, row.currency || quoteCurrency)}
+              </Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {`с НДС: ${formatPriceWithCurrency(totals.total_with_nds_eur, row.currency || quoteCurrency)}`}
+              </Typography.Text>
+            </Space>
+          )
+        },
+      },
+      {
+        title: "Маржа",
+        width: 180,
+        render: (_, row) => {
+          const totals = row.totals || {}
+          return (
+            <Space direction="vertical" size={0}>
+              <Typography.Text>
+                {formatPriceWithCurrency(totals.margin_eur, row.currency || quoteCurrency)}
+              </Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {`${Number(totals.margin_pct || 0).toFixed(1)}%`}
+              </Typography.Text>
+            </Space>
+          )
+        },
+      },
+      {
+        title: "Строки",
+        width: 150,
+        render: (_, row) => (
+          <Space wrap size={[6, 6]}>
+            <Tag>{Number(row.line_count || 0)}</Tag>
+            {Array.isArray(row.warnings) && row.warnings.length ? (
+              <Tag color="orange">{`Предупр.: ${row.warnings.length}`}</Tag>
+            ) : null}
+          </Space>
+        ),
+      },
+      {
+        title: "Действие",
+        width: 120,
+        render: (_, row) => (
+          <Button size="small" onClick={() => openCalculationDetail(row.id)}>
+            Открыть
+          </Button>
+        ),
+      },
+    ],
+    [openCalculationDetail, quoteCurrency]
+  )
+
+  const calculationDetailColumns = useMemo(
+    () => [
+      {
+        title: "Позиция",
+        width: 260,
+        render: (_, row) => (
+          <Space direction="vertical" size={0}>
+            <Typography.Text strong>
+              {row.display_part_number_snapshot || `#${row.sales_quote_line_id || row.id}`}
+            </Typography.Text>
+            {row.display_description_snapshot ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {row.display_description_snapshot}
+              </Typography.Text>
+            ) : null}
+          </Space>
+        ),
+      },
+      {
+        title: "Кол-во",
+        width: 90,
+        render: (_, row) => Number(row.quantity || 0),
+      },
+      {
+        title: "Закупка",
+        width: 130,
+        render: (_, row) => formatPriceWithCurrency(row.purchase_price, selectedCalculationCurrency),
+      },
+      {
+        title: "Цена без НДС",
+        width: 140,
+        render: (_, row) => formatPriceWithCurrency(row.sell_price_without_vat, selectedCalculationCurrency),
+      },
+      {
+        title: "Сумма с НДС",
+        width: 140,
+        render: (_, row) => formatPriceWithCurrency(row.line_total_with_vat, selectedCalculationCurrency),
+      },
+      {
+        title: "Маржа",
+        width: 120,
+        render: (_, row) => (
+          <Space direction="vertical" size={0}>
+            <Typography.Text>{`${Number(row.gross_margin_pct || 0).toFixed(1)}%`}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {`наценка ${Number(row.markup_pct || 0).toFixed(1)}%`}
+            </Typography.Text>
+          </Space>
+        ),
+      },
+    ],
+    [selectedCalculationCurrency]
+  )
+
+  const renderCalculationWarnings = (warnings, messageText) =>
+    Array.isArray(warnings) && warnings.length ? (
+      <Alert
+        type="warning"
+        showIcon
+        message={messageText}
+        description={
+          <Space direction="vertical" size={2}>
+            {warnings.map((warning) => (
+              <span key={warning}>{warning}</span>
+            ))}
+          </Space>
+        }
+      />
+    ) : null
+
+  const renderCalculationTotals = (summary, currency) => {
+    if (!summary) return null
+    return (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+          gap: 8,
+        }}
+      >
+        {[
+          ["Закупка", formatPriceWithCurrency(summary.total_purchase_eur, currency)],
+          ["DAP РК", formatPriceWithCurrency(summary.total_dap_rk_eur, currency)],
+          ["Без НДС", formatPriceWithCurrency(summary.total_without_nds_eur, currency)],
+          ["С НДС", formatPriceWithCurrency(summary.total_with_nds_eur, currency)],
+          ["Маржа", `${formatPriceWithCurrency(summary.margin_eur, currency)} · ${Number(summary.margin_pct || 0).toFixed(1)}%`],
+        ].map(([label, value]) => (
+          <div
+            key={label}
+            style={{
+              border: "1px solid #f0f0f0",
+              borderRadius: 8,
+              padding: "8px 10px",
+              minHeight: 58,
+            }}
+          >
+            <Typography.Text type="secondary" style={{ display: "block", fontSize: 12 }}>
+              {label}
+            </Typography.Text>
+            <Typography.Text strong>{value}</Typography.Text>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   const renderMoneyInput = (field) => (
     <div key={field.key} style={{ minWidth: 150 }}>
@@ -630,53 +867,9 @@ export default function RequestMarginTabContent({ requestId }) {
             ))}
           </div>
 
-          {calculatorPreview?.warnings?.length ? (
-            <Alert
-              type="warning"
-              showIcon
-              message="Проверьте расчетные данные"
-              description={
-                <Space direction="vertical" size={2}>
-                  {calculatorPreview.warnings.map((warning) => (
-                    <span key={warning}>{warning}</span>
-                  ))}
-                </Space>
-              }
-            />
-          ) : null}
+          {renderCalculationWarnings(calculatorPreview?.warnings, "Проверьте расчетные данные")}
 
-          {calculatorTotals ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-                gap: 8,
-              }}
-            >
-              {[
-                ["Закупка", formatPriceWithCurrency(calculatorTotals.total_purchase_eur, calculatorCurrency)],
-                ["DAP РК", formatPriceWithCurrency(calculatorTotals.total_dap_rk_eur, calculatorCurrency)],
-                ["Без НДС", formatPriceWithCurrency(calculatorTotals.total_without_nds_eur, calculatorCurrency)],
-                ["С НДС", formatPriceWithCurrency(calculatorTotals.total_with_nds_eur, calculatorCurrency)],
-                ["Маржа", `${formatPriceWithCurrency(calculatorTotals.margin_eur, calculatorCurrency)} · ${Number(calculatorTotals.margin_pct || 0).toFixed(1)}%`],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  style={{
-                    border: "1px solid #f0f0f0",
-                    borderRadius: 8,
-                    padding: "8px 10px",
-                    minHeight: 58,
-                  }}
-                >
-                  <Typography.Text type="secondary" style={{ display: "block", fontSize: 12 }}>
-                    {label}
-                  </Typography.Text>
-                  <Typography.Text strong>{value}</Typography.Text>
-                </div>
-              ))}
-            </div>
-          ) : null}
+          {renderCalculationTotals(calculatorTotals, calculatorCurrency)}
 
           {calculatorPreview?.items?.length ? (
             <Table
@@ -690,6 +883,33 @@ export default function RequestMarginTabContent({ requestId }) {
             />
           ) : null}
         </Space>
+      </Card>
+
+      <Card
+        size="small"
+        title="История расчетов КП"
+        extra={
+          <Button
+            size="small"
+            onClick={() => loadCalculationHistory(selectedRevisionId)}
+            loading={calculationHistoryLoading}
+            disabled={!selectedRevisionId}
+          >
+            Обновить
+          </Button>
+        }
+      >
+        <Table
+          size="small"
+          rowKey="id"
+          loading={calculationHistoryLoading}
+          dataSource={calculationHistory}
+          columns={calculationHistoryColumns}
+          pagination={calculationHistory.length > 5 ? { pageSize: 5, size: "small" } : false}
+          tableLayout="auto"
+          scroll={{ x: "max-content" }}
+          locale={{ emptyText: "Примененных расчетов по этой ревизии пока нет" }}
+        />
       </Card>
 
       <Card
@@ -890,6 +1110,47 @@ export default function RequestMarginTabContent({ requestId }) {
             Если клиент меняет состав слишком сильно, это сигнал вернуть вопрос в закупку и пересобрать
             утвержденный закупочный набор, а не просто править продажную экономику.
           </Typography.Paragraph>
+        </Space>
+      </Drawer>
+
+      <Drawer
+        title={selectedCalculation ? `Расчет КП #${selectedCalculation.id}` : "Расчет КП"}
+        placement="right"
+        width={760}
+        open={calculationDetailOpen}
+        onClose={() => setCalculationDetailOpen(false)}
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          {calculationDetailLoading && !calculationDetail ? (
+            <Typography.Text type="secondary">Загрузка расчета...</Typography.Text>
+          ) : null}
+
+          {selectedCalculation ? (
+            <>
+              <Space wrap size={[8, 8]}>
+                <Tag color="blue">{selectedCalculation.currency || quoteCurrency}</Tag>
+                <Tag>{formatDateTime(selectedCalculation.applied_at || selectedCalculation.created_at)}</Tag>
+                {selectedCalculation.applied_by_name || selectedCalculation.created_by_name ? (
+                  <Tag>{selectedCalculation.applied_by_name || selectedCalculation.created_by_name}</Tag>
+                ) : null}
+              </Space>
+
+              {renderCalculationWarnings(selectedCalculation.warnings, "Предупреждения расчета")}
+
+              {renderCalculationTotals(selectedCalculationTotals, selectedCalculationCurrency)}
+
+              <Table
+                size="small"
+                rowKey="id"
+                loading={calculationDetailLoading}
+                dataSource={Array.isArray(calculationDetail?.lines) ? calculationDetail.lines : []}
+                columns={calculationDetailColumns}
+                pagination={false}
+                tableLayout="auto"
+                scroll={{ x: "max-content" }}
+              />
+            </>
+          ) : null}
         </Space>
       </Drawer>
     </Space>
