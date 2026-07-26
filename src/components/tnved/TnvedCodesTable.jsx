@@ -1,8 +1,24 @@
 // src/components/tnved/TnvedCodesTable.jsx
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Descriptions, Drawer, Input, InputNumber, Typography, message } from "antd"
+import {
+  Button,
+  Descriptions,
+  Drawer,
+  Empty,
+  Input,
+  InputNumber,
+  Space,
+  Statistic,
+  Table,
+  Tabs,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+} from "antd"
 import ActionButtons from "@/components/common/ActionButtons"
+import axios from "@/api/axiosInstance"
 import confirmAction from "@/utils/confirmAction"
 import FullHistoryDialog from "@/components/common/FullHistoryDialog"
 import VersionConflictModal from "@/components/common/VersionConflictModal"
@@ -34,6 +50,8 @@ export default function TnvedCodesTable({
   const [logId, setLogId] = useState(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [detailsRecord, setDetailsRecord] = useState(null)
+  const [detailsLoading, setDetailsLoading] = useState(false)
+  const [usageInfo, setUsageInfo] = useState(null)
 
   const [conflict, setConflict] = useState({
     open: false,
@@ -108,9 +126,10 @@ export default function TnvedCodesTable({
       options: [
         { key: "description", label: "Описание" },
         { key: "duty_rate", label: "Пошлина (%)" },
+        { key: "usage_count", label: "Применяется" },
         { key: "notes", label: "Примечание" },
       ],
-      defaultVisible: ["description", "duty_rate"],
+      defaultVisible: ["description", "duty_rate", "usage_count"],
       lockedKeys: ["code", "actions"],
     }),
     [],
@@ -129,7 +148,7 @@ export default function TnvedCodesTable({
   }, [visibleColumnKeys, columnsMeta.defaultVisible])
 
   const defaultOrder = useMemo(
-    () => ["code", "description", "duty_rate", "notes", "actions"],
+    () => ["code", "description", "duty_rate", "usage_count", "notes", "actions"],
     [],
   )
   const effectiveOrderKeys = useMemo(
@@ -240,6 +259,16 @@ export default function TnvedCodesTable({
         ),
     },
     {
+      title: "Применяется",
+      dataIndex: "usage_count",
+      key: "usage_count",
+      width: 140,
+      render: (_, record) => {
+        const count = Number(record.usage_count || 0)
+        return count ? <Tag color="blue">{count}</Tag> : <Text type="secondary">—</Text>
+      },
+    },
+    {
       title: "Действия",
       dataIndex: "actions",
       key: "actions",
@@ -296,6 +325,141 @@ export default function TnvedCodesTable({
     [page, pageSize, data],
   )
 
+  useEffect(() => {
+    if (!detailsOpen || !detailsRecord?.id) {
+      setUsageInfo(null)
+      return
+    }
+
+    let cancelled = false
+    const run = async () => {
+      setDetailsLoading(true)
+      try {
+        const { data: payload } = await axios.get(`/tnved-codes/${detailsRecord.id}/usage`)
+        if (!cancelled) setUsageInfo(payload || null)
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Ошибка загрузки применений ТН ВЭД:", err)
+          message.error("Не удалось загрузить применения кода")
+        }
+      } finally {
+        if (!cancelled) setDetailsLoading(false)
+      }
+    }
+    run()
+
+    return () => {
+      cancelled = true
+    }
+  }, [detailsOpen, detailsRecord?.id])
+
+  const reloadUsage = async () => {
+    if (!detailsRecord?.id) return
+    setDetailsLoading(true)
+    try {
+      const { data: payload } = await axios.get(`/tnved-codes/${detailsRecord.id}/usage`)
+      setUsageInfo(payload || null)
+    } catch (err) {
+      console.error("Ошибка обновления применений ТН ВЭД:", err)
+      message.error("Не удалось обновить применения кода")
+    } finally {
+      setDetailsLoading(false)
+    }
+  }
+
+  const applyCodeToCandidate = async (candidate) => {
+    if (!detailsRecord?.id || !candidate?.catalog_position_id) return
+    const title =
+      candidate.manufacturer_part_number ||
+      candidate.display_name ||
+      candidate.bom_manufacturer_part_number ||
+      `позиция #${candidate.catalog_position_id}`
+    const { confirmed } = await confirmAction(`Привязать код ${detailsRecord.code} к позиции ${title}?`)
+    if (!confirmed) return
+
+    try {
+      await axios.patch(`/catalog-positions/${candidate.catalog_position_id}/card`, {
+        tnved_code_id: detailsRecord.id,
+      })
+      message.success("Код привязан к позиции")
+      await reloadUsage()
+      if (typeof onRefresh === "function") onRefresh()
+    } catch (err) {
+      console.error("Ошибка привязки ТН ВЭД:", err)
+      message.error(err?.response?.data?.message || "Не удалось привязать код")
+    }
+  }
+
+  const formatPositionTitle = (row) =>
+    row?.display_name ||
+    row?.display_name_en ||
+    row?.display_name_ru ||
+    row?.bom_manufacturer_part_name ||
+    row?.bom_title ||
+    "—"
+
+  const usageColumns = [
+    {
+      title: "Позиция",
+      key: "position",
+      width: 260,
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Text strong>{row.manufacturer_part_number || row.bom_manufacturer_part_number || "—"}</Text>
+          <Text type="secondary" ellipsis>
+            {formatPositionTitle(row)}
+          </Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Модель",
+      key: "model",
+      width: 220,
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Text>{row.model_name || "—"}</Text>
+          <Text type="secondary">{row.manufacturer_name || "—"}</Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Материал",
+      dataIndex: "materials_summary",
+      key: "materials_summary",
+      width: 220,
+      ellipsis: { showTitle: false },
+      render: (value) => (
+        <Tooltip title={value || ""}>
+          <Text type={value ? undefined : "secondary"}>{value || "—"}</Text>
+        </Tooltip>
+      ),
+    },
+    {
+      title: "Габариты, мм",
+      key: "dimensions",
+      width: 160,
+      render: (_, row) => {
+        const dims = [row.length_mm, row.width_mm, row.height_mm].filter((v) => v !== null && v !== undefined && v !== "")
+        return dims.length ? dims.join(" x ") : <Text type="secondary">—</Text>
+      },
+    },
+  ]
+
+  const candidateColumns = [
+    ...usageColumns.slice(0, 3),
+    {
+      title: "Действие",
+      key: "action",
+      width: 140,
+      render: (_, row) => (
+        <Button size="small" onClick={() => applyCodeToCandidate(row)}>
+          Привязать
+        </Button>
+      ),
+    },
+  ]
+
   return (
     <>
       <div
@@ -351,32 +515,111 @@ export default function TnvedCodesTable({
 
       <Drawer
         open={detailsOpen}
-        width={720}
+        width={920}
         onClose={() => {
           setDetailsOpen(false)
           setDetailsRecord(null)
+          setUsageInfo(null)
         }}
         title={detailsRecord ? `Код ТН ВЭД: ${detailsRecord.code || "—"}` : "Код ТН ВЭД"}
       >
         {detailsRecord ? (
-          <Descriptions column={1} size="small" bordered>
-            <Descriptions.Item label="Код">
-              {detailsRecord.code || "—"}
-            </Descriptions.Item>
-            <Descriptions.Item label="Пошлина (%)">
-              {detailsRecord.duty_rate ?? "—"}
-            </Descriptions.Item>
-            <Descriptions.Item label="Описание">
-              <Text style={{ whiteSpace: "pre-wrap" }}>
-                {detailsRecord.description || "—"}
-              </Text>
-            </Descriptions.Item>
-            <Descriptions.Item label="Примечание">
-              <Text style={{ whiteSpace: "pre-wrap" }}>
-                {detailsRecord.notes || "—"}
-              </Text>
-            </Descriptions.Item>
-          </Descriptions>
+          <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            <Space wrap size={16}>
+              <Statistic
+                title="Карточек позиций"
+                value={usageInfo?.stats?.usage_count ?? detailsRecord.usage_count ?? 0}
+                loading={detailsLoading}
+              />
+              <Statistic
+                title="Строк BOM"
+                value={usageInfo?.stats?.bom_usage_count ?? 0}
+                loading={detailsLoading}
+              />
+              <Statistic
+                title="Моделей"
+                value={usageInfo?.stats?.model_count ?? detailsRecord.model_count ?? 0}
+                loading={detailsLoading}
+              />
+              <Statistic
+                title="Кандидатов без кода"
+                value={usageInfo?.stats?.candidate_count ?? 0}
+                loading={detailsLoading}
+              />
+            </Space>
+
+            <Tabs
+              items={[
+                {
+                  key: "overview",
+                  label: "Обзор",
+                  children: (
+                    <Descriptions column={1} size="small" bordered>
+                      <Descriptions.Item label="Код">
+                        {detailsRecord.code || "—"}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Пошлина (%)">
+                        {detailsRecord.duty_rate ?? "—"}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Описание">
+                        <Text style={{ whiteSpace: "pre-wrap" }}>
+                          {detailsRecord.description || "—"}
+                        </Text>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Примечание">
+                        <Text style={{ whiteSpace: "pre-wrap" }}>
+                          {detailsRecord.notes || "—"}
+                        </Text>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Токены подбора">
+                        {usageInfo?.candidate_tokens?.length ? (
+                          <Space wrap>
+                            {usageInfo.candidate_tokens.map((token) => (
+                              <Tag key={token}>{token}</Tag>
+                            ))}
+                          </Space>
+                        ) : (
+                          "—"
+                        )}
+                      </Descriptions.Item>
+                    </Descriptions>
+                  ),
+                },
+                {
+                  key: "usage",
+                  label: `Применения (${usageInfo?.stats?.usage_count ?? detailsRecord.usage_count ?? 0})`,
+                  children: (
+                    <Table
+                      rowKey={(row) => `${row.catalog_position_id}-${row.bom_item_id || "card"}`}
+                      loading={detailsLoading}
+                      dataSource={usageInfo?.usage || []}
+                      columns={usageColumns}
+                      size="small"
+                      pagination={{ pageSize: 10 }}
+                      locale={{ emptyText: <Empty description="Код пока не применялся в карточках позиций" /> }}
+                      scroll={{ x: true }}
+                    />
+                  ),
+                },
+                {
+                  key: "candidates",
+                  label: `Кандидаты (${usageInfo?.stats?.candidate_count ?? 0})`,
+                  children: (
+                    <Table
+                      rowKey={(row) => `${row.catalog_position_id}-${row.bom_item_id || "candidate"}`}
+                      loading={detailsLoading}
+                      dataSource={usageInfo?.candidates || []}
+                      columns={candidateColumns}
+                      size="small"
+                      pagination={{ pageSize: 10 }}
+                      locale={{ emptyText: <Empty description="Похожих непривязанных позиций пока нет" /> }}
+                      scroll={{ x: true }}
+                    />
+                  ),
+                },
+              ]}
+            />
+          </Space>
         ) : null}
       </Drawer>
 
