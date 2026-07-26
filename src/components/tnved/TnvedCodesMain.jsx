@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react"
-import { Button, Card, Checkbox, Form, Input, InputNumber, Popover, Space, message } from "antd"
-import { InboxOutlined } from "@ant-design/icons"
+import { Button, Card, Checkbox, Form, Input, InputNumber, Modal, Popover, Segmented, Space, message } from "antd"
+import { PlusOutlined } from "@ant-design/icons"
 import { useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 import TnvedCodesTable from "./TnvedCodesTable"
@@ -23,7 +23,9 @@ export default function TnvedCodesMain() {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [importVisible, setImportVisible] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState("")
+  const [quickFilter, setQuickFilter] = useState("all")
   const [newRecord, setNewRecord] = useState(EMPTY_NEW_RECORD)
 
   const [hasNew, setHasNew] = useState(false)
@@ -190,6 +192,7 @@ export default function TnvedCodesMain() {
       const { data: created } = await axios.post("/tnved-codes", payload)
       setData((prev) => [created, ...prev])
       setNewRecord(EMPTY_NEW_RECORD)
+      setCreateOpen(false)
       setHasNew(false)
 
       const freshEtag = await fetchEtag()
@@ -282,13 +285,20 @@ export default function TnvedCodesMain() {
     }
   }
 
-  // ---------- фильтр по строке поиска ----------
-  const filteredData = data.filter(
+  // ---------- фильтр по строке поиска и рабочим состояниям ----------
+  const searchedData = data.filter(
     (item) =>
       item.code?.toLowerCase().includes(search.toLowerCase()) ||
       item.description?.toLowerCase().includes(search.toLowerCase()) ||
       item.notes?.toLowerCase().includes(search.toLowerCase()),
   )
+  const filteredData = searchedData.filter((item) => {
+    if (quickFilter === "used") return Number(item.usage_count || 0) > 0
+    if (quickFilter === "unused") return Number(item.usage_count || 0) === 0
+    if (quickFilter === "missing_duty") return item.duty_rate === null || item.duty_rate === undefined || item.duty_rate === ""
+    if (quickFilter === "notes") return Boolean(item.notes && String(item.notes).trim())
+    return true
+  })
 
   const columnsViewKey = "main"
   const currentVisibleKeys = columnsByView?.[columnsViewKey] || null
@@ -342,7 +352,7 @@ export default function TnvedCodesMain() {
 
         <div className="table-section">
           <TableToolbar
-            placeholder="Поиск по коду/описанию/примечаниям…"
+            placeholder="Искать код, деталь, материал или описание…"
             search={search}
             onSearch={setSearch}
             onImport={() => setImportVisible(true)}
@@ -351,6 +361,13 @@ export default function TnvedCodesMain() {
             searchEnterButton="Найти"
             extraActions={
               <Space size={12} wrap>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => setCreateOpen(true)}
+                >
+                  Новый код
+                </Button>
                 <Popover
                   open={columnsPopoverOpen}
                   onOpenChange={setColumnsPopoverOpen}
@@ -412,77 +429,21 @@ export default function TnvedCodesMain() {
           />
         </div>
 
-        {/* форма быстрого добавления */}
-        <div className="table-section">
-          <Form
-            layout="inline"
-            style={{ flexWrap: "wrap", rowGap: 8, columnGap: 12 }}
-            onFinish={handleAdd}
-          >
-          <Form.Item label="Код">
-            <Input
-              value={newRecord.code}
-              onChange={(e) =>
-                setNewRecord((prev) => ({
-                  ...(prev || EMPTY_NEW_RECORD),
-                  code: e.target.value,
-                }))
-              }
-              placeholder="Введите код"
-            />
-          </Form.Item>
-
-          <Form.Item label="Описание">
-            <TextArea
-              rows={1}
-              value={newRecord.description}
-              onChange={(e) =>
-                setNewRecord((prev) => ({
-                  ...(prev || EMPTY_NEW_RECORD),
-                  description: e.target.value,
-                }))
-              }
-              placeholder="Описание"
-              style={{ width: 300 }}
-            />
-          </Form.Item>
-
-          <Form.Item label="Пошлина">
-            <InputNumber
-              value={newRecord.duty_rate}
-              step={0.01}
-              placeholder="%"
-              style={{ width: 120 }}
-              onChange={(v) =>
-                setNewRecord((prev) => ({
-                  ...(prev || EMPTY_NEW_RECORD),
-                  duty_rate: v,
-                }))
-              }
-            />
-          </Form.Item>
-
-          <Form.Item label="Примечания">
-            <TextArea
-              rows={1}
-              value={newRecord.notes}
-              onChange={(e) =>
-                setNewRecord((prev) => ({
-                  ...(prev || EMPTY_NEW_RECORD),
-                  notes: e.target.value,
-                }))
-              }
-              placeholder="Примечания"
-              style={{ width: 220 }}
-            />
-          </Form.Item>
-
-          <Form.Item>
-            <Button type="primary" htmlType="submit">
-              Добавить
-            </Button>
-          </Form.Item>
-          </Form>
+        <div className="table-section" style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <Segmented
+            value={quickFilter}
+            onChange={setQuickFilter}
+            options={[
+              { label: "Все", value: "all" },
+              { label: "Используются", value: "used" },
+              { label: "Не используются", value: "unused" },
+              { label: "Без ставки", value: "missing_duty" },
+              { label: "С примечаниями", value: "notes" },
+            ]}
+          />
+          <span style={{ color: "#8c8c8c" }}>
+            Показано: {filteredData.length} из {data.length}
+          </span>
         </div>
 
         <TnvedCodesTable
@@ -512,6 +473,76 @@ export default function TnvedCodesMain() {
         onSuccess={fetchData}
         type="tnved_codes"
       />
+
+      <Modal
+        title="Новый код ТН ВЭД"
+        open={createOpen}
+        okText="Добавить"
+        cancelText="Отмена"
+        onOk={handleAdd}
+        onCancel={() => {
+          setCreateOpen(false)
+          setNewRecord(EMPTY_NEW_RECORD)
+        }}
+      >
+        <Form layout="vertical">
+          <Form.Item label="Код" required>
+            <Input
+              value={newRecord.code}
+              onChange={(e) =>
+                setNewRecord((prev) => ({
+                  ...(prev || EMPTY_NEW_RECORD),
+                  code: e.target.value,
+                }))
+              }
+              placeholder="Введите код"
+            />
+          </Form.Item>
+
+          <Form.Item label="Описание">
+            <TextArea
+              rows={3}
+              value={newRecord.description}
+              onChange={(e) =>
+                setNewRecord((prev) => ({
+                  ...(prev || EMPTY_NEW_RECORD),
+                  description: e.target.value,
+                }))
+              }
+              placeholder="Описание"
+            />
+          </Form.Item>
+
+          <Form.Item label="Пошлина, %">
+            <InputNumber
+              value={newRecord.duty_rate}
+              step={0.01}
+              placeholder="%"
+              style={{ width: "100%" }}
+              onChange={(v) =>
+                setNewRecord((prev) => ({
+                  ...(prev || EMPTY_NEW_RECORD),
+                  duty_rate: v,
+                }))
+              }
+            />
+          </Form.Item>
+
+          <Form.Item label="Примечания">
+            <TextArea
+              rows={3}
+              value={newRecord.notes}
+              onChange={(e) =>
+                setNewRecord((prev) => ({
+                  ...(prev || EMPTY_NEW_RECORD),
+                  notes: e.target.value,
+                }))
+              }
+              placeholder="Примечания"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Space>
   )
 }

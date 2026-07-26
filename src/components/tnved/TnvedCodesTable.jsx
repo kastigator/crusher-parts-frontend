@@ -50,6 +50,7 @@ export default function TnvedCodesTable({
   const [logId, setLogId] = useState(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [detailsRecord, setDetailsRecord] = useState(null)
+  const [detailsTab, setDetailsTab] = useState("overview")
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [usageInfo, setUsageInfo] = useState(null)
 
@@ -264,8 +265,24 @@ export default function TnvedCodesTable({
       key: "usage_count",
       width: 140,
       render: (_, record) => {
-        const count = Number(record.usage_count || 0)
-        return count ? <Tag color="blue">{count}</Tag> : <Text type="secondary">—</Text>
+        const cardsCount = Number(record.usage_count || 0)
+        const bomCount = Number(record.bom_usage_count || 0)
+        if (!cardsCount) return <Text type="secondary">—</Text>
+        return (
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0, height: "auto" }}
+            onClick={(e) => {
+              e.stopPropagation()
+              setDetailsRecord(record)
+              setDetailsTab("usage")
+              setDetailsOpen(true)
+            }}
+          >
+            {cardsCount} карт. / {bomCount} BOM
+          </Button>
+        )
       },
     },
     {
@@ -604,6 +621,7 @@ export default function TnvedCodesTable({
                 return
               }
               setDetailsRecord(record)
+              setDetailsTab("overview")
               setDetailsOpen(true)
             },
             style: { cursor: isEditing(record) ? "default" : "pointer" },
@@ -617,9 +635,14 @@ export default function TnvedCodesTable({
         onClose={() => {
           setDetailsOpen(false)
           setDetailsRecord(null)
+          setDetailsTab("overview")
           setUsageInfo(null)
         }}
-        title={detailsRecord ? `Код ТН ВЭД: ${detailsRecord.code || "—"}` : "Код ТН ВЭД"}
+        title={
+          detailsRecord
+            ? `${detailsRecord.code || "—"}${detailsRecord.description ? ` — ${detailsRecord.description}` : ""}`
+            : "Код ТН ВЭД"
+        }
       >
         {detailsRecord ? (
           <Space direction="vertical" size={16} style={{ width: "100%" }}>
@@ -647,6 +670,8 @@ export default function TnvedCodesTable({
             </Space>
 
             <Tabs
+              activeKey={detailsTab}
+              onChange={setDetailsTab}
               items={[
                 {
                   key: "overview",
