@@ -20,6 +20,7 @@ import {
   Row,
   Select,
   Space,
+  Statistic,
   Switch,
   Tabs,
   Tag,
@@ -33,10 +34,13 @@ import {
   CopyOutlined,
   DeleteOutlined,
   EditOutlined,
+  LockOutlined,
   MoreOutlined,
+  ReloadOutlined,
   SearchOutlined,
   StarFilled,
   StarOutlined,
+  UnlockOutlined,
   UploadOutlined,
 } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
@@ -378,6 +382,56 @@ const formatMoney = (value, currency) => {
   const number = Number(value)
   if (!Number.isFinite(number)) return "—"
   return `${number.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency || ""}`.trim()
+}
+
+const WAREHOUSE_DOC_TYPE_LABELS = {
+  receipt: "Приход",
+  transfer: "Перемещение",
+  writeoff: "Списание",
+  reserve: "Резерв",
+  unreserve: "Снятие резерва",
+}
+
+const WAREHOUSE_MOVEMENT_LABELS = {
+  receipt: "Приход",
+  transfer_out: "Перемещение - расход",
+  transfer_in: "Перемещение - приход",
+  writeoff: "Списание",
+  reserve: "Резерв",
+  unreserve: "Снятие резерва",
+}
+
+const WAREHOUSE_DOC_COLORS = {
+  receipt: "green",
+  transfer: "blue",
+  writeoff: "red",
+  reserve: "gold",
+  unreserve: "purple",
+}
+
+const formatWarehouseQuantity = (value, uom = "шт") => {
+  const number = Number(value || 0)
+  const formatted = Number.isFinite(number) ? number.toLocaleString("ru-RU", { maximumFractionDigits: 3 }) : "0"
+  return `${formatted} ${uom || "шт"}`
+}
+
+const formatWarehouseDate = (value) => {
+  if (!value) return "—"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "—"
+  return date.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+const getWarehouseSourceTitle = (row) => {
+  if (row?.source_label) return row.source_label
+  if (row?.source_id) return `${row.source_type || "Источник"} #${row.source_id}`
+  return row?.basis_document || "Ручной документ"
 }
 
 const getUnitSymbol = (units, code, fallback) => {
@@ -729,6 +783,10 @@ export default function EquipmentClassifierMain() {
   const [selectedBomItem, setSelectedBomItem] = useState(null)
   const [bomPositionDetails, setBomPositionDetails] = useState(null)
   const [bomPositionDetailsLoading, setBomPositionDetailsLoading] = useState(false)
+  const [bomWarehouseDetails, setBomWarehouseDetails] = useState(null)
+  const [bomWarehouseDetailsLoading, setBomWarehouseDetailsLoading] = useState(false)
+  const [bomWarehouseAction, setBomWarehouseAction] = useState(null)
+  const [bomWarehouseActionSaving, setBomWarehouseActionSaving] = useState(false)
   const [bomCardActiveTab, setBomCardActiveTab] = useState("main")
   const [bomCardSaving, setBomCardSaving] = useState(false)
   const [bomCardPhotoUploading, setBomCardPhotoUploading] = useState(false)
@@ -775,6 +833,7 @@ export default function EquipmentClassifierMain() {
   const [bomCrossModelForm] = Form.useForm()
   const [bomCardForm] = Form.useForm()
   const [bomMaterialForm] = Form.useForm()
+  const [bomWarehouseActionForm] = Form.useForm()
   const bomLinkClassifier = Form.useWatch("link_classifier", bomItemForm)
   const bomCrossModelTargetId = Form.useWatch("target_model_id", bomCrossModelForm)
   const bomRowKind = Form.useWatch("row_kind", bomItemForm)
@@ -2608,6 +2667,36 @@ export default function EquipmentClassifierMain() {
     () => (Array.isArray(bomPositionDetails?.usage) ? bomPositionDetails.usage : []),
     [bomPositionDetails],
   )
+  const bomWarehouseStock = useMemo(
+    () => (Array.isArray(bomWarehouseDetails?.stock) ? bomWarehouseDetails.stock : []),
+    [bomWarehouseDetails],
+  )
+  const bomWarehouseReservations = useMemo(
+    () => (Array.isArray(bomWarehouseDetails?.reservations) ? bomWarehouseDetails.reservations : []),
+    [bomWarehouseDetails],
+  )
+  const bomWarehouseMovements = useMemo(
+    () => (Array.isArray(bomWarehouseDetails?.movements) ? bomWarehouseDetails.movements : []),
+    [bomWarehouseDetails],
+  )
+
+  const reloadBomWarehouseDetails = useCallback(async () => {
+    if (!bomItemCardOpen || !selectedBomItem?.catalog_position_id) {
+      setBomWarehouseDetails(null)
+      setBomWarehouseDetailsLoading(false)
+      return
+    }
+    setBomWarehouseDetailsLoading(true)
+    try {
+      const { data } = await axios.get(`/warehouse/positions/${selectedBomItem.catalog_position_id}`)
+      setBomWarehouseDetails(data || null)
+    } catch (err) {
+      console.error("GET /warehouse/positions/:id error:", err)
+      setBomWarehouseDetails(null)
+    } finally {
+      setBomWarehouseDetailsLoading(false)
+    }
+  }, [bomItemCardOpen, selectedBomItem?.catalog_position_id])
 
   const reloadBomPositionDetails = useCallback(async () => {
     if (!bomItemCardOpen || !selectedBomItem?.catalog_position_id) {
@@ -2624,6 +2713,32 @@ export default function EquipmentClassifierMain() {
       setBomPositionDetails(null)
     } finally {
       setBomPositionDetailsLoading(false)
+    }
+  }, [bomItemCardOpen, selectedBomItem?.catalog_position_id])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      if (!bomItemCardOpen || !selectedBomItem?.catalog_position_id) {
+        setBomWarehouseDetails(null)
+        setBomWarehouseDetailsLoading(false)
+        return
+      }
+      setBomWarehouseDetailsLoading(true)
+      try {
+        const { data } = await axios.get(`/warehouse/positions/${selectedBomItem.catalog_position_id}`)
+        if (!cancelled) setBomWarehouseDetails(data || null)
+      } catch (err) {
+        if (cancelled) return
+        console.error("GET /warehouse/positions/:id error:", err)
+        setBomWarehouseDetails(null)
+      } finally {
+        if (!cancelled) setBomWarehouseDetailsLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
     }
   }, [bomItemCardOpen, selectedBomItem?.catalog_position_id])
 
@@ -2717,6 +2832,65 @@ export default function EquipmentClassifierMain() {
       message.error(err?.response?.data?.message || "Не удалось сохранить данные карточки")
     } finally {
       setBomCardSaving(false)
+    }
+  }
+
+  const openBomWarehouseAction = (type, row) => {
+    if (!selectedBomItem?.catalog_position_id || !row?.warehouse_id) return
+    const maxQty = type === "reserve" ? Number(row.free_qty || 0) : Number(row.reserved_qty || 0)
+    if (maxQty <= 0) {
+      message.warning(type === "reserve" ? "Свободного остатка для резерва нет" : "Активного резерва для снятия нет")
+      return
+    }
+    setBomWarehouseAction({ type, row, maxQty })
+    bomWarehouseActionForm.resetFields()
+    bomWarehouseActionForm.setFieldsValue({
+      quantity: maxQty,
+      source_label:
+        type === "unreserve"
+          ? row.source_label || ""
+          : `Резерв из карточки ${getBomManufacturerNumber(selectedBomItem)}`,
+      source_type: row.source_type || "manual",
+      source_id: row.source_id || "",
+      source_line_id: row.source_line_id || "",
+    })
+  }
+
+  const handleSubmitBomWarehouseAction = async () => {
+    if (!selectedBomItem?.catalog_position_id || !bomWarehouseAction?.row) return
+    try {
+      const values = await bomWarehouseActionForm.validateFields()
+      const row = bomWarehouseAction.row
+      const type = bomWarehouseAction.type
+      setBomWarehouseActionSaving(true)
+      await axios.post("/warehouse/documents", {
+        doc_type: type,
+        document_date: new Date().toISOString(),
+        warehouse_id: row.warehouse_id,
+        basis_document: `Карточка позиции ${getBomManufacturerNumber(selectedBomItem)}`,
+        source_type: values.source_type || "manual",
+        source_id: values.source_id || null,
+        source_line_id: values.source_line_id || null,
+        source_label: values.source_label || null,
+        post: true,
+        lines: [
+          {
+            catalog_position_id: selectedBomItem.catalog_position_id,
+            storage_place_id: row.storage_place_id,
+            quantity: values.quantity,
+          },
+        ],
+      })
+      message.success(type === "reserve" ? "Резерв создан" : "Резерв снят")
+      setBomWarehouseAction(null)
+      bomWarehouseActionForm.resetFields()
+      await reloadBomWarehouseDetails()
+    } catch (err) {
+      if (err?.errorFields) return
+      console.error("POST /warehouse/documents reserve action error:", err)
+      message.error(err?.response?.data?.message || "Не удалось выполнить складское действие")
+    } finally {
+      setBomWarehouseActionSaving(false)
     }
   }
 
@@ -5970,6 +6144,8 @@ export default function EquipmentClassifierMain() {
           setBomItemCardOpen(false)
           setSelectedBomItem(null)
           setBomPositionDetails(null)
+          setBomWarehouseDetails(null)
+          setBomWarehouseAction(null)
           setBomCardActiveTab("main")
         }}
         extra={
@@ -6318,6 +6494,221 @@ export default function EquipmentClassifierMain() {
                 ),
               },
               {
+                key: "warehouse",
+                label: "Склад",
+                children: (
+                  <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                    <Card
+                      size="small"
+                      title="Складская сводка"
+                      loading={bomWarehouseDetailsLoading}
+                      extra={
+                        <Space>
+                          <Button size="small" icon={<ReloadOutlined />} onClick={reloadBomWarehouseDetails}>
+                            Обновить
+                          </Button>
+                          <Button size="small" onClick={() => navigate("/warehouse")}>
+                            Открыть склад
+                          </Button>
+                        </Space>
+                      }
+                    >
+                      <Row gutter={[12, 12]}>
+                        <Col span={8}>
+                          <Statistic
+                            title="Факт"
+                            value={formatWarehouseQuantity(
+                              bomWarehouseDetails?.stats?.actual_qty,
+                              selectedBomItem.uom || selectedBomItem.catalog_position_uom || "шт",
+                            )}
+                          />
+                        </Col>
+                        <Col span={8}>
+                          <Statistic
+                            title="Свободно"
+                            value={formatWarehouseQuantity(
+                              bomWarehouseDetails?.stats?.free_qty,
+                              selectedBomItem.uom || selectedBomItem.catalog_position_uom || "шт",
+                            )}
+                          />
+                        </Col>
+                        <Col span={8}>
+                          <Statistic
+                            title="В резерве"
+                            value={formatWarehouseQuantity(
+                              bomWarehouseDetails?.stats?.reserved_qty,
+                              selectedBomItem.uom || selectedBomItem.catalog_position_uom || "шт",
+                            )}
+                          />
+                        </Col>
+                      </Row>
+                    </Card>
+
+                    <Card size="small" title="Остатки по складам и адресам" loading={bomWarehouseDetailsLoading}>
+                      {bomWarehouseStock.length ? (
+                        <Table
+                          size="small"
+                          rowKey={(row) => `${row.warehouse_id}-${row.storage_place_id || 0}`}
+                          pagination={false}
+                          dataSource={bomWarehouseStock}
+                          scroll={{ x: 780 }}
+                          columns={[
+                            {
+                              title: "Склад / адрес",
+                              render: (_, row) => (
+                                <Space direction="vertical" size={0}>
+                                  <Typography.Text strong>{row.warehouse_name || "—"}</Typography.Text>
+                                  <Typography.Text type="secondary">{row.storage_place_code || "без адреса"}</Typography.Text>
+                                </Space>
+                              ),
+                            },
+                            {
+                              title: "Факт",
+                              width: 110,
+                              align: "right",
+                              render: (_, row) => formatWarehouseQuantity(row.actual_qty, row.uom),
+                            },
+                            {
+                              title: "Свободно",
+                              width: 110,
+                              align: "right",
+                              render: (_, row) => (
+                                <Typography.Text strong>{formatWarehouseQuantity(row.free_qty, row.uom)}</Typography.Text>
+                              ),
+                            },
+                            {
+                              title: "Резерв",
+                              width: 110,
+                              align: "right",
+                              render: (_, row) => formatWarehouseQuantity(row.reserved_qty, row.uom),
+                            },
+                            {
+                              title: "Действие",
+                              width: 110,
+                              render: (_, row) => (
+                                <Button
+                                  size="small"
+                                  icon={<LockOutlined />}
+                                  disabled={Number(row.free_qty || 0) <= 0}
+                                  onClick={() => openBomWarehouseAction("reserve", row)}
+                                >
+                                  Резерв
+                                </Button>
+                              ),
+                            },
+                          ]}
+                        />
+                      ) : (
+                        <Empty description="Остатков по этой позиции пока нет" />
+                      )}
+                    </Card>
+
+                    <Card size="small" title="Активные резервы" loading={bomWarehouseDetailsLoading}>
+                      {bomWarehouseReservations.length ? (
+                        <Table
+                          size="small"
+                          rowKey="reservation_key"
+                          pagination={false}
+                          dataSource={bomWarehouseReservations}
+                          scroll={{ x: 760 }}
+                          columns={[
+                            {
+                              title: "Источник",
+                              render: (_, row) => (
+                                <Space direction="vertical" size={0}>
+                                  <Typography.Text strong>{getWarehouseSourceTitle(row)}</Typography.Text>
+                                  <Typography.Text type="secondary">
+                                    {[row.source_type, row.source_id].filter(Boolean).join(" #") || "manual"}
+                                  </Typography.Text>
+                                </Space>
+                              ),
+                            },
+                            {
+                              title: "Склад / адрес",
+                              render: (_, row) => (
+                                <Space direction="vertical" size={0}>
+                                  <Typography.Text>{row.warehouse_name || "—"}</Typography.Text>
+                                  <Typography.Text type="secondary">{row.storage_place_code || "без адреса"}</Typography.Text>
+                                </Space>
+                              ),
+                            },
+                            {
+                              title: "Резерв",
+                              width: 110,
+                              align: "right",
+                              render: (_, row) => formatWarehouseQuantity(row.reserved_qty, row.uom),
+                            },
+                            {
+                              title: "",
+                              width: 100,
+                              render: (_, row) => (
+                                <Button size="small" icon={<UnlockOutlined />} onClick={() => openBomWarehouseAction("unreserve", row)}>
+                                  Снять
+                                </Button>
+                              ),
+                            },
+                          ]}
+                        />
+                      ) : (
+                        <Empty description="Активных резервов по этой позиции нет" />
+                      )}
+                    </Card>
+
+                    <Card size="small" title="Последние движения" loading={bomWarehouseDetailsLoading}>
+                      {bomWarehouseMovements.length ? (
+                        <Table
+                          size="small"
+                          rowKey="id"
+                          pagination={{ pageSize: 8, showSizeChanger: false }}
+                          dataSource={bomWarehouseMovements}
+                          scroll={{ x: 860 }}
+                          columns={[
+                            {
+                              title: "Дата",
+                              width: 145,
+                              render: (_, row) => formatWarehouseDate(row.occurred_at),
+                            },
+                            {
+                              title: "Документ",
+                              render: (_, row) => (
+                                <Space direction="vertical" size={0}>
+                                  <Typography.Text strong>{row.document_no || `#${row.document_id}`}</Typography.Text>
+                                  <Tag color={WAREHOUSE_DOC_COLORS[row.doc_type] || "default"}>
+                                    {WAREHOUSE_DOC_TYPE_LABELS[row.doc_type] || row.doc_type}
+                                  </Tag>
+                                </Space>
+                              ),
+                            },
+                            {
+                              title: "Движение",
+                              render: (_, row) => WAREHOUSE_MOVEMENT_LABELS[row.movement_type] || row.movement_type,
+                            },
+                            {
+                              title: "Склад / адрес",
+                              render: (_, row) => [row.warehouse_name, row.storage_place_code].filter(Boolean).join(" / ") || "—",
+                            },
+                            {
+                              title: "Факт",
+                              width: 90,
+                              align: "right",
+                              render: (_, row) => formatNullableNumber(row.quantity_delta),
+                            },
+                            {
+                              title: "Резерв",
+                              width: 90,
+                              align: "right",
+                              render: (_, row) => formatNullableNumber(row.reserved_delta),
+                            },
+                          ]}
+                        />
+                      ) : (
+                        <Empty description="Движений по этой позиции пока нет" />
+                      )}
+                    </Card>
+                  </Space>
+                ),
+              },
+              {
                 key: "suppliers",
                 label: "Поставщики",
                 children: (
@@ -6368,6 +6759,85 @@ export default function EquipmentClassifierMain() {
           <Empty description="Строка BOM не выбрана" />
         )}
       </Drawer>
+
+      <Modal
+        open={Boolean(bomWarehouseAction)}
+        title={bomWarehouseAction?.type === "unreserve" ? "Снять резерв" : "Зарезервировать позицию"}
+        okText={bomWarehouseAction?.type === "unreserve" ? "Снять" : "Зарезервировать"}
+        cancelText="Отмена"
+        confirmLoading={bomWarehouseActionSaving}
+        onCancel={() => {
+          setBomWarehouseAction(null)
+          bomWarehouseActionForm.resetFields()
+        }}
+        onOk={handleSubmitBomWarehouseAction}
+        destroyOnHidden
+      >
+        <Form form={bomWarehouseActionForm} layout="vertical">
+          <Descriptions size="small" bordered column={1} style={{ marginBottom: 12 }}>
+            <Descriptions.Item label="Позиция">
+              {selectedBomItem ? getBomManufacturerNumber(selectedBomItem) : "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Склад">
+              {[bomWarehouseAction?.row?.warehouse_name, bomWarehouseAction?.row?.storage_place_code]
+                .filter(Boolean)
+                .join(" / ") || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Доступно для операции">
+              {formatWarehouseQuantity(
+                bomWarehouseAction?.maxQty,
+                selectedBomItem?.uom || selectedBomItem?.catalog_position_uom || "шт",
+              )}
+            </Descriptions.Item>
+          </Descriptions>
+          <Form.Item
+            name="quantity"
+            label="Количество"
+            rules={[
+              { required: true, message: "Укажите количество" },
+              {
+                validator: (_, value) => {
+                  const number = Number(value)
+                  if (!Number.isFinite(number) || number <= 0) return Promise.reject(new Error("Количество должно быть больше 0"))
+                  if (number > Number(bomWarehouseAction?.maxQty || 0)) {
+                    return Promise.reject(new Error("Количество больше доступного"))
+                  }
+                  return Promise.resolve()
+                },
+              },
+            ]}
+          >
+            <InputNumber min={0.001} precision={3} style={{ width: "100%" }} />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="source_type" label="Источник">
+                <Select
+                  options={[
+                    { value: "manual", label: "Ручной резерв" },
+                    { value: "client_request", label: "Заявка клиента" },
+                    { value: "sales_quote", label: "Коммерческое предложение" },
+                    { value: "contract", label: "Контракт" },
+                    { value: "rfq", label: "RFQ" },
+                    { value: "purchase_order", label: "Заказ поставщику" },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="source_id" label="ID источника">
+                <Input placeholder="опционально" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="source_line_id" label="ID строки источника">
+            <Input placeholder="опционально" />
+          </Form.Item>
+          <Form.Item name="source_label" label="Название резерва">
+            <Input placeholder="Для кого или для чего держим позицию" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         open={bomMaterialModalOpen}
