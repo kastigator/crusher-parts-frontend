@@ -30,6 +30,7 @@ export default function TnvedPicker({
   autoFocus = false,
   style,
   catalogPositionId = null,
+  showReferenceButton = false,
 }) {
   // ---- базовый инлайн-поиск
   const [opts, setOpts] = useState([]);
@@ -240,9 +241,11 @@ export default function TnvedPicker({
             listHeight={320}
             optionRender={(option) => renderCodeSummary(option.data.raw)}
           />
-          <Button type="default" onClick={() => setOpen(true)} icon={<AppstoreOutlined />}>
-            Справочник
-          </Button>
+          {showReferenceButton ? (
+            <Button type="default" onClick={() => setOpen(true)} icon={<AppstoreOutlined />}>
+              Справочник
+            </Button>
+          ) : null}
         </Space.Compact>
 
         {catalogPositionId ? (
@@ -317,92 +320,93 @@ export default function TnvedPicker({
         ) : null}
       </Space>
 
-      <Drawer
-        title="Справочник кодов ТН ВЭД"
-        open={open}
-        onClose={() => setOpen(false)}
-        width={880}
-        destroyOnHidden
-      >
-        <Space direction="vertical" style={{ width: "100%" }} size="middle">
-          <Space wrap>
-            <Input
-              style={{ width: 360 }}
-              prefix={<SearchOutlined />}
-              placeholder="Искать по коду или описанию…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onPressEnter={() => searchDrawer(q)}
-              allowClear
-            />
-            <Button onClick={() => searchDrawer(q)}>Искать</Button>
+      {showReferenceButton ? (
+        <Drawer
+          title="Справочник кодов ТН ВЭД"
+          open={open}
+          onClose={() => setOpen(false)}
+          width={880}
+          destroyOnHidden
+        >
+          <Space direction="vertical" style={{ width: "100%" }} size="middle">
+            <Space wrap>
+              <Input
+                style={{ width: 360 }}
+                prefix={<SearchOutlined />}
+                placeholder="Искать по коду или описанию…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onPressEnter={() => searchDrawer(q)}
+                allowClear
+              />
+              <Button onClick={() => searchDrawer(q)}>Искать</Button>
 
-            <Divider type="vertical" />
+              <Divider type="vertical" />
 
-            <span>Префикс кода:</span>
-            <Space.Compact>
-              {["", "2", "4", "6"].map((len, idx) => {
-                if (len === "") {
+              <span>Префикс кода:</span>
+              <Space.Compact>
+                {["", "2", "4", "6"].map((len, idx) => {
+                  if (len === "") {
+                    return (
+                      <Button key={idx} onClick={() => setPrefix("")}>
+                        Все
+                      </Button>
+                    );
+                  }
                   return (
-                    <Button key={idx} onClick={() => setPrefix("")}>
-                      Все
+                    <Button
+                      key={idx}
+                      onClick={() => {
+                        const base = (q && /^\d/.test(q)) ? q : "";
+                        const pr = (base || "").replace(/\D/g, "").slice(0, Number(len));
+                        setPrefix(pr);
+                      }}
+                    >
+                      {len} цифры
                     </Button>
                   );
-                }
-                return (
-                  <Button
-                    key={idx}
-                    onClick={() => {
-                      // если есть выбранная строка — возьмём её префикс; иначе — просто обрежем текущий ввод
-                      const base = (q && /^\d/.test(q)) ? q : "";
-                      const pr = (base || "").replace(/\D/g, "").slice(0, Number(len));
-                      setPrefix(pr);
-                    }}
-                  >
-                    {len} цифры
-                  </Button>
-                );
+                })}
+              </Space.Compact>
+
+              {prefix && <Tag color="geekblue">Префикс: {prefix}</Tag>}
+            </Space>
+
+            <Table
+              rowKey="id"
+              size="middle"
+              columns={columns}
+              loading={tLoading}
+              dataSource={filteredRows}
+              pagination={{ pageSize: 12 }}
+              rowSelection={{
+                type: "radio",
+                selectedRowKeys: pickedRow ? [pickedRow.id] : [],
+                onChange: (_, rows) => setPickedRow(rows[0]),
+              }}
+              onRow={(record) => ({
+                onDoubleClick: () => {
+                  setPickedRow(record);
+                  handlePick(record);
+                  setOpen(false);
+                },
               })}
-            </Space.Compact>
+            />
 
-            {prefix && <Tag color="geekblue">Префикс: {prefix}</Tag>}
+            <Space style={{ justifyContent: "flex-end", width: "100%" }}>
+              <Button onClick={() => { setPickedRow(null); handlePick(null); }}>
+                Очистить
+              </Button>
+              <Button
+                type="primary"
+                disabled={!pickedRow}
+                onClick={() => { handlePick(pickedRow); setOpen(false); }}
+              >
+                Выбрать
+              </Button>
+            </Space>
           </Space>
-
-          <Table
-            rowKey="id"
-            size="middle"
-            columns={columns}
-            loading={tLoading}
-            dataSource={filteredRows}
-            pagination={{ pageSize: 12 }}
-            rowSelection={{
-              type: "radio",
-              selectedRowKeys: pickedRow ? [pickedRow.id] : [],
-              onChange: (_, rows) => setPickedRow(rows[0]),
-            }}
-            onRow={(record) => ({
-              onDoubleClick: () => {
-                setPickedRow(record);
-                handlePick(record);
-                setOpen(false);
-              },
-            })}
-          />
-
-          <Space style={{ justifyContent: "flex-end", width: "100%" }}>
-            <Button onClick={() => { setPickedRow(null); handlePick(null); }}>
-              Очистить
-            </Button>
-            <Button
-              type="primary"
-              disabled={!pickedRow}
-              onClick={() => { handlePick(pickedRow); setOpen(false); }}
-            >
-              Выбрать
-            </Button>
-          </Space>
-        </Space>
-      </Drawer>
+        </Drawer>
+      ) : null}
     </>
   );
 }
