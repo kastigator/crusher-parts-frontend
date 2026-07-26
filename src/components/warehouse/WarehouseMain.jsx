@@ -87,6 +87,11 @@ const POSITION_FILTER_QUERY_KEYS = [
   "position_subtitle",
   "uom",
   "action",
+  "basis_document",
+  "source_type",
+  "source_id",
+  "source_line_id",
+  "source_label",
 ]
 
 const formatQuantity = (value) => {
@@ -389,15 +394,24 @@ export default function WarehouseMain() {
     const action = searchParams.get("action")
     if (!action || !["receipt", "reserve", "writeoff"].includes(action)) return
     if (!positionOptionFromFilter || !locations.length) return
-    const key = `${action}:${positionOptionFromFilter.id}:${locations.length}`
+    const key = [
+      action,
+      positionOptionFromFilter.id,
+      locations.length,
+      searchParams.get("source_type") || "",
+      searchParams.get("source_id") || "",
+      searchParams.get("source_line_id") || "",
+    ].join(":")
     if (urlActionHandledRef.current === key) return
     urlActionHandledRef.current = key
     setActiveMode(action === "reserve" ? "reservations" : "stock")
     openDocumentModal(action, {
       positionOption: positionOptionFromFilter,
-      basis_document: `Карточка позиции ${positionTitle(positionOptionFromFilter)}`,
-      source_type: "manual",
-      source_label: `Из карточки позиции ${positionTitle(positionOptionFromFilter)}`,
+      basis_document: searchParams.get("basis_document") || `Карточка позиции ${positionTitle(positionOptionFromFilter)}`,
+      source_type: searchParams.get("source_type") || "manual",
+      source_id: searchParams.get("source_id") || undefined,
+      source_line_id: searchParams.get("source_line_id") || undefined,
+      source_label: searchParams.get("source_label") || `Из карточки позиции ${positionTitle(positionOptionFromFilter)}`,
     })
   }, [locations.length, openDocumentModal, positionOptionFromFilter, searchParams])
 

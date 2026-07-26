@@ -46,6 +46,16 @@ const receiptStatusMeta = {
   unknown: { label: "Проверить", color: "orange" },
 }
 
+const fulfillmentStatusMeta = {
+  reserved: { label: "В резерве", color: "green" },
+  ordered: { label: "Закрыто PO", color: "blue" },
+  stock_available: { label: "Есть на складе", color: "cyan" },
+  draft_po: { label: "PO черновик", color: "gold" },
+  shortage: { label: "Дефицит", color: "red" },
+  missing_supplier_part: { label: "Нет supplier part", color: "orange" },
+  unknown: { label: "Проверить", color: "default" },
+}
+
 const contractStatusLabel = (value) =>
   ({
     draft: "Черновик",
@@ -161,11 +171,17 @@ export default function RequestExecutionTabContent({ requestId }) {
     summary?.purchase_orders?.rows?.find((row) => row.currency)?.currency ||
     "USD"
   const totals = summary?.totals || {}
+  const fulfillmentTotals = summary?.fulfillment?.totals || {}
   const receiptPct = useMemo(() => {
     const ordered = numberOrZero(totals.ordered_qty)
     if (!ordered) return 0
     return Math.min(100, (numberOrZero(totals.posted_receipt_qty) / ordered) * 100)
   }, [totals.ordered_qty, totals.posted_receipt_qty])
+  const fulfillmentPct = useMemo(() => {
+    const required = numberOrZero(fulfillmentTotals.required_qty)
+    if (!required) return 0
+    return Math.min(100, (numberOrZero(fulfillmentTotals.committed_qty) / required) * 100)
+  }, [fulfillmentTotals.committed_qty, fulfillmentTotals.required_qty])
 
   if (loading && !summary) {
     return <Skeleton active paragraph={{ rows: 8 }} />
@@ -174,6 +190,137 @@ export default function RequestExecutionTabContent({ requestId }) {
   if (!summary) {
     return <Empty description="Исполнение по заявке пока недоступно" />
   }
+
+  const openWarehouseForFulfillment = (row, action = null) => {
+    const supplierPart = Array.isArray(row.supplier_parts) ? row.supplier_parts[0] : null
+    const title = row.catalog_position_number || row.client_display_part_number || `#${row.catalog_position_id || ""}`
+    const subtitle = row.catalog_position_name || row.client_display_description || ""
+    const params = new URLSearchParams({
+      mode: action === "reserve" ? "reservations" : "stock",
+    })
+    if (row.catalog_position_id) {
+      params.set("position_id", String(row.catalog_position_id))
+      params.set("position_title", title)
+      if (subtitle) params.set("position_subtitle", subtitle)
+      if (row.uom) params.set("uom", row.uom)
+    }
+    const q = supplierPart?.supplier_display_part_number || supplierPart?.supplier_part_number || row.client_display_part_number
+    if (q) params.set("q", q)
+    if (action === "reserve") {
+      params.set("action", "reserve")
+      params.set("source_type", "client_request")
+      params.set("source_id", String(requestId))
+      params.set("source_line_id", String(row.sales_quote_line_id || row.client_request_revision_item_id || ""))
+      params.set(
+        "source_label",
+        `Резерв по заявке ${summary.request?.internal_number || `#${requestId}`}: ${row.client_display_part_number || ""}`.trim()
+      )
+      params.set("basis_document", summary.contract?.active?.contract_number || summary.request?.internal_number || `Заявка #${requestId}`)
+    }
+    navigate(`/warehouse?${params.toString()}`)
+  }
+
+  const fulfillmentColumns = [
+    {
+      title: "Строка КП",
+      width: 300,
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text strong>{row.client_display_part_number || `#${row.sales_quote_line_id}`}</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {row.client_display_description || "—"}
+          </Typography.Text>
+          {row.catalog_position_number ? (
+            <Tag style={{ width: "fit-content", marginTop: 4 }}>{row.catalog_position_number}</Tag>
+          ) : null}
+        </Space>
+      ),
+    },
+    {
+      title: "Деталь поставщика",
+      width: 280,
+      render: (_, row) => {
+        const parts = Array.isArray(row.supplier_parts) ? row.supplier_parts : []
+        if (!parts.length) return <Tag color="orange">Не выбрана</Tag>
+        return (
+          <Space direction="vertical" size={2}>
+            {parts.slice(0, 3).map((part) => (
+              <Space key={part.supplier_part_id} direction="vertical" size={0}>
+                <Typography.Text>{part.supplier_display_part_number || `supplier_part #${part.supplier_part_id}`}</Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {[part.supplier_name, part.supplier_public_code].filter(Boolean).join(" · ") || "—"}
+                </Typography.Text>
+              </Space>
+            ))}
+            {parts.length > 3 ? <Tag>{`еще ${parts.length - 3}`}</Tag> : null}
+          </Space>
+        )
+      },
+    },
+    {
+      title: "Потребность",
+      width: 130,
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text>{formatQty(row.supply_required_qty)}</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {`клиент: ${formatQty(row.demand_qty)} ${row.uom || ""}`.trim()}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Покрытие",
+      width: 280,
+      render: (_, row) => (
+        <Space wrap size={[6, 6]}>
+          <Tag color={numberOrZero(row.reserved_qty) ? "green" : "default"}>Резерв: {formatQty(row.reserved_qty)}</Tag>
+          <Tag color={numberOrZero(row.firm_ordered_qty) ? "blue" : "default"}>PO: {formatQty(row.firm_ordered_qty)}</Tag>
+          {numberOrZero(row.draft_ordered_qty) ? <Tag color="gold">Черновик PO: {formatQty(row.draft_ordered_qty)}</Tag> : null}
+          <Tag color={numberOrZero(row.stock_free_qty) ? "cyan" : "default"}>Свободно: {formatQty(row.stock_free_qty)}</Tag>
+          {numberOrZero(row.shortage_qty) ? <Tag color="red">Дефицит: {formatQty(row.shortage_qty)}</Tag> : null}
+        </Space>
+      ),
+    },
+    {
+      title: "Приемка",
+      width: 190,
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text>{`Принято: ${formatQty(row.posted_receipt_qty)}`}</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {`В черновике: ${formatQty(row.draft_receipt_qty)}`}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Статус",
+      width: 150,
+      render: (_, row) => {
+        const meta = fulfillmentStatusMeta[row.coverage_status] || fulfillmentStatusMeta.unknown
+        return <Tag color={meta.color}>{meta.label}</Tag>
+      },
+    },
+    {
+      title: "Действие",
+      width: 190,
+      render: (_, row) => (
+        <Space wrap size={[6, 6]}>
+          <Button size="small" onClick={() => openWarehouseForFulfillment(row)}>
+            Склад
+          </Button>
+          <Button
+            size="small"
+            disabled={!numberOrZero(row.stock_free_qty) || !row.catalog_position_id}
+            onClick={() => openWarehouseForFulfillment(row, "reserve")}
+          >
+            Резерв
+          </Button>
+        </Space>
+      ),
+    },
+  ]
 
   const poColumns = [
     {
@@ -355,26 +502,29 @@ export default function RequestExecutionTabContent({ requestId }) {
               summary.contract?.active?.contract_number || "нет подписанного контура",
             )}
             {metric(
-              "PO",
-              summary.purchase_orders?.count || 0,
-              `строк: ${summary.lines?.length || 0}`,
+              "Покрытие",
+              `${fulfillmentPct.toFixed(0)}%`,
+              `${formatQty(fulfillmentTotals.committed_qty)} из ${formatQty(fulfillmentTotals.required_qty)}`,
             )}
             {metric(
-              "Приемка",
-              `${receiptPct.toFixed(0)}%`,
-              `${formatQty(totals.posted_receipt_qty)} из ${formatQty(totals.ordered_qty)}`,
+              "Можно со склада",
+              fulfillmentTotals.stock_available_line_count || 0,
+              `свободно: ${formatQty(fulfillmentTotals.stock_free_qty)}`,
             )}
             {metric(
-              "Резерв",
-              formatQty(summary.reservations?.total_qty),
-              `активных резервов: ${summary.reservations?.count || 0}`,
+              "Дефицит",
+              fulfillmentTotals.shortage_line_count || 0,
+              `кол-во: ${formatQty(fulfillmentTotals.shortage_qty)}`,
             )}
           </Row>
 
           <Space wrap size={[8, 8]}>
             <Tag>Заявка: {summary.request?.internal_number || `#${requestId}`}</Tag>
             <Tag>RFQ: {summary.request?.rfq_number || "—"}</Tag>
+            <Tag>PO: {summary.purchase_orders?.count || 0}</Tag>
             <Tag>Заказано: {formatQty(totals.ordered_qty)}</Tag>
+            <Tag>Приемка: {receiptPct.toFixed(0)}%</Tag>
+            <Tag>Резерв: {formatQty(summary.reservations?.total_qty)}</Tag>
             <Tag>Осталось принять: {formatQty(totals.remaining_receipt_qty)}</Tag>
             <Tag>Свободно по supplier parts: {formatQty(summary.stock?.free_qty)}</Tag>
             <Tag>Сумма PO: {formatPriceWithCurrency(totals.goods_total, currency)}</Tag>
@@ -399,6 +549,21 @@ export default function RequestExecutionTabContent({ requestId }) {
       <Tabs
         size="small"
         items={[
+          {
+            key: "fulfillment",
+            label: `План покрытия (${summary.fulfillment?.totals?.line_count || 0})`,
+            children: (
+              <Table
+                size="small"
+                rowKey="sales_quote_line_id"
+                dataSource={summary.fulfillment?.lines || []}
+                columns={fulfillmentColumns}
+                pagination={{ pageSize: 12, hideOnSinglePage: true }}
+                scroll={{ x: "max-content" }}
+                locale={{ emptyText: "Активных строк подписанного КП для исполнения пока нет" }}
+              />
+            ),
+          },
           {
             key: "orders",
             label: `PO (${summary.purchase_orders?.count || 0})`,
