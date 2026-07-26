@@ -9,8 +9,8 @@ import {
   Input,
   InputNumber,
   Space,
+  Spin,
   Statistic,
-  Table,
   Tabs,
   Tag,
   Tooltip,
@@ -398,67 +398,165 @@ export default function TnvedCodesTable({
     row?.bom_title ||
     "—"
 
-  const usageColumns = [
-    {
-      title: "Позиция",
-      key: "position",
-      width: 260,
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Text strong>{row.manufacturer_part_number || row.bom_manufacturer_part_number || "—"}</Text>
-          <Text type="secondary" ellipsis>
-            {formatPositionTitle(row)}
-          </Text>
-        </Space>
-      ),
-    },
-    {
-      title: "Модель",
-      key: "model",
-      width: 220,
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Text>{row.model_name || "—"}</Text>
-          <Text type="secondary">{row.manufacturer_name || "—"}</Text>
-        </Space>
-      ),
-    },
-    {
-      title: "Материал",
-      dataIndex: "materials_summary",
-      key: "materials_summary",
-      width: 220,
-      ellipsis: { showTitle: false },
-      render: (value) => (
-        <Tooltip title={value || ""}>
-          <Text type={value ? undefined : "secondary"}>{value || "—"}</Text>
-        </Tooltip>
-      ),
-    },
-    {
-      title: "Габариты, мм",
-      key: "dimensions",
-      width: 160,
-      render: (_, row) => {
-        const dims = [row.length_mm, row.width_mm, row.height_mm].filter((v) => v !== null && v !== undefined && v !== "")
-        return dims.length ? dims.join(" x ") : <Text type="secondary">—</Text>
-      },
-    },
-  ]
+  const groupPositionRows = (rows = []) => {
+    const groups = new Map()
+    for (const row of rows || []) {
+      const key = String(row.catalog_position_id || row.bom_item_id || Math.random())
+      const existing = groups.get(key)
+      if (existing) {
+        existing.applications.push(row)
+      } else {
+        groups.set(key, { ...row, applications: [row] })
+      }
+    }
+    return Array.from(groups.values())
+  }
 
-  const candidateColumns = [
-    ...usageColumns.slice(0, 3),
-    {
-      title: "Действие",
-      key: "action",
-      width: 140,
-      render: (_, row) => (
-        <Button size="small" onClick={() => applyCodeToCandidate(row)}>
-          Привязать
-        </Button>
-      ),
-    },
-  ]
+  const usageGroups = useMemo(
+    () => groupPositionRows(usageInfo?.usage || []),
+    [usageInfo?.usage],
+  )
+  const candidateGroups = useMemo(
+    () => groupPositionRows(usageInfo?.candidates || []),
+    [usageInfo?.candidates],
+  )
+
+  const renderMaterials = (value) => {
+    if (!value) return <Text type="secondary">—</Text>
+    return (
+      <Tooltip title={value}>
+        <Text
+          style={{
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+            lineHeight: 1.35,
+          }}
+        >
+          {value}
+        </Text>
+      </Tooltip>
+    )
+  }
+
+  const renderDimensions = (row) => {
+    const dims = [row.length_mm, row.width_mm, row.height_mm]
+      .filter((v) => v !== null && v !== undefined && v !== "")
+      .map((v) => Number(v).toLocaleString("ru-RU"))
+    return dims.length ? dims.join(" x ") : "—"
+  }
+
+  const renderPositionCards = (groups, { candidate = false } = {}) => {
+    if (detailsLoading && !groups.length) {
+      return (
+        <div style={{ padding: "40px 0", textAlign: "center" }}>
+          <Spin />
+        </div>
+      )
+    }
+    if (!groups.length) {
+      return (
+        <Empty
+          description={
+            candidate
+              ? "Похожих непривязанных позиций пока нет"
+              : "Код пока не применялся в карточках позиций"
+          }
+        />
+      )
+    }
+
+    return (
+      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        {groups.map((group) => {
+          const partNumber =
+            group.manufacturer_part_number ||
+            group.bom_manufacturer_part_number ||
+            group.position_code ||
+            `#${group.catalog_position_id}`
+          const applications = group.applications || []
+          return (
+            <div
+              key={`${candidate ? "candidate" : "usage"}-${group.catalog_position_id || group.bom_item_id}`}
+              style={{
+                border: "1px solid #f0f0f0",
+                borderRadius: 8,
+                padding: 14,
+                background: "#fff",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(220px, 1.2fr) minmax(220px, 1fr) minmax(180px, 0.7fr)",
+                  gap: 16,
+                  alignItems: "start",
+                }}
+              >
+                <Space direction="vertical" size={4}>
+                  <Space wrap size={6}>
+                    <Text strong style={{ fontSize: 16 }}>{partNumber}</Text>
+                    {applications.length > 1 ? <Tag>{applications.length} места BOM</Tag> : null}
+                    {candidate ? <Tag color="gold">без кода</Tag> : null}
+                  </Space>
+                  <Text>{formatPositionTitle(group)}</Text>
+                  <Text type="secondary">{group.catalog_position_description || "—"}</Text>
+                </Space>
+
+                <Space direction="vertical" size={6}>
+                  <Text type="secondary">Материал</Text>
+                  {renderMaterials(group.materials_summary)}
+                </Space>
+
+                <Space direction="vertical" size={6}>
+                  <Text type="secondary">Характеристики</Text>
+                  <Text>Масса: {group.weight_kg ? `${Number(group.weight_kg).toLocaleString("ru-RU")} кг` : "—"}</Text>
+                  <Text>Габариты: {renderDimensions(group)} мм</Text>
+                  {candidate ? (
+                    <Button size="small" onClick={() => applyCodeToCandidate(group)}>
+                      Привязать код
+                    </Button>
+                  ) : null}
+                </Space>
+              </div>
+
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #f5f5f5" }}>
+                <Text type="secondary">Где применяется</Text>
+                <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                  {applications.map((app) => (
+                    <div
+                      key={`${app.catalog_position_id}-${app.bom_item_id || app.equipment_model_id || "card"}`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(160px, 0.8fr) minmax(220px, 1fr) minmax(80px, 0.3fr)",
+                        gap: 12,
+                        alignItems: "center",
+                        padding: "8px 10px",
+                        borderRadius: 6,
+                        background: "#fafafa",
+                      }}
+                    >
+                      <Space direction="vertical" size={0}>
+                        <Text>{app.model_name || "Без модели"}</Text>
+                        <Text type="secondary">{app.manufacturer_name || "—"}</Text>
+                      </Space>
+                      <Text type="secondary">
+                        {app.parent_title || app.parent_manufacturer_part_number
+                          ? `Внутри: ${app.parent_manufacturer_part_number || app.parent_title}`
+                          : "В корне BOM модели"}
+                      </Text>
+                      <Text type="secondary">Кол-во: {app.bom_quantity || "—"}</Text>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </Space>
+    )
+  }
 
   return (
     <>
@@ -588,34 +686,12 @@ export default function TnvedCodesTable({
                 {
                   key: "usage",
                   label: `Применения (${usageInfo?.stats?.usage_count ?? detailsRecord.usage_count ?? 0})`,
-                  children: (
-                    <Table
-                      rowKey={(row) => `${row.catalog_position_id}-${row.bom_item_id || "card"}`}
-                      loading={detailsLoading}
-                      dataSource={usageInfo?.usage || []}
-                      columns={usageColumns}
-                      size="small"
-                      pagination={{ pageSize: 10 }}
-                      locale={{ emptyText: <Empty description="Код пока не применялся в карточках позиций" /> }}
-                      scroll={{ x: true }}
-                    />
-                  ),
+                  children: renderPositionCards(usageGroups),
                 },
                 {
                   key: "candidates",
                   label: `Кандидаты (${usageInfo?.stats?.candidate_count ?? 0})`,
-                  children: (
-                    <Table
-                      rowKey={(row) => `${row.catalog_position_id}-${row.bom_item_id || "candidate"}`}
-                      loading={detailsLoading}
-                      dataSource={usageInfo?.candidates || []}
-                      columns={candidateColumns}
-                      size="small"
-                      pagination={{ pageSize: 10 }}
-                      locale={{ emptyText: <Empty description="Похожих непривязанных позиций пока нет" /> }}
-                      scroll={{ x: true }}
-                    />
-                  ),
+                  children: renderPositionCards(candidateGroups, { candidate: true }),
                 },
               ]}
             />
