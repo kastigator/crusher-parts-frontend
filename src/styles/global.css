@@ -521,6 +521,15 @@ body,
   padding-bottom: 4px;
 }
 
+.client-request-stage-switch {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.client-request-stage-switch .ant-segmented-group {
+  flex-wrap: wrap;
+}
+
 .workspace-toolbar {
   display: flex;
   gap: 16px;

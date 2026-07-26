@@ -48,10 +48,28 @@ import { useSearchParams } from "react-router-dom"
 import useCapabilities from "@/hooks/useCapabilities"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 
-const CLIENT_WORKSPACE_TABS = new Set(["summary", "items", "details", "commercial", "margin", "quote", "contract", "execution"])
+const CLIENT_WORKSPACE_TABS = new Set([
+  "summary",
+  "request",
+  "items",
+  "details",
+  "procurement",
+  "rfq",
+  "commercial",
+  "margin",
+  "quote",
+  "contract",
+  "execution",
+])
+const CLIENT_WORKSPACE_TAB_ALIASES = {
+  positions: "items",
+  request_details: "details",
+  purchase: "procurement",
+}
 const normalizeWorkspaceTab = (value) => {
   const key = String(value || "").trim().toLowerCase()
-  return CLIENT_WORKSPACE_TABS.has(key) ? key : null
+  const normalized = CLIENT_WORKSPACE_TAB_ALIASES[key] || key
+  return CLIENT_WORKSPACE_TABS.has(normalized) ? normalized : null
 }
 
 const STATUS_OPTIONS = [

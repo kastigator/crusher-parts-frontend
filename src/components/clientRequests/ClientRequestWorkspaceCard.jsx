@@ -9,6 +9,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Segmented,
   Select,
   Space,
   Switch,
@@ -33,6 +34,21 @@ const commercialStageByLegacyWorkspaceTab = {
   margin: "pricing",
   quote: "quote",
   contract: "contract",
+}
+
+const requestStageByWorkspaceTab = {
+  items: "positions",
+  details: "details",
+  request: "positions",
+}
+
+const workspaceTopTabByLegacyKey = {
+  items: "request",
+  details: "request",
+  request: "request",
+  rfq: "procurement",
+  procurement: "procurement",
+  ...Object.fromEntries(Object.keys(commercialStageByLegacyWorkspaceTab).map((key) => [key, "commercial"])),
 }
 
 const hasReached = (status, keys) => keys.includes(String(status || ""))
@@ -124,12 +140,19 @@ export default function ClientRequestWorkspaceCard({
     return emptyState
   }
 
-  const activeWorkspaceTabKey = commercialStageByLegacyWorkspaceTab[workspaceTabKey] ? "commercial" : workspaceTabKey
+  const activeWorkspaceTabKey = workspaceTopTabByLegacyKey[workspaceTabKey] || workspaceTabKey || "summary"
+  const activeRequestStageKey = requestStageByWorkspaceTab[workspaceTabKey] || "positions"
   const requestStatusLabel =
     statusOptions.find((opt) => opt.value === activeRequest?.status)?.label ||
     activeRequest?.status ||
     "—"
   const rfqReady = !!activeRequest?.rfq_id && rfqSyncStatus !== "needs_sync"
+  const rfqStatusColor = rfqReady ? "green" : activeRequest?.rfq_id ? "orange" : "default"
+  const rfqStatusLabel = rfqReady
+    ? "RFQ синхронизирован"
+    : activeRequest?.rfq_id
+      ? "RFQ требует синхронизации"
+      : "RFQ ещё нет"
   const responsesReady = hasReached(activeRequest?.status, [
     "responses_received",
     "selection_done",
@@ -144,6 +167,16 @@ export default function ClientRequestWorkspaceCard({
   const quoteReady = hasReached(activeRequest?.status, ["quote_prepared", "contracted"])
   const contractReady = activeRequest?.status === "contracted"
   const openWorkspaceTab = (key) => setWorkspaceTabKey(key)
+  const setWorkspaceTopTab = (key) => {
+    if (key === "request") {
+      setWorkspaceTabKey(requestStageByWorkspaceTab[workspaceTabKey] ? workspaceTabKey : "items")
+      return
+    }
+    setWorkspaceTabKey(key)
+  }
+  const setRequestStage = (key) => {
+    setWorkspaceTabKey(key === "details" ? "details" : "items")
+  }
   const nextAction = (() => {
     if (!isLatestRevision) {
       return {
@@ -265,9 +298,7 @@ export default function ClientRequestWorkspaceCard({
               <Tag color={isSentToProcurement ? "green" : "default"}>
                 {isSentToProcurement ? "В закупке" : "До закупки"}
               </Tag>
-              <Tag color={rfqReady ? "green" : activeRequest?.rfq_id ? "orange" : "default"}>
-                {rfqReady ? "RFQ синхронизирован" : activeRequest?.rfq_id ? "RFQ требует синхронизации" : "RFQ еще нет"}
-              </Tag>
+              <Tag color={rfqStatusColor}>{rfqStatusLabel}</Tag>
               <Tag color={responsesReady ? "green" : "default"}>Ответы</Tag>
               <Tag color={selectionReady ? "green" : "default"}>Выбор</Tag>
               <Tag color={quoteReady ? "green" : "default"}>КП</Tag>
@@ -288,7 +319,7 @@ export default function ClientRequestWorkspaceCard({
 
         <Tabs
           activeKey={activeWorkspaceTabKey}
-          onChange={setWorkspaceTabKey}
+          onChange={setWorkspaceTopTab}
           size="small"
           items={[
             {
@@ -302,10 +333,22 @@ export default function ClientRequestWorkspaceCard({
               ),
             },
             {
-              key: "items",
-              label: "Позиции",
+              key: "request",
+              label: "Заявка",
               children: (
-                <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                  <Segmented
+                    className="client-request-stage-switch"
+                    size="small"
+                    value={activeRequestStageKey}
+                    onChange={(value) => setRequestStage(String(value))}
+                    options={[
+                      { label: "Позиции", value: "positions" },
+                      { label: "Данные заявки", value: "details" },
+                    ]}
+                  />
+                  {activeRequestStageKey === "positions" ? (
+                    <Space direction="vertical" style={{ width: "100%" }} size="middle">
                   <div className="workspace-toolbar workspace-toolbar--split">
                     <div className="workspace-toolbar__group workspace-toolbar__group--meta">
                       <Text type="secondary">Работа ведётся в активной ревизии заявки.</Text>
@@ -537,14 +580,9 @@ export default function ClientRequestWorkspaceCard({
                       },
                   ]}
                 />
-                </Space>
-              ),
-            },
-            {
-              key: "details",
-              label: "Данные заявки",
-              children: (
-                <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                    </Space>
+                  ) : (
+                    <Space direction="vertical" size="middle" style={{ width: "100%" }}>
                   <Space style={{ width: "100%", justifyContent: "flex-end" }}>
                     {requestEditing ? (
                       <>
@@ -723,6 +761,61 @@ export default function ClientRequestWorkspaceCard({
                       </Form.Item>
                     </Space>
                   </Form>
+                    </Space>
+                  )}
+                </Space>
+              ),
+            },
+            {
+              key: "procurement",
+              label: "Закупка/RFQ",
+              children: (
+                <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                  <div className="workspace-next-panel">
+                    <div className="workspace-next-panel__body">
+                      <Text type="secondary">Закупочный контур</Text>
+                      <div className="workspace-next-panel__title">
+                        {isSentToProcurement ? "Заявка в закупке" : "Заявка ещё не передана в закупку"}
+                      </div>
+                      <Text type="secondary">
+                        {activeRequest?.rfq_id
+                          ? "Поставщики, ответы, покрытие и выбор ведутся в связанном RFQ."
+                          : "После передачи заявки будет создан закупочный RFQ по текущей ревизии."}
+                      </Text>
+                      <Space wrap size={[8, 8]} style={{ marginTop: 10 }}>
+                        <Tag color={isLatestRevision ? "green" : "orange"}>
+                          {isLatestRevision ? "Текущая ревизия" : "Архивная ревизия"}
+                        </Tag>
+                        <Tag color={isSentToProcurement ? "green" : "default"}>
+                          {isSentToProcurement ? "Передана в закупку" : "До закупки"}
+                        </Tag>
+                        <Tag color={rfqStatusColor}>{rfqStatusLabel}</Tag>
+                        <Tag>Позиции: {items.length}</Tag>
+                        <Tag>Ревизия: {activeRevisionLabel}</Tag>
+                      </Space>
+                    </div>
+                    <div className="workspace-next-panel__action">
+                      <Text type="secondary">Действия</Text>
+                      {!isSentToProcurement ? (
+                        <Button
+                          type="primary"
+                          disabled={!isLatestRevision || !canRelease || isReleasedLocked}
+                          onClick={handleReleaseRequest}
+                        >
+                          Отправить в закупку
+                        </Button>
+                      ) : null}
+                      {rfqSyncStatus === "needs_sync" ? (
+                        <Button onClick={handleSyncRfq}>Синхронизировать RFQ</Button>
+                      ) : null}
+                      <Button
+                        disabled={!activeRequest?.rfq_id}
+                        onClick={() => navigate(`/rfq-workspace?rfq=${activeRequest.rfq_id || ""}`)}
+                      >
+                        Открыть RFQ
+                      </Button>
+                    </div>
+                  </div>
                 </Space>
               ),
             },
