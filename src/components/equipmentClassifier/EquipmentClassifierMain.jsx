@@ -6136,7 +6136,10 @@ export default function EquipmentClassifierMain() {
                             </Col>
                             <Col span={14}>
                               <Form.Item label="Код ТН ВЭД" name="tnved">
-                                <TnvedPicker placeholder="Найти код ТН ВЭД" />
+                                <TnvedPicker
+                                  placeholder="Искать по названию детали, материалу или описанию"
+                                  catalogPositionId={selectedBomItem?.catalog_position_id}
+                                />
                               </Form.Item>
                             </Col>
                           </Row>
