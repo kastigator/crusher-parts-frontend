@@ -23,9 +23,6 @@ export const STEP_LABELS = [
   "Логистика",
   "Экономика",
   "Выбор",
-  "Коммерческое предложение",
-  "Контракт",
-  "PO",
 ]
 
 export const STEP_TO_TAB = [
@@ -37,9 +34,6 @@ export const STEP_TO_TAB = [
   "logistics",
   "economics",
   "selection",
-  "sales",
-  "contracts",
-  "po",
 ]
 
 export const TAB_TO_STEP = STEP_TO_TAB.reduce((acc, key, index) => {
@@ -488,20 +482,5 @@ export const parseImportTextRows = (text) =>
     if (!lines.length) return []
 
     const table = lines.map((line) => line.split(/\t|;/).map((cell) => String(cell || "").trim()))
-    const firstRow = table[0] || []
-    const headerMap = {}
-    firstRow.forEach((cell, index) => {
-      const field = resolveHeaderField(cell)
-      if (field && !Object.prototype.hasOwnProperty.call(headerMap, field)) {
-        headerMap[field] = index
-      }
-    })
-    const hasHeader =
-      Number.isFinite(headerMap.line_number) &&
-      (
-        (Number.isFinite(headerMap.price) && Number.isFinite(headerMap.currency)) ||
-        Number.isFinite(headerMap.supplier_reply_status)
-      )
-
     return parseImportSheetRows(table)
   }

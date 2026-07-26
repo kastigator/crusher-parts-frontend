@@ -29,7 +29,6 @@ import {
   STEP_TO_TAB,
   statusToColor,
   supplierStatusLabel,
-  TAB_TO_STEP,
 } from "@/components/rfqWorkspace/rfqWorkspaceUtils"
 import { applyAltExclusionToKeys } from "@/components/rfqWorkspace/rfqSelectionUtils"
 import axios from "@/api/axiosInstance"
@@ -54,6 +53,7 @@ const splitMetaLines = (value) =>
 
 const normalizeRfqWorkspaceTab = (value) => {
   const key = String(value || "").trim().toLowerCase()
+  if (["sales", "contracts", "po"].includes(key)) return "selection"
   return STEP_TO_TAB.includes(key) ? key : null
 }
 
@@ -83,14 +83,14 @@ export default function RfqWorkspacePage() {
   const [selectedSupplierIds, setSelectedSupplierIds] = useState([])
   const [supplierCreateOpen, setSupplierCreateOpen] = useState(false)
   const [autoAddCreatedSupplier, setAutoAddCreatedSupplier] = useState(true)
-  const [responses, setResponses] = useState([])
+  const [_responses, setResponses] = useState([])
   const [responseLines, setResponseLines] = useState([])
   const [responseWorkspaceRows, setResponseWorkspaceRows] = useState([])
   const [showArchivedResponses, setShowArchivedResponses] = useState(false)
   const [structure, setStructure] = useState(null)
   const [coverage, setCoverage] = useState(null)
   const [selections, setSelections] = useState([])
-  const [economicsDashboard, setEconomicsDashboard] = useState({
+  const [_economicsDashboard, setEconomicsDashboard] = useState({
     suppliers: [],
     lines: [],
     scenarios: [],
@@ -674,7 +674,7 @@ export default function RfqWorkspacePage() {
     setActiveTabKey(desiredTab || "rfq")
   }, [activeRfqId, location.search, location.state])
 
-  const loadRfqs = async () => {
+  const loadRfqs = useCallback(async () => {
     setLoading(true)
     try {
       const { data } = await axios.get("/rfqs", {
@@ -686,7 +686,7 @@ export default function RfqWorkspacePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [showArchivedRfqs])
 
   useEffect(() => {
     loadRfqs()
@@ -699,7 +699,7 @@ export default function RfqWorkspacePage() {
       }
     }
     loadSuppliers()
-  }, [showArchivedRfqs])
+  }, [loadRfqs])
 
   // Подхватываем rfq_id из query/state при переходе из дашборда
   useEffect(() => {
@@ -2013,32 +2013,6 @@ export default function RfqWorkspacePage() {
     })
   }, [rfqs, filterClientId, filterRequestNumber])
 
-  const flowStatus = useMemo(() => {
-    const steps = [
-      items.length > 0,
-      suppliers.length > 0,
-      responses.length > 0,
-      selections.length > 0,
-      economicsDashboard.lines.length > 0 || economicsDashboard.scenarios.length > 0,
-      salesQuotes.length > 0,
-      contracts.length > 0,
-      purchaseOrders.length > 0,
-    ]
-    const current = Math.max(steps.findIndex((value) => !value), 0)
-    const finished = steps.every(Boolean)
-    return { steps, current: finished ? steps.length - 1 : current }
-  }, [
-    items.length,
-    suppliers.length,
-    responses.length,
-    selections.length,
-    economicsDashboard.lines.length,
-    economicsDashboard.scenarios.length,
-    salesQuotes.length,
-    contracts.length,
-    purchaseOrders.length,
-  ])
-
   const structureItems = useMemo(
     () => (Array.isArray(structure?.items) ? structure.items : []),
     [structure?.items]
@@ -2839,26 +2813,13 @@ export default function RfqWorkspacePage() {
       }
     })
   }, [structureItems])
-  const activeStep = TAB_TO_STEP[activeTabKey] ?? 0
   const isStructureConfirmed = true
-  const handleStepChange = useCallback(
-    (index) => {
-      const nextKey = STEP_TO_TAB[index]
-      if (!nextKey) return
-      if (index > 0 && !isStructureConfirmed) {
-        message.warning("Сначала подтвердите структуру RFQ")
-        return
-      }
-      setActiveTabKey(nextKey)
-    },
-    [isStructureConfirmed]
-  )
 
   return (
     <PageWrapper
       title="Рабочее место RFQ"
-      subtitle="Сквозной закупочный workflow: от принятой в работу заявки до заказа поставщику."
-      helpSummary="Последовательность этапов: RFQ → поставщики → ответы → покрытие → сценарии → логистика → экономика → выбор → коммерция → контракт → заказ."
+      subtitle="Закупочный workspace: от структуры клиентской потребности до утвержденного выбора поставщиков."
+      helpSummary={`Последовательность этапов: ${STEP_LABELS.join(" → ")}. Расчет КП, контракт и исполнение ведутся в заявке клиента.`}
     >
       <RfqWorkspaceMainContent
         clientFilterOptions={clientFilterOptions}
@@ -2873,10 +2834,6 @@ export default function RfqWorkspacePage() {
         setActiveRfqId={setActiveRfqId}
         activeRfqId={activeRfqId}
         activeRfq={activeRfq}
-        activeStep={activeStep}
-        handleStepChange={handleStepChange}
-        flowStatus={flowStatus}
-        stepLabels={STEP_LABELS}
         activeTabKey={activeTabKey}
         setActiveTabKey={setActiveTabKey}
         isStructureConfirmed={isStructureConfirmed}
@@ -2898,6 +2855,7 @@ export default function RfqWorkspacePage() {
         hasAnySupplierSent={hasAnySupplierSent}
         totalNewLines={totalNewLines}
         suppliers={suppliers}
+        items={items}
         selectedSupplierIds={selectedSupplierIds}
         setSelectedSupplierIds={setSelectedSupplierIds}
         handleSupplierLanguage={handleSupplierLanguage}
@@ -2928,7 +2886,6 @@ export default function RfqWorkspacePage() {
         coverageRows={coverageRows}
         selections={selections}
         onSelectionFinalized={() => loadCommercialSnapshot(activeRfqId, { silent: true })}
-        onCommercialUpdated={() => loadCommercialSnapshot(activeRfqId, { silent: true })}
         salesQuotes={salesQuotes}
         contracts={contracts}
         purchaseOrders={purchaseOrders}

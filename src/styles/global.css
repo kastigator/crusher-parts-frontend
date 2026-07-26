@@ -539,6 +539,42 @@ body,
   background: #fcfcfd;
 }
 
+.workspace-next-panel,
+.workspace-handoff-panel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.workspace-next-panel__body,
+.workspace-handoff-panel__main {
+  min-width: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workspace-next-panel__title {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 26px;
+}
+
+.workspace-next-panel__action,
+.workspace-handoff-panel__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 .workspace-progress {
   display: flex;
   gap: 8px;
@@ -611,5 +647,15 @@ body,
 
   .workspace-toolbar__group--actions {
     justify-content: flex-start;
+  }
+
+  .workspace-next-panel,
+  .workspace-handoff-panel {
+    flex-direction: column;
+  }
+
+  .workspace-next-panel__action,
+  .workspace-handoff-panel__actions {
+    align-items: flex-start;
   }
 }

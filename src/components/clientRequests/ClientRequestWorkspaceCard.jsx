@@ -1,6 +1,5 @@
 import React from "react"
 import {
-  Alert,
   AutoComplete,
   Button,
   Card,
@@ -12,13 +11,11 @@ import {
   InputNumber,
   Select,
   Space,
-  Steps,
   Switch,
   Table,
   Tabs,
   Tag,
   Timeline,
-  Tooltip,
   Typography,
 } from "antd"
 import { CloseOutlined, DeleteOutlined, EditOutlined, SaveOutlined } from "@ant-design/icons"
@@ -28,6 +25,7 @@ import RequestExecutionTabContent from "@/components/clientRequests/RequestExecu
 import RequestSummaryTabContent from "@/components/clientRequests/RequestSummaryTabContent"
 import EntityHeader from "@/components/common/EntityHeader"
 import WorkspaceProgress from "@/components/common/WorkspaceProgress"
+import { useNavigate } from "react-router-dom"
 
 const { Text } = Typography
 
@@ -36,6 +34,8 @@ const commercialStageByLegacyWorkspaceTab = {
   quote: "quote",
   contract: "contract",
 }
+
+const hasReached = (status, keys) => keys.includes(String(status || ""))
 
 export default function ClientRequestWorkspaceCard({
   activeRequest,
@@ -111,6 +111,8 @@ export default function ClientRequestWorkspaceCard({
   handleDeleteRequest,
   cardless = false,
 }) {
+  const navigate = useNavigate()
+
   if (!activeRequest) {
     const emptyState = cardless ? (
       <Text type="secondary">Выберите заявку в списке, чтобы открыть workspace.</Text>
@@ -123,6 +125,78 @@ export default function ClientRequestWorkspaceCard({
   }
 
   const activeWorkspaceTabKey = commercialStageByLegacyWorkspaceTab[workspaceTabKey] ? "commercial" : workspaceTabKey
+  const requestStatusLabel =
+    statusOptions.find((opt) => opt.value === activeRequest?.status)?.label ||
+    activeRequest?.status ||
+    "—"
+  const rfqReady = !!activeRequest?.rfq_id && rfqSyncStatus !== "needs_sync"
+  const responsesReady = hasReached(activeRequest?.status, [
+    "responses_received",
+    "selection_done",
+    "quote_prepared",
+    "contracted",
+  ])
+  const selectionReady = hasReached(activeRequest?.status, [
+    "selection_done",
+    "quote_prepared",
+    "contracted",
+  ])
+  const quoteReady = hasReached(activeRequest?.status, ["quote_prepared", "contracted"])
+  const contractReady = activeRequest?.status === "contracted"
+  const openWorkspaceTab = (key) => setWorkspaceTabKey(key)
+  const nextAction = (() => {
+    if (!isLatestRevision) {
+      return {
+        label: "Открыть текущую ревизию",
+        description: "Сейчас открыта архивная ревизия: правки, RFQ, КП и исполнение ведутся по текущей ревизии.",
+        disabled: true,
+      }
+    }
+    if (rfqSyncStatus === "needs_sync") {
+      return {
+        label: "Синхронизировать RFQ",
+        description: "Сначала обновляем RFQ под текущий состав заявки, потом закупка продолжает ответы и выбор.",
+        onClick: handleSyncRfq,
+      }
+    }
+    if (!isSentToProcurement) {
+      return {
+        label: "Отправить заявку",
+        description: "Проверьте позиции и передайте заявку в закупку, чтобы появился закупочный RFQ.",
+        onClick: canRelease && !isReleasedLocked ? handleReleaseRequest : undefined,
+        disabled: !canRelease || isReleasedLocked,
+      }
+    }
+    if (!selectionReady) {
+      return {
+        label: "Открыть RFQ",
+        description: responsesReady
+          ? "Ответы есть, следующий рабочий шаг — собрать и утвердить выбор закупки."
+          : "Закупка собирает поставщиков, ответы, покрытие и экономику до утвержденного выбора.",
+        onClick: () => navigate(`/rfq-workspace?rfq=${activeRequest.rfq_id || ""}`),
+        disabled: !activeRequest?.rfq_id,
+      }
+    }
+    if (!quoteReady) {
+      return {
+        label: "Рассчитать КП",
+        description: "Закупочная база утверждена, теперь продавец считает продажную цену и готовит КП клиенту.",
+        onClick: () => openWorkspaceTab("commercial"),
+      }
+    }
+    if (!contractReady) {
+      return {
+        label: "Оформить контракт",
+        description: "КП подготовлено или согласовано, следующий шаг — зафиксировать коммерческий контур контрактом.",
+        onClick: () => openWorkspaceTab("contract"),
+      }
+    }
+    return {
+      label: "Открыть исполнение",
+      description: "Контракт зафиксирован: работаем с PO, резервами, приемками и складским покрытием.",
+      onClick: () => openWorkspaceTab("execution"),
+    }
+  })()
 
   const content = (
     <>
@@ -179,49 +253,38 @@ export default function ClientRequestWorkspaceCard({
           />
         </div>
 
-        <Card size="small" title="Состояние активной ревизии">
-          <Space direction="vertical" size={10} style={{ width: "100%" }}>
-            <Text type="secondary">
-              Диагностика ниже относится только к текущей ревизии заявки. История прошлых ревизий остается доступной,
-              но старые RFQ, выборы, КП и контракты не продолжаются задним числом.
-            </Text>
-            <Space wrap size={[8, 8]}>
+        <div className="workspace-next-panel">
+          <div className="workspace-next-panel__body">
+            <Text type="secondary">Сейчас</Text>
+            <div className="workspace-next-panel__title">{requestStatusLabel}</div>
+            <Text type="secondary">{nextAction.description}</Text>
+            <Space wrap size={[8, 8]} style={{ marginTop: 10 }}>
               <Tag color={isLatestRevision ? "green" : "orange"}>
                 {isLatestRevision ? "Текущая ревизия" : "Архивная ревизия"}
               </Tag>
               <Tag color={isSentToProcurement ? "green" : "default"}>
-                {isSentToProcurement ? "Отправлена в закупку" : "Еще не отправлена"}
+                {isSentToProcurement ? "В закупке" : "До закупки"}
               </Tag>
-              <Tag color={activeRequest?.rfq_id ? (rfqSyncStatus === "needs_sync" ? "orange" : "green") : "default"}>
-                {activeRequest?.rfq_id
-                  ? rfqSyncStatus === "needs_sync"
-                    ? "RFQ требует синхронизации"
-                    : "RFQ синхронизирован"
-                  : "RFQ еще не создан"}
+              <Tag color={rfqReady ? "green" : activeRequest?.rfq_id ? "orange" : "default"}>
+                {rfqReady ? "RFQ синхронизирован" : activeRequest?.rfq_id ? "RFQ требует синхронизации" : "RFQ еще нет"}
               </Tag>
-              <Tag color={["responses_received", "selection_done", "quote_prepared", "contracted"].includes(activeRequest?.status) ? "green" : "default"}>
-                Ответы поставщиков
-              </Tag>
-              <Tag color={["selection_done", "quote_prepared", "contracted"].includes(activeRequest?.status) ? "green" : "default"}>
-                Выбор закупки
-              </Tag>
-              <Tag color={["quote_prepared", "contracted"].includes(activeRequest?.status) ? "green" : "default"}>
-                КП клиенту
-              </Tag>
-              <Tag color={activeRequest?.status === "contracted" ? "green" : "default"}>
-                Контракт
-              </Tag>
+              <Tag color={responsesReady ? "green" : "default"}>Ответы</Tag>
+              <Tag color={selectionReady ? "green" : "default"}>Выбор</Tag>
+              <Tag color={quoteReady ? "green" : "default"}>КП</Tag>
+              <Tag color={contractReady ? "green" : "default"}>Контракт</Tag>
             </Space>
-            {rfqSyncStatus === "needs_sync" ? (
-              <Alert
-                type="warning"
-                showIcon
-                message="Новая ревизия заявки ещё не синхронизирована с RFQ"
-                description="Сначала синхронизируйте RFQ. После этого закупка сможет заново собрать ответы, покрытие, сценарий и выбор для этой ревизии."
-              />
-            ) : null}
-          </Space>
-        </Card>
+          </div>
+          <div className="workspace-next-panel__action">
+            <Text type="secondary">Следующее действие</Text>
+            <Button
+              type="primary"
+              disabled={nextAction.disabled || !nextAction.onClick}
+              onClick={nextAction.onClick}
+            >
+              {nextAction.label}
+            </Button>
+          </div>
+        </div>
 
         <Tabs
           activeKey={activeWorkspaceTabKey}

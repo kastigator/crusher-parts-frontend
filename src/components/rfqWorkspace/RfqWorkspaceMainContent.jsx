@@ -9,13 +9,23 @@ import SelectionTabContent from "@/components/rfqWorkspace/SelectionTabContent"
 import ScenariosTabContent from "@/components/rfqWorkspace/ScenariosTabContent"
 import LogisticsTabContent from "@/components/rfqWorkspace/LogisticsTabContent"
 import EconomicsTabContent from "@/components/rfqWorkspace/EconomicsTabContent"
-import SalesTabContent from "@/components/rfqWorkspace/SalesTabContent"
-import ContractsTabContent from "@/components/rfqWorkspace/ContractsTabContent"
-import PurchaseOrdersTabContent from "@/components/rfqWorkspace/PurchaseOrdersTabContent"
 import WorkspaceShell from "@/components/common/WorkspaceShell"
 import EntityHeader from "@/components/common/EntityHeader"
+import { useNavigate } from "react-router-dom"
 
 const { Text } = Typography
+
+const countRows = (rows) => (Array.isArray(rows) ? rows.length : 0)
+
+const selectionReady = (selections) =>
+  (Array.isArray(selections) ? selections : []).some(
+    (row) => String(row?.status || "").trim().toLowerCase() === "approved"
+  )
+
+const activeContractCount = (contracts) =>
+  (Array.isArray(contracts) ? contracts : []).filter((row) =>
+    ["signed", "in_execution", "completed"].includes(String(row?.status || "").trim().toLowerCase())
+  ).length
 
 export default function RfqWorkspaceMainContent({
   clientFilterOptions,
@@ -30,10 +40,6 @@ export default function RfqWorkspaceMainContent({
   setActiveRfqId,
   activeRfqId,
   activeRfq,
-  activeStep,
-  handleStepChange,
-  flowStatus,
-  stepLabels,
   activeTabKey,
   setActiveTabKey,
   isStructureConfirmed,
@@ -86,18 +92,28 @@ export default function RfqWorkspaceMainContent({
   coverageRows,
   selections,
   onSelectionFinalized,
-  onCommercialUpdated,
   salesQuotes,
   contracts,
   purchaseOrders,
   rfqStatusLabel,
   handleDeleteRfq,
 }) {
+  const navigate = useNavigate()
   const isRfqNeedsSync = String(activeRfq?.rfq_sync_status || "").toLowerCase() === "needs_sync"
   const effectiveActiveTabKey = isRfqNeedsSync && activeTabKey !== "rfq" ? "rfq" : activeTabKey
+  const requestId = activeRfq?.client_request_id
+  const hasApprovedSelection = selectionReady(selections)
+  const quoteCount = countRows(salesQuotes)
+  const contractCount = activeContractCount(contracts)
+  const poCount = countRows(purchaseOrders)
+
   const handleTabChange = (key) => {
     if (isRfqNeedsSync && key !== "rfq") return
     setActiveTabKey(key)
+  }
+  const openClientRequestTab = (tab) => {
+    if (!requestId) return
+    navigate(`/client-request-workspace?request_id=${requestId}&tab=${tab}`)
   }
   const rfqColumns = [
     {
@@ -225,9 +241,44 @@ export default function RfqWorkspaceMainContent({
                   type="warning"
                   showIcon
                   message="RFQ не синхронизирован с текущей ревизией заявки"
-                  description="Отправка поставщикам, ответы, покрытие, сценарии, выбор и коммерческий контур временно закрыты, чтобы не продолжить старый состав. Откройте заявку клиента и выполните «Синхронизировать RFQ»."
+                  description="Отправка поставщикам, ответы, покрытие, сценарии и выбор временно закрыты, чтобы не продолжить старый состав. Откройте заявку клиента и выполните «Синхронизировать RFQ»."
                 />
               ) : null}
+
+              <div className="workspace-handoff-panel">
+                <div className="workspace-handoff-panel__main">
+                  <Text strong>Граница ответственности RFQ</Text>
+                  <Text type="secondary">
+                    Здесь закупка собирает ответы, покрытие, логистику, экономику и утверждает выбор.
+                    Расчет КП, контракт, PO и исполнение ведутся в заявке клиента.
+                  </Text>
+                  <Space wrap size={[8, 8]}>
+                    <Tag color={hasApprovedSelection ? "green" : "default"}>
+                      Выбор: {hasApprovedSelection ? "утвержден" : "не утвержден"}
+                    </Tag>
+                    <Tag>КП: {quoteCount}</Tag>
+                    <Tag>Контракты: {contractCount}</Tag>
+                    <Tag>PO: {poCount}</Tag>
+                  </Space>
+                </div>
+                <Space wrap className="workspace-handoff-panel__actions">
+                  <Button
+                    size="small"
+                    type={hasApprovedSelection ? "primary" : "default"}
+                    disabled={!requestId}
+                    onClick={() => openClientRequestTab("commercial")}
+                  >
+                    Открыть расчет в заявке
+                  </Button>
+                  <Button
+                    size="small"
+                    disabled={!requestId}
+                    onClick={() => openClientRequestTab("execution")}
+                  >
+                    Исполнение
+                  </Button>
+                </Space>
+              </div>
 
               <Tabs
                 activeKey={effectiveActiveTabKey}
@@ -364,47 +415,6 @@ export default function RfqWorkspaceMainContent({
                       selections={selections}
                       formatDate={formatDate}
                       onSelectionFinalized={onSelectionFinalized}
-                    />
-                  ),
-                },
-                {
-                  key: "sales",
-                  label: "Коммерческое предложение",
-                  disabled: !isStructureConfirmed || isRfqNeedsSync,
-                  children: (
-                    <SalesTabContent
-                      activeRfq={activeRfq}
-                      selections={selections}
-                      salesQuotes={salesQuotes}
-                      formatDate={formatDate}
-                      onCommercialUpdated={onCommercialUpdated}
-                    />
-                  ),
-                },
-                {
-                  key: "contracts",
-                  label: "Контракт",
-                  disabled: !isStructureConfirmed || isRfqNeedsSync,
-                  children: (
-                    <ContractsTabContent
-                      activeRfq={activeRfq}
-                      contracts={contracts}
-                      formatDate={formatDate}
-                      onCommercialUpdated={onCommercialUpdated}
-                    />
-                  ),
-                },
-                {
-                  key: "po",
-                  label: "Заказы",
-                  disabled: !isStructureConfirmed || isRfqNeedsSync,
-                  children: (
-                    <PurchaseOrdersTabContent
-                      selections={selections}
-                      contracts={contracts}
-                      purchaseOrders={purchaseOrders}
-                      formatDate={formatDate}
-                      onCommercialUpdated={onCommercialUpdated}
                     />
                   ),
                 },
