@@ -60,6 +60,7 @@ export const SIDEBAR_ICONS = [
   { key: "sales-quotes", label: "Коммерческие предложения", path: buildIconPath("sales-quotes") },
   { key: "contracts", label: "Контракты", path: buildIconPath("contracts") },
   { key: "purchase-orders", label: "Заказы поставщикам", path: buildIconPath("purchase-orders") },
+  { key: "warehouse", label: "Склад", path: buildIconPath("warehouse") },
   { key: "catalogs", label: "Каталоги", path: buildIconPath("catalogs") },
   { key: "catalog-health", label: "Обзор и качество каталогов", path: buildIconPath("catalog-health") },
   { key: "clients", label: "Клиенты", path: buildIconPath("clients") },

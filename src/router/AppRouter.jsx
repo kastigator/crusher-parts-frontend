@@ -37,6 +37,7 @@ const GlossaryPage = lazy(() => import('@/pages/GlossaryPage'))
 const ContractPreviewPage = lazy(() => import('@/pages/ContractPreviewPage'))
 const PurchaseOrderPreviewPage = lazy(() => import('@/pages/PurchaseOrderPreviewPage'))
 const TrashPage = lazy(() => import('@/pages/TrashPage'))
+const WarehousePage = lazy(() => import('@/pages/WarehousePage'))
 
 const AppRouter = () => (
   <Suspense fallback={<div>Загрузка...</div>}>
@@ -65,6 +66,7 @@ const AppRouter = () => (
         <Route path="contracts/:id/preview" element={<TabAccessRoute path="/client-request-workspace" title="Workspace по заявкам"><ContractPreviewPage /></TabAccessRoute>} />
         <Route path="purchase-orders" element={<TabAccessRoute path="/rfq-workspace" title="RFQ Workspace"><PurchaseOrdersPage /></TabAccessRoute>} />
         <Route path="purchase-orders/:id/preview" element={<TabAccessRoute path="/rfq-workspace" title="RFQ Workspace"><PurchaseOrderPreviewPage /></TabAccessRoute>} />
+        <Route path="warehouse" element={<TabAccessRoute path="/warehouse" title="Склад"><WarehousePage /></TabAccessRoute>} />
         <Route path="kpi" element={<TabAccessRoute path="/kpi" title="Показатели"><KpiPage /></TabAccessRoute>} />
         <Route path="catalogs" element={<TabAccessRoute path="/catalogs" title="Каталоги"><CatalogsPage /></TabAccessRoute>} />
         <Route path="admin" element={<TabAccessRoute path="/admin" title="Администрирование"><AdminPage /></TabAccessRoute>} />

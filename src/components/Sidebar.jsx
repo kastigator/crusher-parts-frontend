@@ -44,6 +44,7 @@ const ICON_BY_PATH = {
   "/glossary": "catalogs",
   "/materials": "materials",
   "/tnved-codes": "tnved-codes",
+  "/warehouse": "warehouse",
   "/logistics-route-templates": "logistics-route-templates",
   "/users": "users",
   "/measurement-units": "measurement-units",
