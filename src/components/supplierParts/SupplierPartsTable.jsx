@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Empty, message, Tag, Tooltip } from "antd"
+import { Button, Empty, message, Tag, Tooltip } from "antd"
+import { LinkOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 
 import ValueDisplay from "@/components/common/ValueDisplay"
@@ -11,8 +12,9 @@ import { runTrashDeleteFlow } from "@/utils/trashUi"
 import useTableScrollHints from "@/utils/useTableScrollHints"
 import { formatPrice } from "@/utils/priceFormat"
 import { formatUomLabel } from "@/utils/uom"
+import { cmToMm, mmToCm } from "@/utils/dimensions"
 
-function CatalogLinksCell({ row }) {
+function CatalogLinksCell({ row, onOpenLinks }) {
   const [items, setItems] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -25,7 +27,18 @@ function CatalogLinksCell({ row }) {
     : []
 
   if (!cats.length) {
-    return <Tag color="default">нет</Tag>
+    return (
+      <Button
+        size="small"
+        icon={<LinkOutlined />}
+        onClick={(event) => {
+          event.stopPropagation()
+          onOpenLinks?.(row)
+        }}
+      >
+        Связать
+      </Button>
+    )
   }
 
   const loadCatalogLinks = async () => {
@@ -79,7 +92,20 @@ function CatalogLinksCell({ row }) {
       placement="right"
       onOpenChange={handleOpenChange}
     >
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+      <div
+        role="button"
+        tabIndex={0}
+        style={{ display: "flex", flexWrap: "wrap", gap: 4, cursor: "pointer" }}
+        onClick={(event) => {
+          event.stopPropagation()
+          onOpenLinks?.(row)
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return
+          event.preventDefault()
+          onOpenLinks?.(row)
+        }}
+      >
         {cats.slice(0, 2).map((cat) => (
           <Tag key={cat}>{cat}</Tag>
         ))}
@@ -99,6 +125,7 @@ export default function SupplierPartsTable({
   showAll = false,
   onOpenDetail,
   onEditRecord,
+  onOpenCatalogLinks,
   highlightRowId = null,
   onFlashRow: _onFlashRow,
   visibleColumnKeys = null,
@@ -147,7 +174,9 @@ export default function SupplierPartsTable({
 
       const f = filters || {}
       if (f.part_type) params.part_type = f.part_type
-      if (f.originals_mode && f.originals_mode !== "any") params.catalog_links_mode = f.originals_mode
+      if (f.catalog_links_mode && f.catalog_links_mode !== "any") {
+        params.catalog_links_mode = f.catalog_links_mode
+      }
       if (f.is_overweight) params.is_overweight = 1
       if (f.is_oversize) params.is_oversize = 1
       if (f.weight_min != null) params.weight_min = f.weight_min
@@ -156,12 +185,12 @@ export default function SupplierPartsTable({
       if (f.lead_time_max != null) params.lead_time_max = f.lead_time_max
       if (f.moq_min != null) params.moq_min = f.moq_min
       if (f.moq_max != null) params.moq_max = f.moq_max
-      if (f.length_min != null) params.length_min = f.length_min
-      if (f.length_max != null) params.length_max = f.length_max
-      if (f.width_min != null) params.width_min = f.width_min
-      if (f.width_max != null) params.width_max = f.width_max
-      if (f.height_min != null) params.height_min = f.height_min
-      if (f.height_max != null) params.height_max = f.height_max
+      if (f.length_min != null) params.length_min = mmToCm(f.length_min)
+      if (f.length_max != null) params.length_max = mmToCm(f.length_max)
+      if (f.width_min != null) params.width_min = mmToCm(f.width_min)
+      if (f.width_max != null) params.width_max = mmToCm(f.width_max)
+      if (f.height_min != null) params.height_min = mmToCm(f.height_min)
+      if (f.height_max != null) params.height_max = mmToCm(f.height_max)
       if (f.material_id) params.material_id = f.material_id
       if (f.material_mode) params.material_mode = f.material_mode
 
@@ -486,35 +515,35 @@ export default function SupplierPartsTable({
 
     cols.push({
       key: "length_cm",
-      title: "Дл., см",
+      title: "Дл., мм",
       dataIndex: "length_cm",
       width: getColumnWidth("length_cm", 100),
       minWidth: 90,
       maxWidth: 130,
       align: "right",
-      render: (value) => <ValueDisplay value={value} type="number" maximumFractionDigits={2} />,
+      render: (value) => <ValueDisplay value={cmToMm(value)} type="number" maximumFractionDigits={1} />,
     })
 
     cols.push({
       key: "width_cm",
-      title: "Шир., см",
+      title: "Шир., мм",
       dataIndex: "width_cm",
       width: getColumnWidth("width_cm", 100),
       minWidth: 90,
       maxWidth: 130,
       align: "right",
-      render: (value) => <ValueDisplay value={value} type="number" maximumFractionDigits={2} />,
+      render: (value) => <ValueDisplay value={cmToMm(value)} type="number" maximumFractionDigits={1} />,
     })
 
     cols.push({
       key: "height_cm",
-      title: "Выс., см",
+      title: "Выс., мм",
       dataIndex: "height_cm",
       width: getColumnWidth("height_cm", 100),
       minWidth: 90,
       maxWidth: 130,
       align: "right",
-      render: (value) => <ValueDisplay value={value} type="number" maximumFractionDigits={2} />,
+      render: (value) => <ValueDisplay value={cmToMm(value)} type="number" maximumFractionDigits={1} />,
     })
 
     cols.push({
@@ -602,19 +631,29 @@ export default function SupplierPartsTable({
       onCell: () => ({
         style: { overflow: "hidden" },
       }),
-      render: (_, row) => <CatalogLinksCell row={row} />,
+      render: (_, row) => <CatalogLinksCell row={row} onOpenLinks={onOpenCatalogLinks} />,
     })
 
     cols.push({
       key: "actions",
       title: "Действия",
-      width: getColumnWidth("actions", 120),
-      minWidth: 96,
-      maxWidth: 140,
+      width: getColumnWidth("actions", 148),
+      minWidth: 120,
+      maxWidth: 180,
       resizable: false,
       render: (_, row) => {
         return (
           <ActionButtons
+            extraButtons={[
+              {
+                key: "catalog-links",
+                label: "Связи с карточками позиций",
+                icon: <LinkOutlined />,
+                type: "text",
+                showText: false,
+                onClick: () => onOpenCatalogLinks?.(row),
+              },
+            ]}
             onEdit={() => onEditRecord?.(row)}
             onHistory={() => setHistoryForId(row.id)}
             onDelete={() => handleDelete(row.id)}
@@ -625,7 +664,7 @@ export default function SupplierPartsTable({
     })
 
     return cols
-  }, [showAll, handleDelete, onEditRecord, renderPriceSourceDetails, getColumnWidth])
+  }, [showAll, handleDelete, onEditRecord, onOpenCatalogLinks, renderPriceSourceDetails, getColumnWidth])
 
   const defaultVisible = useMemo(
     () =>
@@ -642,10 +681,13 @@ export default function SupplierPartsTable({
       ].filter((key) => columnDefs.some((column) => column.key === key)),
     [columnDefs, showAll],
   )
-  const defaultOrder = [
-    ...defaultVisible.filter((key) => key !== "actions"),
-    ...(defaultVisible.includes("actions") ? ["actions"] : []),
-  ]
+  const defaultOrder = useMemo(
+    () => [
+      ...defaultVisible.filter((key) => key !== "actions"),
+      ...(defaultVisible.includes("actions") ? ["actions"] : []),
+    ],
+    [defaultVisible],
+  )
   const effectiveVisibleKeys =
     Array.isArray(visibleColumnKeys) && visibleColumnKeys.length
       ? visibleColumnKeys

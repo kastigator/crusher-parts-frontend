@@ -23,13 +23,19 @@ import {
 } from "antd"
 import { CloseOutlined, DeleteOutlined, EditOutlined, SaveOutlined } from "@ant-design/icons"
 import dayjs from "dayjs"
-import RequestMarginTabContent from "@/components/clientRequests/RequestMarginTabContent"
-import RequestQuoteTabContent from "@/components/clientRequests/RequestQuoteTabContent"
-import RequestContractTabContent from "@/components/clientRequests/RequestContractTabContent"
+import RequestCommercialFlowTabContent from "@/components/clientRequests/RequestCommercialFlowTabContent"
+import RequestExecutionTabContent from "@/components/clientRequests/RequestExecutionTabContent"
+import RequestSummaryTabContent from "@/components/clientRequests/RequestSummaryTabContent"
 import EntityHeader from "@/components/common/EntityHeader"
 import WorkspaceProgress from "@/components/common/WorkspaceProgress"
 
 const { Text } = Typography
+
+const commercialStageByLegacyWorkspaceTab = {
+  margin: "pricing",
+  quote: "quote",
+  contract: "contract",
+}
 
 export default function ClientRequestWorkspaceCard({
   activeRequest,
@@ -115,6 +121,8 @@ export default function ClientRequestWorkspaceCard({
     )
     return emptyState
   }
+
+  const activeWorkspaceTabKey = commercialStageByLegacyWorkspaceTab[workspaceTabKey] ? "commercial" : workspaceTabKey
 
   const content = (
     <>
@@ -216,10 +224,20 @@ export default function ClientRequestWorkspaceCard({
         </Card>
 
         <Tabs
-          activeKey={workspaceTabKey}
+          activeKey={activeWorkspaceTabKey}
           onChange={setWorkspaceTabKey}
           size="small"
           items={[
+            {
+              key: "summary",
+              label: "Сводка",
+              children: (
+                <RequestSummaryTabContent
+                  requestId={activeRequest?.id}
+                  onOpenTab={setWorkspaceTabKey}
+                />
+              ),
+            },
             {
               key: "items",
               label: "Позиции",
@@ -646,28 +664,20 @@ export default function ClientRequestWorkspaceCard({
               ),
             },
             {
-              key: "margin",
-              label: "Маржа/Экономика",
+              key: "commercial",
+              label: "Расчет и КП",
               children: (
-                <RequestMarginTabContent requestId={activeRequest?.id} />
-              ),
-            },
-            {
-              key: "quote",
-              label: "КП",
-              children: (
-                <RequestQuoteTabContent
+                <RequestCommercialFlowTabContent
                   requestId={activeRequest?.id}
                   activeRevisionId={activeRevisionId}
+                  initialStage={commercialStageByLegacyWorkspaceTab[workspaceTabKey] || "pricing"}
                 />
               ),
             },
             {
-              key: "contract",
-              label: "Контракт",
-              children: (
-                <RequestContractTabContent requestId={activeRequest?.id} activeRevisionId={activeRevisionId} />
-              ),
+              key: "execution",
+              label: "Исполнение",
+              children: <RequestExecutionTabContent requestId={activeRequest?.id} />,
             },
           ]}
         />

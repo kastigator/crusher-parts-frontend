@@ -5,7 +5,6 @@ import { Button, Card, Empty, Space, Tag, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import TabRendererPage from "@/components/common/TabRendererPage"
 import SupplierDock from "@/components/suppliers/SupplierDock"
-import SupplierMetaCard from "@/components/suppliers/SupplierMetaCard"
 
 const { Text } = Typography
 
@@ -71,13 +70,9 @@ export default function SupplierDetailPage() {
             <Empty description="Поставщик не найден" />
           </Card>
         ) : (
-          <>
-            <SupplierMetaCard supplier={supplier} onSaved={load} />
-            <SupplierDock supplier={supplier} onChanged={load} />
-          </>
+          <SupplierDock supplier={supplier} onChanged={load} />
         )}
       </Space>
     </TabRendererPage>
   )
 }
-

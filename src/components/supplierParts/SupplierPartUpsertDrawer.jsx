@@ -151,18 +151,18 @@ export default function SupplierPartUpsertDrawer({
         </Form.Item>
         <Row gutter={12}>
           <Col span={8}>
-            <Form.Item name="length_cm" label="Длина, см">
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
+            <Form.Item name="length_cm" label="Длина, мм">
+              <InputNumber min={0} step={1} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
           </Col>
           <Col span={8}>
-            <Form.Item name="width_cm" label="Ширина, см">
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
+            <Form.Item name="width_cm" label="Ширина, мм">
+              <InputNumber min={0} step={1} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
           </Col>
           <Col span={8}>
-            <Form.Item name="height_cm" label="Высота, см">
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
+            <Form.Item name="height_cm" label="Высота, мм">
+              <InputNumber min={0} step={1} style={{ width: "100%" }} {...compactInputNumberProps} />
             </Form.Item>
           </Col>
         </Row>

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Button, Card, Checkbox, Input, InputNumber, Space, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import { compactInputNumberProps, toNumberOrNull } from "@/utils/numberFormat"
+import { cmToMm, mmToCm } from "@/utils/dimensions"
 
 const { Text } = Typography
 
@@ -29,9 +30,9 @@ const metaFromPart = (part) => ({
   is_overweight: !!part?.is_overweight,
   is_oversize: !!part?.is_oversize,
   weight_kg: toNumberOrNull(part?.weight_kg),
-  length_cm: toNumberOrNull(part?.length_cm),
-  width_cm: toNumberOrNull(part?.width_cm),
-  height_cm: toNumberOrNull(part?.height_cm),
+  length_cm: cmToMm(part?.length_cm),
+  width_cm: cmToMm(part?.width_cm),
+  height_cm: cmToMm(part?.height_cm),
 })
 
 export default function SupplierPartMetaCard({ part, onSaved }) {
@@ -80,9 +81,9 @@ export default function SupplierPartMetaCard({ part, onSaved }) {
         is_overweight: !!meta.is_overweight,
         is_oversize: !!meta.is_oversize,
         weight_kg: toNumOrNull(meta.weight_kg),
-        length_cm: toNumOrNull(meta.length_cm),
-        width_cm: toNumOrNull(meta.width_cm),
-        height_cm: toNumOrNull(meta.height_cm),
+        length_cm: mmToCm(meta.length_cm),
+        width_cm: mmToCm(meta.width_cm),
+        height_cm: mmToCm(meta.height_cm),
       }
 
       await axios.put(`/supplier-parts/${partId}`, payload)
@@ -215,33 +216,33 @@ export default function SupplierPartMetaCard({ part, onSaved }) {
             />
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Длина, см</div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Длина, мм</div>
             <InputNumber
               style={{ width: "100%" }}
               min={0}
-              step={0.1}
+              step={1}
               {...compactInputNumberProps}
               value={meta.length_cm}
               onChange={(v) => setField("length_cm", v)}
             />
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Ширина, см</div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Ширина, мм</div>
             <InputNumber
               style={{ width: "100%" }}
               min={0}
-              step={0.1}
+              step={1}
               {...compactInputNumberProps}
               value={meta.width_cm}
               onChange={(v) => setField("width_cm", v)}
             />
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Высота, см</div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Высота, мм</div>
             <InputNumber
               style={{ width: "100%" }}
               min={0}
-              step={0.1}
+              step={1}
               {...compactInputNumberProps}
               value={meta.height_cm}
               onChange={(v) => setField("height_cm", v)}

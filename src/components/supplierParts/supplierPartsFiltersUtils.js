@@ -22,7 +22,8 @@ export function countActiveFilters(filters = {}) {
     if (has(f[k])) n++
   })
 
-  if (has(f?.originals_mode) && f.originals_mode !== "any") n++
+  const catalogLinksMode = f?.catalog_links_mode
+  if (has(catalogLinksMode) && catalogLinksMode !== "any") n++
   if (f?.is_overweight) n++
   if (f?.is_oversize) n++
 

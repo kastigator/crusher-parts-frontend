@@ -2646,7 +2646,6 @@ export default function EquipmentClassifierMain() {
     () => (Array.isArray(selectedBomItem?.children) ? selectedBomItem.children : []),
     [selectedBomItem],
   )
-  const bomCardMeta = useMemo(() => bomPositionDetails?.position?.meta || {}, [bomPositionDetails])
   const bomCardSupplierParts = useMemo(
     () => (Array.isArray(bomPositionDetails?.supplier_parts) ? bomPositionDetails.supplier_parts : []),
     [bomPositionDetails],
@@ -2837,7 +2836,7 @@ export default function EquipmentClassifierMain() {
   }
 
   const openBomWarehouseAction = (type, row) => {
-    if (!selectedBomItem?.catalog_position_id || !row?.warehouse_id) return
+    if (!selectedBomItem?.catalog_position_id || !row?.warehouse_id || !row?.supplier_part_id) return
     const maxQty = type === "reserve" ? Number(row.free_qty || 0) : Number(row.reserved_qty || 0)
     if (maxQty <= 0) {
       message.warning(type === "reserve" ? "Свободного остатка для резерва нет" : "Активного резерва для снятия нет")
@@ -2901,6 +2900,7 @@ export default function EquipmentClassifierMain() {
         post: true,
         lines: [
           {
+            supplier_part_id: row.supplier_part_id,
             catalog_position_id: selectedBomItem.catalog_position_id,
             storage_place_id: row.storage_place_id,
             quantity: values.quantity,
@@ -3565,7 +3565,6 @@ export default function EquipmentClassifierMain() {
         notes: values.notes || null,
       })
       setDetailsModel(data || detailsModel)
-      setModelPassportEditing(false)
       message.success("Карточка модели сохранена")
       if (selectedId) await loadWorkspace(selectedId)
     } catch (err) {
@@ -4344,7 +4343,7 @@ export default function EquipmentClassifierMain() {
       title: "Действие",
       key: "action",
       width: 190,
-      render: (_, row) => (
+      render: () => (
         <Space wrap size={8}>
           <Button size="small" onClick={() => message.info("Редактирование строки BOM добавим следующим проходом")}>
             Изменить
@@ -5244,6 +5243,20 @@ export default function EquipmentClassifierMain() {
     </Card>
   )
 
+  const renderModelClientPartsTab = () => (
+    <Card size="small" title={`Клиентская номенклатура этой модели (${currentModelClientParts.length})`}>
+      <Table
+        size="small"
+        rowKey="id"
+        columns={compactClientPartColumns}
+        dataSource={currentModelClientParts}
+        loading={workspaceLoading}
+        pagination={{ pageSize: 10, showSizeChanger: false }}
+        locale={{ emptyText: "Для этой модели пока нет деталей клиента" }}
+      />
+    </Card>
+  )
+
   const renderModelClientExecutionsTab = () => (
     <Card
       size="small"
@@ -5303,6 +5316,21 @@ export default function EquipmentClassifierMain() {
               key: "model-bom",
               label: `BOM модели (${modelBomItems.length})`,
               children: renderModelBomTab(),
+            },
+            {
+              key: "units",
+              label: `Машины клиентов (${currentModelUnits.length})`,
+              children: renderModelUnitsTab(),
+            },
+            {
+              key: "client-parts",
+              label: `Детали клиента (${currentModelClientParts.length})`,
+              children: renderModelClientPartsTab(),
+            },
+            {
+              key: "client-executions",
+              label: `Исполнения (${modelClientExecutions.length})`,
+              children: renderModelClientExecutionsTab(),
             },
           ]}
         />
@@ -5806,6 +5834,7 @@ export default function EquipmentClassifierMain() {
         <div style={{ width: classifierTreeWidth, flex: `0 0 ${classifierTreeWidth}px`, position: "relative" }}>
           <Card
             title="Дерево классификатора"
+            loading={loading}
             extra={
               <Dropdown
                 menu={{
@@ -6573,15 +6602,28 @@ export default function EquipmentClassifierMain() {
                       </Row>
                     </Card>
 
-                    <Card size="small" title="Остатки по складам и адресам" loading={bomWarehouseDetailsLoading}>
+                    <Card size="small" title="Остатки поставочных деталей" loading={bomWarehouseDetailsLoading}>
                       {bomWarehouseStock.length ? (
                         <Table
                           size="small"
-                          rowKey={(row) => `${row.warehouse_id}-${row.storage_place_id || 0}`}
+                          rowKey={(row) => `${row.warehouse_id}-${row.storage_place_id || 0}-${row.supplier_part_id}`}
                           pagination={false}
                           dataSource={bomWarehouseStock}
-                          scroll={{ x: 780 }}
+                          scroll={{ x: 980 }}
                           columns={[
+                            {
+                              title: "Деталь поставщика",
+                              render: (_, row) => (
+                                <Space direction="vertical" size={0}>
+                                  <Typography.Text strong>
+                                    {row.supplier_part_number || row.canonical_part_number || `#${row.supplier_part_id}`}
+                                  </Typography.Text>
+                                  <Typography.Text type="secondary">
+                                    {[row.supplier_name, row.supplier_part_description].filter(Boolean).join(" · ") || "—"}
+                                  </Typography.Text>
+                                </Space>
+                              ),
+                            },
                             {
                               title: "Склад / адрес",
                               render: (_, row) => (
@@ -6618,7 +6660,7 @@ export default function EquipmentClassifierMain() {
                                 <Button
                                   size="small"
                                   icon={<LockOutlined />}
-                                  disabled={Number(row.free_qty || 0) <= 0}
+                                  disabled={!row.supplier_part_id || Number(row.free_qty || 0) <= 0}
                                   onClick={() => openBomWarehouseAction("reserve", row)}
                                 >
                                   Резерв
@@ -6630,7 +6672,7 @@ export default function EquipmentClassifierMain() {
                       ) : (
                         <Empty description="Остатков по этой позиции пока нет">
                           <Button size="small" icon={<InboxOutlined />} onClick={() => openBomWarehousePage("receipt")}>
-                            Оприходовать эту позицию
+                            Оприходовать поставку
                           </Button>
                         </Empty>
                       )}
@@ -6643,8 +6685,21 @@ export default function EquipmentClassifierMain() {
                           rowKey="reservation_key"
                           pagination={false}
                           dataSource={bomWarehouseReservations}
-                          scroll={{ x: 760 }}
+                          scroll={{ x: 940 }}
                           columns={[
+                            {
+                              title: "Деталь поставщика",
+                              render: (_, row) => (
+                                <Space direction="vertical" size={0}>
+                                  <Typography.Text strong>
+                                    {row.supplier_part_number || row.canonical_part_number || `#${row.supplier_part_id}`}
+                                  </Typography.Text>
+                                  <Typography.Text type="secondary">
+                                    {[row.supplier_name, row.supplier_part_description].filter(Boolean).join(" · ") || "—"}
+                                  </Typography.Text>
+                                </Space>
+                              ),
+                            },
                             {
                               title: "Источник",
                               render: (_, row) => (
@@ -6675,7 +6730,12 @@ export default function EquipmentClassifierMain() {
                               title: "",
                               width: 100,
                               render: (_, row) => (
-                                <Button size="small" icon={<UnlockOutlined />} onClick={() => openBomWarehouseAction("unreserve", row)}>
+                                <Button
+                                  size="small"
+                                  icon={<UnlockOutlined />}
+                                  disabled={!row.supplier_part_id}
+                                  onClick={() => openBomWarehouseAction("unreserve", row)}
+                                >
                                   Снять
                                 </Button>
                               ),
@@ -6694,12 +6754,23 @@ export default function EquipmentClassifierMain() {
                           rowKey="id"
                           pagination={{ pageSize: 8, showSizeChanger: false }}
                           dataSource={bomWarehouseMovements}
-                          scroll={{ x: 860 }}
+                          scroll={{ x: 1040 }}
                           columns={[
                             {
                               title: "Дата",
                               width: 145,
                               render: (_, row) => formatWarehouseDate(row.occurred_at),
+                            },
+                            {
+                              title: "Деталь поставщика",
+                              render: (_, row) => (
+                                <Space direction="vertical" size={0}>
+                                  <Typography.Text strong>
+                                    {row.supplier_part_number || row.canonical_part_number || `#${row.supplier_part_id}`}
+                                  </Typography.Text>
+                                  <Typography.Text type="secondary">{row.supplier_name || "—"}</Typography.Text>
+                                </Space>
+                              ),
                             },
                             {
                               title: "Документ",
@@ -6795,7 +6866,7 @@ export default function EquipmentClassifierMain() {
 
       <Modal
         open={Boolean(bomWarehouseAction)}
-        title={bomWarehouseAction?.type === "unreserve" ? "Снять резерв" : "Зарезервировать позицию"}
+        title={bomWarehouseAction?.type === "unreserve" ? "Снять резерв" : "Зарезервировать поставку"}
         okText={bomWarehouseAction?.type === "unreserve" ? "Снять" : "Зарезервировать"}
         cancelText="Отмена"
         confirmLoading={bomWarehouseActionSaving}
@@ -6810,6 +6881,14 @@ export default function EquipmentClassifierMain() {
           <Descriptions size="small" bordered column={1} style={{ marginBottom: 12 }}>
             <Descriptions.Item label="Позиция">
               {selectedBomItem ? getBomManufacturerNumber(selectedBomItem) : "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Деталь поставщика">
+              {[
+                bomWarehouseAction?.row?.supplier_name,
+                bomWarehouseAction?.row?.supplier_part_number || bomWarehouseAction?.row?.canonical_part_number,
+              ]
+                .filter(Boolean)
+                .join(" / ") || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="Склад">
               {[bomWarehouseAction?.row?.warehouse_name, bomWarehouseAction?.row?.storage_place_code]

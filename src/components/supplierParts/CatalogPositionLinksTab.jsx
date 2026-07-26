@@ -113,7 +113,7 @@ export default function CatalogPositionLinksTab({ supplierPartId, onChanged = ()
 
   const updatePreferred = async (row) => {
     try {
-      const key = `${row.link_type}:${row.link_id}`
+      const key = row.key
       const is_preferred = preferredDraft[key] ? 1 : 0
       await axios.patch("/supplier-part-catalog-positions", {
         supplier_part_id: supplierPartId,

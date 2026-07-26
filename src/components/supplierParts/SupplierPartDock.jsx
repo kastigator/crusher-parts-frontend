@@ -9,10 +9,7 @@ const PriceHistoryTab = lazy(() => import("./PriceHistoryTab"))
 const { Text } = Typography
 
 /**
- * Нижняя панель деталей поставщика — как в Original Parts.
- * Props:
- * - part: объект выбранной детали (row) | null
- * - onChanged?: () => void   // дернуть, чтобы обновить верхнюю таблицу
+ * Нижняя панель детали поставщика.
  */
 export default function SupplierPartDock({
   part,

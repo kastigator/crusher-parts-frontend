@@ -48,7 +48,7 @@ import { useSearchParams } from "react-router-dom"
 import useCapabilities from "@/hooks/useCapabilities"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 
-const CLIENT_WORKSPACE_TABS = new Set(["items", "details", "margin", "quote", "contract"])
+const CLIENT_WORKSPACE_TABS = new Set(["summary", "items", "details", "commercial", "margin", "quote", "contract", "execution"])
 const normalizeWorkspaceTab = (value) => {
   const key = String(value || "").trim().toLowerCase()
   return CLIENT_WORKSPACE_TABS.has(key) ? key : null
@@ -77,14 +77,28 @@ const SOURCE_OPTIONS = [
 
 const CLIENT_REQUEST_TEMPLATE_REQUEST_URL = "/client-requests/import-template/items"
 
+const getCatalogPositionId = (part) =>
+  part?.catalog_position_id || part?.original_part_id || part?.oem_part_id || part?.id || null
+
+const getCatalogPartNumber = (part) =>
+  part?.cat_number ||
+  part?.manufacturer_part_number ||
+  part?.catalog_position_manufacturer_part_number ||
+  part?.position_code ||
+  part?.catalog_position_code ||
+  part?.part_number ||
+  null
+
 const normalizeCatalogPart = (part) => {
   if (!part) return null
+  const catalogPositionId = getCatalogPositionId(part)
   return {
     ...part,
-    cat_number: part.cat_number || part.part_number || null,
-    original_part_id: part.original_part_id || part.oem_part_id || part.id || null,
-    description_ru: part.description_ru || null,
-    description_en: part.description_en || null,
+    catalog_position_id: catalogPositionId,
+    cat_number: getCatalogPartNumber(part),
+    original_part_id: catalogPositionId,
+    description_ru: part.description_ru || part.catalog_position_name_ru || part.catalog_position_name || null,
+    description_en: part.description_en || part.catalog_position_name_en || part.catalog_position_name || null,
     uom: part.uom || "шт",
   }
 }
@@ -159,14 +173,20 @@ const getStatusStepIndex = (status) => {
 }
 
 const getClientRequestPartNumber = (row, fallback = "—") =>
-  String(row?.client_display_part_number || row?.client_part_number || row?.original_cat_number || fallback)
-
-const getClientRequestDescription = (row, fallback = "") =>
-  String(row?.client_display_description || row?.client_description || row?.original_description_ru || row?.original_description_en || fallback)
+  String(
+    row?.client_display_part_number ||
+      row?.client_part_number ||
+      row?.catalog_position_manufacturer_part_number ||
+      row?.manufacturer_part_number ||
+      row?.catalog_position_code ||
+      row?.position_code ||
+      row?.original_cat_number ||
+      fallback,
+  )
 
 const getInitialClientPartNumber = (part, overrides = {}) =>
   overrides.client_part_number ||
-  part?.cat_number ||
+  getCatalogPartNumber(part) ||
   null
 
 export default function ClientRequestsPage() {
@@ -188,7 +208,7 @@ export default function ClientRequestsPage() {
   const [items, setItems] = useState([])
   const [itemsLoading, setItemsLoading] = useState(false)
   const [activeRevisionId, setActiveRevisionId] = useState(null)
-  const [workspaceTabKey, setWorkspaceTabKey] = useState("items")
+  const [workspaceTabKey, setWorkspaceTabKey] = useState("summary")
   const [revisionNoteOpen, setRevisionNoteOpen] = useState(false)
   const [revisionNote, setRevisionNote] = useState("")
   const revisionNoteResolver = useRef(null)
@@ -444,7 +464,7 @@ export default function ClientRequestsPage() {
     setModelId(nextModelId)
   }
 
-  const loadFrequentParts = async (clientId) => {
+  const loadFrequentParts = async (_clientId) => {
     setFrequentParts([])
     setFrequentLoading(false)
   }
@@ -779,7 +799,7 @@ export default function ClientRequestsPage() {
     setOriginalResults([])
     setItemEditOpen(false)
     setItemEditRecord(null)
-    setWorkspaceTabKey(normalizeWorkspaceTab(options.tabKey) || "items")
+    setWorkspaceTabKey(normalizeWorkspaceTab(options.tabKey) || "summary")
     setQuickSearch("")
     setQuickResults([])
     setQuickSelectedPart(null)
@@ -945,15 +965,17 @@ export default function ClientRequestsPage() {
   }
 
   const ensureOriginalOption = (item) => {
-    if (!item?.original_part_id) return
+    const catalogPositionId = getCatalogPositionId(item)
+    if (!catalogPositionId) return
     setOriginalResults((prev) => {
-      if (prev.some((opt) => opt.id === item.original_part_id)) return prev
+      if (prev.some((opt) => Number(opt.id) === Number(catalogPositionId))) return prev
       return [
         {
-          id: item.original_part_id,
-          cat_number: item.original_cat_number,
-          description_ru: item.original_description_ru,
-          description_en: item.original_description_en,
+          id: catalogPositionId,
+          catalog_position_id: catalogPositionId,
+          cat_number: getCatalogPartNumber(item) || item.original_cat_number,
+          description_ru: item.catalog_position_name_ru || item.original_description_ru,
+          description_en: item.catalog_position_name_en || item.original_description_en,
         },
         ...prev,
       ]
@@ -962,6 +984,8 @@ export default function ClientRequestsPage() {
 
   const createStagedRow = (data = {}) => ({
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    catalog_position_id: data.catalog_position_id || data.original_part_id || null,
+    original_part_id: data.catalog_position_id || data.original_part_id || null,
     manufacturer: data.manufacturer || null,
     model: data.model || null,
     cat_number: data.cat_number || "",
@@ -1233,19 +1257,22 @@ export default function ClientRequestsPage() {
 
   const buildItemFromPart = (part, overrides = {}) => {
     const qty = Number(overrides.qty ?? overrides.requested_qty ?? 1)
+    const normalizedPart = normalizeCatalogPart(part)
+    const catalogPositionId = getCatalogPositionId(normalizedPart)
     return {
-      original_part_id: part?.id || null,
-      original_cat_number: part?.cat_number || null,
-      original_description_ru: part?.description_ru || null,
-      original_description_en: part?.description_en || null,
-      client_part_number: getInitialClientPartNumber(part, overrides),
+      catalog_position_id: catalogPositionId,
+      original_part_id: catalogPositionId,
+      original_cat_number: getCatalogPartNumber(normalizedPart),
+      original_description_ru: normalizedPart?.description_ru || null,
+      original_description_en: normalizedPart?.description_en || null,
+      client_part_number: getInitialClientPartNumber(normalizedPart, overrides),
       client_description:
         overrides.client_description ||
-        part?.description_ru ||
-        part?.description_en ||
+        normalizedPart?.description_ru ||
+        normalizedPart?.description_en ||
         null,
       requested_qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
-      uom: overrides.uom || part?.uom || "шт",
+      uom: overrides.uom || normalizedPart?.uom || "шт",
       oem_only: overrides.oem_only ? 1 : 0,
       equipment_model_id:
         overrides.equipment_model_id ||
@@ -1281,7 +1308,8 @@ export default function ClientRequestsPage() {
       await Promise.all(
         itemsToAdd.map((item) =>
           axios.post(`/client-requests/revisions/${revisionId}/items`, {
-            original_part_id: item.original_part_id || null,
+            catalog_position_id: item.catalog_position_id || item.original_part_id || null,
+            original_part_id: item.original_part_id || item.catalog_position_id || null,
             equipment_model_id:
               item.equipment_model_id ||
               selectedActiveEquipmentUnit?.equipment_model_id ||
@@ -1426,6 +1454,7 @@ export default function ClientRequestsPage() {
         return
       }
       const isDifferent =
+        Number(currRow?.catalog_position_id || 0) !== Number(prevRow?.catalog_position_id || 0) ||
         Number(currRow?.original_part_id || 0) !== Number(prevRow?.original_part_id || 0) ||
         Number(currRow?.requested_qty || 0) !== Number(prevRow?.requested_qty || 0) ||
         String(currRow?.uom || "") !== String(prevRow?.uom || "") ||
@@ -1518,7 +1547,8 @@ export default function ClientRequestsPage() {
       id: tempId,
       temp_id: tempId,
       line_number: null,
-      original_part_id: payload.original_part_id || null,
+      catalog_position_id: payload.catalog_position_id || payload.original_part_id || null,
+      original_part_id: payload.original_part_id || payload.catalog_position_id || null,
       original_cat_number: payload.original_cat_number || null,
       original_description_ru: payload.original_description_ru || null,
       original_description_en: payload.original_description_en || null,
@@ -1580,7 +1610,8 @@ export default function ClientRequestsPage() {
         const target = itemsByLine.get(Number(lineNumber))
         if (!target) continue
         const payload = {
-          original_part_id: target.original_part_id || null,
+          catalog_position_id: target.catalog_position_id || target.original_part_id || null,
+          original_part_id: target.original_part_id || target.catalog_position_id || null,
           equipment_model_id:
             target.equipment_model_id ||
             selectedActiveEquipmentUnit?.equipment_model_id ||
@@ -1611,7 +1642,8 @@ export default function ClientRequestsPage() {
 
       for (const row of pendingChanges.adds || []) {
         const payload = {
-          original_part_id: row.original_part_id || null,
+          catalog_position_id: row.catalog_position_id || row.original_part_id || null,
+          original_part_id: row.original_part_id || row.catalog_position_id || null,
           equipment_model_id:
             row.equipment_model_id ||
             selectedActiveEquipmentUnit?.equipment_model_id ||
@@ -1673,7 +1705,8 @@ export default function ClientRequestsPage() {
     try {
       if (changeDraftActive) {
         stageUpdate(itemEditRecord.line_number, {
-          original_part_id: values.original_part_id || null,
+          catalog_position_id: values.catalog_position_id || values.original_part_id || null,
+          original_part_id: values.original_part_id || values.catalog_position_id || null,
           equipment_model_id:
             itemEditRecord?.equipment_model_id ||
             selectedActiveEquipmentUnit?.equipment_model_id ||
@@ -1717,18 +1750,20 @@ export default function ClientRequestsPage() {
       return
     }
     if (changeDraftActive) {
+      const normalizedPart = normalizeCatalogPart(quickSelectedPart)
       stageAdd({
-        original_part_id: quickSelectedPart?.id || null,
-        original_cat_number: quickSelectedPart?.cat_number || null,
-        original_description_ru: quickSelectedPart?.description_ru || null,
-        original_description_en: quickSelectedPart?.description_en || null,
-        client_part_number: quickSelectedPart?.cat_number || quickSearch.trim(),
+        catalog_position_id: normalizedPart?.catalog_position_id || null,
+        original_part_id: normalizedPart?.original_part_id || null,
+        original_cat_number: normalizedPart?.cat_number || null,
+        original_description_ru: normalizedPart?.description_ru || null,
+        original_description_en: normalizedPart?.description_en || null,
+        client_part_number: normalizedPart?.cat_number || quickSearch.trim(),
         client_description:
-          quickSelectedPart?.description_ru ||
-          quickSelectedPart?.description_en ||
+          normalizedPart?.description_ru ||
+          normalizedPart?.description_en ||
           null,
         requested_qty: quickQty || 1,
-        uom: quickSelectedPart?.uom || "шт",
+        uom: normalizedPart?.uom || "шт",
         oem_only: quickOemOnly ? 1 : 0,
         equipment_model_id: selectedActiveEquipmentUnit?.equipment_model_id || modelId || null,
         model_name: selectedActiveEquipmentUnit?.model_name || null,
@@ -1743,16 +1778,18 @@ export default function ClientRequestsPage() {
     }
     const revisionId = await ensureActiveRevisionId()
     if (!revisionId) return
+    const normalizedPart = normalizeCatalogPart(quickSelectedPart)
     const payload = {
-      original_part_id: quickSelectedPart?.id || null,
+      catalog_position_id: normalizedPart?.catalog_position_id || null,
+      original_part_id: normalizedPart?.original_part_id || null,
       equipment_model_id: selectedActiveEquipmentUnit?.equipment_model_id || modelId || null,
-      client_part_number: quickSelectedPart?.cat_number || quickSearch.trim(),
+      client_part_number: normalizedPart?.cat_number || quickSearch.trim(),
       client_description:
-        quickSelectedPart?.description_ru ||
-        quickSelectedPart?.description_en ||
+        normalizedPart?.description_ru ||
+        normalizedPart?.description_en ||
         null,
       requested_qty: quickQty || 1,
-      uom: quickSelectedPart?.uom || "шт",
+      uom: normalizedPart?.uom || "шт",
       oem_only: quickOemOnly ? 1 : 0,
     }
     try {
@@ -1798,8 +1835,14 @@ export default function ClientRequestsPage() {
   }
 
   const formatPartLabel = (part) => {
-    const number = part?.cat_number || "—"
-    const desc = part?.description_ru || part?.description_en || "Без описания"
+    const number = getCatalogPartNumber(part) || "—"
+    const desc =
+      part?.description_ru ||
+      part?.catalog_position_name_ru ||
+      part?.description_en ||
+      part?.catalog_position_name_en ||
+      part?.catalog_position_name ||
+      "Без описания"
     const model = part?.model_name || ""
     const manufacturer = part?.manufacturer_name || ""
     const suffix = [manufacturer, model].filter(Boolean).join(" • ")
@@ -2294,6 +2337,7 @@ export default function ClientRequestsPage() {
                 setItemEditOpen(true)
                 ensureOriginalOption(record)
                 itemForm.setFieldsValue({
+                  catalog_position_id: record.catalog_position_id || record.original_part_id || null,
                   original_part_id: record.original_part_id || null,
                   client_part_number: record.client_part_number || null,
                   client_description: record.client_description || null,

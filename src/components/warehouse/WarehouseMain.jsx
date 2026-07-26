@@ -105,10 +105,24 @@ const positionTitle = (row) =>
   row?.display_name_ru ||
   `#${row?.catalog_position_id || row?.id || ""}`
 
-const positionSubtitle = (row) => {
+const supplierPartTitle = (row) =>
+  row?.supplier_part_number ||
+  row?.canonical_part_number ||
+  row?.supplier_part_id ||
+  row?.id ||
+  "Деталь поставщика"
+
+const supplierPartSubtitle = (row) => {
+  const description =
+    row?.supplier_part_description || row?.description || row?.description_ru || row?.description_en || ""
+  return [row?.supplier_name, description].filter(Boolean).join(" · ")
+}
+
+const catalogContext = (row) => {
+  const number = row?.catalog_position_number || row?.manufacturer_part_number || row?.position_code
   const title = row?.display_name || row?.display_name_en || row?.display_name_ru
   const model = [row?.manufacturer_name, row?.model_name].filter(Boolean).join(" · ")
-  return [title, model].filter(Boolean).join(" · ")
+  return [number, title, model].filter(Boolean).join(" · ")
 }
 
 const sourceTitle = (row) => {
@@ -148,8 +162,8 @@ export default function WarehouseMain() {
   const [documentPreviewOpen, setDocumentPreviewOpen] = useState(false)
   const [documentPreview, setDocumentPreview] = useState(null)
   const [documentPreviewLoading, setDocumentPreviewLoading] = useState(false)
-  const [positionOptions, setPositionOptions] = useState([])
-  const [positionLoading, setPositionLoading] = useState(false)
+  const [supplierPartOptions, setSupplierPartOptions] = useState([])
+  const [supplierPartLoading, setSupplierPartLoading] = useState(false)
 
   const [docForm] = Form.useForm()
   const [placeForm] = Form.useForm()
@@ -300,49 +314,55 @@ export default function WarehouseMain() {
     [places]
   )
 
-  const fetchPositions = useCallback(
+  const fetchSupplierParts = useCallback(
     (value) => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
       const q = String(value || "").trim()
-      if (q.length < 2) {
-        setPositionOptions([])
+      if (q.length < 2 && !selectedPositionFilter?.id) {
+        setSupplierPartOptions([])
         return
       }
 
       searchTimerRef.current = setTimeout(async () => {
-        setPositionLoading(true)
+        setSupplierPartLoading(true)
         try {
-          const { data } = await axios.get("/warehouse/catalog-positions", { params: { q } })
-          setPositionOptions(Array.isArray(data) ? data : [])
+          const params = {}
+          if (q.length >= 2) params.q = q
+          if (selectedPositionFilter?.id) params.catalog_position_id = selectedPositionFilter.id
+          const { data } = await axios.get("/warehouse/supplier-parts", { params })
+          setSupplierPartOptions(Array.isArray(data) ? data : [])
         } catch (err) {
-          console.error("Не удалось найти карточки позиций", err)
-          message.error("Не удалось найти карточки позиций")
+          console.error("Не удалось найти детали поставщиков", err)
+          message.error("Не удалось найти детали поставщиков")
         } finally {
-          setPositionLoading(false)
+          setSupplierPartLoading(false)
         }
       }, 250)
     },
-    [message]
+    [message, selectedPositionFilter?.id]
   )
 
   const openDocumentModal = useCallback(
     (type = "receipt", defaults = {}) => {
       const defaultWarehouse = selectedWarehouseId || locations[0]?.id || null
       const secondWarehouse = locations.find((item) => item.id !== defaultWarehouse)?.id || null
-      const positionOption = defaults.positionOption || positionOptionFromFilter
+      const supplierPartOption = defaults.supplierPartOption || null
+      const catalogPositionId = supplierPartOption?.catalog_position_id || positionOptionFromFilter?.id || undefined
       const defaultLine = {
         quantity: defaults.quantity || 1,
-        catalog_position_id: positionOption?.id || undefined,
+        supplier_part_id: supplierPartOption?.supplier_part_id || supplierPartOption?.id || undefined,
+        catalog_position_id: catalogPositionId,
         storage_place_id: defaults.storage_place_id,
         target_storage_place_id: defaults.target_storage_place_id,
       }
-      if (positionOption) {
-        setPositionOptions((prev) => [
-          positionOption,
-          ...prev.filter((item) => String(item.id) !== String(positionOption.id)),
+      if (supplierPartOption) {
+        setSupplierPartOptions((prev) => [
+          supplierPartOption,
+          ...prev.filter((item) => String(item.id) !== String(supplierPartOption.id)),
         ])
       } else {
-        setPositionOptions([])
+        setSupplierPartOptions([])
+        if (positionOptionFromFilter?.id) fetchSupplierParts("")
       }
       docForm.resetFields()
       docForm.setFieldsValue({
@@ -353,7 +373,7 @@ export default function WarehouseMain() {
         target_warehouse_id: secondWarehouse,
         basis_document:
           defaults.basis_document ||
-          (positionOption ? `Карточка позиции ${positionTitle(positionOption)}` : undefined),
+          (positionOptionFromFilter ? `Карточка позиции ${positionTitle(positionOptionFromFilter)}` : undefined),
         source_type: defaults.source_type || "manual",
         source_id: defaults.source_id,
         source_line_id: defaults.source_line_id,
@@ -362,7 +382,7 @@ export default function WarehouseMain() {
       })
       setDocModalOpen(true)
     },
-    [docForm, locations, positionOptionFromFilter, selectedWarehouseId]
+    [docForm, fetchSupplierParts, locations, positionOptionFromFilter, selectedWarehouseId]
   )
 
   useEffect(() => {
@@ -383,13 +403,13 @@ export default function WarehouseMain() {
 
   const openReserveFromStock = useCallback(
     (row, type = "reserve") => {
-      const positionOption = {
+      const supplierPartOption = {
         ...row,
-        id: row.catalog_position_id,
+        id: row.supplier_part_id,
       }
-      setPositionOptions((prev) => [
-        positionOption,
-        ...prev.filter((item) => String(item.id) !== String(positionOption.id)),
+      setSupplierPartOptions((prev) => [
+        supplierPartOption,
+        ...prev.filter((item) => String(item.id) !== String(supplierPartOption.id)),
       ])
       docForm.resetFields()
       docForm.setFieldsValue({
@@ -399,6 +419,7 @@ export default function WarehouseMain() {
         source_type: "manual",
         lines: [
           {
+            supplier_part_id: row.supplier_part_id,
             catalog_position_id: row.catalog_position_id,
             storage_place_id: row.storage_place_id,
             quantity: Math.max(Math.min(Number(row.free_qty || 1), 1), 0.001),
@@ -412,13 +433,13 @@ export default function WarehouseMain() {
 
   const openUnreserveFromReservation = useCallback(
     (row) => {
-      const positionOption = {
+      const supplierPartOption = {
         ...row,
-        id: row.catalog_position_id,
+        id: row.supplier_part_id,
       }
-      setPositionOptions((prev) => [
-        positionOption,
-        ...prev.filter((item) => String(item.id) !== String(positionOption.id)),
+      setSupplierPartOptions((prev) => [
+        supplierPartOption,
+        ...prev.filter((item) => String(item.id) !== String(supplierPartOption.id)),
       ])
       docForm.resetFields()
       docForm.setFieldsValue({
@@ -431,6 +452,7 @@ export default function WarehouseMain() {
         source_label: row.source_label || undefined,
         lines: [
           {
+            supplier_part_id: row.supplier_part_id,
             catalog_position_id: row.catalog_position_id,
             storage_place_id: row.storage_place_id,
             quantity: Number(row.reserved_qty || 1),
@@ -451,6 +473,7 @@ export default function WarehouseMain() {
         post: true,
         warehouse_id: values.doc_type === "transfer" ? null : values.warehouse_id,
         lines: (values.lines || []).map((line) => ({
+          supplier_part_id: line.supplier_part_id,
           catalog_position_id: line.catalog_position_id,
           quantity: line.quantity,
           storage_place_id: line.storage_place_id,
@@ -529,34 +552,45 @@ export default function WarehouseMain() {
     }
   }
 
-  const positionSelectOptions = useMemo(
+  const supplierPartSelectOptions = useMemo(
     () =>
-      positionOptions.map((item) => ({
+      supplierPartOptions.map((item) => ({
         value: item.id,
+        item,
         label: (
           <Space direction="vertical" size={0}>
-            <Text strong>{positionTitle(item)}</Text>
+            <Text strong>{supplierPartTitle(item)}</Text>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {positionSubtitle(item) || "Карточка позиции"}
+              {supplierPartSubtitle(item) || "Деталь поставщика"}
             </Text>
+            {catalogContext(item) && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {catalogContext(item)}
+              </Text>
+            )}
           </Space>
         ),
       })),
-    [positionOptions]
+    [supplierPartOptions]
   )
 
   const stockColumns = useMemo(
     () => [
       {
-        title: "Позиция",
-        dataIndex: "manufacturer_part_number",
+        title: "Деталь поставщика",
+        dataIndex: "supplier_part_number",
         width: 360,
         render: (_value, row) => (
           <Space direction="vertical" size={0}>
-            <Text strong>{positionTitle(row)}</Text>
+            <Text strong>{supplierPartTitle(row)}</Text>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {positionSubtitle(row) || "—"}
+              {supplierPartSubtitle(row) || "—"}
             </Text>
+            {catalogContext(row) && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {catalogContext(row)}
+              </Text>
+            )}
           </Space>
         ),
       },
@@ -623,7 +657,7 @@ export default function WarehouseMain() {
           <Button
             size="small"
             icon={<LockOutlined />}
-            disabled={Number(row.free_qty || 0) <= 0}
+            disabled={!row.supplier_part_id || Number(row.free_qty || 0) <= 0}
             onClick={() => openReserveFromStock(row)}
           >
             Резерв
@@ -709,15 +743,20 @@ export default function WarehouseMain() {
   const reservationColumns = useMemo(
     () => [
       {
-        title: "Позиция",
-        dataIndex: "manufacturer_part_number",
+        title: "Деталь поставщика",
+        dataIndex: "supplier_part_number",
         width: 260,
         render: (_value, row) => (
           <Space direction="vertical" size={0}>
-            <Text strong>{positionTitle(row)}</Text>
+            <Text strong>{supplierPartTitle(row)}</Text>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {positionSubtitle(row) || "—"}
+              {supplierPartSubtitle(row) || "—"}
             </Text>
+            {catalogContext(row) && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {catalogContext(row)}
+              </Text>
+            )}
           </Space>
         ),
       },
@@ -761,6 +800,7 @@ export default function WarehouseMain() {
           <Button
             size="small"
             icon={<UnlockOutlined />}
+            disabled={!row.supplier_part_id}
             onClick={(event) => {
               event.stopPropagation()
               openUnreserveFromReservation(row)
@@ -844,14 +884,19 @@ export default function WarehouseMain() {
   const previewLineColumns = useMemo(
     () => [
       {
-        title: "Позиция",
-        dataIndex: "manufacturer_part_number",
+        title: "Деталь поставщика",
+        dataIndex: "supplier_part_number",
         render: (_value, row) => (
           <Space direction="vertical" size={0}>
-            <Text strong>{positionTitle(row)}</Text>
+            <Text strong>{supplierPartTitle(row)}</Text>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {row.display_name || "—"}
+              {supplierPartSubtitle(row) || "—"}
             </Text>
+            {catalogContext(row) && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {catalogContext(row)}
+              </Text>
+            )}
           </Space>
         ),
       },
@@ -924,7 +969,7 @@ export default function WarehouseMain() {
       label: `Остатки (${overview.stock.length})`,
       children: (
         <Table
-          rowKey={(row) => `${row.warehouse_id}-${row.storage_place_id || 0}-${row.catalog_position_id}`}
+          rowKey={(row) => `${row.warehouse_id}-${row.storage_place_id || 0}-${row.supplier_part_id}`}
           columns={stockColumns}
           dataSource={overview.stock}
           loading={loading}
@@ -936,7 +981,7 @@ export default function WarehouseMain() {
               <Empty description={selectedPositionFilter ? "Остатков по этой позиции пока нет" : "Остатков пока нет"}>
                 {selectedPositionFilter && (
                   <Button size="small" icon={<InboxOutlined />} onClick={() => openDocumentModal("receipt")}>
-                    Оприходовать позицию
+                    Оприходовать поставку
                   </Button>
                 )}
               </Empty>
@@ -1023,7 +1068,7 @@ export default function WarehouseMain() {
               onSearch={loadOverview}
               allowClear
               enterButton="Найти"
-              placeholder="Позиция, номер, адрес хранения"
+              placeholder="Поставщик, артикул, карточка, адрес"
             />
           </Col>
           <Col xs={24} md={24} lg={9}>
@@ -1050,7 +1095,7 @@ export default function WarehouseMain() {
             </Space>
             <Space wrap>
               <Button size="small" icon={<InboxOutlined />} onClick={() => openDocumentModal("receipt")}>
-                Оприходовать
+                Оприходовать поставку
               </Button>
               <Button size="small" onClick={clearPositionFilter}>
                 Сбросить фильтр
@@ -1063,7 +1108,7 @@ export default function WarehouseMain() {
       <Row gutter={[12, 12]}>
         <Col xs={12} lg={6}>
           <div className="warehouse-stat">
-            <Statistic title="Карточек с остатком" value={overview.stats.positions_count || 0} />
+            <Statistic title="Деталей с остатком" value={overview.stats.positions_count || 0} />
           </div>
         </Col>
         <Col xs={12} lg={6}>
@@ -1177,19 +1222,33 @@ export default function WarehouseMain() {
                 {fields.map(({ key, ...field }) => (
                   <Row key={key} gutter={8} align="middle">
                     <Col xs={24} md={docType === "transfer" ? 9 : 11}>
+                      <Form.Item {...field} name={[field.name, "catalog_position_id"]} hidden>
+                        <Input />
+                      </Form.Item>
                       <Form.Item
                         {...field}
-                        name={[field.name, "catalog_position_id"]}
-                        label="Карточка позиции"
-                        rules={[{ required: true, message: "Выберите карточку" }]}
+                        name={[field.name, "supplier_part_id"]}
+                        label="Деталь поставщика"
+                        rules={[{ required: true, message: "Выберите деталь поставщика" }]}
                       >
                         <Select
                           showSearch
                           filterOption={false}
-                          onSearch={fetchPositions}
-                          options={positionSelectOptions}
-                          loading={positionLoading}
-                          placeholder="Найти по номеру или названию"
+                          onSearch={fetchSupplierParts}
+                          onFocus={() => fetchSupplierParts("")}
+                          onChange={(_value, option) => {
+                            const selected = option?.item
+                            const lines = [...(docForm.getFieldValue("lines") || [])]
+                            lines[field.name] = {
+                              ...(lines[field.name] || {}),
+                              supplier_part_id: selected?.supplier_part_id || selected?.id || _value,
+                              catalog_position_id: selected?.catalog_position_id || selectedPositionFilter?.id || null,
+                            }
+                            docForm.setFieldsValue({ lines })
+                          }}
+                          options={supplierPartSelectOptions}
+                          loading={supplierPartLoading}
+                          placeholder="Поставщик, артикул или описание"
                         />
                       </Form.Item>
                     </Col>

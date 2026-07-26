@@ -25,7 +25,6 @@ const { Paragraph, Text } = Typography
 const catalogLinks = [
   { path: "/clients", label: "Клиенты" },
   { path: "/suppliers", label: "Поставщики" },
-  { path: "/supplier-parts", label: "Детали поставщиков" },
   { path: "/equipment-classifier", label: "Классификатор" },
   { path: "/materials", label: "Материалы" },
   { path: "/tnved-codes", label: "Коды ТН ВЭД" },
@@ -154,7 +153,7 @@ export default function CatalogsPage() {
     loadClassifierTree()
   }, [loadClassifierTree])
 
-  const counts = health?.counts || {}
+  const counts = useMemo(() => health?.counts || {}, [health])
   const queues = health?.queues || {}
   const totalIssues = useMemo(
     () => countMeta.reduce((sum, item) => sum + Number(counts[item.key] || 0), 0),

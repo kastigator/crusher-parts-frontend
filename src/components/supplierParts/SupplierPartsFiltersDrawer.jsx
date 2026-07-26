@@ -36,7 +36,7 @@ export default function SupplierPartsFiltersDrawer({
     if (!open) return
     form.setFieldsValue({
       part_type: value?.part_type || null,
-      originals_mode: value?.originals_mode || "any",
+      catalog_links_mode: value?.catalog_links_mode || "any",
 
       weight_min: value?.weight_min ?? null,
       weight_max: value?.weight_max ?? null,
@@ -65,7 +65,7 @@ export default function SupplierPartsFiltersDrawer({
     const v = await form.validateFields()
     onApply?.({
       part_type: v.part_type || null,
-      originals_mode: v.originals_mode || "any",
+      catalog_links_mode: v.catalog_links_mode || "any",
 
       weight_min: v.weight_min ?? null,
       weight_max: v.weight_max ?? null,
@@ -139,7 +139,7 @@ export default function SupplierPartsFiltersDrawer({
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item name="originals_mode" label="Связи с каталогом">
+            <Form.Item name="catalog_links_mode" label="Связи с каталогом">
               <Select
                 options={[
                   { value: "any", label: "Все" },
@@ -228,36 +228,36 @@ export default function SupplierPartsFiltersDrawer({
         </Row>
 
         <Divider style={{ margin: "14px 0 10px" }} />
-        <div style={{ fontWeight: 700 }}>Габариты, см</div>
+        <div style={{ fontWeight: 700 }}>Габариты, мм</div>
         <Row gutter={[10, 10]} style={{ marginTop: 6 }}>
           <Col span={12}>
             <Form.Item name="length_min" label="Длина от">
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={1} style={{ width: "100%" }} />
             </Form.Item>
           </Col>
           <Col span={12}>
             <Form.Item name="length_max" label="Длина до">
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={1} style={{ width: "100%" }} />
             </Form.Item>
           </Col>
           <Col span={12}>
             <Form.Item name="width_min" label="Ширина от">
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={1} style={{ width: "100%" }} />
             </Form.Item>
           </Col>
           <Col span={12}>
             <Form.Item name="width_max" label="Ширина до">
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={1} style={{ width: "100%" }} />
             </Form.Item>
           </Col>
           <Col span={12}>
             <Form.Item name="height_min" label="Высота от">
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={1} style={{ width: "100%" }} />
             </Form.Item>
           </Col>
           <Col span={12}>
             <Form.Item name="height_max" label="Высота до">
-              <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+              <InputNumber min={0} step={1} style={{ width: "100%" }} />
             </Form.Item>
           </Col>
         </Row>

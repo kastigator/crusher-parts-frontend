@@ -13,6 +13,7 @@ import {
 } from "antd"
 import axios from "@/api/axiosInstance"
 import { compactInputNumberProps } from "@/utils/numberFormat"
+import { cmToMm, mmToCm } from "@/utils/dimensions"
 
 const { Text } = Typography
 
@@ -57,9 +58,9 @@ export default function SupplierPartCreateAdvancedDrawer({
       default_material_note: value?.default_material_note || "",
 
       weight_kg: value?.weight_kg ?? null,
-      length_cm: value?.length_cm ?? null,
-      width_cm: value?.width_cm ?? null,
-      height_cm: value?.height_cm ?? null,
+      length_cm: cmToMm(value?.length_cm),
+      width_cm: cmToMm(value?.width_cm),
+      height_cm: cmToMm(value?.height_cm),
 
       is_oem: !!value?.is_oem,
       is_overweight: !!value?.is_overweight,
@@ -81,9 +82,9 @@ export default function SupplierPartCreateAdvancedDrawer({
       default_material_note: v.default_material_note || "",
 
       weight_kg: v.weight_kg ?? null,
-      length_cm: v.length_cm ?? null,
-      width_cm: v.width_cm ?? null,
-      height_cm: v.height_cm ?? null,
+      length_cm: mmToCm(v.length_cm),
+      width_cm: mmToCm(v.width_cm),
+      height_cm: mmToCm(v.height_cm),
 
       is_oem: !!v.is_oem,
       is_overweight: !!v.is_overweight,
@@ -206,14 +207,14 @@ export default function SupplierPartCreateAdvancedDrawer({
           <InputNumber min={0} step={0.01} style={{ width: "100%" }} {...compactInputNumberProps} />
         </Form.Item>
         <Space style={{ width: "100%" }} size={10}>
-          <Form.Item name="length_cm" label="Длина, см" style={{ flex: 1 }}>
-            <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
+          <Form.Item name="length_cm" label="Длина, мм" style={{ flex: 1 }}>
+            <InputNumber min={0} step={1} style={{ width: "100%" }} {...compactInputNumberProps} />
           </Form.Item>
-          <Form.Item name="width_cm" label="Ширина, см" style={{ flex: 1 }}>
-            <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
+          <Form.Item name="width_cm" label="Ширина, мм" style={{ flex: 1 }}>
+            <InputNumber min={0} step={1} style={{ width: "100%" }} {...compactInputNumberProps} />
           </Form.Item>
-          <Form.Item name="height_cm" label="Высота, см" style={{ flex: 1 }}>
-            <InputNumber min={0} step={0.1} style={{ width: "100%" }} {...compactInputNumberProps} />
+          <Form.Item name="height_cm" label="Высота, мм" style={{ flex: 1 }}>
+            <InputNumber min={0} step={1} style={{ width: "100%" }} {...compactInputNumberProps} />
           </Form.Item>
         </Space>
       </Form>

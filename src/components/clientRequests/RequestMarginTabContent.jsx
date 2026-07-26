@@ -21,6 +21,66 @@ const lineStatusOptions = [
   { value: "excluded", label: "Исключена" },
 ]
 
+const calculatorDefaultGlobals = {
+  cost_dost_hki_eur: 0,
+  cost_port_eur: 0,
+  cost_warehouse_fin_eur: 0,
+  cost_dost_rk_eur: 0,
+  cost_dost_spb_eur: 0,
+  cost_dost_client_eur: 0,
+  cost_certification_eur: 0,
+  cost_declaration_eur: 0,
+  cost_customs_fees_eur: 0,
+  nadcen_rk: 0.05,
+  fin_poteri: 0.05,
+  nds: 0.2,
+}
+
+const calculatorDefaultLineDefaults = {
+  nadcen_fin_pct: 0.15,
+  customs_pct: 0.05,
+  nadcen_rf_pct: 0.15,
+}
+
+const moneyInputGroups = [
+  {
+    title: "Маршрут",
+    fields: [
+      { key: "cost_dost_hki_eur", label: "До Хельсинки" },
+      { key: "cost_port_eur", label: "Порт" },
+      { key: "cost_warehouse_fin_eur", label: "Склад Фин." },
+      { key: "cost_dost_rk_eur", label: "До РК" },
+      { key: "cost_dost_spb_eur", label: "До СПб" },
+      { key: "cost_dost_client_eur", label: "До клиента" },
+    ],
+  },
+  {
+    title: "Оформление",
+    fields: [
+      { key: "cost_customs_fees_eur", label: "Тамож. сборы" },
+      { key: "cost_certification_eur", label: "Сертификация" },
+      { key: "cost_declaration_eur", label: "Декларация" },
+    ],
+  },
+]
+
+const percentInputGroups = [
+  {
+    title: "Наценки и налоги",
+    fields: [
+      { scope: "line", key: "nadcen_fin_pct", label: "Финляндия" },
+      { scope: "global", key: "nadcen_rk", label: "РК" },
+      { scope: "line", key: "customs_pct", label: "Таможня" },
+      { scope: "global", key: "fin_poteri", label: "Фин. потери" },
+      { scope: "line", key: "nadcen_rf_pct", label: "РФ" },
+      { scope: "global", key: "nds", label: "НДС" },
+    ],
+  },
+]
+
+const percentToInput = (value) => Number(((Number(value || 0) || 0) * 100).toFixed(2))
+const inputToPercent = (value) => (Number(value || 0) || 0) / 100
+
 export default function RequestMarginTabContent({ requestId }) {
   const [quotes, setQuotes] = useState([])
   const [selectedQuoteId, setSelectedQuoteId] = useState(null)
@@ -31,6 +91,10 @@ export default function RequestMarginTabContent({ requestId }) {
   const [savingAll, setSavingAll] = useState(false)
   const [drafts, setDrafts] = useState({})
   const [helpOpen, setHelpOpen] = useState(false)
+  const [calculatorGlobals, setCalculatorGlobals] = useState(calculatorDefaultGlobals)
+  const [calculatorLineDefaults, setCalculatorLineDefaults] = useState(calculatorDefaultLineDefaults)
+  const [calculatorPreview, setCalculatorPreview] = useState(null)
+  const [calculatorLoading, setCalculatorLoading] = useState(false)
   const loadQuotes = async () => {
     if (!requestId) return
     try {
@@ -112,6 +176,10 @@ export default function RequestMarginTabContent({ requestId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRevisionId])
 
+  useEffect(() => {
+    setCalculatorPreview(null)
+  }, [selectedRevisionId])
+
   const selectedQuote = useMemo(
     () => quotes.find((row) => Number(row.id) === Number(selectedQuoteId || 0)) || null,
     [quotes, selectedQuoteId]
@@ -180,6 +248,152 @@ export default function RequestMarginTabContent({ requestId }) {
   )
   const dirtyLineIdSet = useMemo(() => new Set(dirtyLineIds), [dirtyLineIds])
 
+  const calculatorCurrency = calculatorPreview?.currency || quoteCurrency
+  const calculatorTotals = calculatorPreview?.totals || null
+
+  const updateCalculatorGlobal = (key, value) => {
+    setCalculatorGlobals((prev) => ({ ...prev, [key]: value ?? 0 }))
+    setCalculatorPreview(null)
+  }
+
+  const updateCalculatorLineDefault = (key, value) => {
+    setCalculatorLineDefaults((prev) => ({ ...prev, [key]: value ?? 0 }))
+    setCalculatorPreview(null)
+  }
+
+  const resetCalculator = () => {
+    setCalculatorGlobals(calculatorDefaultGlobals)
+    setCalculatorLineDefaults(calculatorDefaultLineDefaults)
+    setCalculatorPreview(null)
+  }
+
+  const loadCalculatorPreview = async () => {
+    if (!selectedRevisionId) return
+    if (dirtyLineIds.length) {
+      message.warning("Сначала сохраните изменения в строках КП")
+      return
+    }
+    setCalculatorLoading(true)
+    try {
+      const { data } = await axios.post(
+        `/sales-quotes/revisions/${selectedRevisionId}/calculation-preview`,
+        {
+          globals: calculatorGlobals,
+          line_defaults: calculatorLineDefaults,
+        }
+      )
+      setCalculatorPreview(data)
+    } catch (e) {
+      setCalculatorPreview(null)
+      message.error(e?.response?.data?.message || "Не удалось рассчитать preview КП")
+    } finally {
+      setCalculatorLoading(false)
+    }
+  }
+
+  const calculatorPreviewColumns = useMemo(
+    () => [
+      {
+        title: "Позиция",
+        width: 260,
+        render: (_, row) => (
+          <Space direction="vertical" size={0}>
+            <Typography.Text strong>{row.catalog_number || `#${row.sales_quote_line_id}`}</Typography.Text>
+            {row.description ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {row.description}
+              </Typography.Text>
+            ) : null}
+            {row.supplier_public_codes ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {row.supplier_public_codes}
+              </Typography.Text>
+            ) : null}
+          </Space>
+        ),
+      },
+      {
+        title: "Закупка",
+        width: 140,
+        render: (_, row) => (
+          <Space direction="vertical" size={0}>
+            <span>{formatPriceWithCurrency(row.purchase_price_eur_per_unit, calculatorCurrency)}</span>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {`x ${Number(row.quantity || 0)}`}
+            </Typography.Text>
+          </Space>
+        ),
+      },
+      {
+        title: "Цена без НДС",
+        width: 150,
+        render: (_, row) => formatPriceWithCurrency(row.total_without_nds_per_unit, calculatorCurrency),
+      },
+      {
+        title: "Сумма с НДС",
+        width: 150,
+        render: (_, row) => formatPriceWithCurrency(row.total_with_nds_total, calculatorCurrency),
+      },
+      {
+        title: "Расклад",
+        width: 190,
+        render: (_, row) => (
+          <Space direction="vertical" size={0}>
+            <Typography.Text style={{ fontSize: 12 }}>
+              {`DAP РК: ${formatPriceWithCurrency(row.final_price_fin_rk_eur, calculatorCurrency)}`}
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {`Таможня: ${formatPriceWithCurrency(row.customs_duty_per_unit, calculatorCurrency)}`}
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {`РФ: ${formatPriceWithCurrency(row.nadcen_rf_per_unit, calculatorCurrency)}`}
+            </Typography.Text>
+          </Space>
+        ),
+      },
+    ],
+    [calculatorCurrency]
+  )
+
+  const renderMoneyInput = (field) => (
+    <div key={field.key} style={{ minWidth: 150 }}>
+      <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+        {field.label}
+      </Typography.Text>
+      <InputNumber
+        min={0}
+        size="small"
+        style={{ width: "100%" }}
+        value={calculatorGlobals[field.key]}
+        onChange={(value) => updateCalculatorGlobal(field.key, value)}
+        addonAfter={quoteCurrency}
+      />
+    </div>
+  )
+
+  const renderPercentInput = (field) => {
+    const value =
+      field.scope === "line"
+        ? calculatorLineDefaults[field.key]
+        : calculatorGlobals[field.key]
+    const onChange = field.scope === "line" ? updateCalculatorLineDefault : updateCalculatorGlobal
+    return (
+      <div key={`${field.scope}-${field.key}`} style={{ minWidth: 130 }}>
+        <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+          {field.label}
+        </Typography.Text>
+        <InputNumber
+          min={0}
+          size="small"
+          style={{ width: "100%" }}
+          value={percentToInput(value)}
+          onChange={(nextValue) => onChange(field.key, inputToPercent(nextValue))}
+          addonAfter="%"
+        />
+      </div>
+    )
+  }
+
   const handleDraftChange = (lineId, patch) => {
     setDrafts((prev) => {
       const next = { ...(prev[lineId] || {}), ...patch }
@@ -217,7 +431,7 @@ export default function RequestMarginTabContent({ requestId }) {
       <Alert
         type="info"
         showIcon
-        message="Маржа считается в коммерческом контуре поверх закупочной базы"
+        message="Расчет продажи ведется поверх утвержденной закупочной базы"
         description="В себестоимости уже лежит полная закупочная база из выбора закупки. Продавец задает цену продажи или наценку и ведет клиентскую экономику без раскрытия реальных поставщиков. Статус строки позволяет исключить позицию из коммерческой ревизии."
       />
 
@@ -292,6 +506,141 @@ export default function RequestMarginTabContent({ requestId }) {
               Изменено строк: {dirtyLineIds.length}
             </Tag>
           </Space>
+        </Space>
+      </Card>
+
+      <Card
+        size="small"
+        title="Калькулятор цены КП"
+        extra={
+          <Space wrap>
+            <Tag color="blue">Preview без сохранения</Tag>
+            <Button size="small" onClick={resetCalculator}>
+              Сбросить
+            </Button>
+            <Button
+              size="small"
+              type="primary"
+              onClick={loadCalculatorPreview}
+              loading={calculatorLoading}
+              disabled={!selectedRevisionId || Boolean(dirtyLineIds.length)}
+            >
+              Рассчитать
+            </Button>
+          </Space>
+        }
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          {dirtyLineIds.length ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="Есть несохраненные строки КП"
+              description="Расчет строится по сохраненной ревизии. Сохраните строки, затем обновите preview."
+            />
+          ) : null}
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+              gap: 12,
+              alignItems: "start",
+            }}
+          >
+            {moneyInputGroups.map((group) => (
+              <div key={group.title}>
+                <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>
+                  {group.title}
+                </Typography.Text>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  {group.fields.map(renderMoneyInput)}
+                </div>
+              </div>
+            ))}
+            {percentInputGroups.map((group) => (
+              <div key={group.title}>
+                <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>
+                  {group.title}
+                </Typography.Text>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  {group.fields.map(renderPercentInput)}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {calculatorPreview?.warnings?.length ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="Проверьте расчетные данные"
+              description={
+                <Space direction="vertical" size={2}>
+                  {calculatorPreview.warnings.map((warning) => (
+                    <span key={warning}>{warning}</span>
+                  ))}
+                </Space>
+              }
+            />
+          ) : null}
+
+          {calculatorTotals ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                gap: 8,
+              }}
+            >
+              {[
+                ["Закупка", formatPriceWithCurrency(calculatorTotals.total_purchase_eur, calculatorCurrency)],
+                ["DAP РК", formatPriceWithCurrency(calculatorTotals.total_dap_rk_eur, calculatorCurrency)],
+                ["Без НДС", formatPriceWithCurrency(calculatorTotals.total_without_nds_eur, calculatorCurrency)],
+                ["С НДС", formatPriceWithCurrency(calculatorTotals.total_with_nds_eur, calculatorCurrency)],
+                ["Маржа", `${formatPriceWithCurrency(calculatorTotals.margin_eur, calculatorCurrency)} · ${Number(calculatorTotals.margin_pct || 0).toFixed(1)}%`],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  style={{
+                    border: "1px solid #f0f0f0",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                    minHeight: 58,
+                  }}
+                >
+                  <Typography.Text type="secondary" style={{ display: "block", fontSize: 12 }}>
+                    {label}
+                  </Typography.Text>
+                  <Typography.Text strong>{value}</Typography.Text>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {calculatorPreview?.items?.length ? (
+            <Table
+              size="small"
+              rowKey="sales_quote_line_id"
+              dataSource={calculatorPreview.items}
+              columns={calculatorPreviewColumns}
+              pagination={false}
+              tableLayout="auto"
+              scroll={{ x: "max-content" }}
+            />
+          ) : null}
         </Space>
       </Card>
 
@@ -474,7 +823,7 @@ export default function RequestMarginTabContent({ requestId }) {
       </Card>
 
       <Drawer
-        title="Справка по вкладке «Маржа»"
+        title="Справка по этапу «Расчет»"
         placement="right"
         width={440}
         open={helpOpen}

@@ -30,15 +30,22 @@ import axios from "@/api/axiosInstance"
 import { getCountryLabel } from "@/components/inputs/countryUtils"
 import SupplierPartsFiltersDrawer from "./SupplierPartsFiltersDrawer"
 import { countActiveFilters } from "./supplierPartsFiltersUtils"
+import SupplierPartCatalogLinksDrawer from "./SupplierPartCatalogLinksDrawer"
 import SupplierPriceListsDrawer from "./SupplierPriceListsDrawer"
 import SupplierPartUpsertDrawer from "./SupplierPartUpsertDrawer"
+import { cmToMm, mmToCm } from "@/utils/dimensions"
 
-export default function SupplierPartsMain() {
+export default function SupplierPartsMain({
+  initialSupplier = null,
+  embedded = false,
+  allowShowAll = true,
+}) {
   const location = useLocation()
   const navigate = useNavigate()
+  const isEmbedded = !!embedded
 
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [supplier, setSupplier] = useState(null)
+  const [supplier, setSupplier] = useState(initialSupplier || null)
   const [search, setSearch] = useState("")
   const [version, setVersion] = useState(0)
   const [importOpen, setImportOpen] = useState(false)
@@ -49,6 +56,7 @@ export default function SupplierPartsMain() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editingRow, setEditingRow] = useState(null)
+  const [catalogLinksPart, setCatalogLinksPart] = useState(null)
   const [savingCreate, setSavingCreate] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
   const createSubmitModeRef = useRef("create_close")
@@ -81,6 +89,16 @@ export default function SupplierPartsMain() {
   const supplierIdParam = params.get("supplierId")
   const allParam = params.get("all")
 
+  useEffect(() => {
+    if (!isEmbedded) return
+    setSupplier(initialSupplier || null)
+    setShowAll(false)
+    setSearch("")
+    setFilters({})
+    setCatalogLinksPart(null)
+    setVersion((v) => v + 1)
+  }, [initialSupplier, isEmbedded])
+
   // Restore list state when returning from the detail page
   const restoreAppliedRef = useRef(false)
   useEffect(() => {
@@ -111,17 +129,17 @@ export default function SupplierPartsMain() {
 
   useEffect(() => {
     // URL fallback: /supplier-parts?supplierId=...&all=1
-    if (!restoreAppliedRef.current && allParam === "1") {
+    if (!isEmbedded && allowShowAll && !restoreAppliedRef.current && allParam === "1") {
       setShowAll(true)
     }
-  }, [allParam])
+  }, [allParam, allowShowAll, isEmbedded])
 
   const columnsViewKey = showAll ? "showAll" : "supplier"
   const currentVisibleKeys = columnsByView?.[columnsViewKey] || null
   const currentOrderKeys = columnOrderByView?.[columnsViewKey] || null
   const currentColumnWidths = columnWidthsByView?.[columnsViewKey] || null
   const quickPartType = filters?.part_type || "all"
-  const quickLinksMode = filters?.originals_mode || "any"
+  const quickLinksMode = filters?.catalog_links_mode || "any"
   const listDisabled = !supplier && !showAll
 
   const ensureDefaultColumnsForView = useCallback(
@@ -248,13 +266,24 @@ export default function SupplierPartsMain() {
     return () => clearTimeout(highlightTimerRef.current)
   }, [])
 
-  const clearSupplier = () => {
+  const clearSupplier = useCallback(() => {
+    if (isEmbedded) return
     setSupplier(null)
     setSearch("")
     setShowAll(false)
     setFilters({})
+    setCatalogLinksPart(null)
     setVersion((v) => v + 1)
-  }
+  }, [isEmbedded])
+
+  const openCatalogLinks = useCallback((row) => {
+    if (!row?.id) return
+    setCatalogLinksPart(row)
+  }, [])
+
+  const handleCatalogLinksChanged = useCallback(() => {
+    setVersion((v) => v + 1)
+  }, [])
 
   const supplierSummary = useMemo(() => {
     if (!supplier) return null
@@ -269,12 +298,14 @@ export default function SupplierPartsMain() {
         {countryLabel ? <Tag>{countryLabel}</Tag> : null}
         {supplier.phone ? <Tag>{supplier.phone}</Tag> : null}
         {supplier.email ? <Tag>{supplier.email}</Tag> : null}
-        <Button size="small" onClick={clearSupplier} icon={<ReloadOutlined />}>
-          Сбросить
-        </Button>
+        {!isEmbedded ? (
+          <Button size="small" onClick={clearSupplier} icon={<ReloadOutlined />}>
+            Сбросить
+          </Button>
+        ) : null}
       </Space>
     )
-  }, [supplier])
+  }, [clearSupplier, isEmbedded, supplier])
 
   const handleImportClick = () => {
     if (!supplier?.id) {
@@ -351,12 +382,9 @@ export default function SupplierPartsMain() {
       packaging: row.packaging || "",
       weight_kg:
         row.weight_kg === undefined || row.weight_kg === null ? null : Number(row.weight_kg),
-      length_cm:
-        row.length_cm === undefined || row.length_cm === null ? null : Number(row.length_cm),
-      width_cm:
-        row.width_cm === undefined || row.width_cm === null ? null : Number(row.width_cm),
-      height_cm:
-        row.height_cm === undefined || row.height_cm === null ? null : Number(row.height_cm),
+      length_cm: cmToMm(row.length_cm),
+      width_cm: cmToMm(row.width_cm),
+      height_cm: cmToMm(row.height_cm),
       is_oem: String(row.part_type || "").toUpperCase() === "OEM",
       is_overweight: !!row.is_overweight,
       is_oversize: !!row.is_oversize,
@@ -377,9 +405,9 @@ export default function SupplierPartsMain() {
     min_order_qty: values.min_order_qty ?? null,
     packaging: String(values.packaging || "").trim() || null,
     weight_kg: values.weight_kg ?? null,
-    length_cm: values.length_cm ?? null,
-    width_cm: values.width_cm ?? null,
-    height_cm: values.height_cm ?? null,
+    length_cm: mmToCm(values.length_cm),
+    width_cm: mmToCm(values.width_cm),
+    height_cm: mmToCm(values.height_cm),
     is_overweight: values.is_overweight ? 1 : 0,
     is_oversize: values.is_oversize ? 1 : 0,
     part_type: values.is_oem ? "OEM" : "ANALOG",
@@ -534,7 +562,7 @@ export default function SupplierPartsMain() {
   useEffect(() => {
     const initSupplierOnly = async () => {
       const sid = supplierIdParam && Number(supplierIdParam)
-      if (!sid || focusId) return
+      if (isEmbedded || !sid || focusId) return
       try {
         const { data } = await axios.get(`/part-suppliers/${sid}`)
         if (!data) return
@@ -551,32 +579,34 @@ export default function SupplierPartsMain() {
       }
     }
     initSupplierOnly()
-  }, [supplierIdParam, focusId])
+  }, [supplierIdParam, focusId, isEmbedded])
 
   useEffect(() => {
     // If opened via legacy deep link (?focus=...), redirect to the full detail page.
     const id = focusId && Number(focusId)
-    if (!id) return
+    if (isEmbedded || !id) return
     const qs = new URLSearchParams()
     if (supplierIdParam) qs.set("supplierId", String(supplierIdParam))
     if (allParam) qs.set("all", String(allParam))
     navigate(`/supplier-parts/${id}${qs.toString() ? `?${qs.toString()}` : ""}`, {
       replace: true,
     })
-  }, [focusId, supplierIdParam, allParam, navigate])
+  }, [focusId, supplierIdParam, allParam, isEmbedded, navigate])
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size={16}>
-      <Card bodyStyle={{ paddingTop: 8 }}>
+    <Space direction="vertical" style={{ width: "100%" }} size={isEmbedded ? 12 : 16}>
+      <Card size={isEmbedded ? "small" : "default"} bodyStyle={{ paddingTop: 8 }}>
         <Row gutter={[12, 12]} align="middle">
           <Col xs={24} md={12}>
             <Space wrap>
-              <Button
-                icon={<TeamOutlined />}
-                onClick={() => setPickerOpen(true)}
-              >
-                {supplier ? "Изменить поставщика" : "Выбрать поставщика"}
-              </Button>
+              {!isEmbedded ? (
+                <Button
+                  icon={<TeamOutlined />}
+                  onClick={() => setPickerOpen(true)}
+                >
+                  {supplier ? "Изменить поставщика" : "Выбрать поставщика"}
+                </Button>
+              ) : null}
               {supplierSummary}
             </Space>
           </Col>
@@ -591,16 +621,18 @@ export default function SupplierPartsMain() {
               gap: 12,
             }}
           >
-            <Checkbox
-              checked={showAll}
-              onChange={(e) => {
-                const checked = e.target.checked
-                setShowAll(checked)
-                setVersion((v) => v + 1)
-              }}
-            >
-              Показать все детали
-            </Checkbox>
+            {!isEmbedded && allowShowAll ? (
+              <Checkbox
+                checked={showAll}
+                onChange={(e) => {
+                  const checked = e.target.checked
+                  setShowAll(checked)
+                  setVersion((v) => v + 1)
+                }}
+              >
+                Показать все детали
+              </Checkbox>
+            ) : null}
 
             <Button
               onClick={() => setPriceListsOpen(true)}
@@ -673,7 +705,7 @@ export default function SupplierPartsMain() {
                     const next = String(v)
                     setFilters((prev) => ({
                       ...(prev || {}),
-                      originals_mode: next,
+                      catalog_links_mode: next,
                     }))
                   }}
                 />
@@ -780,6 +812,7 @@ export default function SupplierPartsMain() {
             setColumnsMeta(meta || { options: [], defaultVisible: [], lockedKeys: [] })
           }
           onEditRecord={openEditDrawer}
+          onOpenCatalogLinks={openCatalogLinks}
           onOpenDetail={(record) => {
             if (!record?.id) return
             const qs = new URLSearchParams()
@@ -807,18 +840,20 @@ export default function SupplierPartsMain() {
         />
       </Card>
 
-      <SupplierPickerDrawer
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onPick={(s) => {
-          setSupplier(s)
-          setPickerOpen(false)
-          setShowAll(false)
-          setFilters({})
-          setVersion((v) => v + 1)
-        }}
-        initialSupplierId={supplier?.id ?? null}
-      />
+      {!isEmbedded ? (
+        <SupplierPickerDrawer
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onPick={(s) => {
+            setSupplier(s)
+            setPickerOpen(false)
+            setShowAll(false)
+            setFilters({})
+            setVersion((v) => v + 1)
+          }}
+          initialSupplierId={supplier?.id ?? null}
+        />
+      ) : null}
 
       <ImportModal
         open={importOpen}
@@ -876,6 +911,13 @@ export default function SupplierPartsMain() {
         onClose={() => setFiltersOpen(false)}
         value={filters}
         onApply={(next) => setFilters(next || {})}
+      />
+
+      <SupplierPartCatalogLinksDrawer
+        open={!!catalogLinksPart?.id}
+        part={catalogLinksPart}
+        onClose={() => setCatalogLinksPart(null)}
+        onChanged={handleCatalogLinksChanged}
       />
 
       <SupplierPriceListsDrawer

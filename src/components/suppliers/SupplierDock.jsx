@@ -5,13 +5,15 @@ import { Card, Empty, Space, Tag, Tabs, Typography } from "antd"
 import SupplierAddressesMain from "./SupplierAddressesMain"
 import SupplierBankDetailsMain from "./SupplierBankDetailsMain"
 import SupplierContactsMain from "./SupplierContactsMain"
+import SupplierMetaCard from "./SupplierMetaCard"
 import SupplierQualityMain from "./SupplierQualityMain"
+import SupplierPartsMain from "@/components/supplierParts/SupplierPartsMain"
 
 const { Text } = Typography
 
 export default function SupplierDock({ supplier, onChanged }) {
   const supplierId = Number(supplier?.id)
-  const [activeKey, setActiveKey] = useState("contacts")
+  const [activeKey, setActiveKey] = useState("parts")
 
   const header = useMemo(() => {
     if (!supplier) return null
@@ -37,12 +39,36 @@ export default function SupplierDock({ supplier, onChanged }) {
   }
 
   return (
-    <Card title={header} bodyStyle={{ paddingTop: 8 }}>
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid #f0f0f0",
+        borderRadius: 8,
+        padding: "12px 16px 16px",
+      }}
+    >
+      <div style={{ marginBottom: 8 }}>{header}</div>
       <Tabs
         activeKey={activeKey}
         onChange={setActiveKey}
         destroyInactiveTabPane
         items={[
+          {
+            key: "overview",
+            label: "Обзор",
+            children: <SupplierMetaCard supplier={supplier} onSaved={onChanged} />,
+          },
+          {
+            key: "parts",
+            label: "Детали",
+            children: (
+              <SupplierPartsMain
+                embedded
+                allowShowAll={false}
+                initialSupplier={supplier}
+              />
+            ),
+          },
           {
             key: "contacts",
             label: "Контакты",
@@ -65,7 +91,6 @@ export default function SupplierDock({ supplier, onChanged }) {
           },
         ]}
       />
-    </Card>
+    </div>
   )
 }
-

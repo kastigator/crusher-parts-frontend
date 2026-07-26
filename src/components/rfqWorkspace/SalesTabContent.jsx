@@ -315,7 +315,7 @@ export default function SalesTabContent({
               showIcon
               style={{ marginBottom: 12 }}
               message="Продажная цена и отправка клиенту выполняются в заявке клиента"
-              description="RFQ зафиксировал закупочную базу и передал КП продавцу. Укажите цену продажи или маржу в «Маржа/Экономика», затем отправьте готовое КП во вкладке «КП»."
+              description="RFQ зафиксировал закупочную базу и передал КП продавцу. Укажите цену продажи или маржу в заявке клиента на этапе «Расчет», затем отправьте готовое КП."
               action={
                 <Space direction="vertical" size={8}>
                   <Button type="primary" onClick={() => openClientCommercialTab("margin")}>

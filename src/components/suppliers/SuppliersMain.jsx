@@ -5,20 +5,23 @@ import {
   Button,
   Card,
   Checkbox,
+  Empty,
   Form,
   Popover,
   Segmented,
   Space,
   message,
 } from "antd"
-import { FilterOutlined, InboxOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons"
+import { FilterOutlined } from "@ant-design/icons"
 import { useLocation, useNavigate } from "react-router-dom"
 import axios from "@/api/axiosInstance"
 import TableToolbar from "@/components/common/TableToolbar"
+import WorkspaceShell from "@/components/common/WorkspaceShell"
 import ImportModal from "@/components/common/ImportModal"
 import SuppliersTable from "./SuppliersTable"
 import SuppliersFiltersDrawer from "./SuppliersFiltersDrawer"
 import { countActiveFilters } from "./suppliersFiltersUtils"
+import SupplierDock from "./SupplierDock"
 import SupplierUpsertDrawer from "./SupplierUpsertDrawer"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
 
@@ -33,6 +36,8 @@ export default function SuppliersMain() {
 
   const [loading, setLoading] = useState(false)
   const [rows, setRows] = useState([])
+  const [selectedSupplierId, setSelectedSupplierId] = useState(null)
+  const [selectedSupplier, setSelectedSupplier] = useState(null)
 
   const [search, setSearch] = useState("")
   const [filters, setFilters] = useState({})
@@ -237,6 +242,56 @@ export default function SuppliersMain() {
     return () => clearTimeout(t)
   }, [fetchSuppliers])
 
+  useEffect(() => {
+    if (!rows.length) {
+      setSelectedSupplierId(null)
+      setSelectedSupplier(null)
+      return
+    }
+
+    const current = selectedSupplierId
+      ? rows.find((row) => Number(row.id) === Number(selectedSupplierId))
+      : null
+    if (current) {
+      setSelectedSupplier(current)
+      return
+    }
+
+    setSelectedSupplierId(rows[0].id)
+    setSelectedSupplier(rows[0])
+  }, [rows, selectedSupplierId])
+
+  const selectSupplier = useCallback((record) => {
+    if (!record?.id) return
+    setSelectedSupplierId(Number(record.id))
+    setSelectedSupplier(record)
+  }, [])
+
+  const loadSelectedSupplier = useCallback(async () => {
+    if (!selectedSupplierId) return null
+    try {
+      const { data } = await axios.get(`/suppliers/${selectedSupplierId}`)
+      if (data?.id) {
+        setSelectedSupplier(data)
+        setRows((prev) =>
+          (Array.isArray(prev) ? prev : []).map((row) =>
+            Number(row.id) === Number(data.id) ? { ...row, ...data } : row,
+          ),
+        )
+      }
+      return data || null
+    } catch (e) {
+      console.error("Не удалось обновить карточку поставщика", e)
+      message.error("Не удалось обновить карточку поставщика")
+      return null
+    }
+  }, [selectedSupplierId])
+
+  const handleWorkspaceChanged = useCallback(async () => {
+    await loadSelectedSupplier()
+    await fetchSuppliers()
+  }, [fetchSuppliers, loadSelectedSupplier])
+
   const formInitialValues = useCallback(
     (record = null) => ({
       name: record?.name || "",
@@ -304,6 +359,8 @@ export default function SuppliersMain() {
       const { data: created } = await axios.post("/suppliers", payload)
       message.success("Поставщик создан")
       flashRow(created.id)
+      setSelectedSupplierId(Number(created.id))
+      setSelectedSupplier(created)
       await fetchSuppliers()
       if (createSubmitModeRef.current === "create_next") {
         createForm.setFieldsValue(formInitialValues())
@@ -331,6 +388,9 @@ export default function SuppliersMain() {
       const { data: updated } = await axios.put(`/suppliers/${editingRow.id}`, payload)
       message.success("Поставщик обновлен")
       flashRow(updated.id || editingRow.id)
+      if (Number(selectedSupplierId) === Number(editingRow.id)) {
+        setSelectedSupplier(updated || { ...editingRow, ...payload })
+      }
       setEditOpen(false)
       setEditingRow(null)
       await fetchSuppliers()
@@ -353,6 +413,10 @@ export default function SuppliersMain() {
         successMessage: "Поставщик перемещён в корзину",
       })
       if (result?.deleted) {
+        if (Number(selectedSupplierId) === Number(supplier.id)) {
+          setSelectedSupplierId(null)
+          setSelectedSupplier(null)
+        }
         await fetchSuppliers()
       }
     } catch (e) {
@@ -364,9 +428,8 @@ export default function SuppliersMain() {
   const quickCapabilities = filters?.cap_mode || "all"
   const quickRisk = filters?.risk_level || "all"
 
-  return (
-    <Space direction="vertical" style={{ width: "100%" }} size={16}>
-      <Card bodyStyle={{ paddingTop: 8 }}>
+  const listPane = (
+    <Card bodyStyle={{ paddingTop: 8 }}>
         <TableToolbar
           placeholder="Поиск по поставщикам (название, код, VAT, контакт)…"
           search={search}
@@ -493,6 +556,7 @@ export default function SuppliersMain() {
           <SuppliersTable
             data={rows}
             loading={loading}
+            selectedRowId={selectedSupplierId}
             highlightRowId={highlightRowId}
             visibleColumnKeys={currentVisibleKeys}
             columnOrderKeys={currentOrderKeys}
@@ -507,18 +571,28 @@ export default function SuppliersMain() {
             }
             onEditRecord={openEditDrawer}
             onDelete={handleDelete}
-            onOpenDetail={(record) => {
-              if (!record?.id) return
-              navigate(`/suppliers/${record.id}`, {
-                state: {
-                  from: `${location.pathname}${location.search || ""}`,
-                  listState: { search, filters, columnsByView, columnOrderByView },
-                },
-              })
-            }}
+            onSelectRecord={selectSupplier}
+            onOpenDetail={selectSupplier}
           />
         </div>
       </Card>
+  )
+
+  const detailPane = selectedSupplier ? (
+    <SupplierDock supplier={selectedSupplier} onChanged={handleWorkspaceChanged} />
+  ) : (
+    <Card bodyStyle={{ padding: 24 }}>
+      <Empty description="Выберите поставщика в списке" />
+    </Card>
+  )
+
+  return (
+    <Space direction="vertical" style={{ width: "100%" }} size={16}>
+      <WorkspaceShell
+        listWidth={520}
+        listPane={listPane}
+        detailPane={detailPane}
+      />
 
       <ImportModal
         open={importOpen}
