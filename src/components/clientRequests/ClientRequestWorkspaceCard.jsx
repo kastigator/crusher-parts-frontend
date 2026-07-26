@@ -23,6 +23,7 @@ import { CloseOutlined, DeleteOutlined, EditOutlined, SaveOutlined } from "@ant-
 import dayjs from "dayjs"
 import RequestCommercialFlowTabContent from "@/components/clientRequests/RequestCommercialFlowTabContent"
 import RequestExecutionTabContent from "@/components/clientRequests/RequestExecutionTabContent"
+import RequestProcurementTabContent from "@/components/clientRequests/RequestProcurementTabContent"
 import RequestSummaryTabContent from "@/components/clientRequests/RequestSummaryTabContent"
 import EntityHeader from "@/components/common/EntityHeader"
 import WorkspaceProgress from "@/components/common/WorkspaceProgress"
@@ -816,6 +817,7 @@ export default function ClientRequestWorkspaceCard({
                       </Button>
                     </div>
                   </div>
+                  <RequestProcurementTabContent requestId={activeRequest?.id} />
                 </Space>
               ),
             },
