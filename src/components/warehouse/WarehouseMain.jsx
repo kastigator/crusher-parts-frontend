@@ -16,6 +16,7 @@ import {
   Space,
   Statistic,
   Table,
+  Tabs,
   Tag,
   Typography,
 } from "antd"
@@ -24,9 +25,11 @@ import {
   DeleteOutlined,
   EnvironmentOutlined,
   InboxOutlined,
+  LockOutlined,
   PlusOutlined,
   ReloadOutlined,
   SwapOutlined,
+  UnlockOutlined,
 } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 
@@ -37,6 +40,8 @@ const DOC_TYPE_META = {
   receipt: { label: "Приход", color: "green", icon: <InboxOutlined /> },
   transfer: { label: "Перемещение", color: "blue", icon: <SwapOutlined /> },
   writeoff: { label: "Списание", color: "red", icon: <DeleteOutlined /> },
+  reserve: { label: "Резерв", color: "gold", icon: <LockOutlined /> },
+  unreserve: { label: "Снятие резерва", color: "purple", icon: <UnlockOutlined /> },
 }
 
 const STATUS_META = {
@@ -50,6 +55,20 @@ const WAREHOUSE_TYPE_OPTIONS = [
   { value: "office", label: "Офис" },
   { value: "transit", label: "Транзит" },
 ]
+
+const SOURCE_TYPE_OPTIONS = [
+  { value: "manual", label: "Ручной резерв" },
+  { value: "client_request", label: "Заявка клиента" },
+  { value: "sales_quote", label: "Коммерческое предложение" },
+  { value: "contract", label: "Контракт" },
+  { value: "rfq", label: "RFQ" },
+  { value: "purchase_order", label: "Заказ поставщику" },
+]
+
+const SOURCE_LABEL_BY_VALUE = SOURCE_TYPE_OPTIONS.reduce((acc, item) => {
+  acc[item.value] = item.label
+  return acc
+}, {})
 
 const formatQuantity = (value) => {
   const n = Number(value || 0)
@@ -73,6 +92,13 @@ const positionSubtitle = (row) => {
   return [title, model].filter(Boolean).join(" · ")
 }
 
+const sourceTitle = (row) => {
+  if (row?.source_label) return row.source_label
+  const typeLabel = SOURCE_LABEL_BY_VALUE[row?.source_type] || row?.source_type || "Ручной резерв"
+  const id = row?.source_id ? ` #${row.source_id}` : ""
+  return `${typeLabel}${id}`
+}
+
 const normalizeSelectValue = (value) => {
   if (value === "all" || value === undefined || value === null || value === "") return value
   const n = Number(value)
@@ -87,6 +113,7 @@ export default function WarehouseMain() {
     stats: { positions_count: 0, actual_qty: 0, reserved_qty: 0, free_qty: 0 },
     stock: [],
     documents: [],
+    reservations: [],
   })
   const [selectedWarehouse, setSelectedWarehouse] = useState("all")
   const [search, setSearch] = useState("")
@@ -106,6 +133,7 @@ export default function WarehouseMain() {
   const searchTimerRef = useRef(null)
 
   const docType = Form.useWatch("doc_type", docForm) || "receipt"
+  const isReserveDoc = docType === "reserve" || docType === "unreserve"
   const warehouseId = Form.useWatch("warehouse_id", docForm)
   const sourceWarehouseId = Form.useWatch("source_warehouse_id", docForm)
   const targetWarehouseId = Form.useWatch("target_warehouse_id", docForm)
@@ -153,6 +181,7 @@ export default function WarehouseMain() {
         stats: data?.stats || { positions_count: 0, actual_qty: 0, reserved_qty: 0, free_qty: 0 },
         stock: Array.isArray(data?.stock) ? data.stock : [],
         documents: Array.isArray(data?.documents) ? data.documents : [],
+        reservations: Array.isArray(data?.reservations) ? data.reservations : [],
       })
     } catch (err) {
       console.error("Не удалось загрузить склад", err)
@@ -233,6 +262,61 @@ export default function WarehouseMain() {
       lines: [{ quantity: 1 }],
     })
     setPositionOptions([])
+    setDocModalOpen(true)
+  }
+
+  const openReserveFromStock = (row, type = "reserve") => {
+    const positionOption = {
+      ...row,
+      id: row.catalog_position_id,
+    }
+    setPositionOptions((prev) => [
+      positionOption,
+      ...prev.filter((item) => String(item.id) !== String(positionOption.id)),
+    ])
+    docForm.resetFields()
+    docForm.setFieldsValue({
+      doc_type: type,
+      document_date: dayjs(),
+      warehouse_id: row.warehouse_id,
+      source_type: "manual",
+      lines: [
+        {
+          catalog_position_id: row.catalog_position_id,
+          storage_place_id: row.storage_place_id,
+          quantity: Math.max(Math.min(Number(row.free_qty || 1), 1), 0.001),
+        },
+      ],
+    })
+    setDocModalOpen(true)
+  }
+
+  const openUnreserveFromReservation = (row) => {
+    const positionOption = {
+      ...row,
+      id: row.catalog_position_id,
+    }
+    setPositionOptions((prev) => [
+      positionOption,
+      ...prev.filter((item) => String(item.id) !== String(positionOption.id)),
+    ])
+    docForm.resetFields()
+    docForm.setFieldsValue({
+      doc_type: "unreserve",
+      document_date: dayjs(),
+      warehouse_id: row.warehouse_id,
+      source_type: row.source_type || "manual",
+      source_id: row.source_id || undefined,
+      source_line_id: row.source_line_id || undefined,
+      source_label: row.source_label || undefined,
+      lines: [
+        {
+          catalog_position_id: row.catalog_position_id,
+          storage_place_id: row.storage_place_id,
+          quantity: Number(row.reserved_qty || 1),
+        },
+      ],
+    })
     setDocModalOpen(true)
   }
 
@@ -409,6 +493,21 @@ export default function WarehouseMain() {
           </Space>
         ),
       },
+      {
+        title: "Действие",
+        key: "action",
+        width: 110,
+        render: (_value, row) => (
+          <Button
+            size="small"
+            icon={<LockOutlined />}
+            disabled={Number(row.free_qty || 0) <= 0}
+            onClick={() => openReserveFromStock(row)}
+          >
+            Резерв
+          </Button>
+        ),
+      },
     ],
     []
   )
@@ -480,6 +579,74 @@ export default function WarehouseMain() {
         width: 180,
         ellipsis: true,
         render: (value) => value || "—",
+      },
+    ],
+    []
+  )
+
+  const reservationColumns = useMemo(
+    () => [
+      {
+        title: "Позиция",
+        dataIndex: "manufacturer_part_number",
+        width: 260,
+        render: (_value, row) => (
+          <Space direction="vertical" size={0}>
+            <Text strong>{positionTitle(row)}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {positionSubtitle(row) || "—"}
+            </Text>
+          </Space>
+        ),
+      },
+      {
+        title: "Источник",
+        dataIndex: "source_label",
+        width: 220,
+        render: (_value, row) => (
+          <Space direction="vertical" size={0}>
+            <Text>{sourceTitle(row)}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {SOURCE_LABEL_BY_VALUE[row.source_type] || row.source_type || "manual"}
+            </Text>
+          </Space>
+        ),
+      },
+      {
+        title: "Склад",
+        dataIndex: "warehouse_name",
+        width: 190,
+        render: (_value, row) => (
+          <Space direction="vertical" size={2}>
+            <Text>{row.warehouse_name || "—"}</Text>
+            <Tag>{row.storage_place_code || "без адреса"}</Tag>
+          </Space>
+        ),
+      },
+      {
+        title: "Резерв",
+        dataIndex: "reserved_qty",
+        width: 110,
+        align: "right",
+        render: (value, row) => `${formatQuantity(value)} ${row.uom || "шт"}`,
+      },
+      {
+        title: "",
+        key: "action",
+        width: 110,
+        align: "right",
+        render: (_value, row) => (
+          <Button
+            size="small"
+            icon={<UnlockOutlined />}
+            onClick={(event) => {
+              event.stopPropagation()
+              openUnreserveFromReservation(row)
+            }}
+          >
+            Снять
+          </Button>
+        ),
       },
     ],
     []
@@ -607,6 +774,9 @@ export default function WarehouseMain() {
                 <Button size="small" danger icon={<DeleteOutlined />} onClick={() => openDocumentModal("writeoff")}>
                   Списание
                 </Button>
+                <Button size="small" icon={<LockOutlined />} onClick={() => openDocumentModal("reserve")}>
+                  Резерв
+                </Button>
               </Space>
             }
             bodyStyle={{ padding: 0 }}
@@ -617,27 +787,55 @@ export default function WarehouseMain() {
               dataSource={overview.stock}
               loading={loading}
               size="small"
-              scroll={{ x: 1050 }}
+              scroll={{ x: 1160 }}
               pagination={{ pageSize: 12, showSizeChanger: false }}
               locale={{ emptyText: <Empty description="Остатков пока нет" /> }}
             />
           </Card>
         </Col>
         <Col xs={24} xl={10}>
-          <Card title="Журнал документов" bodyStyle={{ padding: 0 }}>
-            <Table
-              rowKey="id"
-              columns={documentColumns}
-              dataSource={overview.documents}
-              loading={loading}
-              size="small"
-              scroll={{ x: 980 }}
-              pagination={{ pageSize: 10, showSizeChanger: false }}
-              onRow={(record) => ({
-                onClick: () => openDocumentPreview(record),
-                style: { cursor: "pointer" },
-              })}
-              locale={{ emptyText: <Empty description="Документов пока нет" /> }}
+          <Card title="Документы и резервы" bodyStyle={{ padding: 0 }}>
+            <Tabs
+              defaultActiveKey="documents"
+              tabBarStyle={{ padding: "0 16px", marginBottom: 0 }}
+              items={[
+                {
+                  key: "documents",
+                  label: `Журнал (${overview.documents.length})`,
+                  children: (
+                    <Table
+                      rowKey="id"
+                      columns={documentColumns}
+                      dataSource={overview.documents}
+                      loading={loading}
+                      size="small"
+                      scroll={{ x: 980 }}
+                      pagination={{ pageSize: 10, showSizeChanger: false }}
+                      onRow={(record) => ({
+                        onClick: () => openDocumentPreview(record),
+                        style: { cursor: "pointer" },
+                      })}
+                      locale={{ emptyText: <Empty description="Документов пока нет" /> }}
+                    />
+                  ),
+                },
+                {
+                  key: "reservations",
+                  label: `Резервы (${overview.reservations.length})`,
+                  children: (
+                    <Table
+                      rowKey="reservation_key"
+                      columns={reservationColumns}
+                      dataSource={overview.reservations}
+                      loading={loading}
+                      size="small"
+                      scroll={{ x: 890 }}
+                      pagination={{ pageSize: 10, showSizeChanger: false }}
+                      locale={{ emptyText: <Empty description="Активных резервов пока нет" /> }}
+                    />
+                  ),
+                },
+              ]}
             />
           </Card>
         </Col>
@@ -693,6 +891,31 @@ export default function WarehouseMain() {
             <Form.Item name="warehouse_id" label="Склад" rules={[{ required: true }]}>
               <Select options={locationOptions} placeholder="Выберите склад" />
             </Form.Item>
+          )}
+
+          {isReserveDoc && (
+            <Row gutter={12}>
+              <Col xs={24} md={8}>
+                <Form.Item name="source_type" label="Источник резерва">
+                  <Select options={SOURCE_TYPE_OPTIONS} placeholder="Тип источника" />
+                </Form.Item>
+              </Col>
+              <Col xs={12} md={5}>
+                <Form.Item name="source_id" label="ID источника">
+                  <Input placeholder="например 125" />
+                </Form.Item>
+              </Col>
+              <Col xs={12} md={5}>
+                <Form.Item name="source_line_id" label="ID строки">
+                  <Input placeholder="строка" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={6}>
+                <Form.Item name="source_label" label="Название">
+                  <Input placeholder="Для кого/чего резерв" />
+                </Form.Item>
+              </Col>
+            </Row>
           )}
 
           <Form.List name="lines">
