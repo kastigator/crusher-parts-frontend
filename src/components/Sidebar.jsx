@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Layout, Menu, Tooltip, Spin, Button } from "antd"
 import { useLocation, useNavigate } from "react-router-dom"
 import { useTabs } from "@/context/TabsContext"
-import { useAuth } from "@/auth/AuthContext"
 import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons"
 import { buildIconPath, resolveIconUrl } from "@/constants/sidebarIcons"
 
@@ -17,6 +16,14 @@ const HIDDEN_LEGACY_PATHS = new Set([
   "/tnved-origin-rules",
   "/logistics-routes",
   "/country-risk-profiles",
+  "/supplier-responses",
+  "/coverage",
+  "/scorecard",
+  "/economics",
+  "/selection",
+  "/sales-quotes",
+  "/contracts",
+  "/purchase-orders",
 ])
 const CATALOG_CHILD_PATHS = new Set([
   "/clients",
@@ -30,6 +37,33 @@ const CATALOG_CHILD_PATHS = new Set([
 
 const ADMIN_PATH = "/admin"
 const TRASH_PATH = "/trash"
+const WORKSPACE_NAV_GROUPS = [
+  {
+    paths: ["/client-request-workspace", "/client-requests"],
+    label: "Заявки клиентов",
+  },
+  {
+    paths: ["/rfq-workspace", "/rfq"],
+    label: "RFQ закупка",
+  },
+  {
+    paths: ["/warehouse"],
+    label: "Склад",
+  },
+]
+const MASTER_DATA_NAV_PATHS = ["/equipment-classifier"]
+const CATALOG_NAV_PATHS = [
+  CATALOG_ROOT_PATH,
+  "/clients",
+  "/suppliers",
+  "/supplier-parts",
+  "/materials",
+  "/tnved-codes",
+  "/logistics-route-templates",
+  "/glossary",
+]
+const CONTROL_NAV_PATHS = ["/kpi"]
+const SETTINGS_NAV_PATHS = ["/users", "/measurement-units"]
 const ICON_BY_PATH = {
   "/client-request-workspace": "client-request-workspace",
   "/client-requests": "client-requests",
@@ -51,10 +85,26 @@ const ICON_BY_PATH = {
   [ADMIN_PATH]: "admin",
   [TRASH_PATH]: "trash",
 }
-const CATALOG_LABEL_BY_PATH = {
+const LABEL_BY_PATH = {
+  "/client-request-workspace": "Заявки клиентов",
+  "/client-requests": "Заявки клиентов",
+  "/rfq-workspace": "RFQ закупка",
+  "/rfq": "RFQ закупка",
+  "/kpi": "Показатели",
+  "/equipment-classifier": "Классификатор",
+  "/warehouse": "Склад",
+  "/clients": "Клиенты",
+  "/suppliers": "Поставщики",
+  "/supplier-parts": "Детали поставщиков",
+  "/materials": "Материалы",
+  "/tnved-codes": "Коды ТН ВЭД",
+  "/users": "Пользователи и роли",
+  "/measurement-units": "Единицы измерения",
   "/catalogs": "Обзор и качество",
   "/glossary": "Глоссарий",
   "/logistics-route-templates": "Шаблоны доставки",
+  [ADMIN_PATH]: "Администрирование",
+  [TRASH_PATH]: "Корзина",
 }
 const GLOSSARY_TAB = {
   path: "/glossary",
@@ -79,8 +129,8 @@ function buildMenuItem(
   tab,
   { withIcon = true, labelOverride, tooltipOverride, iconOverride } = {}
 ) {
-  const labelText = labelOverride ?? tab?.name ?? ""
-  const tooltipText = tooltipOverride ?? tab?.name ?? ""
+  const labelText = labelOverride ?? LABEL_BY_PATH[tab?.path] ?? tab?.name ?? ""
+  const tooltipText = tooltipOverride ?? labelText
   const iconName = iconOverride || ICON_BY_PATH[tab?.path] || tab?.icon
   const iconSrc = getIconUrl(iconName)
 
@@ -105,11 +155,20 @@ function buildMenuItem(
   }
 }
 
+function buildSection(key, label, children) {
+  if (!children.length) return null
+  return {
+    type: "group",
+    key,
+    label: <span className="sidebar-section-label">{label}</span>,
+    children,
+  }
+}
+
 export default function Sidebar() {
   const location = useLocation()
   const navigate = useNavigate()
   const { tabs, loading } = useTabs()
-  const { user } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
 
   const { menuItems, parentByKey } = useMemo(() => {
@@ -118,57 +177,42 @@ export default function Sidebar() {
       .filter((tab) => tab?.path && !HIDDEN_LEGACY_PATHS.has(tab.path))
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
 
-    const otherTabs = []
-    const catalogTabs = []
-    let adminTab = null
-    let usersTab = null
-    let classifierTab = null
-    let catalogInsertIndex = null
-
+    const byPath = new Map()
     sorted.forEach((tab) => {
-      if (!tab?.path) return
-      if (tab.path === "/users") {
-        usersTab = tab
-      }
-
-      if (tab.path === TRASH_PATH) {
-        return
-      }
-
-      if (tab.path === ADMIN_PATH) {
-        adminTab = tab
-        return
-      }
-
-      if (tab.path === "/equipment-classifier") {
-        classifierTab = tab
-        return
-      }
-
-      const isCatalog =
-        tab.path === CATALOG_ROOT_PATH || CATALOG_CHILD_PATHS.has(tab.path)
-
-      if (isCatalog) {
-        if (catalogInsertIndex === null) catalogInsertIndex = otherTabs.length
-        catalogTabs.push(tab)
-        return
-      }
-
-      otherTabs.push(tab)
+      if (!byPath.has(tab.path)) byPath.set(tab.path, tab)
     })
 
-    const items = otherTabs.map((tab) => buildMenuItem(tab))
+    const consumed = new Set()
     const parentMap = new Map()
 
-    if (classifierTab) {
-      const classifierItem = buildMenuItem(classifierTab, {
-        labelOverride: "Классификатор",
-        tooltipOverride: "Классификатор",
-      })
-      const rfqIndex = items.findIndex((item) => item?.key === "/rfq-workspace" || item?.key === "/rfq")
-      items.splice(rfqIndex >= 0 ? rfqIndex + 1 : Math.min(2, items.length), 0, classifierItem)
+    const takePath = (path) => {
+      const tab = byPath.get(path)
+      if (!tab) return null
+      consumed.add(path)
+      return tab
     }
 
+    const takeFirst = (paths) => {
+      const tab = paths.map((path) => byPath.get(path)).find(Boolean) || null
+      paths.forEach((path) => {
+        if (byPath.has(path)) consumed.add(path)
+      })
+      return tab
+    }
+
+    const workspaceItems = WORKSPACE_NAV_GROUPS.map(({ paths, label }) => {
+      const tab = takeFirst(paths)
+      return tab
+        ? buildMenuItem(tab, { labelOverride: label, tooltipOverride: label })
+        : null
+    }).filter(Boolean)
+
+    const masterDataItems = MASTER_DATA_NAV_PATHS.map((path) => {
+      const tab = takePath(path)
+      return tab ? buildMenuItem(tab) : null
+    }).filter(Boolean)
+
+    const catalogTabs = CATALOG_NAV_PATHS.map((path) => takePath(path)).filter(Boolean)
     if (catalogTabs.length) {
       const catalogRoot = catalogTabs.find((t) => t.path === CATALOG_ROOT_PATH) || null
       const catalogChildren = catalogTabs.filter((t) => t.path !== CATALOG_ROOT_PATH)
@@ -176,21 +220,21 @@ export default function Sidebar() {
       const childItems = []
       if (catalogRoot) {
         childItems.push(
-          buildMenuItem(
-            {
-              ...catalogRoot,
-              name: CATALOG_LABEL_BY_PATH[CATALOG_ROOT_PATH],
-            },
-            { withIcon: true }
-          )
+          buildMenuItem(catalogRoot, {
+            withIcon: true,
+            labelOverride: LABEL_BY_PATH[CATALOG_ROOT_PATH],
+            tooltipOverride: LABEL_BY_PATH[CATALOG_ROOT_PATH],
+          })
         )
       }
       catalogChildren.forEach((tab) => {
-        const withFallbackIcon = {
-          ...tab,
-          name: CATALOG_LABEL_BY_PATH[tab.path] || tab.name,
-        }
-        childItems.push(buildMenuItem(withFallbackIcon, { withIcon: true }))
+        childItems.push(
+          buildMenuItem(tab, {
+            withIcon: true,
+            labelOverride: LABEL_BY_PATH[tab.path] || tab.name,
+            tooltipOverride: LABEL_BY_PATH[tab.path] || tab.name,
+          })
+        )
       })
       if (!catalogChildren.some((tab) => tab.path === GLOSSARY_TAB.path)) {
         childItems.push(buildMenuItem(GLOSSARY_TAB, { withIcon: true }))
@@ -211,26 +255,43 @@ export default function Sidebar() {
         if (child?.key) parentMap.set(child.key, groupItem.key)
       })
 
-      const insertAt = catalogInsertIndex ?? items.length
-      items.splice(insertAt, 0, groupItem)
+      masterDataItems.push(groupItem)
     }
+
+    const controlItems = CONTROL_NAV_PATHS.map((path) => {
+      const tab = takePath(path)
+      return tab ? buildMenuItem(tab) : null
+    }).filter(Boolean)
+
+    const settingsItems = SETTINGS_NAV_PATHS.map((path) => {
+      const tab = takePath(path)
+      return tab ? buildMenuItem(tab) : null
+    }).filter(Boolean)
 
     const trashItem = buildMenuItem({
       path: TRASH_PATH,
       icon: "trash",
       name: "Корзина",
     })
-    const adminInsertIndex = items.findIndex((item) => item?.key === ADMIN_PATH)
-    if (adminInsertIndex >= 0) {
-      items.splice(adminInsertIndex, 0, trashItem)
-    } else {
-      items.push(trashItem)
+    consumed.add(TRASH_PATH)
+    settingsItems.push(trashItem)
+
+    const adminTab = takePath(ADMIN_PATH)
+    const usersTab = byPath.get("/users")
+    if (adminTab && !usersTab) {
+      settingsItems.push(buildMenuItem(adminTab))
     }
 
-    if (adminTab && !usersTab) {
-      items.push({ type: "divider" })
-      items.push(buildMenuItem(adminTab))
-    }
+    const fallbackItems = sorted
+      .filter((tab) => tab?.path && !consumed.has(tab.path) && !CATALOG_CHILD_PATHS.has(tab.path))
+      .map((tab) => buildMenuItem(tab))
+
+    const items = [
+      buildSection("sidebar-workspaces", "Работа", workspaceItems),
+      buildSection("sidebar-master-data", "Данные", masterDataItems),
+      buildSection("sidebar-control", "Контроль", [...controlItems, ...fallbackItems]),
+      buildSection("sidebar-settings", "Настройки", settingsItems),
+    ].filter(Boolean)
 
     return { menuItems: items, parentByKey: parentMap }
   }, [tabs])
@@ -276,6 +337,7 @@ export default function Sidebar() {
 
   return (
     <Sider
+      className="app-sidebar"
       width={240}
       collapsedWidth={64}
       collapsed={collapsed}
