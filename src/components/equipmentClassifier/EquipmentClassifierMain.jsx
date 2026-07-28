@@ -3106,6 +3106,7 @@ export default function EquipmentClassifierMain() {
     try {
       const values = await bomItemForm.validateFields()
       setBomItemSaving(true)
+      const confirmDuplicatePartNumber = confirmedOtherManufacturerDuplicate === true
       const linkClassifier = Boolean((values.link_classifier && values.catalog_position_id) || forcedCatalogPositionId)
       const keepOwnCatalogPosition = Boolean(editingBomItem?.id && !linkClassifier && isBomOwnCatalogPosition(editingBomItem))
       const manufacturerPartName =
@@ -3133,7 +3134,7 @@ export default function EquipmentClassifierMain() {
         quantity: values.quantity || 1,
         sort_order: values.sort_order ?? editingBomItem?.sort_order ?? 0,
         notes: values.notes || null,
-        confirm_duplicate_part_number: confirmedOtherManufacturerDuplicate,
+        confirm_duplicate_part_number: confirmDuplicatePartNumber,
       }
       const { data } = editingBomItem?.id
         ? await axios.put(`/equipment-models/${currentModel.id}/bom/items/${editingBomItem.id}`, payload)
@@ -7189,7 +7190,7 @@ export default function EquipmentClassifierMain() {
         okText="Сохранить"
         cancelText="Отмена"
         confirmLoading={bomItemSaving}
-        onOk={handleSaveBomItem}
+        onOk={() => handleSaveBomItem()}
         onCancel={() => {
           setBomItemModalOpen(false)
           setEditingBomItem(null)
