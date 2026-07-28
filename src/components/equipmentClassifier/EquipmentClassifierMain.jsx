@@ -3300,14 +3300,17 @@ export default function EquipmentClassifierMain() {
     })
   }
 
-  const previewBomImportRows = async (rows) => {
+  const previewBomImportRows = async (rows, replaceMode = bomImportReplace) => {
     if (!currentModel?.id) return
     setBomImportLoading(true)
     setBomImportRows([])
     setBomImportErrors([])
     setBomImportWarnings([])
     try {
-      const { data } = await axios.post(`/equipment-models/${currentModel.id}/bom/import/preview`, { rows })
+      const { data } = await axios.post(`/equipment-models/${currentModel.id}/bom/import/preview`, {
+        rows,
+        mode: replaceMode ? "replace" : "append",
+      })
       setBomImportRows(Array.isArray(data?.rows) ? data.rows : [])
       setBomImportErrors(Array.isArray(data?.errors) ? data.errors : [])
       setBomImportWarnings(Array.isArray(data?.warnings) ? data.warnings : [])
@@ -3379,6 +3382,21 @@ export default function EquipmentClassifierMain() {
 
   const bomImportColumns = useMemo(
     () => [
+      {
+        title: "Проверка",
+        dataIndex: "status",
+        width: 170,
+        render: (value) => {
+          const map = {
+            reuse_catalog_position: { color: "green", label: "Используем карточку" },
+            linked_catalog_position: { color: "blue", label: "Привязана карточка" },
+            will_create_catalog_position: { color: "gold", label: "Создадим карточку" },
+            client_part: { color: "purple", label: "Деталь клиента" },
+          }
+          const item = map[value] || { color: "default", label: "Проверено" }
+          return <Tag color={item.color}>{item.label}</Tag>
+        },
+      },
       {
         title: "№ позиции",
         dataIndex: "item_no",
@@ -7022,7 +7040,14 @@ export default function EquipmentClassifierMain() {
             <Upload accept=".xlsx" showUploadList={false} customRequest={handleBomImportUpload}>
               <Button loading={bomImportLoading}>Загрузить Excel</Button>
             </Upload>
-            <Checkbox checked={bomImportReplace} onChange={(event) => setBomImportReplace(event.target.checked)}>
+            <Checkbox
+              checked={bomImportReplace}
+              onChange={(event) => {
+                const nextReplace = event.target.checked
+                setBomImportReplace(nextReplace)
+                if (bomImportSourceRows.length) previewBomImportRows(bomImportSourceRows, nextReplace)
+              }}
+            >
               Заменить текущий BOM модели
             </Checkbox>
           </Space>
