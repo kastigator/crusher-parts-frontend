@@ -3263,6 +3263,7 @@ export default function EquipmentClassifierMain() {
       "Связь": "item_type",
       "Тип связи": "item_type",
       "№ позиции": "item_no",
+      "№": "item_no",
       "Позиция": "item_no",
       "Каталожный номер": "manufacturer_part_number",
       "Название по каталогу": "manufacturer_part_name",
@@ -3274,13 +3275,17 @@ export default function EquipmentClassifierMain() {
       "Код классификатора": "catalog_position_code",
       "Название": "title",
       "Количество": "quantity",
+      "Кол-во": "quantity",
+      "Кол-во.": "quantity",
       "Порядок": "sort_order",
       "Заметки": "notes",
+      "Примечание": "notes",
     }
-    const missingHeaders = ["Уровень", "Количество"].filter((header) => !headerRow.includes(header))
-    if (!headerRow.includes("Тип") && !headerRow.includes("Тип строки")) {
-      missingHeaders.push("Тип строки")
-    }
+    const hasItemNoHeader = headerRow.some((header) => ["№ позиции", "№", "Позиция"].includes(header))
+    const hasQuantityHeader = headerRow.some((header) => ["Количество", "Кол-во", "Кол-во."].includes(header))
+    const missingHeaders = []
+    if (!hasItemNoHeader) missingHeaders.push("№ позиции")
+    if (!hasQuantityHeader) missingHeaders.push("Количество")
     if (missingHeaders.length) {
       throw new Error(`В файле нет обязательных колонок: ${missingHeaders.join(", ")}`)
     }
@@ -7007,7 +7012,7 @@ export default function EquipmentClassifierMain() {
         width={980}
         footer={[
           <Button key="template" onClick={downloadBomTemplate}>
-            Скачать шаблон
+            Скачать простой шаблон
           </Button>,
           <Button
             key="close"
@@ -7034,10 +7039,12 @@ export default function EquipmentClassifierMain() {
         destroyOnHidden
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            Excel может описывать дерево BOM по уровням или через родительские ключи. Строки деталей производителя
-            ищутся среди деталей, привязанных к этой модели, а позиции классификатора — по коду или точному названию.
-          </Typography.Paragraph>
+          <Alert
+            type="info"
+            showIcon
+            message="Заполняйте BOM как в parts book: по номеру позиции"
+            description="Система сама построит дерево: 2 - верхний уровень, 2.1 - внутри 2, 2.2.1 - внутри 2.2. Достаточно колонок: № позиции, каталожный номер или название, количество."
+          />
 
           <Space wrap>
             <Upload accept=".xlsx" showUploadList={false} customRequest={handleBomImportUpload}>
