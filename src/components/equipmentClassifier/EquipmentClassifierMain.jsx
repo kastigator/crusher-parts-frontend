@@ -3380,30 +3380,9 @@ export default function EquipmentClassifierMain() {
   const bomImportColumns = useMemo(
     () => [
       {
-        title: "Строка",
-        dataIndex: "row_number",
-        width: 80,
-      },
-      {
-        title: "Уровень",
-        dataIndex: "level",
-        width: 90,
-      },
-      {
-        title: "Тип",
-        dataIndex: "item_type",
-        width: 150,
-        render: (value) =>
-          value === "catalog_position"
-            ? "Позиция классификатора"
-            : value === "client_part"
-              ? "Деталь клиента"
-              : "Строка каталога",
-      },
-      {
-        title: "№",
+        title: "№ позиции",
         dataIndex: "item_no",
-        width: 80,
+        width: 110,
         render: (value) => value || "—",
       },
       {
@@ -3413,33 +3392,26 @@ export default function EquipmentClassifierMain() {
         render: (value, row) => value || row.catalog_position_code || "—",
       },
       {
-        title: "Название",
-        dataIndex: "resolved_label",
+        title: "Название EN",
+        dataIndex: "manufacturer_part_name_en",
         render: (value, row) => (
           <Space direction="vertical" size={0}>
             <Typography.Text strong>
-              {row.manufacturer_part_name_en ||
-                row.manufacturer_part_name_ru ||
-                row.manufacturer_part_name ||
-                value ||
-                row.title ||
-                row.item_key}
+              {value || row.manufacturer_part_name || row.resolved_label || row.title || row.item_key || "—"}
             </Typography.Text>
             {row.resolved_subtitle ? <Typography.Text type="secondary">{row.resolved_subtitle}</Typography.Text> : null}
-            {row.drawing_number ? <Typography.Text type="secondary">Чертеж: {row.drawing_number}</Typography.Text> : null}
           </Space>
         ),
+      },
+      {
+        title: "Название RU",
+        dataIndex: "manufacturer_part_name_ru",
+        render: (value) => value || "—",
       },
       {
         title: "Количество",
         dataIndex: "quantity",
         width: 120,
-      },
-      {
-        title: "Родитель",
-        dataIndex: "parent_key",
-        width: 180,
-        render: (value) => value || "Корень модели",
       },
     ],
     [],
@@ -7012,7 +6984,7 @@ export default function EquipmentClassifierMain() {
         width={980}
         footer={[
           <Button key="template" onClick={downloadBomTemplate}>
-            Скачать простой шаблон
+            Скачать шаблон
           </Button>,
           <Button
             key="close"
@@ -7043,7 +7015,7 @@ export default function EquipmentClassifierMain() {
             type="info"
             showIcon
             message="Заполняйте BOM как в parts book: по номеру позиции"
-            description="Система сама построит дерево: 2 - верхний уровень, 2.1 - внутри 2, 2.2.1 - внутри 2.2. Достаточно колонок: № позиции, каталожный номер или название, количество."
+            description="Система сама построит дерево: 2 - верхний уровень, 2.1 - внутри 2, 2.2.1 - внутри 2.2. Достаточно колонок: № позиции, каталожный номер, название EN/RU, количество."
           />
 
           <Space wrap>
