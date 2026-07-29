@@ -3419,27 +3419,15 @@ export default function EquipmentClassifierMain() {
   const bomImportColumns = useMemo(
     () => [
       {
-        title: "Проверка",
-        dataIndex: "status",
-        width: 170,
-        render: (value) => {
-          const map = {
-            reuse_catalog_position: { color: "green", label: "Используем карточку" },
-            will_create_catalog_position: { color: "gold", label: "Создадим карточку" },
-          }
-          const item = map[value] || { color: "default", label: "Проверено" }
-          return <Tag color={item.color}>{item.label}</Tag>
-        },
-      },
-      {
         title: "Каталожный номер производителя",
         dataIndex: "manufacturer_part_number",
-        width: 230,
+        width: 250,
         render: (value) => value || "—",
       },
       {
         title: "Название EN",
         dataIndex: "manufacturer_part_name_en",
+        width: 220,
         render: (value, row) => (
           <Space direction="vertical" size={0}>
             <Typography.Text strong>
@@ -3452,6 +3440,7 @@ export default function EquipmentClassifierMain() {
       {
         title: "Название RU",
         dataIndex: "manufacturer_part_name_ru",
+        width: 220,
         render: (value) => value || "—",
       },
       {
@@ -3460,30 +3449,33 @@ export default function EquipmentClassifierMain() {
         width: 120,
       },
       {
-        title: "Характеристики",
-        key: "card_fields",
-        width: 220,
-        render: (_, row) => {
-          const dimensions = formatDimensions(
-            {
-              length_mm: row.length_mm,
-              width_mm: row.width_mm,
-              height_mm: row.height_mm,
-            },
-            dimensionUnitSymbol,
-          )
-          return (
-            <Space direction="vertical" size={0}>
-              <Typography.Text>{row.weight_kg ? `Масса: ${formatNullableNumber(row.weight_kg, "кг")}` : "Масса: —"}</Typography.Text>
-              <Typography.Text type="secondary">Габариты: {dimensions}</Typography.Text>
-            </Space>
-          )
-        },
+        title: "Масса, кг",
+        dataIndex: "weight_kg",
+        width: 120,
+        render: (value) => formatNullableNumber(value),
       },
       {
-        title: "ТН ВЭД",
+        title: "Длина, мм",
+        dataIndex: "length_mm",
+        width: 120,
+        render: (value) => formatNullableNumber(value),
+      },
+      {
+        title: "Ширина, мм",
+        dataIndex: "width_mm",
+        width: 120,
+        render: (value) => formatNullableNumber(value),
+      },
+      {
+        title: "Высота, мм",
+        dataIndex: "height_mm",
+        width: 120,
+        render: (value) => formatNullableNumber(value),
+      },
+      {
+        title: "Код ТН ВЭД",
         dataIndex: "tnved_code",
-        width: 130,
+        width: 140,
         render: (value, row) => (
           <Space direction="vertical" size={0}>
             <Typography.Text>{value || "—"}</Typography.Text>
@@ -3496,7 +3488,7 @@ export default function EquipmentClassifierMain() {
         ),
       },
     ],
-    [dimensionUnitSymbol],
+    [],
   )
 
   const currentModelUnits = useMemo(() => {
@@ -7212,13 +7204,6 @@ export default function EquipmentClassifierMain() {
         destroyOnHidden
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <Alert
-            type="info"
-            showIcon
-            message="Импортируйте строки BOM плоским списком"
-            description="Заполните позиции производителя без уровней и номеров дерева. Все строки попадут в корень BOM модели; сборки и вложенность собираются потом вручную в интерфейсе."
-          />
-
           <Space wrap>
             <Upload accept=".xlsx" showUploadList={false} customRequest={handleBomImportUpload}>
               <Button loading={bomImportLoading}>Загрузить Excel</Button>
@@ -7278,7 +7263,7 @@ export default function EquipmentClassifierMain() {
             dataSource={bomImportRows}
             loading={bomImportLoading}
             pagination={{ pageSize: 8, showSizeChanger: false }}
-            scroll={{ x: 1040 }}
+            scroll={{ x: 1330 }}
             locale={{ emptyText: "Загрузите Excel, чтобы увидеть предварительный разбор BOM" }}
           />
         </Space>
