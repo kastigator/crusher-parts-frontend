@@ -17,6 +17,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Radio,
   Row,
   Select,
   Space,
@@ -831,6 +832,7 @@ export default function EquipmentClassifierMain() {
   const [bomMaterialForm] = Form.useForm()
   const [bomWarehouseActionForm] = Form.useForm()
   const bomLinkClassifier = Form.useWatch("link_classifier", bomItemForm)
+  const bomLinkedCatalogPositionId = Form.useWatch("catalog_position_id", bomItemForm)
   const bomCrossModelTargetId = Form.useWatch("target_model_id", bomCrossModelForm)
   const selectableCatalogPositionOptions = useMemo(() => {
     const currentItemId = Number(editingBomItem?.id || 0)
@@ -839,6 +841,13 @@ export default function EquipmentClassifierMain() {
       return Number(row.source_bom_item_id || 0) !== currentItemId
     })
   }, [catalogPositionOptions, editingBomItem?.id])
+  const selectedBomLinkCatalogPosition = useMemo(
+    () =>
+      selectableCatalogPositionOptions.find(
+        (row) => Number(row.id) === Number(bomLinkedCatalogPositionId),
+      ) || null,
+    [bomLinkedCatalogPositionId, selectableCatalogPositionOptions],
+  )
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
   const [manufacturerFilter, setManufacturerFilter] = useState(null)
   const [branchSectionFilter, setBranchSectionFilter] = useState(null)
@@ -7359,7 +7368,7 @@ export default function EquipmentClassifierMain() {
       <Modal
         open={bomItemModalOpen}
         title={reuseBomSource ? "Добавить применение позиции" : editingBomItem ? "Строка BOM" : "Новая строка BOM"}
-        width={760}
+        width={820}
         okText="Сохранить"
         cancelText="Отмена"
         confirmLoading={bomItemSaving}
@@ -7458,6 +7467,116 @@ export default function EquipmentClassifierMain() {
                 <Input />
               </Form.Item>
 
+              <Form.Item label="Карточка позиции" name="link_classifier" style={{ marginBottom: 14 }}>
+                <Radio.Group
+                  optionType="button"
+                  buttonStyle="solid"
+                  onChange={(event) => {
+                    const checked = Boolean(event.target.value)
+                    if (!checked) {
+                      bomItemForm.setFieldsValue({ catalog_position_id: null })
+                      return
+                    }
+                    const seed =
+                      bomItemForm.getFieldValue("manufacturer_part_number") ||
+                      bomItemForm.getFieldValue("manufacturer_part_name_en") ||
+                      bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
+                      ""
+                    loadCatalogPositions(seed)
+                  }}
+                >
+                  <Radio.Button value={false}>Создать новую карточку</Radio.Button>
+                  <Radio.Button value={true}>Связать существующую</Radio.Button>
+                </Radio.Group>
+              </Form.Item>
+
+              {bomLinkClassifier ? (
+                <Form.Item
+                  label="Найти существующую карточку"
+                  name="catalog_position_id"
+                  rules={[{ required: true, message: "Выберите существующую карточку" }]}
+                  extra="Характеристики и код ТН ВЭД будут взяты из выбранной карточки. В этой форме сохраняется только строка BOM и ее применение в модели."
+                >
+                  <Select
+                    showSearch
+                    filterOption={false}
+                    loading={catalogPositionsLoading}
+                    placeholder="Введите номер, размер, стандарт или название"
+                    notFoundContent={catalogPositionsLoading ? "Идет поиск..." : "Ничего не найдено"}
+                    onFocus={() => {
+                      if (selectableCatalogPositionOptions.length) return
+                      const seed =
+                        bomItemForm.getFieldValue("manufacturer_part_number") ||
+                        bomItemForm.getFieldValue("manufacturer_part_name_en") ||
+                        bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
+                        ""
+                      loadCatalogPositions(seed)
+                    }}
+                    onSearch={(value) => loadCatalogPositions(value)}
+                    options={selectableCatalogPositionOptions.map((row) => ({
+                      value: row.id,
+                      label:
+                        [row.manufacturer_part_number || row.position_code, row.display_name]
+                          .filter(Boolean)
+                          .join(" — ") || `Позиция #${row.id}`,
+                      positionCode: row.position_code,
+                      classifierNodeName: row.classifier_node_name,
+                      manufacturerName: row.manufacturer_name,
+                      modelName: row.model_name,
+                      sourceKind: row.source_kind,
+                    }))}
+                    optionRender={(option) => (
+                      <Space direction="vertical" size={0}>
+                        <Typography.Text strong>{option.data.label}</Typography.Text>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {[option.data.manufacturerName, option.data.modelName, option.data.positionCode, option.data.classifierNodeName]
+                            .filter(Boolean)
+                            .join(" / ") ||
+                            "Позиция классификатора"}
+                        </Typography.Text>
+                      </Space>
+                    )}
+                  />
+                </Form.Item>
+              ) : null}
+
+              {bomLinkClassifier && selectedBomLinkCatalogPosition ? (
+                <Descriptions
+                  size="small"
+                  bordered
+                  column={2}
+                  style={{ marginBottom: 14 }}
+                  items={[
+                    {
+                      key: "number",
+                      label: "Карточка",
+                      span: 2,
+                      children:
+                        [
+                          selectedBomLinkCatalogPosition.manufacturer_part_number ||
+                            selectedBomLinkCatalogPosition.position_code,
+                          selectedBomLinkCatalogPosition.display_name,
+                        ]
+                          .filter(Boolean)
+                          .join(" — ") || `Позиция #${selectedBomLinkCatalogPosition.id}`,
+                    },
+                    {
+                      key: "context",
+                      label: "Контекст",
+                      span: 2,
+                      children:
+                        [
+                          selectedBomLinkCatalogPosition.manufacturer_name,
+                          selectedBomLinkCatalogPosition.model_name,
+                          selectedBomLinkCatalogPosition.classifier_node_name,
+                        ]
+                          .filter(Boolean)
+                          .join(" / ") || "Общий каталог",
+                    },
+                  ]}
+                />
+              ) : null}
+
               <Row gutter={12}>
                 <Col span={16}>
                   <Form.Item
@@ -7507,7 +7626,7 @@ export default function EquipmentClassifierMain() {
               </Row>
 
               <Form.Item
-                label="Куда добавить в дереве BOM"
+                label="Родитель в BOM"
                 name="parent_item_id"
                 extra="Оставьте пустым, если строка должна быть на верхнем уровне модели."
               >
@@ -7565,85 +7684,10 @@ export default function EquipmentClassifierMain() {
                 </Card>
               ) : null}
 
-              <Card size="small" title="Связь с существующей карточкой" style={{ marginBottom: 12 }}>
-                <Form.Item
-                  label="Использовать уже заведенную карточку"
-                  name="link_classifier"
-                  valuePropName="checked"
-                  style={{ marginBottom: bomLinkClassifier ? 12 : 0 }}
-                >
-                  <Switch
-                    checkedChildren="Связать"
-                    unCheckedChildren="Нет"
-                    onChange={(checked) => {
-                      if (!checked) return
-                      const seed =
-                        bomItemForm.getFieldValue("manufacturer_part_number") ||
-                        bomItemForm.getFieldValue("manufacturer_part_name_en") ||
-                        bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
-                        ""
-                      loadCatalogPositions(seed)
-                    }}
-                  />
-                </Form.Item>
-                <Typography.Paragraph type="secondary" style={{ marginTop: -4, marginBottom: bomLinkClassifier ? 12 : 0 }}>
-                  Обычно новая строка получает свою карточку автоматически. Включайте выбор, если эта строка является той
-                  же позицией или аналогом уже заведенной карточки из общего каталога.
-                </Typography.Paragraph>
-                {bomLinkClassifier ? (
-                <Form.Item
-                  label="Найти существующую карточку"
-                  name="catalog_position_id"
-                  rules={[{ required: true, message: "Выберите существующую карточку" }]}
-                  extra="Если подходящей карточки нет, выключите переключатель: система создаст новую карточку из этой строки BOM."
-                >
-                  <Select
-                    showSearch
-                    filterOption={false}
-                    loading={catalogPositionsLoading}
-                    placeholder="Введите номер, размер, стандарт или название"
-                    notFoundContent={catalogPositionsLoading ? "Идет поиск..." : "Ничего не найдено"}
-                    onFocus={() => {
-                      if (selectableCatalogPositionOptions.length) return
-                      const seed =
-                        bomItemForm.getFieldValue("manufacturer_part_number") ||
-                        bomItemForm.getFieldValue("manufacturer_part_name_en") ||
-                        bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
-                        ""
-                      loadCatalogPositions(seed)
-                    }}
-                    onSearch={(value) => loadCatalogPositions(value)}
-                    options={selectableCatalogPositionOptions.map((row) => ({
-                      value: row.id,
-                      label:
-                        [row.manufacturer_part_number || row.position_code, row.display_name]
-                          .filter(Boolean)
-                          .join(" — ") || `Позиция #${row.id}`,
-                      positionCode: row.position_code,
-                      classifierNodeName: row.classifier_node_name,
-                      manufacturerName: row.manufacturer_name,
-                      modelName: row.model_name,
-                      sourceKind: row.source_kind,
-                    }))}
-                    optionRender={(option) => (
-                      <Space direction="vertical" size={0}>
-                        <Typography.Text strong>{option.data.label}</Typography.Text>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {[option.data.manufacturerName, option.data.modelName, option.data.positionCode, option.data.classifierNodeName]
-                            .filter(Boolean)
-                            .join(" / ") ||
-                            "Позиция классификатора"}
-                        </Typography.Text>
-                      </Space>
-                    )}
-                  />
-                </Form.Item>
-                ) : null}
-              </Card>
             </>
           )}
 
-          <Form.Item label="Заметки" name="notes">
+          <Form.Item label="Комментарий к строке BOM" name="notes">
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
