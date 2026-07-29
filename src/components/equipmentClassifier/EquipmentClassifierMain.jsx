@@ -4013,6 +4013,24 @@ export default function EquipmentClassifierMain() {
     })
   }
 
+  const renderBomAnalogLinks = (rows) => {
+    const items = Array.isArray(rows) ? rows.filter(Boolean) : []
+    if (!items.length) return "—"
+    const visibleItems = items.slice(0, 3)
+    return (
+      <Space direction="vertical" size={2}>
+        {visibleItems.map((row) => (
+          <Typography.Link key={row.relation_id || row.id || row.catalog_position_id} onClick={() => openBomRelatedCatalogPosition(row)}>
+            {[row.manufacturer_part_number || row.position_code, row.display_name].filter(Boolean).join(" — ") || "Открыть карточку"}
+          </Typography.Link>
+        ))}
+        {items.length > visibleItems.length ? (
+          <Typography.Text type="secondary">и еще {items.length - visibleItems.length}</Typography.Text>
+        ) : null}
+      </Space>
+    )
+  }
+
   const openUsageModel = async (row) => {
     if (!row?.equipment_model_id) return
     const nodeId = row.model_classifier_node_id || selectedId
@@ -6436,15 +6454,10 @@ export default function EquipmentClassifierMain() {
                         </Descriptions.Item>
                         {bomCardPrimaryPositions[0] ? (
                           <Descriptions.Item label="Аналог к">
-                            <Typography.Link onClick={() => openBomRelatedCatalogPosition(bomCardPrimaryPositions[0])}>
-                              {[
-                                bomCardPrimaryPositions[0].manufacturer_part_number || bomCardPrimaryPositions[0].position_code,
-                                bomCardPrimaryPositions[0].display_name,
-                              ]
-                                .filter(Boolean)
-                                .join(" — ") || "Открыть основную карточку"}
-                            </Typography.Link>
+                            {renderBomAnalogLinks(bomCardPrimaryPositions)}
                           </Descriptions.Item>
+                        ) : visibleBomCardAnalogPositions.length ? (
+                          <Descriptions.Item label="Аналоги">{renderBomAnalogLinks(visibleBomCardAnalogPositions)}</Descriptions.Item>
                         ) : selectedBomItem.catalog_position_id && !isBomOwnCatalogPosition(selectedBomItem) ? (
                           <Descriptions.Item label="Связь с карточкой">
                             <Typography.Link onClick={() => openBomItemCatalogPosition(selectedBomItem)}>
@@ -6494,90 +6507,17 @@ export default function EquipmentClassifierMain() {
                               </Form.Item>
                             </Col>
                           </Row>
-                          <Row gutter={12}>
-                            <Col span={6}>
-                              <Form.Item label="Единица измерения">
-                                <Input
-                                  value={selectedBomItem.uom || selectedBomItem.catalog_position_uom || bomPositionDetails?.position?.uom || "шт"}
-                                  disabled
-                                />
-                              </Form.Item>
-                            </Col>
-                            <Col span={18}>
-                              <Form.Item label="Код ТН ВЭД" name="tnved">
-                                <TnvedPicker
-                                  placeholder="Искать по названию детали, материалу или описанию"
-                                  catalogPositionId={selectedBomItem?.catalog_position_id}
-                                  showSuggestions={false}
-                                />
-                              </Form.Item>
-                            </Col>
-                          </Row>
+                          <Form.Item label="Код ТН ВЭД" name="tnved">
+                            <TnvedPicker
+                              placeholder="Искать по названию детали, материалу или описанию"
+                              catalogPositionId={selectedBomItem?.catalog_position_id}
+                              showSuggestions={false}
+                            />
+                          </Form.Item>
                           <Form.Item label="Описание" name="description">
                             <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} placeholder="Краткое описание позиции для карточки и поиска" />
                           </Form.Item>
                         </Card>
-
-                        {bomCardPrimaryPositions.length || visibleBomCardAnalogPositions.length ? (
-                          <Card size="small" title="Аналоги" loading={bomPositionDetailsLoading}>
-                            <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                              {bomCardPrimaryPositions.length ? (
-                                <div>
-                                  <Typography.Text type="secondary">Эта карточка является аналогом</Typography.Text>
-                                  <Table
-                                    size="small"
-                                    rowKey="relation_id"
-                                    pagination={false}
-                                    dataSource={bomCardPrimaryPositions}
-                                    columns={[
-                                      {
-                                        title: "Карточка",
-                                        render: (_, row) => (
-                                          <Space direction="vertical" size={0}>
-                                            <Typography.Link strong onClick={() => openBomRelatedCatalogPosition(row)}>
-                                              {[row.manufacturer_part_number || row.position_code, row.display_name].filter(Boolean).join(" — ") || "—"}
-                                            </Typography.Link>
-                                            <Typography.Text type="secondary">
-                                              {[row.manufacturer_name, row.model_name].filter(Boolean).join(" / ") || "Общий каталог"}
-                                            </Typography.Text>
-                                          </Space>
-                                        ),
-                                      },
-                                      { title: "Роль", width: 110, render: () => <Tag color="blue">Основная</Tag> },
-                                    ]}
-                                  />
-                                </div>
-                              ) : null}
-                              {visibleBomCardAnalogPositions.length ? (
-                                <div>
-                                  <Typography.Text type="secondary">Другие карточки-аналоги</Typography.Text>
-                                  <Table
-                                    size="small"
-                                    rowKey="relation_id"
-                                    pagination={false}
-                                    dataSource={visibleBomCardAnalogPositions}
-                                    columns={[
-                                      {
-                                        title: "Карточка",
-                                        render: (_, row) => (
-                                          <Space direction="vertical" size={0}>
-                                            <Typography.Link strong onClick={() => openBomRelatedCatalogPosition(row)}>
-                                              {[row.manufacturer_part_number || row.position_code, row.display_name].filter(Boolean).join(" — ") || "—"}
-                                            </Typography.Link>
-                                            <Typography.Text type="secondary">
-                                              {[row.manufacturer_name, row.model_name].filter(Boolean).join(" / ") || "Общий каталог"}
-                                            </Typography.Text>
-                                          </Space>
-                                        ),
-                                      },
-                                      { title: "Роль", width: 110, render: () => <Tag color="green">Аналог</Tag> },
-                                    ]}
-                                  />
-                                </div>
-                              ) : null}
-                            </Space>
-                          </Card>
-                        ) : null}
 
                         <Card
                           size="small"
