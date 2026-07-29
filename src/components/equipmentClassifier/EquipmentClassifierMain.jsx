@@ -7531,18 +7531,9 @@ export default function EquipmentClassifierMain() {
                   </Form.Item>
                 </Col>
               </Row>
-              <Row gutter={12}>
-                <Col span={10}>
-                  <Form.Item label="Единица измерения">
-                    <Input value="шт" disabled />
-                  </Form.Item>
-                </Col>
-                <Col span={14}>
-                  <Form.Item label="Код ТН ВЭД" name="card_tnved">
-                    <TnvedPicker placeholder="Искать по названию детали, материалу или описанию" />
-                  </Form.Item>
-                </Col>
-              </Row>
+              <Form.Item label="Код ТН ВЭД" name="card_tnved">
+                <TnvedPicker placeholder="Искать по названию детали, материалу или описанию" />
+              </Form.Item>
               <Form.Item label="Описание" name="card_description">
                 <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} placeholder="Краткое описание позиции для карточки и поиска" />
               </Form.Item>
