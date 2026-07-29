@@ -2723,6 +2723,7 @@ export default function EquipmentClassifierMain() {
     [bomPositionDetails],
   )
   const bomCardPosition = bomPositionDetails?.position || null
+  const selectedBomUsesSharedPosition = Boolean(selectedBomItem?.catalog_position_id && !isBomOwnCatalogPosition(selectedBomItem))
   const selectedBomAnalogPosition = useMemo(() => {
     if (!selectedBomItem || !bomCardPosition || !bomCardAnalogPositions.length) return null
     const bomNumber = normalizeCatalogIdentity(selectedBomItem.manufacturer_part_number || selectedBomItem.part_number)
@@ -2739,6 +2740,10 @@ export default function EquipmentClassifierMain() {
     if (!selectedBomAnalogPosition) return bomCardAnalogPositions
     return bomCardAnalogPositions.filter((row) => Number(row.id) !== Number(selectedBomAnalogPosition.id))
   }, [bomCardAnalogPositions, selectedBomAnalogPosition])
+  const bomCardSharedUsageRows = useMemo(() => {
+    if (!selectedBomItem?.catalog_position_id) return []
+    return bomCardUsage
+  }, [bomCardUsage, selectedBomItem])
   const bomWarehouseStock = useMemo(
     () => (Array.isArray(bomWarehouseDetails?.stock) ? bomWarehouseDetails.stock : []),
     [bomWarehouseDetails],
@@ -6552,10 +6557,96 @@ export default function EquipmentClassifierMain() {
                           </Form.Item>
                         </Card>
 
-                        {selectedBomAnalogPosition || bomCardPrimaryPositions.length || visibleBomCardAnalogPositions.length ? (
-                          <Card size="small" title="Основная карточка и аналоги" loading={bomPositionDetailsLoading}>
+                        {selectedBomUsesSharedPosition ||
+                        bomCardSharedUsageRows.length > 1 ||
+                        selectedBomAnalogPosition ||
+                        bomCardPrimaryPositions.length ||
+                        visibleBomCardAnalogPositions.length ? (
+                          <Card size="small" title="Связи общей карточки" loading={bomPositionDetailsLoading}>
                             <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                              {selectedBomAnalogPosition && bomCardPosition ? (
+                              {selectedBomUsesSharedPosition && bomCardPosition ? (
+                                <Alert
+                                  type="info"
+                                  showIcon
+                                  message="Эта строка BOM использует общую карточку позиции"
+                                  description={
+                                    <Space direction="vertical" size={2}>
+                                      <Typography.Text>
+                                        Общая карточка:{" "}
+                                        <Typography.Text strong>
+                                          {[
+                                            bomCardPosition.manufacturer_part_number || bomCardPosition.position_code,
+                                            bomCardPosition.display_name,
+                                          ]
+                                            .filter(Boolean)
+                                            .join(" — ") || "—"}
+                                        </Typography.Text>
+                                      </Typography.Text>
+                                      <Typography.Text type="secondary">
+                                        Номер в этой BOM:{" "}
+                                        {[getBomManufacturerNumber(selectedBomItem), getBomItemName(selectedBomItem)]
+                                          .filter(Boolean)
+                                          .join(" — ") || "—"}
+                                      </Typography.Text>
+                                    </Space>
+                                  }
+                                />
+                              ) : null}
+                              {bomCardSharedUsageRows.length ? (
+                                <div>
+                                  <Typography.Text type="secondary">Номера в BOM, привязанные к этой общей карточке</Typography.Text>
+                                  <Table
+                                    size="small"
+                                    rowKey="bom_item_id"
+                                    pagination={false}
+                                    dataSource={bomCardSharedUsageRows}
+                                    columns={[
+                                      {
+                                        title: "Строка BOM",
+                                        render: (_, row) => (
+                                          <Space direction="vertical" size={0}>
+                                            <Space size={6} wrap>
+                                              <Typography.Link strong onClick={() => openBomUsageItem(row)}>
+                                                {[row.manufacturer_part_number || row.title, row.manufacturer_part_name || row.manufacturer_part_name_en]
+                                                  .filter(Boolean)
+                                                  .join(" — ") || `Строка #${row.bom_item_id}`}
+                                              </Typography.Link>
+                                              {Number(row.bom_item_id) === Number(selectedBomItem?.id) ? <Tag>Текущая</Tag> : null}
+                                            </Space>
+                                            <Typography.Text type="secondary">
+                                              {[row.item_no ? `позиция ${row.item_no}` : null, row.parent_title || row.parent_manufacturer_part_name]
+                                                .filter(Boolean)
+                                                .join(" / ") || "В корне модели"}
+                                            </Typography.Text>
+                                          </Space>
+                                        ),
+                                      },
+                                      {
+                                        title: "Модель",
+                                        width: 190,
+                                        render: (_, row) =>
+                                          [row.manufacturer_name, row.model_name].filter(Boolean).join(" ") || "—",
+                                      },
+                                      {
+                                        title: "Роль",
+                                        width: 110,
+                                        render: (_, row) => {
+                                          const rowNumber = normalizeCatalogIdentity(row.manufacturer_part_number || row.title)
+                                          const primaryNumber = normalizeCatalogIdentity(
+                                            bomCardPosition?.manufacturer_part_number || bomCardPosition?.position_code,
+                                          )
+                                          return rowNumber && primaryNumber && rowNumber === primaryNumber ? (
+                                            <Tag color="blue">Основная</Tag>
+                                          ) : (
+                                            <Tag color="green">Аналог</Tag>
+                                          )
+                                        },
+                                      },
+                                    ]}
+                                  />
+                                </div>
+                              ) : null}
+                              {selectedBomAnalogPosition && !selectedBomUsesSharedPosition && bomCardPosition ? (
                                 <Alert
                                   type="info"
                                   showIcon
