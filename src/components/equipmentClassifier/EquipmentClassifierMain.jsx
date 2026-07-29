@@ -847,6 +847,49 @@ export default function EquipmentClassifierMain() {
       ) || null,
     [bomLinkedCatalogPositionId, selectableCatalogPositionOptions],
   )
+  const selectedBomLinkCatalogPositionPreview = useMemo(() => {
+    if (!selectedBomLinkCatalogPosition) return null
+    const meta = getBomRowCardMeta(selectedBomLinkCatalogPosition)
+    const dimensions = getBomRowDimensionsText(selectedBomLinkCatalogPosition, dimensionUnitSymbol)
+    const tnvedCode =
+      selectedBomLinkCatalogPosition.catalog_position_tnved_code ||
+      selectedBomLinkCatalogPosition.tnved_code ||
+      selectedBomLinkCatalogPosition.tnved?.code ||
+      meta.tnved_code
+    return {
+      title:
+        [
+          selectedBomLinkCatalogPosition.manufacturer_part_number ||
+            selectedBomLinkCatalogPosition.position_code,
+          selectedBomLinkCatalogPosition.display_name,
+        ]
+          .filter(Boolean)
+          .join(" — ") || `Позиция #${selectedBomLinkCatalogPosition.id}`,
+      context:
+        [
+          selectedBomLinkCatalogPosition.manufacturer_name,
+          selectedBomLinkCatalogPosition.model_name,
+          selectedBomLinkCatalogPosition.classifier_node_name,
+        ]
+          .filter(Boolean)
+          .join(" / ") || "Общий каталог",
+      weight: formatNullableNumber(getBomRowWeight(selectedBomLinkCatalogPosition), "кг"),
+      dimensions,
+      uom:
+        selectedBomLinkCatalogPosition.uom ||
+        selectedBomLinkCatalogPosition.catalog_position_uom ||
+        "—",
+      tnved:
+        [tnvedCode, selectedBomLinkCatalogPosition.tnved_description || meta.tnved_description]
+          .filter(Boolean)
+          .join(" — ") || "—",
+      description:
+        selectedBomLinkCatalogPosition.catalog_position_description ||
+        selectedBomLinkCatalogPosition.description ||
+        meta.description ||
+        "—",
+    }
+  }, [dimensionUnitSymbol, selectedBomLinkCatalogPosition])
   const [nsiSearchActive, setNsiSearchActive] = useState(false)
   const [manufacturerFilter, setManufacturerFilter] = useState(null)
   const [branchSectionFilter, setBranchSectionFilter] = useState(null)
@@ -7651,28 +7694,44 @@ export default function EquipmentClassifierMain() {
                 </Form.Item>
               ) : null}
 
-              {bomLinkClassifier && selectedBomLinkCatalogPosition ? (
-                <Space direction="vertical" size={2} style={{ marginTop: -8, marginBottom: 14 }}>
-                  <Typography.Text type="secondary">Будет связана карточка</Typography.Text>
-                  <Typography.Text strong>
-                    {[
-                      selectedBomLinkCatalogPosition.manufacturer_part_number ||
-                        selectedBomLinkCatalogPosition.position_code,
-                      selectedBomLinkCatalogPosition.display_name,
-                    ]
-                      .filter(Boolean)
-                      .join(" — ") || `Позиция #${selectedBomLinkCatalogPosition.id}`}
-                  </Typography.Text>
-                  <Typography.Text type="secondary">
-                    {[
-                      selectedBomLinkCatalogPosition.manufacturer_name,
-                      selectedBomLinkCatalogPosition.model_name,
-                      selectedBomLinkCatalogPosition.classifier_node_name,
-                    ]
-                      .filter(Boolean)
-                      .join(" / ") || "Общий каталог"}
-                  </Typography.Text>
-                </Space>
+              {bomLinkClassifier && selectedBomLinkCatalogPositionPreview ? (
+                <div
+                  style={{
+                    marginTop: -8,
+                    marginBottom: 14,
+                    padding: "10px 12px",
+                    border: "1px solid #f0f0f0",
+                    borderRadius: 6,
+                    background: "#fafafa",
+                  }}
+                >
+                  <Space direction="vertical" size={8} style={{ width: "100%" }}>
+                    <Space direction="vertical" size={2}>
+                      <Typography.Text type="secondary">Будет связана карточка</Typography.Text>
+                      <Typography.Text strong>{selectedBomLinkCatalogPositionPreview.title}</Typography.Text>
+                      <Typography.Text type="secondary">
+                        {selectedBomLinkCatalogPositionPreview.context}
+                      </Typography.Text>
+                    </Space>
+                    <Descriptions size="small" column={2}>
+                      <Descriptions.Item label="Масса">
+                        {selectedBomLinkCatalogPositionPreview.weight}
+                      </Descriptions.Item>
+                      <Descriptions.Item label={`Габариты, ${dimensionUnitSymbol}`}>
+                        {selectedBomLinkCatalogPositionPreview.dimensions}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Ед. изм.">
+                        {selectedBomLinkCatalogPositionPreview.uom}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="ТН ВЭД">
+                        {selectedBomLinkCatalogPositionPreview.tnved}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Описание" span={2}>
+                        {selectedBomLinkCatalogPositionPreview.description}
+                      </Descriptions.Item>
+                    </Descriptions>
+                  </Space>
+                </div>
               ) : null}
 
             </>
