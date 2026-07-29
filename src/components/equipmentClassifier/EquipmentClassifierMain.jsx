@@ -3305,34 +3305,19 @@ export default function EquipmentClassifierMain() {
 
     const headerRow = rows[0].map((value) => String(value ?? "").trim())
     const headerMap = {
-      "Уровень": "level",
-      "Ключ": "item_key",
-      "Родительский ключ": "parent_key",
-      "Тип": "item_type",
-      "Тип строки": "row_kind",
-      "Связь": "item_type",
-      "Тип связи": "item_type",
       "№ позиции": "item_no",
-      "№": "item_no",
-      "Позиция": "item_no",
-      "Каталожный номер": "manufacturer_part_number",
-      "Название по каталогу": "manufacturer_part_name",
+      "Каталожный номер производителя": "manufacturer_part_number",
       "Название EN": "manufacturer_part_name_en",
-      "Name EN": "manufacturer_part_name_en",
       "Название RU": "manufacturer_part_name_ru",
-      "Чертеж": "drawing_number",
-      "Код детали производителя": "manufacturer_part_number",
-      "Код классификатора": "catalog_position_code",
-      "Название": "title",
       "Количество": "quantity",
-      "Кол-во": "quantity",
-      "Кол-во.": "quantity",
-      "Порядок": "sort_order",
-      "Заметки": "notes",
-      "Примечание": "notes",
+      "Масса, кг": "weight_kg",
+      "Длина, мм": "length_mm",
+      "Ширина, мм": "width_mm",
+      "Высота, мм": "height_mm",
+      "Код ТН ВЭД": "tnved_code",
     }
-    const hasItemNoHeader = headerRow.some((header) => ["№ позиции", "№", "Позиция"].includes(header))
-    const hasQuantityHeader = headerRow.some((header) => ["Количество", "Кол-во", "Кол-во."].includes(header))
+    const hasItemNoHeader = headerRow.includes("№ позиции")
+    const hasQuantityHeader = headerRow.includes("Количество")
     const missingHeaders = []
     if (!hasItemNoHeader) missingHeaders.push("№ позиции")
     if (!hasQuantityHeader) missingHeaders.push("Количество")
@@ -3439,9 +3424,7 @@ export default function EquipmentClassifierMain() {
         render: (value) => {
           const map = {
             reuse_catalog_position: { color: "green", label: "Используем карточку" },
-            linked_catalog_position: { color: "blue", label: "Привязана карточка" },
             will_create_catalog_position: { color: "gold", label: "Создадим карточку" },
-            client_part: { color: "purple", label: "Деталь клиента" },
           }
           const item = map[value] || { color: "default", label: "Проверено" }
           return <Tag color={item.color}>{item.label}</Tag>
@@ -3457,7 +3440,7 @@ export default function EquipmentClassifierMain() {
         title: "Каталожный номер",
         dataIndex: "manufacturer_part_number",
         width: 180,
-        render: (value, row) => value || row.catalog_position_code || "—",
+        render: (value) => value || "—",
       },
       {
         title: "Название EN",
@@ -3481,8 +3464,44 @@ export default function EquipmentClassifierMain() {
         dataIndex: "quantity",
         width: 120,
       },
+      {
+        title: "Характеристики",
+        key: "card_fields",
+        width: 220,
+        render: (_, row) => {
+          const dimensions = formatDimensions(
+            {
+              length_mm: row.length_mm,
+              width_mm: row.width_mm,
+              height_mm: row.height_mm,
+            },
+            dimensionUnitSymbol,
+          )
+          return (
+            <Space direction="vertical" size={0}>
+              <Typography.Text>{row.weight_kg ? `Масса: ${formatNullableNumber(row.weight_kg, "кг")}` : "Масса: —"}</Typography.Text>
+              <Typography.Text type="secondary">Габариты: {dimensions}</Typography.Text>
+            </Space>
+          )
+        },
+      },
+      {
+        title: "ТН ВЭД",
+        dataIndex: "tnved_code",
+        width: 130,
+        render: (value, row) => (
+          <Space direction="vertical" size={0}>
+            <Typography.Text>{value || "—"}</Typography.Text>
+            {row.tnved_description ? (
+              <Typography.Text type="secondary" ellipsis style={{ maxWidth: 180 }}>
+                {row.tnved_description}
+              </Typography.Text>
+            ) : null}
+          </Space>
+        ),
+      },
     ],
-    [],
+    [dimensionUnitSymbol],
   )
 
   const currentModelUnits = useMemo(() => {
@@ -7201,8 +7220,8 @@ export default function EquipmentClassifierMain() {
           <Alert
             type="info"
             showIcon
-            message="Заполняйте BOM как в parts book: по номеру позиции"
-            description="Система сама построит дерево: 2 - верхний уровень, 2.1 - внутри 2, 2.2.1 - внутри 2.2. Достаточно колонок: № позиции, каталожный номер, название EN/RU, количество."
+            message="Импортируйте строки BOM плоским списком"
+            description="Excel нужен для первичной загрузки позиций производителя. Все строки попадут в корень BOM модели; сборки и вложенность удобнее собрать потом вручную в интерфейсе."
           />
 
           <Space wrap>
