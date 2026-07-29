@@ -341,7 +341,7 @@ const getBomItemTypeLabel = (row) => {
 
 const getBomLinkStatusLabel = (row) => {
   if (isBomOwnCatalogPosition(row)) return "Отдельная позиция этой модели"
-  if (row?.catalog_position_id) return "Связана с общей позицией"
+  if (row?.catalog_position_id) return "Связана с карточкой позиции"
   if (row?.client_part_id || row?.bom_client_part_id) return "Деталь по чертежу клиента"
   return "Отдельная позиция этой модели"
 }
@@ -353,8 +353,6 @@ const formatBomQuantity = (row) => {
 }
 
 const getBomManufacturerNumber = (row) => row?.manufacturer_part_number || row?.part_number || row?.catalog_position_code || "—"
-
-const normalizeCatalogIdentity = (value) => String(value || "").trim().toLowerCase()
 
 const getBomTitleEn = (row) =>
   row?.manufacturer_part_name_en ||
@@ -2723,27 +2721,10 @@ export default function EquipmentClassifierMain() {
     [bomPositionDetails],
   )
   const bomCardPosition = bomPositionDetails?.position || null
-  const selectedBomUsesSharedPosition = Boolean(selectedBomItem?.catalog_position_id && !isBomOwnCatalogPosition(selectedBomItem))
-  const selectedBomAnalogPosition = useMemo(() => {
-    if (!selectedBomItem || !bomCardPosition || !bomCardAnalogPositions.length) return null
-    const bomNumber = normalizeCatalogIdentity(selectedBomItem.manufacturer_part_number || selectedBomItem.part_number)
-    const primaryNumber = normalizeCatalogIdentity(bomCardPosition.manufacturer_part_number || bomCardPosition.position_code)
-    if (!bomNumber || bomNumber === primaryNumber) return null
-    return (
-      bomCardAnalogPositions.find((row) => {
-        const rowNumber = normalizeCatalogIdentity(row.manufacturer_part_number || row.position_code)
-        return rowNumber && rowNumber === bomNumber
-      }) || null
-    )
-  }, [bomCardAnalogPositions, bomCardPosition, selectedBomItem])
   const visibleBomCardAnalogPositions = useMemo(() => {
-    if (!selectedBomAnalogPosition) return bomCardAnalogPositions
-    return bomCardAnalogPositions.filter((row) => Number(row.id) !== Number(selectedBomAnalogPosition.id))
-  }, [bomCardAnalogPositions, selectedBomAnalogPosition])
-  const bomCardSharedUsageRows = useMemo(() => {
-    if (!selectedBomItem?.catalog_position_id) return []
-    return bomCardUsage
-  }, [bomCardUsage, selectedBomItem])
+    if (!bomCardPosition?.id) return bomCardAnalogPositions
+    return bomCardAnalogPositions.filter((row) => Number(row.id) !== Number(bomCardPosition.id))
+  }, [bomCardAnalogPositions, bomCardPosition?.id])
   const bomWarehouseStock = useMemo(
     () => (Array.isArray(bomWarehouseDetails?.stock) ? bomWarehouseDetails.stock : []),
     [bomWarehouseDetails],
@@ -3205,6 +3186,9 @@ export default function EquipmentClassifierMain() {
       const confirmDuplicatePartNumber = confirmedOtherManufacturerDuplicate === true
       const linkClassifier = Boolean((values.link_classifier && values.catalog_position_id) || forcedCatalogPositionId)
       const keepOwnCatalogPosition = Boolean(editingBomItem?.id && !linkClassifier && isBomOwnCatalogPosition(editingBomItem))
+      const ownCatalogPositionId = editingBomItem?.id && isBomOwnCatalogPosition(editingBomItem)
+        ? editingBomItem.catalog_position_id
+        : null
       const manufacturerPartName =
         values.manufacturer_part_name_en || values.manufacturer_part_name_ru || values.manufacturer_part_name
       const hasChildren = Boolean(
@@ -3225,26 +3209,27 @@ export default function EquipmentClassifierMain() {
         drawing_number: values.drawing_number || null,
         title: null,
         catalog_position_id: linkClassifier
-          ? forcedCatalogPositionId || values.catalog_position_id
+          ? ownCatalogPositionId
           : keepOwnCatalogPosition
             ? editingBomItem.catalog_position_id
             : null,
+        analog_catalog_position_id: linkClassifier
+          ? forcedCatalogPositionId || values.catalog_position_id
+          : null,
         quantity: values.quantity || 1,
         sort_order: values.sort_order ?? editingBomItem?.sort_order ?? 0,
         notes: values.notes || null,
         confirm_duplicate_part_number: confirmDuplicatePartNumber,
       }
-      if (!linkClassifier) {
-        const cardFields = {
-          card_weight_kg: values.card_weight_kg ?? null,
-          card_length_mm: values.card_length_mm ?? null,
-          card_width_mm: values.card_width_mm ?? null,
-          card_height_mm: values.card_height_mm ?? null,
-        }
-        if (values.card_tnved?.id) cardFields.card_tnved_code_id = values.card_tnved.id
-        if (values.card_description) cardFields.card_description = values.card_description
-        Object.assign(payload, cardFields)
+      const cardFields = {
+        card_weight_kg: values.card_weight_kg ?? null,
+        card_length_mm: values.card_length_mm ?? null,
+        card_width_mm: values.card_width_mm ?? null,
+        card_height_mm: values.card_height_mm ?? null,
       }
+      if (values.card_tnved?.id) cardFields.card_tnved_code_id = values.card_tnved.id
+      if (values.card_description) cardFields.card_description = values.card_description
+      Object.assign(payload, cardFields)
       const { data } = editingBomItem?.id
         ? await axios.put(`/equipment-models/${currentModel.id}/bom/items/${editingBomItem.id}`, payload)
         : await axios.post(`/equipment-models/${currentModel.id}/bom/items`, payload)
@@ -6484,15 +6469,24 @@ export default function EquipmentClassifierMain() {
                           ? `${getBomItemLabel(selectedBomParent)} — ${getBomItemName(selectedBomParent) || "узел"}`
                           : "В корне BOM модели"}
                       </Descriptions.Item>
-                      <Descriptions.Item label="Связь с общей позицией">
-                        {selectedBomItem.catalog_position_id && !isBomOwnCatalogPosition(selectedBomItem) ? (
+                      <Descriptions.Item label={bomCardPrimaryPositions[0] ? "Аналог к" : "Связь с карточкой"}>
+                        {bomCardPrimaryPositions[0] ? (
+                          <Typography.Link onClick={() => openBomRelatedCatalogPosition(bomCardPrimaryPositions[0])}>
+                            {[
+                              bomCardPrimaryPositions[0].manufacturer_part_number || bomCardPrimaryPositions[0].position_code,
+                              bomCardPrimaryPositions[0].display_name,
+                            ]
+                              .filter(Boolean)
+                              .join(" — ") || "Открыть основную карточку"}
+                          </Typography.Link>
+                        ) : selectedBomItem.catalog_position_id && !isBomOwnCatalogPosition(selectedBomItem) ? (
                           <Typography.Link onClick={() => openBomItemCatalogPosition(selectedBomItem)}>
                             {[
                               bomCardPosition?.manufacturer_part_number || selectedBomItem.catalog_position_code,
                               bomCardPosition?.display_name || selectedBomItem.catalog_position_name,
                             ]
                               .filter(Boolean)
-                              .join(" — ") || "Открыть связанную позицию"}
+                              .join(" — ") || "Открыть карточку"}
                           </Typography.Link>
                         ) : (
                           "Не связана"
@@ -6557,131 +6551,12 @@ export default function EquipmentClassifierMain() {
                           </Form.Item>
                         </Card>
 
-                        {selectedBomUsesSharedPosition ||
-                        bomCardSharedUsageRows.length > 1 ||
-                        selectedBomAnalogPosition ||
-                        bomCardPrimaryPositions.length ||
-                        visibleBomCardAnalogPositions.length ? (
-                          <Card size="small" title="Связи общей карточки" loading={bomPositionDetailsLoading}>
+                        {bomCardPrimaryPositions.length || visibleBomCardAnalogPositions.length ? (
+                          <Card size="small" title="Аналоги" loading={bomPositionDetailsLoading}>
                             <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                              {selectedBomUsesSharedPosition && bomCardPosition ? (
-                                <Alert
-                                  type="info"
-                                  showIcon
-                                  message="Эта строка BOM использует общую карточку позиции"
-                                  description={
-                                    <Space direction="vertical" size={2}>
-                                      <Typography.Text>
-                                        Общая карточка:{" "}
-                                        <Typography.Text strong>
-                                          {[
-                                            bomCardPosition.manufacturer_part_number || bomCardPosition.position_code,
-                                            bomCardPosition.display_name,
-                                          ]
-                                            .filter(Boolean)
-                                            .join(" — ") || "—"}
-                                        </Typography.Text>
-                                      </Typography.Text>
-                                      <Typography.Text type="secondary">
-                                        Номер в этой BOM:{" "}
-                                        {[getBomManufacturerNumber(selectedBomItem), getBomItemName(selectedBomItem)]
-                                          .filter(Boolean)
-                                          .join(" — ") || "—"}
-                                      </Typography.Text>
-                                    </Space>
-                                  }
-                                />
-                              ) : null}
-                              {bomCardSharedUsageRows.length ? (
-                                <div>
-                                  <Typography.Text type="secondary">Номера в BOM, привязанные к этой общей карточке</Typography.Text>
-                                  <Table
-                                    size="small"
-                                    rowKey="bom_item_id"
-                                    pagination={false}
-                                    dataSource={bomCardSharedUsageRows}
-                                    columns={[
-                                      {
-                                        title: "Строка BOM",
-                                        render: (_, row) => (
-                                          <Space direction="vertical" size={0}>
-                                            <Space size={6} wrap>
-                                              <Typography.Link strong onClick={() => openBomUsageItem(row)}>
-                                                {[row.manufacturer_part_number || row.title, row.manufacturer_part_name || row.manufacturer_part_name_en]
-                                                  .filter(Boolean)
-                                                  .join(" — ") || `Строка #${row.bom_item_id}`}
-                                              </Typography.Link>
-                                              {Number(row.bom_item_id) === Number(selectedBomItem?.id) ? <Tag>Текущая</Tag> : null}
-                                            </Space>
-                                            <Typography.Text type="secondary">
-                                              {[row.item_no ? `позиция ${row.item_no}` : null, row.parent_title || row.parent_manufacturer_part_name]
-                                                .filter(Boolean)
-                                                .join(" / ") || "В корне модели"}
-                                            </Typography.Text>
-                                          </Space>
-                                        ),
-                                      },
-                                      {
-                                        title: "Модель",
-                                        width: 190,
-                                        render: (_, row) =>
-                                          [row.manufacturer_name, row.model_name].filter(Boolean).join(" ") || "—",
-                                      },
-                                      {
-                                        title: "Роль",
-                                        width: 110,
-                                        render: (_, row) => {
-                                          const rowNumber = normalizeCatalogIdentity(row.manufacturer_part_number || row.title)
-                                          const primaryNumber = normalizeCatalogIdentity(
-                                            bomCardPosition?.manufacturer_part_number || bomCardPosition?.position_code,
-                                          )
-                                          return rowNumber && primaryNumber && rowNumber === primaryNumber ? (
-                                            <Tag color="blue">Основная</Tag>
-                                          ) : (
-                                            <Tag color="green">Аналог</Tag>
-                                          )
-                                        },
-                                      },
-                                    ]}
-                                  />
-                                </div>
-                              ) : null}
-                              {selectedBomAnalogPosition && !selectedBomUsesSharedPosition && bomCardPosition ? (
-                                <Alert
-                                  type="info"
-                                  showIcon
-                                  message="Эта строка BOM является аналогом основной карточки"
-                                  description={
-                                    <Space direction="vertical" size={2}>
-                                      <Typography.Text>
-                                        Основная карточка:{" "}
-                                        <Typography.Text strong>
-                                          {[
-                                            bomCardPosition.manufacturer_part_number || bomCardPosition.position_code,
-                                            bomCardPosition.display_name,
-                                          ]
-                                            .filter(Boolean)
-                                            .join(" — ") || "—"}
-                                        </Typography.Text>
-                                      </Typography.Text>
-                                      <Typography.Text type="secondary">
-                                        Номер в этой BOM:{" "}
-                                        <Typography.Link onClick={() => openBomRelatedCatalogPosition(selectedBomAnalogPosition)}>
-                                          {[
-                                            selectedBomAnalogPosition.manufacturer_part_number || getBomManufacturerNumber(selectedBomItem),
-                                            selectedBomAnalogPosition.display_name || getBomItemName(selectedBomItem),
-                                          ]
-                                            .filter(Boolean)
-                                            .join(" — ") || "—"}
-                                        </Typography.Link>
-                                      </Typography.Text>
-                                    </Space>
-                                  }
-                                />
-                              ) : null}
                               {bomCardPrimaryPositions.length ? (
                                 <div>
-                                  <Typography.Text type="secondary">Основная карточка для этой позиции</Typography.Text>
+                                  <Typography.Text type="secondary">Эта карточка является аналогом</Typography.Text>
                                   <Table
                                     size="small"
                                     rowKey="relation_id"
@@ -6708,7 +6583,7 @@ export default function EquipmentClassifierMain() {
                               ) : null}
                               {visibleBomCardAnalogPositions.length ? (
                                 <div>
-                                  <Typography.Text type="secondary">Аналоги этой карточки</Typography.Text>
+                                  <Typography.Text type="secondary">Другие карточки-аналоги</Typography.Text>
                                   <Table
                                     size="small"
                                     rowKey="relation_id"
@@ -7725,49 +7600,45 @@ export default function EquipmentClassifierMain() {
                 />
               </Form.Item>
 
-              {!bomLinkClassifier ? (
-                <>
-                  <Divider style={{ margin: "8px 0 14px" }} />
-                  <Typography.Text strong>Характеристики карточки</Typography.Text>
-                  <Row gutter={12}>
-                    <Col span={8}>
-                      <Form.Item label="Масса, кг" name="card_weight_kg">
-                        <InputNumber min={0} precision={3} style={{ width: "100%" }} placeholder="например 1250" />
-                      </Form.Item>
-                    </Col>
-                    <Col span={16}>
-                      <Form.Item label={`Габариты, ${dimensionUnitSymbol}`}>
-                        <Space.Compact style={{ width: "100%" }}>
-                          <Form.Item name="card_length_mm" noStyle>
-                            <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Длина" />
-                          </Form.Item>
-                          <Form.Item name="card_width_mm" noStyle>
-                            <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Ширина" />
-                          </Form.Item>
-                          <Form.Item name="card_height_mm" noStyle>
-                            <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Высота" />
-                          </Form.Item>
-                        </Space.Compact>
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Row gutter={12}>
-                    <Col span={10}>
-                      <Form.Item label="Единица измерения">
-                        <Input value="шт" disabled />
-                      </Form.Item>
-                    </Col>
-                    <Col span={14}>
-                      <Form.Item label="Код ТН ВЭД" name="card_tnved">
-                        <TnvedPicker placeholder="Искать по названию детали, материалу или описанию" />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Form.Item label="Описание" name="card_description">
-                    <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} placeholder="Краткое описание позиции для карточки и поиска" />
+              <Divider style={{ margin: "8px 0 14px" }} />
+              <Typography.Text strong>Характеристики карточки</Typography.Text>
+              <Row gutter={12}>
+                <Col span={8}>
+                  <Form.Item label="Масса, кг" name="card_weight_kg">
+                    <InputNumber min={0} precision={3} style={{ width: "100%" }} placeholder="например 1250" />
                   </Form.Item>
-                </>
-              ) : null}
+                </Col>
+                <Col span={16}>
+                  <Form.Item label={`Габариты, ${dimensionUnitSymbol}`}>
+                    <Space.Compact style={{ width: "100%" }}>
+                      <Form.Item name="card_length_mm" noStyle>
+                        <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Длина" />
+                      </Form.Item>
+                      <Form.Item name="card_width_mm" noStyle>
+                        <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Ширина" />
+                      </Form.Item>
+                      <Form.Item name="card_height_mm" noStyle>
+                        <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Высота" />
+                      </Form.Item>
+                    </Space.Compact>
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={12}>
+                <Col span={10}>
+                  <Form.Item label="Единица измерения">
+                    <Input value="шт" disabled />
+                  </Form.Item>
+                </Col>
+                <Col span={14}>
+                  <Form.Item label="Код ТН ВЭД" name="card_tnved">
+                    <TnvedPicker placeholder="Искать по названию детали, материалу или описанию" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Form.Item label="Описание" name="card_description">
+                <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} placeholder="Краткое описание позиции для карточки и поиска" />
+              </Form.Item>
 
               <Divider style={{ margin: "8px 0 14px" }} />
 
@@ -7799,7 +7670,7 @@ export default function EquipmentClassifierMain() {
                   label="Найти существующую карточку"
                   name="catalog_position_id"
                   rules={[{ required: true, message: "Выберите существующую карточку" }]}
-                  extra="Характеристики будут взяты из выбранной карточки."
+                  extra="Выбранная карточка станет основной для связи аналогов. Текущая строка BOM сохранит свою карточку производителя."
                 >
                   <Select
                     showSearch
@@ -7857,7 +7728,7 @@ export default function EquipmentClassifierMain() {
                 >
                   <Space direction="vertical" size={8} style={{ width: "100%" }}>
                     <Space direction="vertical" size={2}>
-                      <Typography.Text type="secondary">Будет связана карточка</Typography.Text>
+                      <Typography.Text type="secondary">Основная карточка для аналога</Typography.Text>
                       <Typography.Text strong>{selectedBomLinkCatalogPositionPreview.title}</Typography.Text>
                       <Typography.Text type="secondary">
                         {selectedBomLinkCatalogPositionPreview.context}
