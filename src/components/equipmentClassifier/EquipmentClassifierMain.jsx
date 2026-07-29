@@ -3896,6 +3896,26 @@ export default function EquipmentClassifierMain() {
     setSelectedTreeEntity({ type: "catalog_position", id: catalogPositionId })
   }
 
+  const openBomRelatedCatalogPosition = async (row) => {
+    const catalogPositionId = Number(row?.catalog_position_id || row?.id || 0)
+    if (!catalogPositionId) return
+
+    const bomRow = currentModelBomRows.find((item) => Number(item.catalog_position_id) === catalogPositionId)
+    if (bomRow) {
+      setSelectedBomItem(bomRow)
+      setBomItemCardOpen(true)
+      return
+    }
+
+    await openBomItemCatalogPosition({
+      ...row,
+      catalog_position_id: catalogPositionId,
+      catalog_position_code: row?.position_code,
+      catalog_position_name: row?.display_name,
+      catalog_position_classifier_node_id: row?.classifier_node_id,
+    })
+  }
+
   const openUsageModel = async (row) => {
     if (!row?.equipment_model_id) return
     const nodeId = row.model_classifier_node_id || selectedId
@@ -6429,12 +6449,14 @@ export default function EquipmentClassifierMain() {
                                       </Typography.Text>
                                       <Typography.Text type="secondary">
                                         Номер в этой BOM:{" "}
-                                        {[
-                                          selectedBomAnalogPosition.manufacturer_part_number || getBomManufacturerNumber(selectedBomItem),
-                                          selectedBomAnalogPosition.display_name || getBomItemName(selectedBomItem),
-                                        ]
-                                          .filter(Boolean)
-                                          .join(" — ") || "—"}
+                                        <Typography.Link onClick={() => openBomRelatedCatalogPosition(selectedBomAnalogPosition)}>
+                                          {[
+                                            selectedBomAnalogPosition.manufacturer_part_number || getBomManufacturerNumber(selectedBomItem),
+                                            selectedBomAnalogPosition.display_name || getBomItemName(selectedBomItem),
+                                          ]
+                                            .filter(Boolean)
+                                            .join(" — ") || "—"}
+                                        </Typography.Link>
                                       </Typography.Text>
                                     </Space>
                                   }
@@ -6453,9 +6475,9 @@ export default function EquipmentClassifierMain() {
                                         title: "Карточка",
                                         render: (_, row) => (
                                           <Space direction="vertical" size={0}>
-                                            <Typography.Text strong>
+                                            <Typography.Link strong onClick={() => openBomRelatedCatalogPosition(row)}>
                                               {[row.manufacturer_part_number || row.position_code, row.display_name].filter(Boolean).join(" — ") || "—"}
-                                            </Typography.Text>
+                                            </Typography.Link>
                                             <Typography.Text type="secondary">
                                               {[row.manufacturer_name, row.model_name].filter(Boolean).join(" / ") || "Общий каталог"}
                                             </Typography.Text>
@@ -6480,9 +6502,9 @@ export default function EquipmentClassifierMain() {
                                         title: "Карточка",
                                         render: (_, row) => (
                                           <Space direction="vertical" size={0}>
-                                            <Typography.Text strong>
+                                            <Typography.Link strong onClick={() => openBomRelatedCatalogPosition(row)}>
                                               {[row.manufacturer_part_number || row.position_code, row.display_name].filter(Boolean).join(" — ") || "—"}
-                                            </Typography.Text>
+                                            </Typography.Link>
                                             <Typography.Text type="secondary">
                                               {[row.manufacturer_name, row.model_name].filter(Boolean).join(" / ") || "Общий каталог"}
                                             </Typography.Text>
