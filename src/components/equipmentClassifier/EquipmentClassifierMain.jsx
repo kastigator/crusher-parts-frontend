@@ -361,6 +361,8 @@ const formatBomQuantity = (row) => {
 
 const getBomManufacturerNumber = (row) => row?.manufacturer_part_number || row?.part_number || row?.catalog_position_code || "—"
 
+const normalizeCatalogIdentity = (value) => String(value || "").trim().toLowerCase()
+
 const getBomTitleEn = (row) =>
   row?.manufacturer_part_name_en ||
   row?.manufacturer_part_name ||
@@ -2674,6 +2676,23 @@ export default function EquipmentClassifierMain() {
     () => (Array.isArray(bomPositionDetails?.primary_positions) ? bomPositionDetails.primary_positions : []),
     [bomPositionDetails],
   )
+  const bomCardPosition = bomPositionDetails?.position || null
+  const selectedBomAnalogPosition = useMemo(() => {
+    if (!selectedBomItem || !bomCardPosition || !bomCardAnalogPositions.length) return null
+    const bomNumber = normalizeCatalogIdentity(selectedBomItem.manufacturer_part_number || selectedBomItem.part_number)
+    const primaryNumber = normalizeCatalogIdentity(bomCardPosition.manufacturer_part_number || bomCardPosition.position_code)
+    if (!bomNumber || bomNumber === primaryNumber) return null
+    return (
+      bomCardAnalogPositions.find((row) => {
+        const rowNumber = normalizeCatalogIdentity(row.manufacturer_part_number || row.position_code)
+        return rowNumber && rowNumber === bomNumber
+      }) || null
+    )
+  }, [bomCardAnalogPositions, bomCardPosition, selectedBomItem])
+  const visibleBomCardAnalogPositions = useMemo(() => {
+    if (!selectedBomAnalogPosition) return bomCardAnalogPositions
+    return bomCardAnalogPositions.filter((row) => Number(row.id) !== Number(selectedBomAnalogPosition.id))
+  }, [bomCardAnalogPositions, selectedBomAnalogPosition])
   const bomWarehouseStock = useMemo(
     () => (Array.isArray(bomWarehouseDetails?.stock) ? bomWarehouseDetails.stock : []),
     [bomWarehouseDetails],
@@ -6317,7 +6336,12 @@ export default function EquipmentClassifierMain() {
                       <Descriptions.Item label="Связь с общей позицией">
                         {selectedBomItem.catalog_position_id && !isBomOwnCatalogPosition(selectedBomItem) ? (
                           <Typography.Link onClick={() => openBomItemCatalogPosition(selectedBomItem)}>
-                            {selectedBomItem.catalog_position_name || "Открыть связанную позицию"}
+                            {[
+                              bomCardPosition?.manufacturer_part_number || selectedBomItem.catalog_position_code,
+                              bomCardPosition?.display_name || selectedBomItem.catalog_position_name,
+                            ]
+                              .filter(Boolean)
+                              .join(" — ") || "Открыть связанную позицию"}
                           </Typography.Link>
                         ) : (
                           "Не связана"
@@ -6382,9 +6406,40 @@ export default function EquipmentClassifierMain() {
                           </Form.Item>
                         </Card>
 
-                        {bomCardPrimaryPositions.length || bomCardAnalogPositions.length ? (
+                        {selectedBomAnalogPosition || bomCardPrimaryPositions.length || visibleBomCardAnalogPositions.length ? (
                           <Card size="small" title="Основная карточка и аналоги" loading={bomPositionDetailsLoading}>
                             <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                              {selectedBomAnalogPosition && bomCardPosition ? (
+                                <Alert
+                                  type="info"
+                                  showIcon
+                                  message="Эта строка BOM является аналогом основной карточки"
+                                  description={
+                                    <Space direction="vertical" size={2}>
+                                      <Typography.Text>
+                                        Основная карточка:{" "}
+                                        <Typography.Text strong>
+                                          {[
+                                            bomCardPosition.manufacturer_part_number || bomCardPosition.position_code,
+                                            bomCardPosition.display_name,
+                                          ]
+                                            .filter(Boolean)
+                                            .join(" — ") || "—"}
+                                        </Typography.Text>
+                                      </Typography.Text>
+                                      <Typography.Text type="secondary">
+                                        Номер в этой BOM:{" "}
+                                        {[
+                                          selectedBomAnalogPosition.manufacturer_part_number || getBomManufacturerNumber(selectedBomItem),
+                                          selectedBomAnalogPosition.display_name || getBomItemName(selectedBomItem),
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" — ") || "—"}
+                                      </Typography.Text>
+                                    </Space>
+                                  }
+                                />
+                              ) : null}
                               {bomCardPrimaryPositions.length ? (
                                 <div>
                                   <Typography.Text type="secondary">Основная карточка для этой позиции</Typography.Text>
@@ -6412,14 +6467,14 @@ export default function EquipmentClassifierMain() {
                                   />
                                 </div>
                               ) : null}
-                              {bomCardAnalogPositions.length ? (
+                              {visibleBomCardAnalogPositions.length ? (
                                 <div>
                                   <Typography.Text type="secondary">Аналоги этой карточки</Typography.Text>
                                   <Table
                                     size="small"
                                     rowKey="relation_id"
                                     pagination={false}
-                                    dataSource={bomCardAnalogPositions}
+                                    dataSource={visibleBomCardAnalogPositions}
                                     columns={[
                                       {
                                         title: "Карточка",
