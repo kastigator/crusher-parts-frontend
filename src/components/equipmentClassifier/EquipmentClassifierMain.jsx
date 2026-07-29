@@ -330,13 +330,6 @@ const BOM_ROW_KIND_OPTIONS = [
   },
 ]
 
-const BOM_ROW_KIND_HELP = Object.fromEntries(
-  BOM_ROW_KIND_OPTIONS.map((item) => [
-    item.value,
-    `${item.description} Например: ${item.example}.`,
-  ]),
-)
-
 const getBomEffectiveRowKind = (row) => {
   if (Array.isArray(row?.children) && row.children.length > 0) return "assembly"
   return row?.row_kind || "unknown"
@@ -839,7 +832,6 @@ export default function EquipmentClassifierMain() {
   const [bomWarehouseActionForm] = Form.useForm()
   const bomLinkClassifier = Form.useWatch("link_classifier", bomItemForm)
   const bomCrossModelTargetId = Form.useWatch("target_model_id", bomCrossModelForm)
-  const bomRowKind = Form.useWatch("row_kind", bomItemForm)
   const selectableCatalogPositionOptions = useMemo(() => {
     const currentItemId = Number(editingBomItem?.id || 0)
     return catalogPositionOptions.filter((row) => {
@@ -3029,12 +3021,19 @@ export default function EquipmentClassifierMain() {
       const usesExistingCatalogPosition = Boolean(
         sourceItem?.catalog_position_id && (reuseFrom || !isBomOwnCatalogPosition(sourceItem)),
       )
+      const sourceDimensions = getBomRowDimensions(sourceItem)
+      const sourceMeta = getBomRowCardMeta(sourceItem)
+      const sourceTnvedId = Number(sourceMeta.tnved_code_id || 0)
+      const sourceRowKind =
+        sourceItem?.bom_has_children || (Array.isArray(sourceItem?.children) && sourceItem.children.length > 0)
+          ? "assembly"
+          : sourceItem?.row_kind || "part"
       setEditingBomItem(item)
       setReuseBomSource(reuseFrom)
       bomItemForm.resetFields()
       bomItemForm.setFieldsValue({
         link_classifier: usesExistingCatalogPosition,
-        row_kind: sourceItem?.row_kind || "assembly",
+        row_kind: sourceRowKind,
         parent_item_id: item ? item.parent_item_id || null : parent?.id || null,
         item_no: reuseFrom ? "" : item?.item_no || "",
         manufacturer_part_number: sourceItem?.manufacturer_part_number || sourceItem?.part_number || "",
@@ -3056,6 +3055,18 @@ export default function EquipmentClassifierMain() {
         quantity: sourceItem?.quantity || 1,
         sort_order: item?.sort_order || 0,
         notes: reuseFrom ? "" : item?.notes || "",
+        card_weight_kg: getBomRowWeight(sourceItem),
+        card_length_mm: sourceDimensions.length_mm,
+        card_width_mm: sourceDimensions.width_mm,
+        card_height_mm: sourceDimensions.height_mm,
+        card_tnved: sourceTnvedId
+          ? {
+              id: sourceTnvedId,
+              code: sourceMeta.tnved_code || sourceItem?.catalog_position_tnved_code,
+              description: sourceMeta.tnved_description,
+            }
+          : undefined,
+        card_description: sourceItem?.catalog_position_description || sourceItem?.description || "",
       })
       const seed =
         sourceItem?.manufacturer_part_number ||
@@ -3137,13 +3148,15 @@ export default function EquipmentClassifierMain() {
       const keepOwnCatalogPosition = Boolean(editingBomItem?.id && !linkClassifier && isBomOwnCatalogPosition(editingBomItem))
       const manufacturerPartName =
         values.manufacturer_part_name_en || values.manufacturer_part_name_ru || values.manufacturer_part_name
+      const hasChildren = Boolean(
+        editingBomItem?.bom_has_children || (Array.isArray(editingBomItem?.children) && editingBomItem.children.length > 0),
+      )
+      const inferredRowKind = reuseBomSource ? values.row_kind || "part" : hasChildren ? "assembly" : "part"
       const payload = {
-        row_kind: values.row_kind || "assembly",
+        row_kind: inferredRowKind,
         item_type: linkClassifier || keepOwnCatalogPosition
           ? "catalog_position"
-          : values.row_kind === "part"
-            ? "unlinked"
-            : "group",
+          : "unlinked",
         parent_item_id: values.parent_item_id || null,
         item_no: values.item_no || null,
         manufacturer_part_number: values.manufacturer_part_number || null,
@@ -3161,6 +3174,17 @@ export default function EquipmentClassifierMain() {
         sort_order: values.sort_order ?? editingBomItem?.sort_order ?? 0,
         notes: values.notes || null,
         confirm_duplicate_part_number: confirmDuplicatePartNumber,
+      }
+      if (!linkClassifier) {
+        const cardFields = {
+          card_weight_kg: values.card_weight_kg ?? null,
+          card_length_mm: values.card_length_mm ?? null,
+          card_width_mm: values.card_width_mm ?? null,
+          card_height_mm: values.card_height_mm ?? null,
+        }
+        if (values.card_tnved?.id) cardFields.card_tnved_code_id = values.card_tnved.id
+        if (values.card_description) cardFields.card_description = values.card_description
+        Object.assign(payload, cardFields)
       }
       const { data } = editingBomItem?.id
         ? await axios.put(`/equipment-models/${currentModel.id}/bom/items/${editingBomItem.id}`, payload)
@@ -7350,7 +7374,7 @@ export default function EquipmentClassifierMain() {
         <Form
           form={bomItemForm}
           layout="vertical"
-          initialValues={{ link_classifier: false, row_kind: "assembly", quantity: 1 }}
+          initialValues={{ link_classifier: false, row_kind: "part", quantity: 1 }}
         >
           {reuseBomSource ? (
             <>
@@ -7430,6 +7454,10 @@ export default function EquipmentClassifierMain() {
             </>
           ) : (
             <>
+              <Form.Item name="row_kind" hidden>
+                <Input />
+              </Form.Item>
+
               <Row gutter={12}>
                 <Col span={16}>
                   <Form.Item
@@ -7479,30 +7507,6 @@ export default function EquipmentClassifierMain() {
               </Row>
 
               <Form.Item
-                label="Что это за строка"
-                name="row_kind"
-                rules={[{ required: true, message: "Выберите тип строки" }]}
-                extra={BOM_ROW_KIND_HELP[bomRowKind || "assembly"]}
-              >
-                <Select
-                  options={BOM_ROW_KIND_OPTIONS.map((item) => ({
-                    value: item.value,
-                    label: item.label,
-                    description: item.description,
-                    example: item.example,
-                  }))}
-                  optionRender={(option) => (
-                    <Space direction="vertical" size={0}>
-                      <Typography.Text strong>{option.data.label}</Typography.Text>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {option.data.description} Например: {option.data.example}.
-                      </Typography.Text>
-                    </Space>
-                  )}
-                />
-              </Form.Item>
-
-              <Form.Item
                 label="Куда добавить в дереве BOM"
                 name="parent_item_id"
                 extra="Оставьте пустым, если строка должна быть на верхнем уровне модели."
@@ -7518,6 +7522,48 @@ export default function EquipmentClassifierMain() {
                     }))}
                 />
               </Form.Item>
+
+              {!bomLinkClassifier ? (
+                <Card size="small" title="Карточка позиции" style={{ marginBottom: 12 }}>
+                  <Row gutter={12}>
+                    <Col span={8}>
+                      <Form.Item label="Масса, кг" name="card_weight_kg">
+                        <InputNumber min={0} precision={3} style={{ width: "100%" }} placeholder="например 1250" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={16}>
+                      <Form.Item label={`Габариты, ${dimensionUnitSymbol}`}>
+                        <Space.Compact style={{ width: "100%" }}>
+                          <Form.Item name="card_length_mm" noStyle>
+                            <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Длина" />
+                          </Form.Item>
+                          <Form.Item name="card_width_mm" noStyle>
+                            <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Ширина" />
+                          </Form.Item>
+                          <Form.Item name="card_height_mm" noStyle>
+                            <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Высота" />
+                          </Form.Item>
+                        </Space.Compact>
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  <Row gutter={12}>
+                    <Col span={10}>
+                      <Form.Item label="Единица измерения">
+                        <Input value="шт" disabled />
+                      </Form.Item>
+                    </Col>
+                    <Col span={14}>
+                      <Form.Item label="Код ТН ВЭД" name="card_tnved">
+                        <TnvedPicker placeholder="Искать по названию детали, материалу или описанию" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  <Form.Item label="Описание" name="card_description">
+                    <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} placeholder="Краткое описание позиции для карточки и поиска" />
+                  </Form.Item>
+                </Card>
+              ) : null}
 
               <Card size="small" title="Связь с существующей карточкой" style={{ marginBottom: 12 }}>
                 <Form.Item
