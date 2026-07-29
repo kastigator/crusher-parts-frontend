@@ -31,12 +31,12 @@ import {
   message,
 } from "antd"
 import {
-  CopyOutlined,
   DeleteOutlined,
   EditOutlined,
   InboxOutlined,
   LockOutlined,
   MoreOutlined,
+  PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
   StarFilled,
@@ -581,7 +581,6 @@ const buildBomTreeData = (rows, actions = {}) =>
     const extraFields = getBomRowExtraFields(row, actions.visibleFields, actions.dimensionUnitSymbol)
     const menuItems = [
       { key: "edit", label: "Изменить строку", icon: <EditOutlined /> },
-      { key: "reuse", label: "Добавить применение", icon: <CopyOutlined /> },
       { type: "divider" },
       { key: "delete", label: "Удалить", danger: true, icon: <DeleteOutlined /> },
     ]
@@ -662,7 +661,6 @@ const buildBomTreeData = (rows, actions = {}) =>
                 onClick: ({ key, domEvent }) => {
                   domEvent.stopPropagation()
                   if (key === "edit") actions.onEdit?.(row)
-                  if (key === "reuse") actions.onReuse?.(row)
                   if (key === "delete") actions.onDelete?.(row)
                 },
               }}
@@ -753,7 +751,6 @@ export default function EquipmentClassifierMain() {
   const [bomItemModalOpen, setBomItemModalOpen] = useState(false)
   const [bomItemSaving, setBomItemSaving] = useState(false)
   const [editingBomItem, setEditingBomItem] = useState(null)
-  const [reuseBomSource, setReuseBomSource] = useState(null)
   const [crossModelBomSource, setCrossModelBomSource] = useState(null)
   const [crossModelBomRows, setCrossModelBomRows] = useState([])
   const [crossModelBomLoading, setCrossModelBomLoading] = useState(false)
@@ -2710,6 +2707,9 @@ export default function EquipmentClassifierMain() {
     if (!bomCardPosition?.id) return bomCardAnalogPositions
     return bomCardAnalogPositions.filter((row) => Number(row.id) !== Number(bomCardPosition.id))
   }, [bomCardAnalogPositions, bomCardPosition?.id])
+  const addingBomApplication =
+    Boolean(crossModelBomSource?.catalog_position_id && selectedBomItem?.catalog_position_id) &&
+    Number(crossModelBomSource.catalog_position_id) === Number(selectedBomItem.catalog_position_id)
   const bomWarehouseStock = useMemo(
     () => (Array.isArray(bomWarehouseDetails?.stock) ? bomWarehouseDetails.stock : []),
     [bomWarehouseDetails],
@@ -3039,12 +3039,11 @@ export default function EquipmentClassifierMain() {
   }
 
   const openBomItemModal = useCallback(
-    (item = null, parent = null, options = {}) => {
+    (item = null, parent = null) => {
       if (!currentModel?.id) return
-      const reuseFrom = options?.reuseFrom || null
-      const sourceItem = reuseFrom || item
+      const sourceItem = item
       const usesExistingCatalogPosition = Boolean(
-        sourceItem?.catalog_position_id && (reuseFrom || !isBomOwnCatalogPosition(sourceItem)),
+        sourceItem?.catalog_position_id && !isBomOwnCatalogPosition(sourceItem),
       )
       const sourceDimensions = getBomRowDimensions(sourceItem)
       const sourceMeta = getBomRowCardMeta(sourceItem)
@@ -3054,13 +3053,12 @@ export default function EquipmentClassifierMain() {
           ? "assembly"
           : sourceItem?.row_kind || "part"
       setEditingBomItem(item)
-      setReuseBomSource(reuseFrom)
       bomItemForm.resetFields()
       bomItemForm.setFieldsValue({
         link_classifier: usesExistingCatalogPosition,
         row_kind: sourceRowKind,
         parent_item_id: item ? item.parent_item_id || null : parent?.id || null,
-        item_no: reuseFrom ? "" : item?.item_no || "",
+        item_no: item?.item_no || "",
         manufacturer_part_number: sourceItem?.manufacturer_part_number || sourceItem?.part_number || "",
         manufacturer_part_name_en:
           sourceItem?.manufacturer_part_name_en ||
@@ -3079,7 +3077,7 @@ export default function EquipmentClassifierMain() {
         catalog_position_id: usesExistingCatalogPosition ? sourceItem?.catalog_position_id || null : null,
         quantity: sourceItem?.quantity || 1,
         sort_order: item?.sort_order || 0,
-        notes: reuseFrom ? "" : item?.notes || "",
+        notes: item?.notes || "",
         card_weight_kg: getBomRowWeight(sourceItem),
         card_length_mm: sourceDimensions.length_mm,
         card_width_mm: sourceDimensions.width_mm,
@@ -3150,14 +3148,15 @@ export default function EquipmentClassifierMain() {
       if (Number(targetModelId) === Number(currentModel?.id)) {
         await loadModelBom(currentModel.id)
       }
+      await reloadBomPositionDetails()
       setCrossModelBomSource(null)
       setCrossModelBomRows([])
       bomCrossModelForm.resetFields()
-      message.success("Применение позиции добавлено")
+      message.success("Место применения добавлено")
     } catch (err) {
       if (err?.errorFields) return
       console.error("ADD BOM item to another model error:", err)
-      message.error(err?.response?.data?.message || "Не удалось добавить применение позиции")
+      message.error(err?.response?.data?.message || "Не удалось добавить место применения")
     } finally {
       setCrossModelBomSaving(false)
     }
@@ -3179,7 +3178,7 @@ export default function EquipmentClassifierMain() {
       const hasChildren = Boolean(
         editingBomItem?.bom_has_children || (Array.isArray(editingBomItem?.children) && editingBomItem.children.length > 0),
       )
-      const inferredRowKind = reuseBomSource ? values.row_kind || "part" : hasChildren ? "assembly" : "part"
+      const inferredRowKind = hasChildren ? "assembly" : "part"
       const payload = {
         row_kind: inferredRowKind,
         item_type: linkClassifier || keepOwnCatalogPosition
@@ -3221,7 +3220,6 @@ export default function EquipmentClassifierMain() {
       setModelBomItems(Array.isArray(data?.items) ? data.items : [])
       setBomItemModalOpen(false)
       setEditingBomItem(null)
-      setReuseBomSource(null)
       message.success(editingBomItem?.id ? "Строка BOM изменена" : "Строка BOM добавлена")
     } catch (err) {
       if (err?.errorFields) return
@@ -3437,12 +3435,11 @@ export default function EquipmentClassifierMain() {
           setBomItemCardOpen(true)
         },
         onEdit: (row) => openBomItemModal(row),
-        onReuse: (row) => openCrossModelBomModal(row),
         onDelete: (row) => handleDeleteBomItem(row),
         visibleFields: bomVisibleFields,
         dimensionUnitSymbol,
       }),
-    [filteredModelBomTree, openBomItemModal, openCrossModelBomModal, handleDeleteBomItem, bomVisibleFields, dimensionUnitSymbol],
+    [filteredModelBomTree, openBomItemModal, handleDeleteBomItem, bomVisibleFields, dimensionUnitSymbol],
   )
 
   const bomImportColumns = useMemo(
@@ -6649,56 +6646,132 @@ export default function EquipmentClassifierMain() {
                 key: "usage",
                 label: "Применяемость",
                 children: (
-                  <Card size="small" loading={bomPositionDetailsLoading}>
-                    {bomCardUsage.length ? (
-                      <Table
+                  <Card
+                    size="small"
+                    title="Места применения"
+                    loading={bomPositionDetailsLoading}
+                    extra={
+                      <Button
                         size="small"
-                        rowKey="bom_item_id"
-                        pagination={false}
-                        dataSource={bomCardUsage}
-                        columns={[
-                          {
-                            title: "Модель",
-                            render: (_, row) => (
-                              <Typography.Link onClick={() => openUsageModel(row)}>
-                                {[row.manufacturer_name, row.model_name].filter(Boolean).join(" ") || "—"}
-                              </Typography.Link>
-                            ),
-                          },
-                          {
-                            title: "Где в BOM",
-                            render: (_, row) => (
-                              <Space direction="vertical" size={0}>
-                                <Typography.Link strong onClick={() => openBomUsageItem(row)}>
-                                  {[row.item_no, row.manufacturer_part_number || row.title]
-                                    .filter(Boolean)
-                                    .join(" / ") || `Строка #${row.bom_item_id}`}
+                        icon={<PlusOutlined />}
+                        disabled={!selectedBomItem?.catalog_position_id}
+                        onClick={() => {
+                          if (addingBomApplication) {
+                            setCrossModelBomSource(null)
+                            setCrossModelBomRows([])
+                            bomCrossModelForm.resetFields()
+                          } else {
+                            openCrossModelBomModal(selectedBomItem)
+                          }
+                        }}
+                      >
+                        {addingBomApplication ? "Скрыть" : "Добавить место"}
+                      </Button>
+                    }
+                  >
+                    <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                      {addingBomApplication ? (
+                        <Form form={bomCrossModelForm} layout="vertical" initialValues={{ quantity: 1 }}>
+                          <Row gutter={12}>
+                            <Col span={10}>
+                              <Form.Item
+                                label="Модель"
+                                name="target_model_id"
+                                rules={[{ required: true, message: "Выберите модель" }]}
+                              >
+                                <Select
+                                  showSearch
+                                  placeholder="Выберите модель"
+                                  optionFilterProp="label"
+                                  options={crossModelOptions}
+                                  notFoundContent="У этого производителя нет других моделей"
+                                  onChange={() => {
+                                    bomCrossModelForm.setFieldsValue({ parent_item_id: null })
+                                  }}
+                                />
+                              </Form.Item>
+                            </Col>
+                            <Col span={10}>
+                              <Form.Item label="Место в BOM" name="parent_item_id">
+                                <Select
+                                  allowClear
+                                  loading={crossModelBomLoading}
+                                  disabled={!bomCrossModelTargetId}
+                                  placeholder={bomCrossModelTargetId ? "Корень модели" : "Сначала выберите модель"}
+                                  options={crossModelBomParentOptions}
+                                  notFoundContent={crossModelBomLoading ? "Загружаем BOM..." : "В этой модели пока нет узлов"}
+                                />
+                              </Form.Item>
+                            </Col>
+                            <Col span={4}>
+                              <Form.Item label="Количество" name="quantity" rules={[{ required: true }]}>
+                                <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
+                              </Form.Item>
+                            </Col>
+                          </Row>
+
+                          <Form.Item label="Комментарий" name="notes">
+                            <Input.TextArea autoSize={{ minRows: 2, maxRows: 3 }} />
+                          </Form.Item>
+
+                          <Space style={{ width: "100%", justifyContent: "flex-end" }}>
+                            <Button
+                              onClick={() => {
+                                setCrossModelBomSource(null)
+                                setCrossModelBomRows([])
+                                bomCrossModelForm.resetFields()
+                              }}
+                            >
+                              Отмена
+                            </Button>
+                            <Button type="primary" loading={crossModelBomSaving} onClick={handleAddBomItemToAnotherModel}>
+                              Добавить
+                            </Button>
+                          </Space>
+                        </Form>
+                      ) : null}
+
+                      {bomCardUsage.length ? (
+                        <Table
+                          size="small"
+                          rowKey="bom_item_id"
+                          pagination={bomCardUsage.length > 8 ? { pageSize: 8, showSizeChanger: false } : false}
+                          dataSource={bomCardUsage}
+                          columns={[
+                            {
+                              title: "Модель",
+                              render: (_, row) => (
+                                <Typography.Link onClick={() => openUsageModel(row)}>
+                                  {[row.manufacturer_name, row.model_name].filter(Boolean).join(" ") || "—"}
                                 </Typography.Link>
-                                <Typography.Text type="secondary">
-                                  {row.parent_item_id
-                                    ? [row.parent_manufacturer_part_number, row.parent_manufacturer_part_name || row.parent_title]
-                                        .filter(Boolean)
-                                        .join(" · ") || "В узле"
-                                    : "В корне модели"}
-                                </Typography.Text>
-                              </Space>
-                            ),
-                          },
-                          { title: "Количество", render: (_, row) => formatBomQuantity(row) },
-                        ]}
-                      />
-                    ) : (
-                      <Descriptions size="small" bordered column={1}>
-                        <Descriptions.Item label="Текущая модель">
-                          {[currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "—"}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Текущее место в BOM">
-                          {selectedBomParent
-                            ? `${getBomItemLabel(selectedBomParent)} — ${getBomItemName(selectedBomParent) || "узел"}`
-                            : "Корень модели"}
-                        </Descriptions.Item>
-                      </Descriptions>
-                    )}
+                              ),
+                            },
+                            {
+                              title: "Где в BOM",
+                              render: (_, row) => (
+                                <Space direction="vertical" size={0}>
+                                  <Typography.Link strong onClick={() => openBomUsageItem(row)}>
+                                    {[row.item_no, row.manufacturer_part_number || row.title]
+                                      .filter(Boolean)
+                                      .join(" / ") || `Строка #${row.bom_item_id}`}
+                                  </Typography.Link>
+                                  <Typography.Text type="secondary">
+                                    {row.parent_item_id
+                                      ? [row.parent_manufacturer_part_number, row.parent_manufacturer_part_name || row.parent_title]
+                                          .filter(Boolean)
+                                          .join(" · ") || "В узле"
+                                      : "В корне модели"}
+                                  </Typography.Text>
+                                </Space>
+                              ),
+                            },
+                            { title: "Количество", width: 120, render: (_, row) => formatBomQuantity(row) },
+                          ]}
+                        />
+                      ) : (
+                        <Empty description="Мест применения пока нет" />
+                      )}
+                    </Space>
                   </Card>
                 ),
               },
@@ -7253,95 +7326,8 @@ export default function EquipmentClassifierMain() {
       </Modal>
 
       <Modal
-        open={Boolean(crossModelBomSource)}
-        title="Добавить применение позиции"
-        width={720}
-        okText="Добавить"
-        cancelText="Отмена"
-        confirmLoading={crossModelBomSaving}
-        onOk={handleAddBomItemToAnotherModel}
-        onCancel={() => {
-          setCrossModelBomSource(null)
-          setCrossModelBomRows([])
-          bomCrossModelForm.resetFields()
-        }}
-        destroyOnHidden
-      >
-        <Form form={bomCrossModelForm} layout="vertical" initialValues={{ quantity: 1 }}>
-          {crossModelBomSource ? (
-            <Card size="small" style={{ marginBottom: 12 }}>
-              <Space direction="vertical" size={2}>
-                <Typography.Text type="secondary">Добавляем эту же позицию в BOM</Typography.Text>
-                <Space size={8} wrap>
-                  <Typography.Text strong>
-                    {crossModelBomSource.manufacturer_part_number ||
-                      crossModelBomSource.part_number ||
-                      getBomItemLabel(crossModelBomSource)}
-                  </Typography.Text>
-                  <Typography.Text>
-                    {getBomItemName(crossModelBomSource) || crossModelBomSource.catalog_position_name || "—"}
-                  </Typography.Text>
-                  <Tag>{getBomItemTypeLabel(crossModelBomSource)}</Tag>
-                </Space>
-              </Space>
-            </Card>
-          ) : null}
-
-          <Form.Item
-            label="В какую модель добавить"
-            name="target_model_id"
-            extra={
-              currentModel?.manufacturer_name
-                ? `Показываем только модели производителя ${currentModel.manufacturer_name}.`
-                : "Показываем модели того же производителя, что и у текущей модели."
-            }
-            rules={[{ required: true, message: "Выберите модель" }]}
-          >
-            <Select
-              showSearch
-              placeholder="Выберите модель"
-              optionFilterProp="label"
-              options={crossModelOptions}
-              notFoundContent="У этого производителя нет других моделей"
-              onChange={() => {
-                bomCrossModelForm.setFieldsValue({ parent_item_id: null })
-              }}
-            />
-          </Form.Item>
-
-          <Row gutter={12}>
-            <Col span={16}>
-              <Form.Item
-                label="Куда добавить в BOM выбранной модели"
-                name="parent_item_id"
-                extra="Оставьте пустым, если позиция должна быть на верхнем уровне модели."
-              >
-                <Select
-                  allowClear
-                  loading={crossModelBomLoading}
-                  disabled={!bomCrossModelTargetId}
-                  placeholder={bomCrossModelTargetId ? "В корень модели" : "Сначала выберите модель"}
-                  options={crossModelBomParentOptions}
-                  notFoundContent={crossModelBomLoading ? "Загружаем BOM..." : "В этой модели пока нет узлов"}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Количество" name="quantity" rules={[{ required: true }]}>
-                <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item label="Заметки" name="notes">
-            <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <Modal
         open={bomItemModalOpen}
-        title={reuseBomSource ? "Добавить применение позиции" : editingBomItem ? "Строка BOM" : "Новая строка BOM"}
+        title={editingBomItem ? "Строка BOM" : "Новая строка BOM"}
         width={820}
         okText="Сохранить"
         cancelText="Отмена"
@@ -7350,7 +7336,6 @@ export default function EquipmentClassifierMain() {
         onCancel={() => {
           setBomItemModalOpen(false)
           setEditingBomItem(null)
-          setReuseBomSource(null)
         }}
         destroyOnHidden
       >
@@ -7359,84 +7344,7 @@ export default function EquipmentClassifierMain() {
           layout="vertical"
           initialValues={{ link_classifier: false, row_kind: "part", quantity: 1 }}
         >
-          {reuseBomSource ? (
-            <>
-              <Form.Item name="link_classifier" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="catalog_position_id" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="row_kind" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="item_no" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="manufacturer_part_number" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="manufacturer_part_name_en" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="manufacturer_part_name_ru" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="manufacturer_part_name" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="drawing_number" hidden>
-                <Input />
-              </Form.Item>
-              <Card size="small" style={{ marginBottom: 12 }}>
-                <Space direction="vertical" size={2}>
-                  <Typography.Text type="secondary">Позиция</Typography.Text>
-                  <Space size={8} wrap>
-                    <Typography.Text strong>
-                      {reuseBomSource.manufacturer_part_number || reuseBomSource.part_number || getBomItemLabel(reuseBomSource)}
-                    </Typography.Text>
-                    <Typography.Text>{getBomItemName(reuseBomSource) || getBomItemLabel(reuseBomSource)}</Typography.Text>
-                    <Tag>{BOM_ROW_KIND_LABELS[reuseBomSource.row_kind] || "Строка BOM"}</Tag>
-                  </Space>
-                </Space>
-              </Card>
-
-              <Row gutter={12}>
-                <Col span={16}>
-                  <Form.Item
-                    label="Куда добавить"
-                    name="parent_item_id"
-                    rules={[{ required: true, message: "Выберите сборку, куда добавить позицию" }]}
-                  >
-                    <Select
-                      placeholder="Выберите сборку"
-                      options={currentModelBomRows
-                        .filter((row) => {
-                          if (Number(row.id) === Number(reuseBomSource.id)) return false
-                          if (
-                            reuseBomSource.catalog_position_id &&
-                            Number(row.catalog_position_id) === Number(reuseBomSource.catalog_position_id)
-                          ) {
-                            return false
-                          }
-                          return row.bom_has_children || getBomEffectiveRowKind(row) === "assembly"
-                        })
-                        .map((row) => ({
-                          value: row.id,
-                          label: `${"— ".repeat(row.bom_level || 0)}${row.item_no ? `${row.item_no}. ` : ""}${getBomItemLabel(row)}${getBomItemName(row) ? ` — ${getBomItemName(row)}` : ""}`,
-                        }))}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={8}>
-                  <Form.Item label="Количество" name="quantity" rules={[{ required: true }]}>
-                    <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </>
-          ) : (
-            <>
+          <>
               <Form.Item name="row_kind" hidden>
                 <Input />
               </Form.Item>
@@ -7654,7 +7562,6 @@ export default function EquipmentClassifierMain() {
               ) : null}
 
             </>
-          )}
 
           <Form.Item label="Комментарий к строке BOM" name="notes">
             <Input.TextArea rows={3} />
