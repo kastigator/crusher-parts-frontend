@@ -339,13 +339,6 @@ const getBomItemTypeLabel = (row) => {
   return BOM_ROW_KIND_LABELS[getBomEffectiveRowKind(row)] || "Строка каталога"
 }
 
-const getBomLinkStatusLabel = (row) => {
-  if (isBomOwnCatalogPosition(row)) return "Отдельная позиция этой модели"
-  if (row?.catalog_position_id) return "Связана с карточкой позиции"
-  if (row?.client_part_id || row?.bom_client_part_id) return "Деталь по чертежу клиента"
-  return "Отдельная позиция этой модели"
-}
-
 const formatBomQuantity = (row) => {
   const rawQuantity = Number(row?.quantity ?? 0)
   const quantity = Number.isFinite(rawQuantity) ? rawQuantity : 0
@@ -353,14 +346,6 @@ const formatBomQuantity = (row) => {
 }
 
 const getBomManufacturerNumber = (row) => row?.manufacturer_part_number || row?.part_number || row?.catalog_position_code || "—"
-
-const getBomTitleEn = (row) =>
-  row?.manufacturer_part_name_en ||
-  row?.manufacturer_part_name ||
-  row?.description_en ||
-  row?.catalog_position_name ||
-  row?.title ||
-  "—"
 
 const getBomTitleRu = (row) => row?.manufacturer_part_name_ru || row?.description_ru || "—"
 
@@ -6389,11 +6374,9 @@ export default function EquipmentClassifierMain() {
                 label: "Основное",
                 children: (
                   <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                    <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "132px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
                       <div
                         style={{
-                          width: 148,
-                          minWidth: 148,
                           border: "1px solid #f0f0f0",
                           borderRadius: 6,
                           background: "#fafafa",
@@ -6405,13 +6388,13 @@ export default function EquipmentClassifierMain() {
                             src={bomPrimaryPhoto.file_url}
                             alt={bomPrimaryPhoto.caption || getBomItemName(selectedBomItem) || "Фото позиции"}
                             width="100%"
-                            height={120}
+                            height={104}
                             style={{ objectFit: "cover", borderRadius: 4 }}
                           />
                         ) : (
                           <div
                             style={{
-                              height: 120,
+                              height: 104,
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -6433,66 +6416,49 @@ export default function EquipmentClassifierMain() {
                           </Button>
                         </Upload>
                       </div>
-                      <Space direction="vertical" size={8} style={{ flex: 1 }}>
-                        <Space size={6} wrap>
-                          <Tag>{getBomItemTypeLabel(selectedBomItem)}</Tag>
-                          <Tag>{getBomLinkStatusLabel(selectedBomItem)}</Tag>
-                          {selectedBomChildren.length ? <Tag>{selectedBomChildren.length} внутри</Tag> : null}
-                        </Space>
-                        <div>
-                          <Typography.Text type="secondary">Каталожный номер производителя</Typography.Text>
-                          <Typography.Title level={4} style={{ margin: "2px 0 0" }}>
-                            {getBomManufacturerNumber(selectedBomItem)}
-                          </Typography.Title>
-                        </div>
-                        <Typography.Text strong>{getBomItemName(selectedBomItem) || "Название не заполнено"}</Typography.Text>
-                        {selectedBomItem.notes ? (
-                          <Typography.Paragraph style={{ marginBottom: 0 }}>{selectedBomItem.notes}</Typography.Paragraph>
+                      <Descriptions size="small" bordered column={1}>
+                        <Descriptions.Item label="Производитель">
+                          {selectedBomItem.manufacturer_name || currentModel?.manufacturer_name || "—"}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Модель">
+                          {[currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "—"}
+                        </Descriptions.Item>
+                        {getBomTitleRu(selectedBomItem) !== "—" ? (
+                          <Descriptions.Item label="Название RU">{getBomTitleRu(selectedBomItem)}</Descriptions.Item>
                         ) : null}
-                      </Space>
-                    </div>
-
-                    <Descriptions size="small" bordered column={1}>
-                      <Descriptions.Item label="Производитель">
-                        {selectedBomItem.manufacturer_name || currentModel?.manufacturer_name || "—"}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Модель">
-                        {[currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "—"}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Название EN">{getBomTitleEn(selectedBomItem)}</Descriptions.Item>
-                      <Descriptions.Item label="Название RU">{getBomTitleRu(selectedBomItem)}</Descriptions.Item>
-                      <Descriptions.Item label="Количество в этом месте">
-                        {formatBomQuantity(selectedBomItem)}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Где находится">
-                        {selectedBomParent
-                          ? `${getBomItemLabel(selectedBomParent)} — ${getBomItemName(selectedBomParent) || "узел"}`
-                          : "В корне BOM модели"}
-                      </Descriptions.Item>
-                      <Descriptions.Item label={bomCardPrimaryPositions[0] ? "Аналог к" : "Связь с карточкой"}>
+                        <Descriptions.Item label="Количество в BOM">
+                          {formatBomQuantity(selectedBomItem)}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Где находится">
+                          {selectedBomParent
+                            ? `${getBomItemLabel(selectedBomParent)} — ${getBomItemName(selectedBomParent) || "узел"}`
+                            : "В корне BOM модели"}
+                        </Descriptions.Item>
                         {bomCardPrimaryPositions[0] ? (
-                          <Typography.Link onClick={() => openBomRelatedCatalogPosition(bomCardPrimaryPositions[0])}>
-                            {[
-                              bomCardPrimaryPositions[0].manufacturer_part_number || bomCardPrimaryPositions[0].position_code,
-                              bomCardPrimaryPositions[0].display_name,
-                            ]
-                              .filter(Boolean)
-                              .join(" — ") || "Открыть основную карточку"}
-                          </Typography.Link>
+                          <Descriptions.Item label="Аналог к">
+                            <Typography.Link onClick={() => openBomRelatedCatalogPosition(bomCardPrimaryPositions[0])}>
+                              {[
+                                bomCardPrimaryPositions[0].manufacturer_part_number || bomCardPrimaryPositions[0].position_code,
+                                bomCardPrimaryPositions[0].display_name,
+                              ]
+                                .filter(Boolean)
+                                .join(" — ") || "Открыть основную карточку"}
+                            </Typography.Link>
+                          </Descriptions.Item>
                         ) : selectedBomItem.catalog_position_id && !isBomOwnCatalogPosition(selectedBomItem) ? (
-                          <Typography.Link onClick={() => openBomItemCatalogPosition(selectedBomItem)}>
-                            {[
-                              bomCardPosition?.manufacturer_part_number || selectedBomItem.catalog_position_code,
-                              bomCardPosition?.display_name || selectedBomItem.catalog_position_name,
-                            ]
-                              .filter(Boolean)
-                              .join(" — ") || "Открыть карточку"}
-                          </Typography.Link>
-                        ) : (
-                          "Не связана"
-                        )}
-                      </Descriptions.Item>
-                    </Descriptions>
+                          <Descriptions.Item label="Связь с карточкой">
+                            <Typography.Link onClick={() => openBomItemCatalogPosition(selectedBomItem)}>
+                              {[
+                                bomCardPosition?.manufacturer_part_number || selectedBomItem.catalog_position_code,
+                                bomCardPosition?.display_name || selectedBomItem.catalog_position_name,
+                              ]
+                                .filter(Boolean)
+                                .join(" — ") || "Открыть карточку"}
+                            </Typography.Link>
+                          </Descriptions.Item>
+                        ) : null}
+                      </Descriptions>
+                    </div>
 
                     <Form form={bomCardForm} layout="vertical">
                       <Space direction="vertical" size={16} style={{ width: "100%" }}>
@@ -6529,7 +6495,7 @@ export default function EquipmentClassifierMain() {
                             </Col>
                           </Row>
                           <Row gutter={12}>
-                            <Col span={10}>
+                            <Col span={6}>
                               <Form.Item label="Единица измерения">
                                 <Input
                                   value={selectedBomItem.uom || selectedBomItem.catalog_position_uom || bomPositionDetails?.position?.uom || "шт"}
@@ -6537,11 +6503,12 @@ export default function EquipmentClassifierMain() {
                                 />
                               </Form.Item>
                             </Col>
-                            <Col span={14}>
+                            <Col span={18}>
                               <Form.Item label="Код ТН ВЭД" name="tnved">
                                 <TnvedPicker
                                   placeholder="Искать по названию детали, материалу или описанию"
                                   catalogPositionId={selectedBomItem?.catalog_position_id}
+                                  showSuggestions={false}
                                 />
                               </Form.Item>
                             </Col>

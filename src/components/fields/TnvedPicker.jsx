@@ -30,6 +30,7 @@ export default function TnvedPicker({
   autoFocus = false,
   style,
   catalogPositionId = null,
+  showSuggestions = true,
   showReferenceButton = false,
 }) {
   // ---- базовый инлайн-поиск
@@ -70,7 +71,7 @@ export default function TnvedPicker({
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      if (!catalogPositionId) {
+      if (!showSuggestions || !catalogPositionId) {
         setSuggestions([]);
         setSuggestionTokens([]);
         return;
@@ -95,7 +96,7 @@ export default function TnvedPicker({
     return () => {
       alive = false;
     };
-  }, [catalogPositionId]);
+  }, [catalogPositionId, showSuggestions]);
 
   // опции для Select (две группы: Недавние + Результаты)
   const recentOptions = recents.map((r) => ({
@@ -248,7 +249,7 @@ export default function TnvedPicker({
           ) : null}
         </Space.Compact>
 
-        {catalogPositionId ? (
+        {showSuggestions && catalogPositionId ? (
           <div
             style={{
               border: "1px solid #f0f0f0",
