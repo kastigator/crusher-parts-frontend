@@ -1064,14 +1064,13 @@ export default function EquipmentClassifierMain() {
     }
   }, [])
 
-  const loadCatalogPositions = useCallback(async (query = "", modelId = null) => {
+  const loadCatalogPositions = useCallback(async (query = "") => {
     setCatalogPositionsLoading(true)
     try {
       const { data } = await axios.get("/catalog-positions", {
         params: {
           q: query || undefined,
           limit: 100,
-          model_bom_model_id: modelId || undefined,
         },
       })
       setCatalogPositionOptions(Array.isArray(data) ? data : [])
@@ -2667,6 +2666,14 @@ export default function EquipmentClassifierMain() {
     () => (Array.isArray(bomPositionDetails?.usage) ? bomPositionDetails.usage : []),
     [bomPositionDetails],
   )
+  const bomCardAnalogPositions = useMemo(
+    () => (Array.isArray(bomPositionDetails?.analog_positions) ? bomPositionDetails.analog_positions : []),
+    [bomPositionDetails],
+  )
+  const bomCardPrimaryPositions = useMemo(
+    () => (Array.isArray(bomPositionDetails?.primary_positions) ? bomPositionDetails.primary_positions : []),
+    [bomPositionDetails],
+  )
   const bomWarehouseStock = useMemo(
     () => (Array.isArray(bomWarehouseDetails?.stock) ? bomWarehouseDetails.stock : []),
     [bomWarehouseDetails],
@@ -3038,7 +3045,7 @@ export default function EquipmentClassifierMain() {
         sourceItem?.manufacturer_part_name ||
         sourceItem?.catalog_position_name ||
         ""
-      if (usesExistingCatalogPosition || !catalogPositionOptions.length) loadCatalogPositions(seed, currentModel.id)
+      if (usesExistingCatalogPosition || !catalogPositionOptions.length) loadCatalogPositions(seed)
       setBomItemModalOpen(true)
     },
     [bomItemForm, catalogPositionOptions.length, currentModel?.id, loadCatalogPositions],
@@ -6375,6 +6382,67 @@ export default function EquipmentClassifierMain() {
                           </Form.Item>
                         </Card>
 
+                        {bomCardPrimaryPositions.length || bomCardAnalogPositions.length ? (
+                          <Card size="small" title="Основная карточка и аналоги" loading={bomPositionDetailsLoading}>
+                            <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                              {bomCardPrimaryPositions.length ? (
+                                <div>
+                                  <Typography.Text type="secondary">Основная карточка для этой позиции</Typography.Text>
+                                  <Table
+                                    size="small"
+                                    rowKey="relation_id"
+                                    pagination={false}
+                                    dataSource={bomCardPrimaryPositions}
+                                    columns={[
+                                      {
+                                        title: "Карточка",
+                                        render: (_, row) => (
+                                          <Space direction="vertical" size={0}>
+                                            <Typography.Text strong>
+                                              {[row.manufacturer_part_number || row.position_code, row.display_name].filter(Boolean).join(" — ") || "—"}
+                                            </Typography.Text>
+                                            <Typography.Text type="secondary">
+                                              {[row.manufacturer_name, row.model_name].filter(Boolean).join(" / ") || "Общий каталог"}
+                                            </Typography.Text>
+                                          </Space>
+                                        ),
+                                      },
+                                      { title: "Роль", width: 110, render: () => <Tag color="blue">Основная</Tag> },
+                                    ]}
+                                  />
+                                </div>
+                              ) : null}
+                              {bomCardAnalogPositions.length ? (
+                                <div>
+                                  <Typography.Text type="secondary">Аналоги этой карточки</Typography.Text>
+                                  <Table
+                                    size="small"
+                                    rowKey="relation_id"
+                                    pagination={false}
+                                    dataSource={bomCardAnalogPositions}
+                                    columns={[
+                                      {
+                                        title: "Карточка",
+                                        render: (_, row) => (
+                                          <Space direction="vertical" size={0}>
+                                            <Typography.Text strong>
+                                              {[row.manufacturer_part_number || row.position_code, row.display_name].filter(Boolean).join(" — ") || "—"}
+                                            </Typography.Text>
+                                            <Typography.Text type="secondary">
+                                              {[row.manufacturer_name, row.model_name].filter(Boolean).join(" / ") || "Общий каталог"}
+                                            </Typography.Text>
+                                          </Space>
+                                        ),
+                                      },
+                                      { title: "Роль", width: 110, render: () => <Tag color="green">Аналог</Tag> },
+                                    ]}
+                                  />
+                                </div>
+                              ) : null}
+                            </Space>
+                          </Card>
+                        ) : null}
+
                         <Card
                           size="small"
                           title="Материалы и исполнения"
@@ -7391,14 +7459,13 @@ export default function EquipmentClassifierMain() {
                         bomItemForm.getFieldValue("manufacturer_part_name_en") ||
                         bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
                         ""
-                      loadCatalogPositions(seed, currentModel?.id)
+                      loadCatalogPositions(seed)
                     }}
                   />
                 </Form.Item>
                 <Typography.Paragraph type="secondary" style={{ marginTop: -4, marginBottom: bomLinkClassifier ? 12 : 0 }}>
-                  Обычно новая строка получает свою карточку автоматически. Включайте выбор, если это та же самая позиция:
-                  например, деталь уже есть в другой сборке этой модели, либо это стандартное изделие, материал или услуга
-                  из классификатора.
+                  Обычно новая строка получает свою карточку автоматически. Включайте выбор, если эта строка является той
+                  же позицией или аналогом уже заведенной карточки из общего каталога.
                 </Typography.Paragraph>
                 {bomLinkClassifier ? (
                 <Form.Item
@@ -7420,21 +7487,28 @@ export default function EquipmentClassifierMain() {
                         bomItemForm.getFieldValue("manufacturer_part_name_en") ||
                         bomItemForm.getFieldValue("manufacturer_part_name_ru") ||
                         ""
-                      loadCatalogPositions(seed, currentModel?.id)
+                      loadCatalogPositions(seed)
                     }}
-                    onSearch={(value) => loadCatalogPositions(value, currentModel?.id)}
+                    onSearch={(value) => loadCatalogPositions(value)}
                     options={selectableCatalogPositionOptions.map((row) => ({
                       value: row.id,
-                      label: row.display_name || row.position_code || `Позиция #${row.id}`,
+                      label:
+                        [row.manufacturer_part_number || row.position_code, row.display_name]
+                          .filter(Boolean)
+                          .join(" — ") || `Позиция #${row.id}`,
                       positionCode: row.position_code,
                       classifierNodeName: row.classifier_node_name,
+                      manufacturerName: row.manufacturer_name,
+                      modelName: row.model_name,
                       sourceKind: row.source_kind,
                     }))}
                     optionRender={(option) => (
                       <Space direction="vertical" size={0}>
                         <Typography.Text strong>{option.data.label}</Typography.Text>
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {[option.data.positionCode, option.data.classifierNodeName].filter(Boolean).join(" / ") ||
+                          {[option.data.manufacturerName, option.data.modelName, option.data.positionCode, option.data.classifierNodeName]
+                            .filter(Boolean)
+                            .join(" / ") ||
                             "Позиция классификатора"}
                         </Typography.Text>
                       </Space>
