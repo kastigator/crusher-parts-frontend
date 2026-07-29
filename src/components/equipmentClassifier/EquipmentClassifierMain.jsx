@@ -1058,16 +1058,19 @@ export default function EquipmentClassifierMain() {
   const loadModelBom = useCallback(async (modelId) => {
     if (!modelId) {
       setModelBomItems([])
-      return
+      return []
     }
     setModelBomLoading(true)
     try {
       const { data } = await axios.get(`/equipment-models/${modelId}/bom`)
-      setModelBomItems(Array.isArray(data?.items) ? data.items : [])
+      const items = Array.isArray(data?.items) ? data.items : []
+      setModelBomItems(items)
+      return items
     } catch (err) {
       console.error("GET /equipment-models/:id/bom error:", err)
       message.error(err?.response?.data?.message || "Не удалось загрузить BOM модели")
       setModelBomItems([])
+      return []
     } finally {
       setModelBomLoading(false)
     }
@@ -3977,13 +3980,51 @@ export default function EquipmentClassifierMain() {
     setSelectedTreeEntity({ type: "catalog_position", id: catalogPositionId })
   }
 
+  const openBomUsageItem = async (row) => {
+    const bomItemId = Number(row?.bom_item_id || row?.source_bom_item_id || 0)
+    const modelId = Number(row?.equipment_model_id || row?.catalog_position_equipment_model_id || 0)
+    if (!bomItemId) {
+      message.warning("Не удалось определить строку BOM для перехода")
+      return
+    }
+
+    let rows = currentModelBomRows
+    if (modelId && Number(currentModel?.id || 0) !== modelId) {
+      const nodeId = row?.model_classifier_node_id || row?.classifier_node_id || selectedId
+      if (nodeId) {
+        setSelectedId(String(nodeId))
+        setSelectedTreeKey(treeKey.node(nodeId))
+        await loadWorkspace(String(nodeId))
+      }
+      setSelectedTreeEntity({ type: "model", id: modelId })
+      setNsiSearchActive(false)
+      const items = await loadModelBom(modelId)
+      rows = flattenBomTreeRows(buildBomTree(items))
+    }
+
+    const bomRow = rows.find((item) => Number(item.id) === bomItemId)
+    if (!bomRow) {
+      message.warning("Строка BOM не найдена в выбранной модели")
+      return
+    }
+    setSelectedBomItem(bomRow)
+    setBomCardActiveTab("main")
+    setBomItemCardOpen(true)
+  }
+
   const openBomRelatedCatalogPosition = async (row) => {
+    if (row?.bom_item_id || row?.source_bom_item_id) {
+      await openBomUsageItem(row)
+      return
+    }
+
     const catalogPositionId = Number(row?.catalog_position_id || row?.id || 0)
     if (!catalogPositionId) return
 
     const bomRow = currentModelBomRows.find((item) => Number(item.catalog_position_id) === catalogPositionId)
     if (bomRow) {
       setSelectedBomItem(bomRow)
+      setBomCardActiveTab("main")
       setBomItemCardOpen(true)
       return
     }
@@ -4107,11 +4148,11 @@ export default function EquipmentClassifierMain() {
       title: "Место в BOM",
       render: (_, row) => (
         <Space direction="vertical" size={2}>
-          <Typography.Text strong>
+          <Typography.Link strong onClick={() => openBomUsageItem(row)}>
             {[row.item_no, row.manufacturer_part_number || row.title || selectedCatalogPosition?.position_code]
               .filter(Boolean)
               .join(" / ") || `Строка #${row.bom_item_id}`}
-          </Typography.Text>
+          </Typography.Link>
           <Typography.Text type="secondary">
             {[row.manufacturer_part_name, row.drawing_number ? `чертеж ${row.drawing_number}` : null]
               .filter(Boolean)
@@ -5551,6 +5592,10 @@ export default function EquipmentClassifierMain() {
     const attributeRows = Array.isArray(selectedCatalogPosition.attribute_values)
       ? selectedCatalogPosition.attribute_values
       : []
+    const passportCode =
+      selectedCatalogPosition.source_kind === "model_bom"
+        ? selectedCatalogPosition.manufacturer_part_number || selectedCatalogPosition.position_code
+        : selectedCatalogPosition.position_code || selectedCatalogPosition.manufacturer_part_number
 
     const passportTab = (
       <Card size="small" title="Паспорт">
@@ -5560,7 +5605,7 @@ export default function EquipmentClassifierMain() {
               {selectedCatalogPosition.display_name || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="Код">
-              {selectedCatalogPosition.position_code || "—"}
+              {passportCode || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="Единица измерения">
               {formatMeasurementUnit(selectedCatalogPosition.uom) || selectedCatalogPosition.uom || "—"}
@@ -6741,16 +6786,30 @@ export default function EquipmentClassifierMain() {
                         columns={[
                           {
                             title: "Модель",
-                            render: (_, row) => [row.manufacturer_name, row.model_name].filter(Boolean).join(" ") || "—",
+                            render: (_, row) => (
+                              <Typography.Link onClick={() => openUsageModel(row)}>
+                                {[row.manufacturer_name, row.model_name].filter(Boolean).join(" ") || "—"}
+                              </Typography.Link>
+                            ),
                           },
                           {
                             title: "Где в BOM",
-                            render: (_, row) =>
-                              row.parent_item_id
-                                ? [row.parent_manufacturer_part_number, row.parent_manufacturer_part_name || row.parent_title]
+                            render: (_, row) => (
+                              <Space direction="vertical" size={0}>
+                                <Typography.Link strong onClick={() => openBomUsageItem(row)}>
+                                  {[row.item_no, row.manufacturer_part_number || row.title]
                                     .filter(Boolean)
-                                    .join(" · ") || "В узле"
-                                : "В корне модели",
+                                    .join(" / ") || `Строка #${row.bom_item_id}`}
+                                </Typography.Link>
+                                <Typography.Text type="secondary">
+                                  {row.parent_item_id
+                                    ? [row.parent_manufacturer_part_number, row.parent_manufacturer_part_name || row.parent_title]
+                                        .filter(Boolean)
+                                        .join(" · ") || "В узле"
+                                    : "В корне модели"}
+                                </Typography.Text>
+                              </Space>
+                            ),
                           },
                           { title: "Количество", render: (_, row) => formatBomQuantity(row) },
                         ]}
