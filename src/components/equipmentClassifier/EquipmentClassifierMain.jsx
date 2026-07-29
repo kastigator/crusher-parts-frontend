@@ -3305,7 +3305,6 @@ export default function EquipmentClassifierMain() {
 
     const headerRow = rows[0].map((value) => String(value ?? "").trim())
     const headerMap = {
-      "№ позиции": "item_no",
       "Каталожный номер производителя": "manufacturer_part_number",
       "Название EN": "manufacturer_part_name_en",
       "Название RU": "manufacturer_part_name_ru",
@@ -3316,11 +3315,13 @@ export default function EquipmentClassifierMain() {
       "Высота, мм": "height_mm",
       "Код ТН ВЭД": "tnved_code",
     }
-    const hasItemNoHeader = headerRow.includes("№ позиции")
     const hasQuantityHeader = headerRow.includes("Количество")
+    const hasIdentityHeader = ["Каталожный номер производителя", "Название EN", "Название RU"].some((header) =>
+      headerRow.includes(header),
+    )
     const missingHeaders = []
-    if (!hasItemNoHeader) missingHeaders.push("№ позиции")
     if (!hasQuantityHeader) missingHeaders.push("Количество")
+    if (!hasIdentityHeader) missingHeaders.push("Каталожный номер производителя или название")
     if (missingHeaders.length) {
       throw new Error(`В файле нет обязательных колонок: ${missingHeaders.join(", ")}`)
     }
@@ -3431,15 +3432,9 @@ export default function EquipmentClassifierMain() {
         },
       },
       {
-        title: "№ позиции",
-        dataIndex: "item_no",
-        width: 110,
-        render: (value) => value || "—",
-      },
-      {
-        title: "Каталожный номер",
+        title: "Каталожный номер производителя",
         dataIndex: "manufacturer_part_number",
-        width: 180,
+        width: 230,
         render: (value) => value || "—",
       },
       {
@@ -7187,7 +7182,7 @@ export default function EquipmentClassifierMain() {
           setBomImportWarnings([])
           setBomImportSourceRows([])
         }}
-        width={980}
+        width={1120}
         footer={[
           <Button key="template" onClick={downloadBomTemplate}>
             Скачать шаблон
@@ -7221,7 +7216,7 @@ export default function EquipmentClassifierMain() {
             type="info"
             showIcon
             message="Импортируйте строки BOM плоским списком"
-            description="Excel нужен для первичной загрузки позиций производителя. Все строки попадут в корень BOM модели; сборки и вложенность удобнее собрать потом вручную в интерфейсе."
+            description="Заполните позиции производителя без уровней и номеров дерева. Все строки попадут в корень BOM модели; сборки и вложенность собираются потом вручную в интерфейсе."
           />
 
           <Space wrap>
@@ -7283,6 +7278,7 @@ export default function EquipmentClassifierMain() {
             dataSource={bomImportRows}
             loading={bomImportLoading}
             pagination={{ pageSize: 8, showSizeChanger: false }}
+            scroll={{ x: 1040 }}
             locale={{ emptyText: "Загрузите Excel, чтобы увидеть предварительный разбор BOM" }}
           />
         </Space>
