@@ -764,6 +764,8 @@ export default function EquipmentClassifierMain() {
   const [bomWarehouseAction, setBomWarehouseAction] = useState(null)
   const [bomWarehouseActionSaving, setBomWarehouseActionSaving] = useState(false)
   const [bomCardActiveTab, setBomCardActiveTab] = useState("main")
+  const [bomRowEditing, setBomRowEditing] = useState(false)
+  const [bomRowSaving, setBomRowSaving] = useState(false)
   const [bomCardSaving, setBomCardSaving] = useState(false)
   const [bomCardPhotoUploading, setBomCardPhotoUploading] = useState(false)
   const [bomMaterialModalOpen, setBomMaterialModalOpen] = useState(false)
@@ -807,6 +809,7 @@ export default function EquipmentClassifierMain() {
   const [unitBomOverrideForm] = Form.useForm()
   const [bomItemForm] = Form.useForm()
   const [bomCrossModelForm] = Form.useForm()
+  const [bomRowForm] = Form.useForm()
   const [bomCardForm] = Form.useForm()
   const [bomMaterialForm] = Form.useForm()
   const [bomWarehouseActionForm] = Form.useForm()
@@ -2673,6 +2676,32 @@ export default function EquipmentClassifierMain() {
     () => (Array.isArray(selectedBomItem?.children) ? selectedBomItem.children : []),
     [selectedBomItem],
   )
+  const selectedBomDescendantIds = useMemo(() => {
+    const ids = new Set()
+    const walk = (rows = []) => {
+      rows.forEach((row) => {
+        if (row?.id) ids.add(Number(row.id))
+        if (Array.isArray(row?.children)) walk(row.children)
+      })
+    }
+    walk(selectedBomChildren)
+    return ids
+  }, [selectedBomChildren])
+  const bomRowParentOptions = useMemo(
+    () =>
+      currentModelBomRows
+        .filter((row) => {
+          const rowId = Number(row.id)
+          return rowId !== Number(selectedBomItem?.id) && !selectedBomDescendantIds.has(rowId)
+        })
+        .map((row) => ({
+          value: row.id,
+          label: `${"— ".repeat(row.bom_level || 0)}${
+            row.item_no ? `${row.item_no}. ` : ""
+          }${getBomItemLabel(row)}${getBomItemName(row) ? ` — ${getBomItemName(row)}` : ""}`,
+        })),
+    [currentModelBomRows, selectedBomDescendantIds, selectedBomItem?.id],
+  )
   const bomCardSupplierParts = useMemo(
     () => (Array.isArray(bomPositionDetails?.supplier_parts) ? bomPositionDetails.supplier_parts : []),
     [bomPositionDetails],
@@ -3038,6 +3067,96 @@ export default function EquipmentClassifierMain() {
     }
   }
 
+  const fillBomRowForm = useCallback((item) => {
+    bomRowForm.resetFields()
+    if (!item) return
+    bomRowForm.setFieldsValue({
+      parent_item_id: item.parent_item_id || null,
+      manufacturer_part_number: item.manufacturer_part_number || item.part_number || "",
+      manufacturer_part_name_en:
+        item.manufacturer_part_name_en ||
+        item.manufacturer_part_name ||
+        item.description_en ||
+        item.catalog_position_name ||
+        "",
+      manufacturer_part_name_ru: item.manufacturer_part_name_ru || item.description_ru || "",
+      quantity: item.quantity || 1,
+      notes: item.notes || "",
+    })
+  }, [bomRowForm])
+
+  const cancelBomRowEditor = useCallback(() => {
+    setBomRowEditing(false)
+    bomRowForm.resetFields()
+  }, [bomRowForm])
+
+  const openBomRowEditor = useCallback((item) => {
+    if (!item?.id) return
+    setSelectedBomItem(item)
+    setBomItemCardOpen(true)
+    setBomCardActiveTab("main")
+    fillBomRowForm(item)
+    setBomRowEditing(true)
+  }, [fillBomRowForm])
+
+  const handleSaveBomRowData = useCallback(async () => {
+    if (!currentModel?.id || !selectedBomItem?.id) return
+    try {
+      const values = await bomRowForm.validateFields()
+      setBomRowSaving(true)
+      const hasChildren = Boolean(
+        selectedBomItem.bom_has_children ||
+          (Array.isArray(selectedBomItem.children) && selectedBomItem.children.length > 0),
+      )
+      const manufacturerPartName =
+        values.manufacturer_part_name_en ||
+        values.manufacturer_part_name_ru ||
+        selectedBomItem.manufacturer_part_name ||
+        getBomItemName(selectedBomItem)
+      const payload = {
+        row_kind: hasChildren ? "assembly" : selectedBomItem.row_kind || "part",
+        item_type: selectedBomItem.catalog_position_id ? "catalog_position" : selectedBomItem.item_type || "unlinked",
+        parent_item_id: values.parent_item_id || null,
+        item_no: selectedBomItem.item_no || null,
+        manufacturer_part_number: values.manufacturer_part_number || null,
+        manufacturer_part_name: manufacturerPartName || null,
+        manufacturer_part_name_en: values.manufacturer_part_name_en || null,
+        manufacturer_part_name_ru: values.manufacturer_part_name_ru || null,
+        drawing_number: selectedBomItem.drawing_number || null,
+        title: selectedBomItem.title || null,
+        catalog_position_id: selectedBomItem.catalog_position_id || null,
+        quantity: values.quantity || 1,
+        sort_order: selectedBomItem.sort_order ?? 0,
+        notes: values.notes || null,
+      }
+      const { data } = await axios.put(`/equipment-models/${currentModel.id}/bom/items/${selectedBomItem.id}`, payload)
+      const nextItems = Array.isArray(data?.items) ? data.items : []
+      setModelBomItems(nextItems)
+      const nextSelected = flattenBomTreeRows(buildBomTree(nextItems)).find(
+        (row) => Number(row.id) === Number(selectedBomItem.id),
+      )
+      if (nextSelected) setSelectedBomItem(nextSelected)
+      setBomRowEditing(false)
+      bomRowForm.resetFields()
+      await reloadBomPositionDetails()
+      if (selectedId) await loadWorkspace(selectedId)
+      message.success("Строка BOM обновлена")
+    } catch (err) {
+      if (err?.errorFields) return
+      console.error("SAVE equipment model BOM row error:", err)
+      message.error(err?.response?.data?.message || "Не удалось сохранить строку BOM")
+    } finally {
+      setBomRowSaving(false)
+    }
+  }, [
+    bomRowForm,
+    currentModel?.id,
+    loadWorkspace,
+    reloadBomPositionDetails,
+    selectedBomItem,
+    selectedId,
+  ])
+
   const openBomItemModal = useCallback(
     (item = null, parent = null) => {
       if (!currentModel?.id) return
@@ -3291,16 +3410,34 @@ export default function EquipmentClassifierMain() {
         successMessage: "Строка удалена из BOM модели",
       })
       if (!result?.deleted) return
+      const archivedCatalogPositionIds = new Set(
+        (Array.isArray(result.response?.archived_catalog_position_ids)
+          ? result.response.archived_catalog_position_ids
+          : [])
+          .map((id) => Number(id))
+          .filter(Boolean),
+      )
+      if (archivedCatalogPositionIds.size) {
+        setCatalogPositionOptions((rows) =>
+          rows.filter((row) => !archivedCatalogPositionIds.has(Number(row.id))),
+        )
+      }
       setModelBomItems(Array.isArray(result.response?.items) ? result.response.items : [])
+      setBomRowEditing(false)
+      bomRowForm.resetFields()
       if (Number(selectedBomItem?.id) === Number(item.id)) {
         setBomItemCardOpen(false)
         setSelectedBomItem(null)
+        setBomPositionDetails(null)
+        setBomWarehouseDetails(null)
+        setBomWarehouseAction(null)
       }
+      if (selectedId) await loadWorkspace(selectedId)
     } catch (err) {
       console.error("DELETE equipment model BOM item error:", err)
       message.error(err?.response?.data?.message || "Не удалось удалить строку BOM")
     }
-  }, [currentModel?.id, selectedBomItem?.id])
+  }, [bomRowForm, currentModel?.id, loadWorkspace, selectedBomItem?.id, selectedId])
 
   const downloadBomTemplate = async () => {
     if (!currentModel?.id) return
@@ -3431,15 +3568,16 @@ export default function EquipmentClassifierMain() {
     () =>
       buildBomTreeData(filteredModelBomTree, {
         onOpen: (row) => {
+          cancelBomRowEditor()
           setSelectedBomItem(row)
           setBomItemCardOpen(true)
         },
-        onEdit: (row) => openBomItemModal(row),
+        onEdit: (row) => openBomRowEditor(row),
         onDelete: (row) => handleDeleteBomItem(row),
         visibleFields: bomVisibleFields,
         dimensionUnitSymbol,
       }),
-    [filteredModelBomTree, openBomItemModal, handleDeleteBomItem, bomVisibleFields, dimensionUnitSymbol],
+    [filteredModelBomTree, cancelBomRowEditor, openBomRowEditor, handleDeleteBomItem, bomVisibleFields, dimensionUnitSymbol],
   )
 
   const bomImportColumns = useMemo(
@@ -6359,17 +6497,31 @@ export default function EquipmentClassifierMain() {
           setBomPositionDetails(null)
           setBomWarehouseDetails(null)
           setBomWarehouseAction(null)
+          setBomRowEditing(false)
+          bomRowForm.resetFields()
           setBomCardActiveTab("main")
         }}
         extra={
           selectedBomItem ? (
             <Space>
-              <Button size="small" onClick={() => openBomItemModal(selectedBomItem)}>
-                Редактировать
-              </Button>
+              {bomRowEditing ? (
+                <>
+                  <Button size="small" disabled={bomRowSaving} onClick={cancelBomRowEditor}>
+                    Отмена
+                  </Button>
+                  <Button size="small" type="primary" loading={bomRowSaving} onClick={handleSaveBomRowData}>
+                    Сохранить строку
+                  </Button>
+                </>
+              ) : (
+                <Button size="small" onClick={() => openBomRowEditor(selectedBomItem)}>
+                  Редактировать
+                </Button>
+              )}
               <Button
                 size="small"
                 danger
+                disabled={bomRowSaving}
                 onClick={() => handleDeleteBomItem(selectedBomItem)}
               >
                 Удалить
@@ -6382,12 +6534,60 @@ export default function EquipmentClassifierMain() {
           <Tabs
             className="bom-card-tabs"
             activeKey={bomCardActiveTab}
-            onChange={setBomCardActiveTab}
+            onChange={(key) => {
+              if (key !== "main") cancelBomRowEditor()
+              setBomCardActiveTab(key)
+            }}
             items={[
               {
                 key: "main",
                 label: "Основное",
-                children: (
+                children: bomRowEditing ? (
+                  <Form form={bomRowForm} layout="vertical">
+                    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                      <Typography.Text strong>Данные строки BOM</Typography.Text>
+                      <Row gutter={12}>
+                        <Col span={16}>
+                          <Form.Item label="Каталожный номер производителя" name="manufacturer_part_number">
+                            <Input placeholder="Например: 1093080129 или MM0200329" />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item label="Количество" name="quantity" rules={[{ required: true, message: "Введите количество" }]}>
+                            <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item label="Название EN" name="manufacturer_part_name_en">
+                            <Input placeholder="Например: Adjustment Ring" />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item label="Название RU" name="manufacturer_part_name_ru">
+                            <Input placeholder="Например: Регулировочное кольцо" />
+                          </Form.Item>
+                        </Col>
+                        <Col span={24}>
+                          <Form.Item label="Родитель в BOM" name="parent_item_id">
+                            <Select
+                              allowClear
+                              showSearch
+                              optionFilterProp="label"
+                              placeholder="В корень модели"
+                              options={bomRowParentOptions}
+                              notFoundContent="В BOM пока нет других узлов"
+                            />
+                          </Form.Item>
+                        </Col>
+                        <Col span={24}>
+                          <Form.Item label="Комментарий к строке BOM" name="notes">
+                            <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    </Space>
+                  </Form>
+                ) : (
                   <Space direction="vertical" size={16} style={{ width: "100%" }}>
                     <div style={{ display: "grid", gridTemplateColumns: "132px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
                       <div
@@ -6455,17 +6655,6 @@ export default function EquipmentClassifierMain() {
                           </Descriptions.Item>
                         ) : visibleBomCardAnalogPositions.length ? (
                           <Descriptions.Item label="Аналоги">{renderBomAnalogLinks(visibleBomCardAnalogPositions)}</Descriptions.Item>
-                        ) : selectedBomItem.catalog_position_id && !isBomOwnCatalogPosition(selectedBomItem) ? (
-                          <Descriptions.Item label="Связь с карточкой">
-                            <Typography.Link onClick={() => openBomItemCatalogPosition(selectedBomItem)}>
-                              {[
-                                bomCardPosition?.manufacturer_part_number || selectedBomItem.catalog_position_code,
-                                bomCardPosition?.display_name || selectedBomItem.catalog_position_name,
-                              ]
-                                .filter(Boolean)
-                                .join(" — ") || "Открыть карточку"}
-                            </Typography.Link>
-                          </Descriptions.Item>
                         ) : null}
                       </Descriptions>
                     </div>
