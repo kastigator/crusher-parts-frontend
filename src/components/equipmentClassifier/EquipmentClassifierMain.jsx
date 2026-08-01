@@ -767,7 +767,6 @@ export default function EquipmentClassifierMain() {
   const [bomCardActiveTab, setBomCardActiveTab] = useState("main")
   const [bomRowEditing, setBomRowEditing] = useState(false)
   const [bomRowSaving, setBomRowSaving] = useState(false)
-  const [bomAnalogSaving, setBomAnalogSaving] = useState(false)
   const [bomAnalogDraftMembers, setBomAnalogDraftMembers] = useState([])
   const [bomAnalogDraftPrimaryId, setBomAnalogDraftPrimaryId] = useState(null)
   const [bomAnalogPendingIds, setBomAnalogPendingIds] = useState([])
@@ -816,7 +815,6 @@ export default function EquipmentClassifierMain() {
   const [bomItemForm] = Form.useForm()
   const [bomCrossModelForm] = Form.useForm()
   const [bomRowForm] = Form.useForm()
-  const [bomCardForm] = Form.useForm()
   const [bomMaterialForm] = Form.useForm()
   const [bomWarehouseActionForm] = Form.useForm()
   const bomLinkClassifier = Form.useWatch("link_classifier", bomItemForm)
@@ -2730,6 +2728,17 @@ export default function EquipmentClassifierMain() {
     [bomPositionDetails],
   )
   const bomCardPosition = bomPositionDetails?.position || null
+  const bomCardMeta = bomCardPosition?.meta || {}
+  const bomCardWeightText = formatNullableNumber(bomCardMeta.weight_kg, "кг")
+  const bomCardDimensionsText = [bomCardMeta.length_mm, bomCardMeta.width_mm, bomCardMeta.height_mm]
+    .every((value) => value !== undefined && value !== null && value !== "")
+      ? `${[bomCardMeta.length_mm, bomCardMeta.width_mm, bomCardMeta.height_mm]
+          .map((value) => formatNullableNumber(value))
+          .join(" × ")} ${dimensionUnitSymbol}`
+      : "—"
+  const bomCardTnvedText = [bomPositionDetails?.tnved?.code, bomPositionDetails?.tnved?.description]
+    .filter(Boolean)
+    .join(" — ") || "—"
   const bomAnalogGroupPrimary = bomPositionDetails?.analog_group?.primary_position || null
   const bomAnalogGroupPositions = useMemo(
     () => (Array.isArray(bomPositionDetails?.analog_group?.analog_positions)
@@ -2899,23 +2908,27 @@ export default function EquipmentClassifierMain() {
     }
   }, [bomItemCardOpen, selectedBomItem?.catalog_position_id])
 
-  useEffect(() => {
-    const meta = bomPositionDetails?.position?.meta || {}
-    bomCardForm.setFieldsValue({
+  const fillBomCardForm = useCallback((details) => {
+    const meta = details?.position?.meta || {}
+    bomRowForm.setFieldsValue({
       weight_kg: meta.weight_kg ?? null,
       length_mm: meta.length_mm ?? null,
       width_mm: meta.width_mm ?? null,
       height_mm: meta.height_mm ?? null,
-      description: bomPositionDetails?.position?.description || "",
-      tnved: bomPositionDetails?.tnved
+      description: details?.position?.description || "",
+      tnved: details?.tnved
         ? {
-            id: bomPositionDetails.tnved.id,
-            code: bomPositionDetails.tnved.code,
-            description: bomPositionDetails.tnved.description,
+            id: details.tnved.id,
+            code: details.tnved.code,
+            description: details.tnved.description,
           }
       : null,
     })
-  }, [bomCardForm, bomPositionDetails])
+  }, [bomRowForm])
+
+  useEffect(() => {
+    if (!bomRowEditing) fillBomCardForm(bomPositionDetails)
+  }, [bomPositionDetails, bomRowEditing, fillBomCardForm])
 
   const handleUploadBomCardPhoto = async ({ file, onSuccess, onError }) => {
     if (!selectedBomItem?.catalog_position_id) {
@@ -2939,30 +2952,6 @@ export default function EquipmentClassifierMain() {
       onError?.(err)
     } finally {
       setBomCardPhotoUploading(false)
-    }
-  }
-
-  const handleSaveBomCardData = async () => {
-    if (!selectedBomItem?.catalog_position_id) return
-    try {
-      const values = await bomCardForm.validateFields()
-      setBomCardSaving(true)
-      await axios.patch(`/catalog-positions/${selectedBomItem.catalog_position_id}/card`, {
-        weight_kg: values.weight_kg ?? null,
-        length_mm: values.length_mm ?? null,
-        width_mm: values.width_mm ?? null,
-        height_mm: values.height_mm ?? null,
-        description: values.description || null,
-        tnved_code_id: values.tnved?.id || null,
-      })
-      await reloadBomPositionDetails()
-      message.success("Данные карточки сохранены")
-    } catch (err) {
-      if (err?.errorFields) return
-      console.error("PATCH /catalog-positions/:id/card error:", err)
-      message.error(err?.response?.data?.message || "Не удалось сохранить данные карточки")
-    } finally {
-      setBomCardSaving(false)
     }
   }
 
@@ -3149,7 +3138,8 @@ export default function EquipmentClassifierMain() {
     setBomAnalogPendingIds([])
     setBomAnalogDraftDirty(false)
     bomRowForm.resetFields()
-  }, [bomRowForm])
+    fillBomCardForm(bomPositionDetails)
+  }, [bomPositionDetails, bomRowForm, fillBomCardForm])
 
   const openBomRowEditor = useCallback((item) => {
     if (!item?.id) return
@@ -3159,15 +3149,31 @@ export default function EquipmentClassifierMain() {
     setBomAnalogPendingIds([])
     setBomAnalogDraftDirty(false)
     fillBomRowForm(item)
+    fillBomCardForm(bomPositionDetails)
     loadCatalogPositions(item.manufacturer_part_number || item.catalog_position_code || "")
     setBomRowEditing(true)
-  }, [fillBomRowForm, loadCatalogPositions])
+  }, [bomPositionDetails, fillBomCardForm, fillBomRowForm, loadCatalogPositions])
 
   const handleSaveBomRowData = useCallback(async () => {
     if (!currentModel?.id || !selectedBomItem?.id) return
     try {
       const values = await bomRowForm.validateFields()
+      const analogGroupPayload = bomAnalogDraftDirty
+        ? {
+            currentId: Number(selectedBomItem.catalog_position_id),
+            primaryId: Number(bomAnalogDraftPrimaryId),
+            memberIds: bomAnalogDraftMembers.map((row) => Number(row.id)).filter(Boolean),
+          }
+        : null
+      if (
+        analogGroupPayload &&
+        (!analogGroupPayload.currentId || !analogGroupPayload.primaryId || !analogGroupPayload.memberIds.length)
+      ) {
+        message.error("Проверьте состав группы аналогов и выберите основную позицию")
+        return
+      }
       setBomRowSaving(true)
+      setBomCardSaving(true)
       const hasChildren = Boolean(
         selectedBomItem.bom_has_children ||
           (Array.isArray(selectedBomItem.children) && selectedBomItem.children.length > 0),
@@ -3194,6 +3200,26 @@ export default function EquipmentClassifierMain() {
         notes: values.notes || null,
       }
       const { data } = await axios.put(`/equipment-models/${currentModel.id}/bom/items/${selectedBomItem.id}`, payload)
+      const cardUpdates = []
+      if (selectedBomItem.catalog_position_id) {
+        cardUpdates.push(axios.patch(`/catalog-positions/${selectedBomItem.catalog_position_id}/card`, {
+          weight_kg: values.weight_kg ?? null,
+          length_mm: values.length_mm ?? null,
+          width_mm: values.width_mm ?? null,
+          height_mm: values.height_mm ?? null,
+          description: values.description || null,
+          tnved_code_id: values.tnved?.id || null,
+        }))
+      }
+      if (analogGroupPayload) {
+        cardUpdates.push(
+          axios.put(`/catalog-positions/${analogGroupPayload.currentId}/analog-group`, {
+            primary_catalog_position_id: analogGroupPayload.primaryId,
+            member_catalog_position_ids: analogGroupPayload.memberIds,
+          }),
+        )
+      }
+      if (cardUpdates.length) await Promise.all(cardUpdates)
       const nextItems = Array.isArray(data?.items) ? data.items : []
       setModelBomItems(nextItems)
       const nextSelected = flattenBomTreeRows(buildBomTree(nextItems)).find(
@@ -3206,15 +3232,19 @@ export default function EquipmentClassifierMain() {
       bomRowForm.resetFields()
       await reloadBomPositionDetails()
       if (selectedId) await loadWorkspace(selectedId)
-      message.success("Строка BOM обновлена")
+      message.success("Изменения сохранены")
     } catch (err) {
       if (err?.errorFields) return
-      console.error("SAVE equipment model BOM row error:", err)
-      message.error(err?.response?.data?.message || "Не удалось сохранить строку BOM")
+      console.error("SAVE BOM position editor error:", err)
+      message.error(err?.response?.data?.message || "Не удалось сохранить изменения")
     } finally {
       setBomRowSaving(false)
+      setBomCardSaving(false)
     }
   }, [
+    bomAnalogDraftDirty,
+    bomAnalogDraftMembers,
+    bomAnalogDraftPrimaryId,
     bomRowForm,
     currentModel?.id,
     loadWorkspace,
@@ -3254,34 +3284,6 @@ export default function EquipmentClassifierMain() {
     setBomAnalogPendingIds((current) => current.filter((id) => Number(id) !== memberId))
     setBomAnalogDraftDirty(true)
   }, [bomAnalogDraftMembers.length, bomAnalogDraftPrimaryId, bomCardPosition?.id])
-
-  const handleSaveBomAnalogGroup = useCallback(async () => {
-    const currentId = Number(selectedBomItem?.catalog_position_id)
-    const primaryId = Number(bomAnalogDraftPrimaryId)
-    const memberIds = bomAnalogDraftMembers.map((row) => Number(row.id)).filter(Boolean)
-    if (!currentId || !primaryId || !memberIds.length) return
-    try {
-      setBomAnalogSaving(true)
-      await axios.put(`/catalog-positions/${currentId}/analog-group`, {
-        primary_catalog_position_id: primaryId,
-        member_catalog_position_ids: memberIds,
-      })
-      setBomAnalogPendingIds([])
-      setBomAnalogDraftDirty(false)
-      await reloadBomPositionDetails()
-      message.success("Группа аналогов сохранена")
-    } catch (err) {
-      console.error("SAVE catalog position analog group error:", err)
-      message.error(err?.response?.data?.message || "Не удалось сохранить группу аналогов")
-    } finally {
-      setBomAnalogSaving(false)
-    }
-  }, [
-    bomAnalogDraftMembers,
-    bomAnalogDraftPrimaryId,
-    reloadBomPositionDetails,
-    selectedBomItem?.catalog_position_id,
-  ])
 
   const openBomItemModal = useCallback(
     (item = null, parent = null) => {
@@ -6609,10 +6611,17 @@ export default function EquipmentClassifierMain() {
         title={
           selectedBomItem ? (
             <Space direction="vertical" size={0}>
-              <Typography.Text strong>{getBomItemName(selectedBomItem) || getBomItemLabel(selectedBomItem)}</Typography.Text>
+              <Typography.Text strong>
+                {[getBomManufacturerNumber(selectedBomItem), getBomItemName(selectedBomItem)]
+                  .filter((value) => value && value !== "—")
+                  .join(" — ") || getBomItemLabel(selectedBomItem)}
+              </Typography.Text>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {getBomManufacturerNumber(selectedBomItem)} · {getBomItemTypeLabel(selectedBomItem)} ·{" "}
-                {formatBomQuantity(selectedBomItem)}
+                {[
+                  getBomItemTypeLabel(selectedBomItem),
+                  [currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" "),
+                  formatBomQuantity(selectedBomItem),
+                ].filter(Boolean).join(" · ")}
               </Typography.Text>
             </Space>
           ) : (
@@ -6639,11 +6648,11 @@ export default function EquipmentClassifierMain() {
             <Space>
               {bomRowEditing ? (
                 <>
-                  <Button size="small" disabled={bomRowSaving} onClick={cancelBomRowEditor}>
+                  <Button size="small" disabled={bomRowSaving || bomCardSaving} onClick={cancelBomRowEditor}>
                     Отмена
                   </Button>
-                  <Button size="small" type="primary" loading={bomRowSaving} onClick={handleSaveBomRowData}>
-                    Сохранить строку
+                  <Button size="small" type="primary" loading={bomRowSaving || bomCardSaving} onClick={handleSaveBomRowData}>
+                    Сохранить
                   </Button>
                 </>
               ) : (
@@ -6654,10 +6663,10 @@ export default function EquipmentClassifierMain() {
               <Button
                 size="small"
                 danger
-                disabled={bomRowSaving}
+                disabled={bomRowSaving || bomCardSaving}
                 onClick={() => handleDeleteBomItem(selectedBomItem)}
               >
-                Удалить
+                Удалить из BOM
               </Button>
             </Space>
           ) : null
@@ -6668,7 +6677,10 @@ export default function EquipmentClassifierMain() {
             className="bom-card-tabs"
             activeKey={bomCardActiveTab}
             onChange={(key) => {
-              if (key !== "main") cancelBomRowEditor()
+              if (bomRowEditing && key !== "main") {
+                message.warning("Сначала сохраните или отмените изменения")
+                return
+              }
               setBomCardActiveTab(key)
             }}
             items={[
@@ -6678,46 +6690,137 @@ export default function EquipmentClassifierMain() {
                 children: bomRowEditing ? (
                   <Form form={bomRowForm} layout="vertical">
                     <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                      <Typography.Text strong>Данные строки BOM</Typography.Text>
-                      <Row gutter={12}>
-                        <Col span={16}>
-                          <Form.Item label="Каталожный номер производителя" name="manufacturer_part_number">
-                            <Input placeholder="Например: 1093080129 или MM0200329" />
-                          </Form.Item>
-                        </Col>
-                        <Col span={8}>
-                          <Form.Item label="Количество" name="quantity" rules={[{ required: true, message: "Введите количество" }]}>
-                            <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
-                          </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                          <Form.Item label="Название EN" name="manufacturer_part_name_en">
-                            <Input placeholder="Например: Adjustment Ring" />
-                          </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                          <Form.Item label="Название RU" name="manufacturer_part_name_ru">
-                            <Input placeholder="Например: Регулировочное кольцо" />
-                          </Form.Item>
-                        </Col>
-                        <Col span={24}>
-                          <Form.Item label="Родитель в BOM" name="parent_item_id">
-                            <Select
-                              allowClear
-                              showSearch
-                              optionFilterProp="label"
-                              placeholder="В корень модели"
-                              options={bomRowParentOptions}
-                              notFoundContent="В BOM пока нет других узлов"
+                      <Card size="small" title="Карточка позиции">
+                        <div style={{ display: "grid", gridTemplateColumns: "132px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+                          <div
+                            style={{
+                              border: "1px solid #f0f0f0",
+                              borderRadius: 6,
+                              background: "#fafafa",
+                              padding: 8,
+                            }}
+                          >
+                            {bomPrimaryPhoto?.file_url ? (
+                              <Image
+                                src={bomPrimaryPhoto.file_url}
+                                alt={bomPrimaryPhoto.caption || getBomItemName(selectedBomItem) || "Фото позиции"}
+                                width="100%"
+                                height={104}
+                                style={{ objectFit: "cover", borderRadius: 4 }}
+                              />
+                            ) : (
+                              <div style={{ height: 104, display: "flex", alignItems: "center", justifyContent: "center", color: "#999" }}>
+                                Фото пока нет
+                              </div>
+                            )}
+                            <Upload accept="image/*" showUploadList={false} customRequest={handleUploadBomCardPhoto}>
+                              <Button
+                                size="small"
+                                icon={<UploadOutlined />}
+                                loading={bomCardPhotoUploading}
+                                block
+                                style={{ marginTop: 8 }}
+                              >
+                                {bomPrimaryPhoto?.file_url ? "Заменить фото" : "Загрузить фото"}
+                              </Button>
+                            </Upload>
+                            <Typography.Text type="secondary" style={{ display: "block", marginTop: 6, fontSize: 11 }}>
+                              Фото сохраняется сразу
+                            </Typography.Text>
+                          </div>
+                          <div>
+                            <Descriptions size="small" column={1} style={{ marginBottom: 12 }}>
+                              <Descriptions.Item label="Производитель">
+                                {selectedBomItem.manufacturer_name || currentModel?.manufacturer_name || "—"}
+                              </Descriptions.Item>
+                            </Descriptions>
+                            <Row gutter={12}>
+                              <Col span={24}>
+                                <Form.Item label="Каталожный номер производителя" name="manufacturer_part_number">
+                                  <Input placeholder="Например: 1093080129 или MM0200329" />
+                                </Form.Item>
+                              </Col>
+                              <Col span={12}>
+                                <Form.Item label="Название EN" name="manufacturer_part_name_en">
+                                  <Input placeholder="Например: Adjustment Ring" />
+                                </Form.Item>
+                              </Col>
+                              <Col span={12}>
+                                <Form.Item label="Название RU" name="manufacturer_part_name_ru">
+                                  <Input placeholder="Например: Регулировочное кольцо" />
+                                </Form.Item>
+                              </Col>
+                            </Row>
+                          </div>
+                        </div>
+                      </Card>
+
+                      <Card
+                        size="small"
+                        title={`В текущем BOM · ${[currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "модель"}`}
+                      >
+                        <Row gutter={12}>
+                          <Col span={8}>
+                            <Form.Item label="Количество" name="quantity" rules={[{ required: true, message: "Введите количество" }]}>
+                              <InputNumber min={0.001} style={{ width: "100%" }} decimalSeparator="," />
+                            </Form.Item>
+                          </Col>
+                          <Col span={16}>
+                            <Form.Item label="Родительский узел" name="parent_item_id">
+                              <Select
+                                allowClear
+                                showSearch
+                                optionFilterProp="label"
+                                placeholder="В корень модели"
+                                options={bomRowParentOptions}
+                                notFoundContent="В BOM пока нет других узлов"
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col span={24}>
+                            <Form.Item label="Комментарий к размещению в BOM" name="notes">
+                              <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </Card>
+
+                      {selectedBomItem.catalog_position_id ? (
+                        <Card size="small" title="Характеристики позиции" loading={bomPositionDetailsLoading}>
+                          <Row gutter={12}>
+                            <Col span={8}>
+                              <Form.Item label="Масса, кг" name="weight_kg">
+                                <InputNumber min={0} precision={3} style={{ width: "100%" }} placeholder="например 1250" />
+                              </Form.Item>
+                            </Col>
+                            <Col span={16}>
+                              <Form.Item label={`Габариты, ${dimensionUnitSymbol}`}>
+                                <Space.Compact style={{ width: "100%" }}>
+                                  <Form.Item name="length_mm" noStyle>
+                                    <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Длина" />
+                                  </Form.Item>
+                                  <Form.Item name="width_mm" noStyle>
+                                    <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Ширина" />
+                                  </Form.Item>
+                                  <Form.Item name="height_mm" noStyle>
+                                    <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Высота" />
+                                  </Form.Item>
+                                </Space.Compact>
+                              </Form.Item>
+                            </Col>
+                          </Row>
+                          <Form.Item label="Код ТН ВЭД" name="tnved">
+                            <TnvedPicker
+                              placeholder="Искать по названию детали, материалу или описанию"
+                              catalogPositionId={selectedBomItem.catalog_position_id}
+                              showSuggestions={false}
                             />
                           </Form.Item>
-                        </Col>
-                        <Col span={24}>
-                          <Form.Item label="Комментарий к строке BOM" name="notes">
-                            <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} />
+                          <Form.Item label="Описание позиции" name="description">
+                            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} placeholder="Краткое описание позиции для карточки и поиска" />
                           </Form.Item>
-                        </Col>
-                      </Row>
+                        </Card>
+                      ) : null}
 
                       {selectedBomItem.catalog_position_id ? (
                         <Card size="small" title="Группа аналогов" loading={bomPositionDetailsLoading}>
@@ -6751,7 +6854,7 @@ export default function EquipmentClassifierMain() {
                                     <Space align="start" size={10}>
                                       <Radio
                                         checked={isPrimary}
-                                        disabled={bomAnalogSaving}
+                                        disabled={bomRowSaving}
                                         onChange={() => {
                                           setBomAnalogDraftPrimaryId(memberId)
                                           setBomAnalogDraftDirty(true)
@@ -6771,7 +6874,7 @@ export default function EquipmentClassifierMain() {
                                           size="small"
                                           type="text"
                                           danger
-                                          disabled={bomAnalogSaving}
+                                          disabled={bomRowSaving}
                                           onClick={() => handleRemoveBomAnalogDraftMember(memberId)}
                                         >
                                           Исключить
@@ -6808,7 +6911,7 @@ export default function EquipmentClassifierMain() {
                                   onChange={setBomAnalogPendingIds}
                                 />
                                 <Button
-                                  disabled={!bomAnalogPendingIds.length || bomAnalogSaving}
+                                  disabled={!bomAnalogPendingIds.length || bomRowSaving}
                                   onClick={handleAddBomAnalogDraftMembers}
                                 >
                                   Добавить в список
@@ -6816,166 +6919,35 @@ export default function EquipmentClassifierMain() {
                               </Space.Compact>
                             </div>
 
-                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                              <Typography.Text type="secondary">
+                                Изменения группы сохранятся общей кнопкой «Сохранить» вверху.
+                              </Typography.Text>
                               <Button
-                                disabled={!bomAnalogDraftDirty || bomAnalogSaving}
+                                disabled={!bomAnalogDraftDirty || bomRowSaving}
                                 onClick={resetBomAnalogDraft}
                               >
                                 Отменить изменения группы
-                              </Button>
-                              <Button
-                                type="primary"
-                                loading={bomAnalogSaving}
-                                disabled={!bomAnalogDraftDirty || !bomAnalogDraftPrimaryId}
-                                onClick={handleSaveBomAnalogGroup}
-                              >
-                                Сохранить группу
                               </Button>
                             </div>
                           </Space>
                         </Card>
                       ) : null}
-                    </Space>
-                  </Form>
-                ) : (
-                  <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "132px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
-                      <div
-                        style={{
-                          border: "1px solid #f0f0f0",
-                          borderRadius: 6,
-                          background: "#fafafa",
-                          padding: 8,
-                        }}
-                      >
-                        {bomPrimaryPhoto?.file_url ? (
-                          <Image
-                            src={bomPrimaryPhoto.file_url}
-                            alt={bomPrimaryPhoto.caption || getBomItemName(selectedBomItem) || "Фото позиции"}
-                            width="100%"
-                            height={104}
-                            style={{ objectFit: "cover", borderRadius: 4 }}
-                          />
-                        ) : (
-                          <div
-                            style={{
-                              height: 104,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              color: "#999",
-                            }}
-                          >
-                            Фото пока нет
-                          </div>
-                        )}
-                        <Upload accept="image/*" showUploadList={false} customRequest={handleUploadBomCardPhoto}>
-                          <Button
-                            size="small"
-                            icon={<UploadOutlined />}
-                            loading={bomCardPhotoUploading}
-                            block
-                            style={{ marginTop: 8 }}
-                          >
-                            Загрузить
-                          </Button>
-                        </Upload>
-                      </div>
-                      <Descriptions size="small" bordered column={1}>
-                        <Descriptions.Item label="Производитель">
-                          {selectedBomItem.manufacturer_name || currentModel?.manufacturer_name || "—"}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Модель">
-                          {[currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "—"}
-                        </Descriptions.Item>
-                        {getBomTitleRu(selectedBomItem) !== "—" ? (
-                          <Descriptions.Item label="Название RU">{getBomTitleRu(selectedBomItem)}</Descriptions.Item>
-                        ) : null}
-                        <Descriptions.Item label="Количество в BOM">
-                          {formatBomQuantity(selectedBomItem)}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Где находится">
-                          {selectedBomParent
-                            ? `${getBomItemLabel(selectedBomParent)} — ${getBomItemName(selectedBomParent) || "узел"}`
-                            : "В корне BOM модели"}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Роль среди аналогов">
-                          {bomCardIsAnalog ? (
-                            <Tag color="gold">Аналог</Tag>
-                          ) : bomCardIsAnalogPrimary ? (
-                            <Tag color="blue">Основная позиция</Tag>
-                          ) : (
-                            <Tag>Самостоятельная позиция</Tag>
-                          )}
-                        </Descriptions.Item>
-                        {bomCardIsAnalog && bomAnalogGroupPrimary ? (
-                          <Descriptions.Item label="Основная позиция">
-                            {renderBomAnalogLinks([bomAnalogGroupPrimary])}
-                          </Descriptions.Item>
-                        ) : bomCardIsAnalogPrimary && bomAnalogGroupPositions.length ? (
-                          <Descriptions.Item label={`Аналоги (${bomAnalogGroupPositions.length})`}>
-                            {renderBomAnalogLinks(bomAnalogGroupPositions)}
-                          </Descriptions.Item>
-                        ) : null}
-                      </Descriptions>
-                    </div>
 
-                    <Form form={bomCardForm} layout="vertical">
-                      <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                        <Card
-                          size="small"
-                          title="Характеристики"
-                          loading={bomPositionDetailsLoading}
-                          extra={
-                            <Button size="small" type="primary" loading={bomCardSaving} onClick={handleSaveBomCardData}>
-                              Сохранить
-                            </Button>
-                          }
-                        >
-                          <Row gutter={12}>
-                            <Col span={8}>
-                              <Form.Item label="Масса, кг" name="weight_kg">
-                                <InputNumber min={0} precision={3} style={{ width: "100%" }} placeholder="например 1250" />
-                              </Form.Item>
-                            </Col>
-                            <Col span={16}>
-                              <Form.Item label={`Габариты, ${dimensionUnitSymbol}`}>
-                                <Space.Compact style={{ width: "100%" }}>
-                                  <Form.Item name="length_mm" noStyle>
-                                    <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Длина" />
-                                  </Form.Item>
-                                  <Form.Item name="width_mm" noStyle>
-                                    <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Ширина" />
-                                  </Form.Item>
-                                  <Form.Item name="height_mm" noStyle>
-                                    <InputNumber min={0} precision={1} style={{ width: "33.33%" }} placeholder="Высота" />
-                                  </Form.Item>
-                                </Space.Compact>
-                              </Form.Item>
-                            </Col>
-                          </Row>
-                          <Form.Item label="Код ТН ВЭД" name="tnved">
-                            <TnvedPicker
-                              placeholder="Искать по названию детали, материалу или описанию"
-                              catalogPositionId={selectedBomItem?.catalog_position_id}
-                              showSuggestions={false}
-                            />
-                          </Form.Item>
-                          <Form.Item label="Описание" name="description">
-                            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} placeholder="Краткое описание позиции для карточки и поиска" />
-                          </Form.Item>
-                        </Card>
-
+                      {selectedBomItem.catalog_position_id ? (
                         <Card
                           size="small"
                           title="Материалы и исполнения"
                           loading={bomPositionDetailsLoading}
                           extra={
-                            <Button size="small" onClick={() => openBomMaterialModal()}>
+                            <Button size="small" disabled={bomRowSaving || bomCardSaving} onClick={() => openBomMaterialModal()}>
                               Добавить материал
                             </Button>
                           }
                         >
+                          <Typography.Text type="secondary" style={{ display: "block", marginBottom: 10 }}>
+                            Добавление, изменение и удаление материалов сохраняются сразу.
+                          </Typography.Text>
                           {bomCardMaterials.length ? (
                             <Table
                               size="small"
@@ -7001,7 +6973,7 @@ export default function EquipmentClassifierMain() {
                                   width: 150,
                                   render: (_, row) => (
                                     <Space size={4}>
-                                      <Button size="small" onClick={() => openBomMaterialModal(row)}>
+                                      <Button size="small" disabled={bomRowSaving || bomCardSaving} onClick={() => openBomMaterialModal(row)}>
                                         Изменить
                                       </Button>
                                       <Popconfirm
@@ -7010,7 +6982,7 @@ export default function EquipmentClassifierMain() {
                                         cancelText="Отмена"
                                         onConfirm={() => handleDeleteBomMaterial(row)}
                                       >
-                                        <Button size="small" danger>
+                                        <Button size="small" danger disabled={bomRowSaving || bomCardSaving}>
                                           Удалить
                                         </Button>
                                       </Popconfirm>
@@ -7023,32 +6995,169 @@ export default function EquipmentClassifierMain() {
                             <Empty description="Материалы для этой позиции пока не выбраны." />
                           )}
                         </Card>
-
-                        {bomCardSupplierMaterials.length ? (
-                          <Card size="small" title="Материалы, указанные у деталей поставщиков" loading={bomPositionDetailsLoading}>
-                            <Table
-                              size="small"
-                              rowKey={(row) => `${row.supplier_part_id}-${row.id}`}
-                              pagination={false}
-                              dataSource={bomCardSupplierMaterials}
-                              columns={[
-                                {
-                                  title: "Материал",
-                                  render: (_, row) =>
-                                    [row.name, row.code, row.standard].filter(Boolean).join(" / ") || "—",
-                                },
-                                {
-                                  title: "Источник",
-                                  render: (_, row) =>
-                                    `${row.supplier_name || "Поставщик"}${row.supplier_part_number ? ` · ${row.supplier_part_number}` : ""}`,
-                                },
-                                { title: "Примечание", render: (_, row) => row.note || (row.is_default ? "Основной" : "—") },
-                              ]}
+                      ) : null}
+                    </Space>
+                  </Form>
+                ) : (
+                  <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                    <Card size="small" title="Карточка позиции" loading={bomPositionDetailsLoading}>
+                      <div style={{ display: "grid", gridTemplateColumns: "132px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+                        <div
+                          style={{
+                            border: "1px solid #f0f0f0",
+                            borderRadius: 6,
+                            background: "#fafafa",
+                            padding: 8,
+                          }}
+                        >
+                          {bomPrimaryPhoto?.file_url ? (
+                            <Image
+                              src={bomPrimaryPhoto.file_url}
+                              alt={bomPrimaryPhoto.caption || getBomItemName(selectedBomItem) || "Фото позиции"}
+                              width="100%"
+                              height={104}
+                              style={{ objectFit: "cover", borderRadius: 4 }}
                             />
-                          </Card>
-                        ) : null}
-                      </Space>
-                    </Form>
+                          ) : (
+                            <div style={{ height: 104, display: "flex", alignItems: "center", justifyContent: "center", color: "#999" }}>
+                              Фото пока нет
+                            </div>
+                          )}
+                        </div>
+                        <Descriptions size="small" bordered column={1}>
+                          <Descriptions.Item label="Каталожный номер">
+                            {bomCardPosition?.manufacturer_part_number || getBomManufacturerNumber(selectedBomItem)}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Производитель">
+                            {selectedBomItem.manufacturer_name || currentModel?.manufacturer_name || "—"}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Название EN">
+                            {bomCardPosition?.display_name_en || selectedBomItem.manufacturer_part_name_en || getBomItemName(selectedBomItem) || "—"}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Название RU">
+                            {bomCardPosition?.display_name_ru || getBomTitleRu(selectedBomItem)}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Тип позиции">
+                            {getBomItemTypeLabel(selectedBomItem)}
+                          </Descriptions.Item>
+                        </Descriptions>
+                      </div>
+                    </Card>
+
+                    <Card
+                      size="small"
+                      title={`В текущем BOM · ${[currentModel?.manufacturer_name, currentModel?.model_name].filter(Boolean).join(" ") || "модель"}`}
+                    >
+                      <Descriptions size="small" bordered column={1}>
+                        <Descriptions.Item label="Количество">{formatBomQuantity(selectedBomItem)}</Descriptions.Item>
+                        <Descriptions.Item label="Родительский узел">
+                          {selectedBomParent
+                            ? `${getBomItemLabel(selectedBomParent)} — ${getBomItemName(selectedBomParent) || "узел"}`
+                            : "В корне BOM модели"}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Комментарий к размещению">
+                          {selectedBomItem.notes || "—"}
+                        </Descriptions.Item>
+                      </Descriptions>
+                    </Card>
+
+                    {selectedBomItem.catalog_position_id ? (
+                      <Card size="small" title="Характеристики позиции" loading={bomPositionDetailsLoading}>
+                        <Descriptions size="small" bordered column={1}>
+                          <Descriptions.Item label="Масса">{bomCardWeightText}</Descriptions.Item>
+                          <Descriptions.Item label="Габариты (Д × Ш × В)">{bomCardDimensionsText}</Descriptions.Item>
+                          <Descriptions.Item label="Код ТН ВЭД">{bomCardTnvedText}</Descriptions.Item>
+                          <Descriptions.Item label="Описание">{bomCardPosition?.description || "—"}</Descriptions.Item>
+                        </Descriptions>
+                      </Card>
+                    ) : (
+                      <Alert
+                        type="info"
+                        showIcon
+                        message="Строка BOM пока не связана с карточкой позиции"
+                        description="Характеристики, аналоги, материалы, предложения поставщиков и склад станут доступны после создания или выбора карточки позиции."
+                      />
+                    )}
+
+                    {selectedBomItem.catalog_position_id ? (
+                      <Card size="small" title="Группа аналогов" loading={bomPositionDetailsLoading}>
+                        <Descriptions size="small" bordered column={1}>
+                          <Descriptions.Item label="Роль текущей позиции">
+                            {bomCardIsAnalog ? (
+                              <Tag color="gold">Аналог</Tag>
+                            ) : bomCardIsAnalogPrimary ? (
+                              <Tag color="blue">Основная позиция</Tag>
+                            ) : (
+                              <Tag>Самостоятельная позиция</Tag>
+                            )}
+                          </Descriptions.Item>
+                          {bomCardIsAnalog && bomAnalogGroupPrimary ? (
+                            <Descriptions.Item label="Основная позиция">
+                              {renderBomAnalogLinks([bomAnalogGroupPrimary])}
+                            </Descriptions.Item>
+                          ) : bomCardIsAnalogPrimary && bomAnalogGroupPositions.length ? (
+                            <Descriptions.Item label={`Аналоги (${bomAnalogGroupPositions.length})`}>
+                              {renderBomAnalogLinks(bomAnalogGroupPositions)}
+                            </Descriptions.Item>
+                          ) : (
+                            <Descriptions.Item label="Состав группы">Позиция не входит в группу аналогов</Descriptions.Item>
+                          )}
+                        </Descriptions>
+                      </Card>
+                    ) : null}
+
+                    {selectedBomItem.catalog_position_id ? (
+                      <Card size="small" title="Материалы и исполнения" loading={bomPositionDetailsLoading}>
+                        {bomCardMaterials.length ? (
+                          <Table
+                            size="small"
+                            rowKey="id"
+                            pagination={false}
+                            dataSource={bomCardMaterials}
+                            columns={[
+                              {
+                                title: "Материал",
+                                render: (_, row) => (
+                                  <Space direction="vertical" size={0}>
+                                    <Typography.Text strong>
+                                      {[row.name, row.code, row.standard].filter(Boolean).join(" / ") || "—"}
+                                    </Typography.Text>
+                                    {row.variant_name ? <Typography.Text type="secondary">{row.variant_name}</Typography.Text> : null}
+                                  </Space>
+                                ),
+                              },
+                              { title: "Статус", width: 110, render: (_, row) => (row.is_default ? <Tag color="green">Основной</Tag> : "—") },
+                              { title: "Примечание", render: (_, row) => row.note || "—" },
+                            ]}
+                          />
+                        ) : (
+                          <Empty description="Материалы для этой позиции пока не выбраны." />
+                        )}
+                      </Card>
+                    ) : null}
+
+                    {bomCardSupplierMaterials.length ? (
+                      <Card size="small" title="Материалы, указанные у деталей поставщиков" loading={bomPositionDetailsLoading}>
+                        <Table
+                          size="small"
+                          rowKey={(row) => `${row.supplier_part_id}-${row.id}`}
+                          pagination={false}
+                          dataSource={bomCardSupplierMaterials}
+                          columns={[
+                            {
+                              title: "Материал",
+                              render: (_, row) => [row.name, row.code, row.standard].filter(Boolean).join(" / ") || "—",
+                            },
+                            {
+                              title: "Источник",
+                              render: (_, row) =>
+                                `${row.supplier_name || "Поставщик"}${row.supplier_part_number ? ` · ${row.supplier_part_number}` : ""}`,
+                            },
+                            { title: "Примечание", render: (_, row) => row.note || (row.is_default ? "Основной" : "—") },
+                          ]}
+                        />
+                      </Card>
+                    ) : null}
                   </Space>
                 ),
               },
