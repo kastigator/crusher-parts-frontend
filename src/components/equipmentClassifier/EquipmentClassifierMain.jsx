@@ -17,6 +17,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Radio,
   Row,
   Select,
   Space,
@@ -767,8 +768,10 @@ export default function EquipmentClassifierMain() {
   const [bomRowEditing, setBomRowEditing] = useState(false)
   const [bomRowSaving, setBomRowSaving] = useState(false)
   const [bomAnalogSaving, setBomAnalogSaving] = useState(false)
-  const [bomAnalogCandidateIds, setBomAnalogCandidateIds] = useState([])
-  const [bomAnalogPrimaryCandidateId, setBomAnalogPrimaryCandidateId] = useState(null)
+  const [bomAnalogDraftMembers, setBomAnalogDraftMembers] = useState([])
+  const [bomAnalogDraftPrimaryId, setBomAnalogDraftPrimaryId] = useState(null)
+  const [bomAnalogPendingIds, setBomAnalogPendingIds] = useState([])
+  const [bomAnalogDraftDirty, setBomAnalogDraftDirty] = useState(false)
   const [bomCardSaving, setBomCardSaving] = useState(false)
   const [bomCardPhotoUploading, setBomCardPhotoUploading] = useState(false)
   const [bomMaterialModalOpen, setBomMaterialModalOpen] = useState(false)
@@ -2744,18 +2747,18 @@ export default function EquipmentClassifierMain() {
       bomAnalogGroupPrimary?.id &&
       Number(bomCardPosition.id) === Number(bomAnalogGroupPrimary.id),
   )
-  const bomAnalogGroupMemberIds = useMemo(
+  const bomAnalogDraftMemberIds = useMemo(
     () => new Set(
-      [bomAnalogGroupPrimary?.id, ...bomAnalogGroupPositions.map((row) => row?.id)]
+      bomAnalogDraftMembers
+        .map((row) => row?.id)
         .map(Number)
         .filter(Boolean),
     ),
-    [bomAnalogGroupPositions, bomAnalogGroupPrimary?.id],
+    [bomAnalogDraftMembers],
   )
   const bomAnalogCatalogOptions = useMemo(
     () => catalogPositionOptions
-      .filter((row) => !bomAnalogGroupMemberIds.has(Number(row.id)))
-      .filter((row) => Number(row.id) !== Number(bomCardPosition?.id))
+      .filter((row) => !bomAnalogDraftMemberIds.has(Number(row.id)))
       .map((row) => {
         const identity =
           [row.manufacturer_part_number || row.position_code, row.display_name]
@@ -2767,8 +2770,31 @@ export default function EquipmentClassifierMain() {
           label: context ? `${identity} · ${context}` : identity,
         }
       }),
-    [bomAnalogGroupMemberIds, bomCardPosition?.id, catalogPositionOptions],
+    [bomAnalogDraftMemberIds, catalogPositionOptions],
   )
+  const resetBomAnalogDraft = useCallback(() => {
+    if (!bomCardPosition?.id) {
+      setBomAnalogDraftMembers([])
+      setBomAnalogDraftPrimaryId(null)
+      setBomAnalogPendingIds([])
+      setBomAnalogDraftDirty(false)
+      return
+    }
+    const sourceMembers = bomAnalogGroupPrimary
+      ? [bomAnalogGroupPrimary, ...bomAnalogGroupPositions]
+      : [bomCardPosition]
+    const uniqueMembers = Array.from(
+      new Map(sourceMembers.filter((row) => row?.id).map((row) => [Number(row.id), row])).values(),
+    )
+    setBomAnalogDraftMembers(uniqueMembers)
+    setBomAnalogDraftPrimaryId(Number(bomAnalogGroupPrimary?.id || bomCardPosition.id))
+    setBomAnalogPendingIds([])
+    setBomAnalogDraftDirty(false)
+  }, [bomAnalogGroupPositions, bomAnalogGroupPrimary, bomCardPosition])
+
+  useEffect(() => {
+    if (bomRowEditing) resetBomAnalogDraft()
+  }, [bomRowEditing, resetBomAnalogDraft])
   const addingBomApplication =
     Boolean(crossModelBomSource?.catalog_position_id && selectedBomItem?.catalog_position_id) &&
     Number(crossModelBomSource.catalog_position_id) === Number(selectedBomItem.catalog_position_id)
@@ -3120,8 +3146,8 @@ export default function EquipmentClassifierMain() {
 
   const cancelBomRowEditor = useCallback(() => {
     setBomRowEditing(false)
-    setBomAnalogCandidateIds([])
-    setBomAnalogPrimaryCandidateId(null)
+    setBomAnalogPendingIds([])
+    setBomAnalogDraftDirty(false)
     bomRowForm.resetFields()
   }, [bomRowForm])
 
@@ -3130,8 +3156,8 @@ export default function EquipmentClassifierMain() {
     setSelectedBomItem(item)
     setBomItemCardOpen(true)
     setBomCardActiveTab("main")
-    setBomAnalogCandidateIds([])
-    setBomAnalogPrimaryCandidateId(null)
+    setBomAnalogPendingIds([])
+    setBomAnalogDraftDirty(false)
     fillBomRowForm(item)
     loadCatalogPositions(item.manufacturer_part_number || item.catalog_position_code || "")
     setBomRowEditing(true)
@@ -3175,8 +3201,8 @@ export default function EquipmentClassifierMain() {
       )
       if (nextSelected) setSelectedBomItem(nextSelected)
       setBomRowEditing(false)
-      setBomAnalogCandidateIds([])
-      setBomAnalogPrimaryCandidateId(null)
+      setBomAnalogPendingIds([])
+      setBomAnalogDraftDirty(false)
       bomRowForm.resetFields()
       await reloadBomPositionDetails()
       if (selectedId) await loadWorkspace(selectedId)
@@ -3197,91 +3223,65 @@ export default function EquipmentClassifierMain() {
     selectedId,
   ])
 
-  const handleAddBomAnalogs = useCallback(async () => {
-    if (!selectedBomItem?.catalog_position_id || !bomAnalogCandidateIds.length) return
-    try {
-      setBomAnalogSaving(true)
-      await axios.post(`/catalog-positions/${selectedBomItem.catalog_position_id}/analogs`, {
-        catalog_position_ids: bomAnalogCandidateIds,
-      })
-      setBomAnalogCandidateIds([])
-      await reloadBomPositionDetails()
-      message.success("Аналоги добавлены")
-    } catch (err) {
-      console.error("ADD catalog position analogs error:", err)
-      message.error(err?.response?.data?.message || "Не удалось добавить аналоги")
-    } finally {
-      setBomAnalogSaving(false)
-    }
-  }, [bomAnalogCandidateIds, reloadBomPositionDetails, selectedBomItem?.catalog_position_id])
-
-  const handleAssignBomAnalogPrimary = useCallback(async () => {
-    if (!selectedBomItem?.catalog_position_id || !bomAnalogPrimaryCandidateId) return
-    try {
-      setBomAnalogSaving(true)
-      await axios.put(`/catalog-positions/${selectedBomItem.catalog_position_id}/analog-primary`, {
-        primary_catalog_position_id: bomAnalogPrimaryCandidateId,
-      })
-      setBomAnalogPrimaryCandidateId(null)
-      setBomAnalogCandidateIds([])
-      await reloadBomPositionDetails()
-      message.success("Основная позиция назначена")
-    } catch (err) {
-      console.error("ASSIGN catalog position analog primary error:", err)
-      message.error(err?.response?.data?.message || "Не удалось назначить основную позицию")
-    } finally {
-      setBomAnalogSaving(false)
-    }
-  }, [bomAnalogPrimaryCandidateId, reloadBomPositionDetails, selectedBomItem?.catalog_position_id])
-
-  const handleMakeBomAnalogPrimary = useCallback(async (catalogPositionId = null) => {
-    const targetId = Number(catalogPositionId || selectedBomItem?.catalog_position_id)
-    if (!targetId) return
-    try {
-      setBomAnalogSaving(true)
-      await axios.post(`/catalog-positions/${targetId}/analogs/make-primary`)
-      setBomAnalogPrimaryCandidateId(null)
-      setBomAnalogCandidateIds([])
-      await reloadBomPositionDetails()
-      message.success("Основная позиция группы изменена")
-    } catch (err) {
-      console.error("MAKE catalog position analog primary error:", err)
-      message.error(err?.response?.data?.message || "Не удалось изменить основную позицию")
-    } finally {
-      setBomAnalogSaving(false)
-    }
-  }, [reloadBomPositionDetails, selectedBomItem?.catalog_position_id])
-
-  const handleRemoveBomAnalog = useCallback((analog) => {
-    const currentId = Number(selectedBomItem?.catalog_position_id)
-    const analogId = Number(analog?.id)
-    if (!currentId || !analogId) return
-    Modal.confirm({
-      title: "Удалить связь аналога?",
-      content: [analog.manufacturer_part_number || analog.position_code, analog.display_name]
-        .filter(Boolean)
-        .join(" — "),
-      okText: "Удалить связь",
-      okButtonProps: { danger: true },
-      cancelText: "Отмена",
-      onOk: async () => {
-        try {
-          setBomAnalogSaving(true)
-          await axios.delete(`/catalog-positions/${currentId}/analogs/${analogId}`)
-          setBomAnalogPrimaryCandidateId(null)
-          setBomAnalogCandidateIds([])
-          await reloadBomPositionDetails()
-          message.success("Связь аналога удалена")
-        } catch (err) {
-          console.error("DELETE catalog position analog error:", err)
-          message.error(err?.response?.data?.message || "Не удалось удалить связь аналога")
-          throw err
-        } finally {
-          setBomAnalogSaving(false)
-        }
-      },
+  const handleAddBomAnalogDraftMembers = useCallback(() => {
+    if (!bomAnalogPendingIds.length) return
+    const rowsById = new Map(catalogPositionOptions.map((row) => [Number(row.id), row]))
+    const addedRows = bomAnalogPendingIds.map((id) => rowsById.get(Number(id))).filter(Boolean)
+    if (!addedRows.length) return
+    setBomAnalogDraftMembers((current) => {
+      const byId = new Map(current.map((row) => [Number(row.id), row]))
+      addedRows.forEach((row) => byId.set(Number(row.id), row))
+      return Array.from(byId.values())
     })
-  }, [reloadBomPositionDetails, selectedBomItem?.catalog_position_id])
+    if (!bomAnalogDraftPrimaryId) {
+      setBomAnalogDraftPrimaryId(Number(bomCardPosition?.id || addedRows[0]?.id))
+    }
+    setBomAnalogPendingIds([])
+    setBomAnalogDraftDirty(true)
+  }, [bomAnalogDraftPrimaryId, bomAnalogPendingIds, bomCardPosition?.id, catalogPositionOptions])
+
+  const handleRemoveBomAnalogDraftMember = useCallback((catalogPositionId) => {
+    const memberId = Number(catalogPositionId)
+    const currentId = Number(bomCardPosition?.id)
+    if (!memberId || bomAnalogDraftMembers.length <= 1) return
+    setBomAnalogDraftMembers((current) => {
+      const next = current.filter((row) => Number(row.id) !== memberId)
+      if (Number(bomAnalogDraftPrimaryId) === memberId) {
+        setBomAnalogDraftPrimaryId(Number(next[0]?.id || currentId) || null)
+      }
+      return next
+    })
+    setBomAnalogPendingIds((current) => current.filter((id) => Number(id) !== memberId))
+    setBomAnalogDraftDirty(true)
+  }, [bomAnalogDraftMembers.length, bomAnalogDraftPrimaryId, bomCardPosition?.id])
+
+  const handleSaveBomAnalogGroup = useCallback(async () => {
+    const currentId = Number(selectedBomItem?.catalog_position_id)
+    const primaryId = Number(bomAnalogDraftPrimaryId)
+    const memberIds = bomAnalogDraftMembers.map((row) => Number(row.id)).filter(Boolean)
+    if (!currentId || !primaryId || !memberIds.length) return
+    try {
+      setBomAnalogSaving(true)
+      await axios.put(`/catalog-positions/${currentId}/analog-group`, {
+        primary_catalog_position_id: primaryId,
+        member_catalog_position_ids: memberIds,
+      })
+      setBomAnalogPendingIds([])
+      setBomAnalogDraftDirty(false)
+      await reloadBomPositionDetails()
+      message.success("Группа аналогов сохранена")
+    } catch (err) {
+      console.error("SAVE catalog position analog group error:", err)
+      message.error(err?.response?.data?.message || "Не удалось сохранить группу аналогов")
+    } finally {
+      setBomAnalogSaving(false)
+    }
+  }, [
+    bomAnalogDraftMembers,
+    bomAnalogDraftPrimaryId,
+    reloadBomPositionDetails,
+    selectedBomItem?.catalog_position_id,
+  ])
 
   const openBomItemModal = useCallback(
     (item = null, parent = null) => {
@@ -3550,8 +3550,8 @@ export default function EquipmentClassifierMain() {
       }
       setModelBomItems(Array.isArray(result.response?.items) ? result.response.items : [])
       setBomRowEditing(false)
-      setBomAnalogCandidateIds([])
-      setBomAnalogPrimaryCandidateId(null)
+      setBomAnalogPendingIds([])
+      setBomAnalogDraftDirty(false)
       bomRowForm.resetFields()
       if (Number(selectedBomItem?.id) === Number(item.id)) {
         setBomItemCardOpen(false)
@@ -6627,8 +6627,10 @@ export default function EquipmentClassifierMain() {
           setBomWarehouseDetails(null)
           setBomWarehouseAction(null)
           setBomRowEditing(false)
-          setBomAnalogCandidateIds([])
-          setBomAnalogPrimaryCandidateId(null)
+          setBomAnalogDraftMembers([])
+          setBomAnalogDraftPrimaryId(null)
+          setBomAnalogPendingIds([])
+          setBomAnalogDraftDirty(false)
           bomRowForm.resetFields()
           setBomCardActiveTab("main")
         }}
@@ -6718,149 +6720,117 @@ export default function EquipmentClassifierMain() {
                       </Row>
 
                       {selectedBomItem.catalog_position_id ? (
-                        <Card size="small" title="Аналоги и основная позиция" loading={bomPositionDetailsLoading}>
+                        <Card size="small" title="Группа аналогов" loading={bomPositionDetailsLoading}>
                           <Space direction="vertical" size={12} style={{ width: "100%" }}>
                             <Typography.Text type="secondary">
-                              Изменения связей аналогов сохраняются сразу. Кнопка «Сохранить строку» относится к данным BOM выше.
+                              Все позиции в группе считаются взаимозаменяемыми. Выберите одну основную позицию — остальные будут её аналогами.
                             </Typography.Text>
-                            <Space wrap>
-                              <Typography.Text strong>Роль текущей карточки:</Typography.Text>
-                              {bomCardIsAnalog ? (
-                                <Tag color="gold">Аналог</Tag>
-                              ) : bomCardIsAnalogPrimary ? (
-                                <Tag color="blue">Основная позиция</Tag>
-                              ) : (
-                                <Tag>Самостоятельная позиция</Tag>
-                              )}
-                            </Space>
-
-                            {bomAnalogGroupPrimary ? (
-                              <div>
-                                <Typography.Text type="secondary">Основная позиция группы</Typography.Text>
-                                <div style={{ marginTop: 4 }}>
-                                  {renderBomAnalogLinks([bomAnalogGroupPrimary])}
-                                  {bomCardIsAnalog ? (
-                                    <Button
-                                      size="small"
-                                      type="link"
-                                      loading={bomAnalogSaving}
-                                      onClick={() => handleMakeBomAnalogPrimary()}
-                                    >
-                                      Сделать текущую основной
-                                    </Button>
-                                  ) : null}
-                                </div>
-                              </div>
-                            ) : null}
-
-                            {bomAnalogGroupPositions.length ? (
-                              <div>
-                                <Typography.Text type="secondary">
-                                  {bomCardIsAnalog ? "Аналоги в группе" : "Аналоги"} ({bomAnalogGroupPositions.length})
-                                </Typography.Text>
-                                <Space direction="vertical" size={6} style={{ width: "100%", marginTop: 6 }}>
-                                  {bomAnalogGroupPositions.map((row) => {
-                                    const isCurrent = Number(row.id) === Number(bomCardPosition?.id)
-                                    return (
-                                      <div
-                                        key={row.relation_id || row.id}
-                                        style={{
-                                          display: "flex",
-                                          justifyContent: "space-between",
-                                          gap: 12,
-                                          alignItems: "center",
-                                          padding: "6px 8px",
-                                          border: "1px solid #f0f0f0",
-                                          borderRadius: 6,
+                            <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                              {bomAnalogDraftMembers.map((row) => {
+                                const memberId = Number(row.id)
+                                const isCurrent = memberId === Number(bomCardPosition?.id)
+                                const isPrimary = memberId === Number(bomAnalogDraftPrimaryId)
+                                const identity = [row.manufacturer_part_number || row.position_code, row.display_name]
+                                  .filter(Boolean)
+                                  .join(" — ") || `Позиция #${memberId}`
+                                const context = [row.manufacturer_name, row.model_name].filter(Boolean).join(" / ")
+                                return (
+                                  <div
+                                    key={memberId}
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      gap: 12,
+                                      alignItems: "center",
+                                      padding: "9px 10px",
+                                      border: `1px solid ${isPrimary ? "#91caff" : "#f0f0f0"}`,
+                                      background: isPrimary ? "#f0f7ff" : "#fff",
+                                      borderRadius: 6,
+                                    }}
+                                  >
+                                    <Space align="start" size={10}>
+                                      <Radio
+                                        checked={isPrimary}
+                                        disabled={bomAnalogSaving}
+                                        onChange={() => {
+                                          setBomAnalogDraftPrimaryId(memberId)
+                                          setBomAnalogDraftDirty(true)
                                         }}
                                       >
-                                        <Space size={6} wrap>
-                                          {renderBomAnalogLinks([row])}
-                                          {isCurrent ? <Tag color="gold">Текущая</Tag> : null}
-                                        </Space>
-                                        <Space size={4}>
-                                          {!isCurrent ? (
-                                            <Button
-                                              size="small"
-                                              type="link"
-                                              disabled={bomAnalogSaving}
-                                              onClick={() => handleMakeBomAnalogPrimary(row.id)}
-                                            >
-                                              Сделать основной
-                                            </Button>
-                                          ) : null}
-                                          <Button
-                                            size="small"
-                                            type="link"
-                                            danger
-                                            disabled={bomAnalogSaving}
-                                            onClick={() => handleRemoveBomAnalog(row)}
-                                          >
-                                            Удалить связь
-                                          </Button>
-                                        </Space>
-                                      </div>
-                                    )
-                                  })}
-                                </Space>
-                              </div>
-                            ) : null}
+                                        Основная
+                                      </Radio>
+                                      <Space direction="vertical" size={0}>
+                                        <Typography.Text strong={isCurrent}>{identity}</Typography.Text>
+                                        {context ? <Typography.Text type="secondary">{context}</Typography.Text> : null}
+                                      </Space>
+                                    </Space>
+                                    <Space size={6}>
+                                      {isCurrent ? <Tag color="gold">Текущая карточка</Tag> : null}
+                                      {bomAnalogDraftMembers.length > 1 ? (
+                                        <Button
+                                          size="small"
+                                          type="text"
+                                          danger
+                                          disabled={bomAnalogSaving}
+                                          onClick={() => handleRemoveBomAnalogDraftMember(memberId)}
+                                        >
+                                          Исключить
+                                        </Button>
+                                      ) : null}
+                                    </Space>
+                                  </div>
+                                )
+                              })}
+                            </Space>
 
-                            {!bomCardIsAnalogPrimary ? (
-                              <div>
-                                <Typography.Text type="secondary">
-                                  {bomCardIsAnalog ? "Назначить другую основную позицию" : "Сделать текущую карточку аналогом другой позиции"}
-                                </Typography.Text>
-                                <Space.Compact style={{ width: "100%", marginTop: 6 }}>
-                                  <Select
-                                    showSearch
-                                    filterOption={false}
-                                    value={bomAnalogPrimaryCandidateId}
-                                    options={bomAnalogCatalogOptions}
-                                    loading={catalogPositionsLoading}
-                                    placeholder="Найдите основную позицию"
-                                    style={{ width: "100%" }}
-                                    onSearch={loadCatalogPositions}
-                                    onFocus={() => loadCatalogPositions("")}
-                                    onChange={setBomAnalogPrimaryCandidateId}
-                                  />
-                                  <Button
-                                    type="primary"
-                                    loading={bomAnalogSaving}
-                                    disabled={!bomAnalogPrimaryCandidateId}
-                                    onClick={handleAssignBomAnalogPrimary}
-                                  >
-                                    Назначить
-                                  </Button>
-                                </Space.Compact>
-                              </div>
+                            {!bomAnalogDraftMemberIds.has(Number(bomCardPosition?.id)) ? (
+                              <Alert
+                                type="warning"
+                                showIcon
+                                message="Текущая карточка будет исключена из группы и станет самостоятельной позицией."
+                              />
                             ) : null}
 
                             <div>
-                              <Typography.Text type="secondary">Добавить аналоги в группу</Typography.Text>
+                              <Typography.Text strong>Добавить позиции</Typography.Text>
                               <Space.Compact style={{ width: "100%", marginTop: 6 }}>
                                 <Select
                                   mode="multiple"
                                   showSearch
                                   filterOption={false}
-                                  value={bomAnalogCandidateIds}
+                                  value={bomAnalogPendingIds}
                                   options={bomAnalogCatalogOptions}
                                   loading={catalogPositionsLoading}
-                                  placeholder="Можно выбрать несколько карточек"
+                                  placeholder="Найдите и выберите одну или несколько карточек"
                                   style={{ width: "100%" }}
                                   onSearch={loadCatalogPositions}
                                   onFocus={() => loadCatalogPositions("")}
-                                  onChange={setBomAnalogCandidateIds}
+                                  onChange={setBomAnalogPendingIds}
                                 />
                                 <Button
-                                  type="primary"
-                                  loading={bomAnalogSaving}
-                                  disabled={!bomAnalogCandidateIds.length}
-                                  onClick={handleAddBomAnalogs}
+                                  disabled={!bomAnalogPendingIds.length || bomAnalogSaving}
+                                  onClick={handleAddBomAnalogDraftMembers}
                                 >
-                                  Добавить
+                                  Добавить в список
                                 </Button>
                               </Space.Compact>
+                            </div>
+
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                              <Button
+                                disabled={!bomAnalogDraftDirty || bomAnalogSaving}
+                                onClick={resetBomAnalogDraft}
+                              >
+                                Отменить изменения группы
+                              </Button>
+                              <Button
+                                type="primary"
+                                loading={bomAnalogSaving}
+                                disabled={!bomAnalogDraftDirty || !bomAnalogDraftPrimaryId}
+                                onClick={handleSaveBomAnalogGroup}
+                              >
+                                Сохранить группу
+                              </Button>
                             </div>
                           </Space>
                         </Card>
