@@ -49,6 +49,7 @@ import axios from "@/api/axiosInstance"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
 import TnvedPicker from "@/components/fields/TnvedPicker"
+import ClassifierExcelImportModal from "./ClassifierExcelImportModal"
 
 const CLIENT_PART_TYPE_LABELS = {
   client_drawing: "По чертежу клиента",
@@ -130,6 +131,24 @@ const CARD_KIND_OPTIONS = [
     opens: "При клике открывается карточка товара/позиции классификатора.",
     primaryCard: "Карточка товара",
     tabs: ["Паспорт товара", "Где используется в BOM", "Поставщики", "Документы"],
+  },
+  {
+    value: "material",
+    label: "Материалы",
+    description: "В разделе находятся материалы и заготовки, которые можно закупать, хранить и использовать в BOM.",
+    when: "Для металлопроката, полимеров, масел, технических жидкостей и других материалов.",
+    opens: "При клике открывается карточка материала с паспортом, поставщиками и складом.",
+    primaryCard: "Карточка материала",
+    tabs: ["Паспорт", "Применяемость", "Поставщики", "Склад"],
+  },
+  {
+    value: "service",
+    label: "Услуги / работы",
+    description: "В разделе находятся услуги и работы без складского остатка.",
+    when: "Для монтажа, ремонта, шеф-монтажа, диагностики и производственных работ.",
+    opens: "При клике открывается карточка услуги с описанием и предложениями поставщиков.",
+    primaryCard: "Карточка услуги",
+    tabs: ["Описание", "Применяемость", "Поставщики"],
   },
 ]
 
@@ -823,6 +842,10 @@ export default function EquipmentClassifierMain() {
   const [modalOpen, setModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [modelModalOpen, setModelModalOpen] = useState(false)
+  const [catalogPositionModalOpen, setCatalogPositionModalOpen] = useState(false)
+  const [catalogPositionSaving, setCatalogPositionSaving] = useState(false)
+  const [classifierImportOpen, setClassifierImportOpen] = useState(false)
+  const [classifierImportEntityType, setClassifierImportEntityType] = useState(null)
   const [moveModelOpen, setMoveModelOpen] = useState(false)
   const [moveNodeOpen, setMoveNodeOpen] = useState(false)
   const [moveNodeTargetId, setMoveNodeTargetId] = useState(null)
@@ -851,6 +874,7 @@ export default function EquipmentClassifierMain() {
   const [form] = Form.useForm()
   const nodeCardKind = Form.useWatch("card_kind", form)
   const [modelForm] = Form.useForm()
+  const [catalogPositionForm] = Form.useForm()
   const [manufacturerForm] = Form.useForm()
   const [attributeForm] = Form.useForm()
   const [modelAttributesForm] = Form.useForm()
@@ -1322,7 +1346,10 @@ export default function EquipmentClassifierMain() {
     setSelectedTreeKey(null)
     setSelectedTreeEntity({ type: "node", id: null })
   }, [selectedId, selectedNode, treeRows.length])
-  const selectedNodeChildren = Array.isArray(selectedNode?.children) ? selectedNode.children : []
+  const selectedNodeChildren = useMemo(
+    () => (Array.isArray(selectedNode?.children) ? selectedNode.children : []),
+    [selectedNode],
+  )
   const selectedNodeIsLeaf = !!selectedNode && selectedNodeChildren.length === 0
   const selectedBranchNodeIds = useMemo(() => {
     if (!selectedNode) return []
@@ -1854,13 +1881,23 @@ export default function EquipmentClassifierMain() {
     try {
       const values = await modelForm.validateFields()
       setModelSaving(true)
-      await axios.post("/equipment-models", {
+      const { data: createdModel } = await axios.post("/equipment-models", {
         source: "classifier",
         manufacturer_id: values.manufacturer_id,
         model_name: values.model_name,
         classifier_node_id: selectedNode.id,
         notes: values.notes || null,
       })
+      if (createdModel?.id && equipmentModelAttributes.length) {
+        await axios.put(`/equipment-classifier-nodes/${selectedNode.id}/attribute-values`, {
+          entity_type: "equipment_model",
+          entity_id: createdModel.id,
+          values: equipmentModelAttributes.map((attribute) => ({
+            attribute_id: attribute.id,
+            value: values[`attr_${attribute.id}`],
+          })),
+        })
+      }
       message.success("Модель создана в выбранном разделе")
       setModelModalOpen(false)
       await loadWorkspace(selectedNode.id)
@@ -1871,6 +1908,59 @@ export default function EquipmentClassifierMain() {
     } finally {
       setModelSaving(false)
     }
+  }
+
+  const openCreateCatalogPosition = () => {
+    if (!selectedNode || !selectedNodeIsLeaf) {
+      message.warning("Позиции создаются только в конечном разделе")
+      return
+    }
+    catalogPositionForm.resetFields()
+    catalogPositionForm.setFieldsValue({ uom: "шт" })
+    loadManufacturers()
+    setCatalogPositionModalOpen(true)
+  }
+
+  const handleCreateCatalogPosition = async () => {
+    if (!selectedNode?.id) return
+    try {
+      const values = await catalogPositionForm.validateFields()
+      setCatalogPositionSaving(true)
+      const { data } = await axios.post("/catalog-positions", {
+        classifier_node_id: selectedNode.id,
+        display_name: values.display_name,
+        display_name_en: values.display_name_en || null,
+        display_name_ru: values.display_name_ru || null,
+        position_code: values.position_code || null,
+        manufacturer_id: values.manufacturer_id || null,
+        manufacturer_part_number: values.manufacturer_part_number || null,
+        uom: values.uom || null,
+        description: values.description || null,
+        attribute_values: catalogPositionAttributes.map((attribute) => ({
+          attribute_id: attribute.id,
+          value: values[`attr_${attribute.id}`],
+        })),
+      })
+      message.success("Карточка номенклатуры создана")
+      setCatalogPositionModalOpen(false)
+      await loadWorkspace(selectedNode.id)
+      if (data?.id) openCatalogPositionCard(data)
+    } catch (error) {
+      if (error?.errorFields) return
+      console.error("POST /catalog-positions error:", error)
+      message.error(error?.response?.data?.message || "Не удалось создать карточку номенклатуры")
+    } finally {
+      setCatalogPositionSaving(false)
+    }
+  }
+
+  const openClassifierImport = (entityType) => {
+    if (!selectedNode?.id || !selectedNodeIsLeaf) {
+      message.warning("Импорт доступен только в конечном разделе")
+      return
+    }
+    setClassifierImportEntityType(entityType)
+    setClassifierImportOpen(true)
   }
 
   const openMoveModel = (row) => {
@@ -1959,6 +2049,9 @@ export default function EquipmentClassifierMain() {
       sort_order: (attributes || []).length * 10 + 10,
       is_required: false,
       is_filterable: true,
+      is_importable: true,
+      is_identity: false,
+      scopes: selectedEffectiveCardKind === "equipment_model" ? ["equipment_model"] : ["catalog_position"],
       help_text: "",
       options_text: "",
     })
@@ -1989,6 +2082,9 @@ export default function EquipmentClassifierMain() {
       sort_order: row.sort_order || 0,
       is_required: !!row.is_required,
       is_filterable: !!row.is_filterable,
+      is_importable: Number(row.is_importable ?? 1) === 1,
+      is_identity: !!row.is_identity,
+      scopes: Array.isArray(row.scopes) ? row.scopes : [],
       help_text: row.help_text || "",
       options_text: (row.options || []).map((option) => option.value_label).join("\n"),
     })
@@ -2006,6 +2102,9 @@ export default function EquipmentClassifierMain() {
         sort_order: values.sort_order ?? 0,
         is_required: values.is_required ? 1 : 0,
         is_filterable: values.is_filterable ? 1 : 0,
+        is_importable: values.is_importable ? 1 : 0,
+        is_identity: values.is_identity ? 1 : 0,
+        scopes: values.scopes || [],
         help_text: values.help_text || null,
       }
       if (["select", "multiselect"].includes(payload.value_type)) {
@@ -2160,42 +2259,6 @@ export default function EquipmentClassifierMain() {
       setUnitAttributeRows([])
     } finally {
       setUnitAttributesLoading(false)
-    }
-  }
-
-  const loadUnitPassport = async (unit) => {
-    const nodeId = getClassifierNodeIdForUnit(unit)
-    if (!unit?.id || !nodeId) {
-      setUnitPassportRows([])
-      return
-    }
-    setUnitPassportLoading(true)
-    try {
-      const { data } = await axios.get(`/equipment-classifier-nodes/${nodeId}/attribute-values`, {
-        params: { entity_type: "client_equipment_unit", entity_id: unit.id },
-      })
-      const attrRows = Array.isArray(data?.attributes) ? data.attributes : []
-      const valuesByAttrId = new Map((data?.values || []).map((item) => [Number(item.attribute_id), item]))
-      setUnitPassportRows(
-        attrRows.map((attribute) => {
-          const valueRow = valuesByAttrId.get(Number(attribute.id))
-          const value = normalizeValueForForm(attribute, valueRow)
-          const displayValue = Array.isArray(value) ? value.join(", ") : value
-          return {
-            ...attribute,
-            display_value:
-              displayValue === undefined || displayValue === null || displayValue === ""
-                ? ""
-                : String(displayValue),
-          }
-        }),
-      )
-    } catch (err) {
-      console.error("GET client unit passport error:", err)
-      message.error(err?.response?.data?.message || "Не удалось загрузить паспорт машины")
-      setUnitPassportRows([])
-    } finally {
-      setUnitPassportLoading(false)
     }
   }
 
@@ -2545,17 +2608,43 @@ export default function EquipmentClassifierMain() {
     }
   }
 
-  const rawWorkspaceModels = Array.isArray(workspace?.models) ? workspace.models : []
-  const rawWorkspaceCatalogPositions = Array.isArray(workspace?.catalog_positions) ? workspace.catalog_positions : []
-  const rawWorkspaceManufacturers = Array.isArray(workspace?.manufacturers) ? workspace.manufacturers : []
-  const rawWorkspaceUnits = Array.isArray(workspace?.client_equipment_units) ? workspace.client_equipment_units : []
-  const rawWorkspaceClientParts = Array.isArray(workspace?.client_parts) ? workspace.client_parts : []
+  const rawWorkspaceModels = useMemo(
+    () => (Array.isArray(workspace?.models) ? workspace.models : []),
+    [workspace?.models],
+  )
+  const rawWorkspaceCatalogPositions = useMemo(
+    () => (Array.isArray(workspace?.catalog_positions) ? workspace.catalog_positions : []),
+    [workspace?.catalog_positions],
+  )
+  const rawWorkspaceManufacturers = useMemo(
+    () => (Array.isArray(workspace?.manufacturers) ? workspace.manufacturers : []),
+    [workspace?.manufacturers],
+  )
+  const rawWorkspaceUnits = useMemo(
+    () => (Array.isArray(workspace?.client_equipment_units) ? workspace.client_equipment_units : []),
+    [workspace?.client_equipment_units],
+  )
+  const rawWorkspaceClientParts = useMemo(
+    () => (Array.isArray(workspace?.client_parts) ? workspace.client_parts : []),
+    [workspace?.client_parts],
+  )
+  const equipmentModelAttributes = useMemo(
+    () => attributes.filter((attribute) => (attribute.scopes || []).includes("equipment_model")),
+    [attributes],
+  )
+  const catalogPositionAttributes = useMemo(
+    () => attributes.filter((attribute) => (attribute.scopes || []).includes("catalog_position")),
+    [attributes],
+  )
+  const activeEntityAttributes = selectedEffectiveCardKind === "equipment_model"
+    ? equipmentModelAttributes
+    : catalogPositionAttributes
   const filterableAttributes = useMemo(
     () =>
       selectedNodeIsLeaf
-        ? attributes.filter((attribute) => Number(attribute.is_filterable || 0) === 1)
+        ? activeEntityAttributes.filter((attribute) => Number(attribute.is_filterable || 0) === 1)
         : [],
-    [attributes, selectedNodeIsLeaf],
+    [activeEntityAttributes, selectedNodeIsLeaf],
   )
   const hasActiveAttributeFilters = useMemo(
     () =>
@@ -2659,8 +2748,8 @@ export default function EquipmentClassifierMain() {
     })
   }
 
-  const getModelAttributeValue = (model, attributeId) =>
-    (Array.isArray(model?.attribute_values) ? model.attribute_values : []).find(
+  const getEntityAttributeValue = (entity, attributeId) =>
+    (Array.isArray(entity?.attribute_values) ? entity.attribute_values : []).find(
       (value) => Number(value.attribute_id) === Number(attributeId),
     ) || null
 
@@ -2690,6 +2779,44 @@ export default function EquipmentClassifierMain() {
     if (selectedTreeEntity.type !== "model" || !selectedTreeEntity.id) return null
     return rawWorkspaceModels.find((model) => Number(model.id) === Number(selectedTreeEntity.id)) || selectedModelFromTree
   }, [rawWorkspaceModels, selectedModelFromTree, selectedTreeEntity])
+
+  const loadUnitPassport = useCallback(async (unit) => {
+    const nodeId = Number(
+      unit?.classifier_node_id || currentModel?.classifier_node_id || selectedNode?.id || selectedId || 0,
+    ) || null
+    if (!unit?.id || !nodeId) {
+      setUnitPassportRows([])
+      return
+    }
+    setUnitPassportLoading(true)
+    try {
+      const { data } = await axios.get(`/equipment-classifier-nodes/${nodeId}/attribute-values`, {
+        params: { entity_type: "client_equipment_unit", entity_id: unit.id },
+      })
+      const attrRows = Array.isArray(data?.attributes) ? data.attributes : []
+      const valuesByAttrId = new Map((data?.values || []).map((item) => [Number(item.attribute_id), item]))
+      setUnitPassportRows(
+        attrRows.map((attribute) => {
+          const valueRow = valuesByAttrId.get(Number(attribute.id))
+          const value = normalizeValueForForm(attribute, valueRow)
+          const displayValue = Array.isArray(value) ? value.join(", ") : value
+          return {
+            ...attribute,
+            display_value:
+              displayValue === undefined || displayValue === null || displayValue === ""
+                ? ""
+                : String(displayValue),
+          }
+        }),
+      )
+    } catch (err) {
+      console.error("GET client unit passport error:", err)
+      message.error(err?.response?.data?.message || "Не удалось загрузить паспорт машины")
+      setUnitPassportRows([])
+    } finally {
+      setUnitPassportLoading(false)
+    }
+  }, [currentModel?.classifier_node_id, selectedId, selectedNode?.id])
 
   const selectedCatalogPosition = useMemo(() => {
     if (selectedTreeEntity.type !== "catalog_position" || !selectedTreeEntity.id) return null
@@ -4050,7 +4177,7 @@ export default function EquipmentClassifierMain() {
       setUnitPassportRows([])
       setUnitBomItems([])
     }
-  }, [selectedTreeEntity.type, selectedUnitFromTree])
+  }, [loadUnitPassport, selectedTreeEntity.type, selectedUnitFromTree])
 
   const handleTreeSelect = (keys) => {
     const key = keys?.[0] || null
@@ -4198,11 +4325,11 @@ export default function EquipmentClassifierMain() {
     }
   }
 
-  const modelMatchesAttributeFilters = (model) =>
+  const entityMatchesAttributeFilters = useCallback((entity) =>
     filterableAttributes.every((attribute) => {
       const filter = attributeFilters[attribute.id]
       if (!filter) return true
-      const valueRow = getModelAttributeValue(model, attribute.id)
+      const valueRow = getEntityAttributeValue(entity, attribute.id)
 
       if (attribute.value_type === "number") {
         const hasMin = filter.min !== undefined && filter.min !== null && filter.min !== ""
@@ -4236,9 +4363,13 @@ export default function EquipmentClassifierMain() {
       const raw = String(valueRow?.value_text || valueRow?.value_date || "").trim()
       if (filter.value === undefined || filter.value === null || filter.value === "") return true
       if (!raw) return false
-      if (attribute.value_type === "select") return raw === filter.value
+      if (attribute.value_type === "select") {
+        if (raw === filter.value) return true
+        const selectedOption = (attribute.options || []).find((option) => option.value_code === filter.value)
+        return selectedOption ? raw === selectedOption.value_label : false
+      }
       return raw.toLowerCase().includes(String(filter.value).trim().toLowerCase())
-    })
+    }), [attributeFilters, filterableAttributes])
 
   const workspaceModels = useMemo(() => {
     let rows = rawWorkspaceModels
@@ -4246,25 +4377,21 @@ export default function EquipmentClassifierMain() {
       rows = rows.filter((row) => Number(row.manufacturer_id) === Number(manufacturerFilter))
     }
     if (hasActiveAttributeFilters) {
-      rows = rows.filter((row) => modelMatchesAttributeFilters(row))
+      rows = rows.filter((row) => entityMatchesAttributeFilters(row))
     }
     return rows
-  }, [attributeFilters, filterableAttributes, hasActiveAttributeFilters, manufacturerFilter, rawWorkspaceModels])
+  }, [entityMatchesAttributeFilters, hasActiveAttributeFilters, manufacturerFilter, rawWorkspaceModels])
 
-  const workspaceCatalogPositions = useMemo(
-    () =>
-      rawWorkspaceCatalogPositions
-        .filter((row) => !selectedNodeIsLeaf || Number(row.classifier_node_id) === Number(selectedId))
-        .sort((a, b) => String(a.display_name || "").localeCompare(String(b.display_name || ""), "ru")),
-    [rawWorkspaceCatalogPositions, selectedId, selectedNodeIsLeaf],
-  )
+  const workspaceCatalogPositions = useMemo(() => {
+    let rows = rawWorkspaceCatalogPositions.filter(
+      (row) => !selectedNodeIsLeaf || Number(row.classifier_node_id) === Number(selectedId),
+    )
+    if (hasActiveAttributeFilters) rows = rows.filter((row) => entityMatchesAttributeFilters(row))
+    return rows.sort((a, b) => String(a.display_name || "").localeCompare(String(b.display_name || ""), "ru"))
+  }, [entityMatchesAttributeFilters, hasActiveAttributeFilters, rawWorkspaceCatalogPositions, selectedId, selectedNodeIsLeaf])
 
-  const shouldShowModelSection =
-    selectedEffectiveCardKind === "equipment_model" ||
-    (selectedEffectiveCardKind === "auto" && (workspaceModels.length > 0 || workspaceCatalogPositions.length === 0))
-  const shouldShowCatalogPositionSection =
-    selectedEffectiveCardKind === "catalog_position" ||
-    (selectedEffectiveCardKind === "auto" && workspaceCatalogPositions.length > 0)
+  const shouldShowModelSection = selectedEffectiveCardKind === "equipment_model"
+  const shouldShowCatalogPositionSection = ["catalog_position", "material", "service"].includes(selectedEffectiveCardKind)
 
   const selectedNodePurpose = useMemo(() => {
     if (!selectedNode) return ""
@@ -4281,6 +4408,21 @@ export default function EquipmentClassifierMain() {
     if (selectedEffectiveCardKind === "material") return "Здесь находятся материалы этой категории."
     return "Нижний раздел классификатора, готовый для наполнения."
   }, [selectedEffectiveCardKind, selectedNode, selectedNodeIsLeaf])
+
+  const branchEntityKinds = useMemo(() => {
+    const kinds = new Set()
+    if (!selectedNode || selectedNodeIsLeaf) return kinds
+    const walk = (node) => {
+      const children = Array.isArray(node?.children) ? node.children : []
+      if (!children.length) {
+        kinds.add(getEffectiveCardKindInfo(node).kind)
+        return
+      }
+      children.forEach(walk)
+    }
+    selectedNodeChildren.forEach(walk)
+    return kinds
+  }, [getEffectiveCardKindInfo, selectedNode, selectedNodeChildren, selectedNodeIsLeaf])
 
   const branchModelsRaw = useMemo(() => {
     if (!selectedNode || selectedNodeIsLeaf) return []
@@ -4383,6 +4525,22 @@ export default function EquipmentClassifierMain() {
     }
     return rows
   }, [branchModelsRaw, branchSectionFilter, manufacturerFilter, selectedNodeChildren])
+
+  const branchCatalogPositions = useMemo(() => {
+    let rows = branchCatalogPositionsRaw
+    if (branchSectionFilter) {
+      const child = selectedNodeChildren.find((item) => Number(item.id) === Number(branchSectionFilter))
+      const ids = new Set()
+      const walk = (node) => {
+        if (!node?.id) return
+        ids.add(Number(node.id))
+        ;(node.children || []).forEach(walk)
+      }
+      walk(child)
+      rows = rows.filter((row) => ids.has(Number(row.classifier_node_id)))
+    }
+    return rows
+  }, [branchCatalogPositionsRaw, branchSectionFilter, selectedNodeChildren])
 
   const manufacturerFilterOptions = useMemo(() => {
     const byId = new Map()
@@ -4748,7 +4906,9 @@ export default function EquipmentClassifierMain() {
   const getAttributeMetaText = (row) =>
     [
       row?.is_filterable ? "в фильтрах" : null,
+      Number(row?.is_importable ?? 1) === 1 ? "в Excel" : null,
       row?.is_required ? "обязательное" : null,
+      row?.is_identity ? "проверка дублей" : null,
       row?.value_type === "select" || row?.value_type === "multiselect" ? "список значений" : null,
     ]
       .filter(Boolean)
@@ -5428,37 +5588,73 @@ export default function EquipmentClassifierMain() {
           {branchSubsectionsOpen ? renderChildSectionCards() : null}
         </Card>
 
-        <Card
-          size="small"
-          title={`Модели во всех подразделах (${branchModelsRaw.length})`}
-          extra={
-            branchModels.length !== branchModelsRaw.length ? (
-              <Typography.Text type="secondary">Показано: {branchModels.length}</Typography.Text>
-            ) : null
-          }
-        >
-          <Table
+        {branchEntityKinds.has("equipment_model") ? (
+          <Card
             size="small"
-            rowKey="id"
-            columns={modelsColumns}
-            dataSource={branchModels}
-            loading={workspaceLoading}
-            pagination={{ pageSize: 12, showSizeChanger: false }}
-            locale={{
-              emptyText: (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="В подразделах пока нет моделей оборудования">
-                  {!branchSubsectionsOpen ? (
-                    <Button type="link" onClick={() => setBranchSubsectionsOpen(true)}>Показать подразделы</Button>
-                  ) : null}
-                </Empty>
-              ),
-            }}
-            onRow={(row) => ({
-              onClick: () => openModelDetails(row),
-              style: { cursor: "pointer" },
-            })}
-          />
-        </Card>
+            title={`Модели оборудования во всех подразделах (${branchModelsRaw.length})`}
+            extra={
+              branchModels.length !== branchModelsRaw.length ? (
+                <Typography.Text type="secondary">Показано: {branchModels.length}</Typography.Text>
+              ) : null
+            }
+          >
+            <Table
+              size="small"
+              rowKey="id"
+              columns={modelsColumns}
+              dataSource={branchModels}
+              loading={workspaceLoading}
+              pagination={{ pageSize: 12, showSizeChanger: false }}
+              locale={{
+                emptyText: (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="В подразделах пока нет моделей оборудования">
+                    {!branchSubsectionsOpen ? (
+                      <Button type="link" onClick={() => setBranchSubsectionsOpen(true)}>Показать подразделы</Button>
+                    ) : null}
+                  </Empty>
+                ),
+              }}
+              onRow={(row) => ({
+                onClick: () => openModelDetails(row),
+                style: { cursor: "pointer" },
+              })}
+            />
+          </Card>
+        ) : null}
+
+        {["catalog_position", "material", "service"].some((kind) => branchEntityKinds.has(kind)) ? (
+          <Card
+            size="small"
+            title={`Позиции во всех подразделах (${branchCatalogPositionsRaw.length})`}
+            extra={
+              branchCatalogPositions.length !== branchCatalogPositionsRaw.length ? (
+                <Typography.Text type="secondary">Показано: {branchCatalogPositions.length}</Typography.Text>
+              ) : null
+            }
+          >
+            <Table
+              size="small"
+              rowKey="id"
+              columns={catalogPositionColumns}
+              dataSource={branchCatalogPositions}
+              loading={workspaceLoading}
+              pagination={{ pageSize: 12, showSizeChanger: false }}
+              locale={{
+                emptyText: (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="В подразделах пока нет карточек номенклатуры">
+                    {!branchSubsectionsOpen ? (
+                      <Button type="link" onClick={() => setBranchSubsectionsOpen(true)}>Показать подразделы</Button>
+                    ) : null}
+                  </Empty>
+                ),
+              }}
+              onRow={(row) => ({
+                onClick: () => openCatalogPositionCard(row),
+                style: { cursor: "pointer" },
+              })}
+            />
+          </Card>
+        ) : null}
       </Space>
     )
   }
@@ -5535,9 +5731,22 @@ export default function EquipmentClassifierMain() {
           </Button>
         ) : null}
         {selectedNodeIsLeaf && selectedEffectiveCardKind === "equipment_model" ? (
-          <Button type="primary" onClick={openCreateModel}>
-            Добавить модель
-          </Button>
+          <>
+            <Button type="primary" onClick={openCreateModel}>Добавить модель</Button>
+            <Button icon={<UploadOutlined />} onClick={() => openClassifierImport("equipment_model")}>
+              Импортировать модели
+            </Button>
+          </>
+        ) : null}
+        {selectedNodeIsLeaf && ["catalog_position", "material", "service"].includes(selectedEffectiveCardKind) ? (
+          <>
+            <Button type="primary" onClick={openCreateCatalogPosition}>
+              {selectedEffectiveCardKind === "service" ? "Добавить услугу" : selectedEffectiveCardKind === "material" ? "Добавить материал" : "Добавить позицию"}
+            </Button>
+            <Button icon={<UploadOutlined />} onClick={() => openClassifierImport("catalog_position")}>
+              Импортировать из Excel
+            </Button>
+          </>
         ) : null}
         {canEditSelectedNode ? (
           <Dropdown
@@ -5570,6 +5779,15 @@ export default function EquipmentClassifierMain() {
 
       {selectedNodeIsLeaf ? (
         <>
+          {selectedEffectiveCardKind === "auto" ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="Укажите, что хранится в этом разделе"
+              description="Откройте «Действия → Настройки раздела» и выберите: модели оборудования, номенклатура, материалы или услуги. После этого появятся правильные кнопки создания и импорта."
+              action={canEditSelectedNode ? <Button onClick={openEdit}>Настроить раздел</Button> : null}
+            />
+          ) : null}
           {shouldShowModelSection ? (
             <Card size="small" title={`Модели оборудования (${workspaceModels.length})`}>
               <Table
@@ -5606,8 +5824,10 @@ export default function EquipmentClassifierMain() {
                   emptyText: (
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="Позиции появятся здесь после создания карточек из BOM модели производителя"
-                    />
+                      description="В этом разделе пока нет карточек номенклатуры"
+                    >
+                      <Button type="link" onClick={openCreateCatalogPosition}>Добавить первую позицию</Button>
+                    </Empty>
                   ),
                 }}
                 onRow={(row) => ({
@@ -8602,7 +8822,7 @@ export default function EquipmentClassifierMain() {
             <Input placeholder="Например: Дробилки конусные" />
           </Form.Item>
           <Form.Item
-            label="Тип ветки"
+            label="Что находится в этом разделе"
             name="card_kind"
           >
             <Select
@@ -8898,6 +9118,37 @@ export default function EquipmentClassifierMain() {
                         </Form.Item>
                       </Col>
                     </Row>
+                    <Form.Item
+                      label="Где используется поле"
+                      name="scopes"
+                      rules={[{ required: true, message: "Выберите хотя бы один тип карточки" }]}
+                      extra="Обычно для раздела оборудования выбирают модель, а для крепежа и товаров — карточку номенклатуры."
+                    >
+                      <Checkbox.Group
+                        options={[
+                          { value: "equipment_model", label: "Модель оборудования" },
+                          { value: "catalog_position", label: "Карточка номенклатуры" },
+                          { value: "client_equipment_unit", label: "Машина клиента" },
+                        ]}
+                      />
+                    </Form.Item>
+                    <Row gutter={12}>
+                      <Col xs={24} md={12}>
+                        <Form.Item label="Добавлять в Excel" name="is_importable" valuePropName="checked">
+                          <Switch />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} md={12}>
+                        <Form.Item
+                          label="Участвует в проверке дублей"
+                          name="is_identity"
+                          valuePropName="checked"
+                          tooltip="Отмечайте только признаки, определяющие взаимозаменяемую позицию"
+                        >
+                          <Switch />
+                        </Form.Item>
+                      </Col>
+                    </Row>
                     <Row gutter={12}>
                       <Col xs={24} md={12}>
                         <Form.Item label="Порядок в паспорте" name="sort_order">
@@ -9013,8 +9264,105 @@ export default function EquipmentClassifierMain() {
           <Form.Item label="Заметки" name="notes">
             <Input.TextArea rows={3} />
           </Form.Item>
+          {equipmentModelAttributes.length ? (
+            <Card size="small" title="Характеристики модели">
+              {equipmentModelAttributes.map((attribute) => renderAttributeValueInput(attribute))}
+            </Card>
+          ) : null}
         </Form>
       </Modal>
+
+      <Modal
+        open={catalogPositionModalOpen}
+        title={selectedNode ? `Новая позиция · ${selectedNode.name}` : "Новая позиция"}
+        width={760}
+        onCancel={() => setCatalogPositionModalOpen(false)}
+        onOk={handleCreateCatalogPosition}
+        confirmLoading={catalogPositionSaving}
+        okText="Создать карточку"
+        cancelText="Отмена"
+        forceRender
+        destroyOnHidden
+      >
+        <Form form={catalogPositionForm} layout="vertical">
+          <Form.Item
+            label="Название позиции"
+            name="display_name"
+            rules={[{ required: true, message: "Укажите понятное название позиции" }]}
+          >
+            <Input placeholder="Например: Гайка самоконтрящаяся M12 DIN 985" />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item label="Название EN" name="display_name_en"><Input /></Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="Название RU" name="display_name_ru"><Input /></Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Внутренний код / артикул"
+                name="position_code"
+                extra="Нужен для надёжного повторного импорта, если нет номера производителя."
+              >
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="Единица хранения" name="uom">
+                <Select
+                  allowClear
+                  showSearch
+                  loading={measurementUnitsLoading}
+                  options={measurementUnitOptions}
+                  optionFilterProp="label"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item label="Производитель" name="manufacturer_id">
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  options={manufacturers.map((item) => ({ value: item.id, label: item.name }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="Номер производителя" name="manufacturer_part_number"><Input /></Form.Item>
+            </Col>
+          </Row>
+          <Form.Item label="Описание" name="description"><Input.TextArea rows={3} /></Form.Item>
+          {catalogPositionAttributes.length ? (
+            <Card size="small" title="Характеристики позиции">
+              {catalogPositionAttributes.map((attribute) => renderAttributeValueInput(attribute))}
+            </Card>
+          ) : (
+            <Alert
+              type="info"
+              showIcon
+              message="Поля паспорта пока не настроены"
+              description="Карточку можно создать сейчас, а характеристики добавить позже через настройки раздела."
+            />
+          )}
+        </Form>
+      </Modal>
+
+      <ClassifierExcelImportModal
+        open={classifierImportOpen}
+        node={selectedNode}
+        entityType={classifierImportEntityType}
+        onClose={() => setClassifierImportOpen(false)}
+        onCommitted={async () => {
+          if (selectedNode?.id) await loadWorkspace(selectedNode.id)
+          await loadTreeInventory()
+        }}
+      />
 
       <Modal
         open={manufacturerModalOpen}
