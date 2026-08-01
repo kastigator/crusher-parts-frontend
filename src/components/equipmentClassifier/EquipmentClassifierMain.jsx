@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   Button,
@@ -78,17 +78,9 @@ const UNIT_BOM_STATUS_BY_VALUE = Object.fromEntries(UNIT_BOM_STATUS_OPTIONS.map(
 const SEARCH_TYPE_LABELS = {
   classifier_node: "Раздел",
   equipment_model: "Модель",
-  catalog_position: "Карточка товара",
+  catalog_position: "Позиция",
   client_equipment_unit: "Машина клиента",
   client_part: "Деталь клиента",
-}
-
-const SEARCH_TYPE_COLORS = {
-  classifier_node: "blue",
-  equipment_model: "green",
-  catalog_position: "purple",
-  client_equipment_unit: "orange",
-  client_part: "cyan",
 }
 
 const SEARCH_TYPE_ORDER = [
@@ -157,15 +149,6 @@ const CARD_KIND_COLORS = {
   catalog_position: "purple",
   service: "cyan",
   material: "orange",
-}
-
-const PRIMARY_CARD_LABELS = {
-  auto: "По содержимому раздела",
-  mixed: "По содержимому раздела",
-  equipment_model: "Модель оборудования",
-  catalog_position: "Карточка товара",
-  service: "Карточка услуги",
-  material: "Карточка материала",
 }
 
 const EMPTY_FORM = {
@@ -698,6 +681,7 @@ export default function EquipmentClassifierMain() {
   const [loading, setLoading] = useState(false)
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
   const [workspace, setWorkspace] = useState(null)
+  const workspaceRequestIdRef = useRef(0)
   const [attributes, setAttributes] = useState([])
   const [attributeFilters, setAttributeFilters] = useState({})
   const [attributesLoading, setAttributesLoading] = useState(false)
@@ -799,6 +783,12 @@ export default function EquipmentClassifierMain() {
   const [saving, setSaving] = useState(false)
   const [modelModalOpen, setModelModalOpen] = useState(false)
   const [moveModelOpen, setMoveModelOpen] = useState(false)
+  const [moveNodeOpen, setMoveNodeOpen] = useState(false)
+  const [moveNodeTargetId, setMoveNodeTargetId] = useState(null)
+  const [moveNodeSaving, setMoveNodeSaving] = useState(false)
+  const [insertParentOpen, setInsertParentOpen] = useState(false)
+  const [insertParentName, setInsertParentName] = useState("")
+  const [insertParentSaving, setInsertParentSaving] = useState(false)
   const [manufacturerModalOpen, setManufacturerModalOpen] = useState(false)
   const [manufacturers, setManufacturers] = useState([])
   const [modelSaving, setModelSaving] = useState(false)
@@ -970,20 +960,26 @@ export default function EquipmentClassifierMain() {
   }, [loadClassifierFavorites, loadClients, loadTree, loadTreeInventory])
 
   const loadWorkspace = useCallback(async (nodeId) => {
+    const requestId = workspaceRequestIdRef.current + 1
+    workspaceRequestIdRef.current = requestId
     if (!nodeId) {
       setWorkspace(null)
+      setWorkspaceLoading(false)
       return
     }
+    setWorkspace(null)
     setWorkspaceLoading(true)
     try {
       const { data } = await axios.get(`/equipment-classifier-nodes/${nodeId}/workspace`)
-      setWorkspace(data || null)
+      if (workspaceRequestIdRef.current === requestId) setWorkspace(data || null)
     } catch (err) {
-      console.error("GET /equipment-classifier-nodes/:id/workspace error:", err)
-      message.error(err?.response?.data?.message || "Не удалось загрузить выбранный раздел")
-      setWorkspace(null)
+      if (workspaceRequestIdRef.current === requestId) {
+        console.error("GET /equipment-classifier-nodes/:id/workspace error:", err)
+        message.error(err?.response?.data?.message || "Не удалось загрузить выбранный раздел")
+        setWorkspace(null)
+      }
     } finally {
-      setWorkspaceLoading(false)
+      if (workspaceRequestIdRef.current === requestId) setWorkspaceLoading(false)
     }
   }, [])
 
@@ -1380,31 +1376,10 @@ export default function EquipmentClassifierMain() {
     }
   }, [isInheritedCardKind, nodeMap, normalizeCardKind])
 
-  const getCardKindDescription = useCallback((kind) => {
-    if (kind === "equipment_model") {
-      return "В этой ветке основные карточки — модели оборудования: паспорт, BOM, машины клиентов и клиентские исполнения."
-    }
-    if (kind === "catalog_position") {
-      return "В этой ветке основные карточки — товары/номенклатура: паспорт, характеристики и где используется в BOM."
-    }
-    return "Раздел работает как папка или наследует тип от родителя. Если это верхняя ветка, задайте ей основной тип."
-  }, [])
-
-  const renderCardKindTag = useCallback((node, { compact = false } = {}) => {
-    const { kind } = getEffectiveCardKindInfo(node)
-    if (compact && kind === "auto") return null
-    return (
-      <Tag color={CARD_KIND_COLORS[kind] || "default"} style={compact ? { marginInlineEnd: 0 } : undefined}>
-        {CARD_KIND_LABELS[kind] || CARD_KIND_LABELS.auto}
-      </Tag>
-    )
-  }, [getEffectiveCardKindInfo])
-
-  const selectedCardKindInfo = useMemo(
-    () => getEffectiveCardKindInfo(selectedNode),
+  const selectedEffectiveCardKind = useMemo(
+    () => getEffectiveCardKindInfo(selectedNode).kind,
     [getEffectiveCardKindInfo, selectedNode],
   )
-  const selectedEffectiveCardKind = selectedCardKindInfo.kind
 
   const saveClassifierFavorites = useCallback(async (nextKeys) => {
     try {
@@ -1513,6 +1488,18 @@ export default function EquipmentClassifierMain() {
     return build(treeRows)
   }, [treeRows])
 
+  const moveNodeOptions = useMemo(
+    () =>
+      Array.from(nodeMap.values())
+        .filter((node) => !selectedBranchNodeIdSet.has(Number(node.id)))
+        .map((node) => ({
+          value: Number(node.id),
+          label: getNodePathLabel(node.id),
+        }))
+        .sort((a, b) => compareClassifierNames(a.label, b.label)),
+    [getNodePathLabel, nodeMap, selectedBranchNodeIdSet],
+  )
+
   const getDefaultNodeType = (parent) => {
     if (!parent) return "ROOT"
     if (parent.node_type === "ROOT") return "CATEGORY"
@@ -1557,6 +1544,86 @@ export default function EquipmentClassifierMain() {
   }
 
   const openEdit = () => openEditNode(selectedNode)
+
+  const openMoveNode = (targetNodeId = null) => {
+    if (!selectedNode?.id) return
+    setMoveNodeTargetId(
+      targetNodeId ? Number(targetNodeId) : selectedNode.parent_id ? Number(selectedNode.parent_id) : null,
+    )
+    setMoveNodeOpen(true)
+  }
+
+  const handleMoveNode = async () => {
+    if (!selectedNode?.id) return
+    if (!moveNodeTargetId) {
+      message.warning("Выберите раздел, внутрь которого нужно перенести текущий")
+      return
+    }
+    if (Number(moveNodeTargetId) === Number(selectedNode.parent_id || 0)) {
+      setMoveNodeOpen(false)
+      return
+    }
+
+    setMoveNodeSaving(true)
+    try {
+      await axios.put(`/equipment-classifier-nodes/${selectedNode.id}`, {
+        parent_id: moveNodeTargetId,
+      })
+      message.success(`Раздел «${selectedNode.name}» перенесён`)
+      setMoveNodeOpen(false)
+      setClassifierExpandedKeys((current) => [
+        ...new Set([...current, treeKey.node(moveNodeTargetId), treeKey.node(selectedNode.id)]),
+      ])
+      await loadTree()
+      if (selectedId) await loadWorkspace(selectedId)
+    } catch (err) {
+      console.error("PUT /equipment-classifier-nodes/:id parent_id error:", err)
+      message.error(err?.response?.data?.message || "Не удалось перенести раздел")
+    } finally {
+      setMoveNodeSaving(false)
+    }
+  }
+
+  const openInsertParent = () => {
+    if (!selectedNode?.id || !selectedNode.parent_id) return
+    setInsertParentName("")
+    setInsertParentOpen(true)
+  }
+
+  const handleInsertParent = async () => {
+    const name = insertParentName.trim()
+    if (!selectedNode?.id || !name) return
+
+    setInsertParentSaving(true)
+    try {
+      const { data } = await axios.post(
+        `/equipment-classifier-nodes/${selectedNode.id}/insert-parent`,
+        { name },
+      )
+      const newParentId = Number(data?.parent?.id || 0)
+      message.success(`Добавлен уровень «${name}»`)
+      setInsertParentOpen(false)
+      if (newParentId) {
+        setClassifierExpandedKeys((current) => [
+          ...new Set([...current, treeKey.node(newParentId), treeKey.node(selectedNode.id)]),
+        ])
+      }
+      await loadTree()
+      if (selectedId) await loadWorkspace(selectedId)
+    } catch (err) {
+      const existingNodeId = Number(err?.response?.data?.existing_node_id || 0)
+      if (existingNodeId) {
+        setInsertParentOpen(false)
+        message.info("Такой раздел уже существует. Выберите его как новое расположение.")
+        openMoveNode(existingNodeId)
+      } else {
+        console.error("POST /equipment-classifier-nodes/:id/insert-parent error:", err)
+        message.error(err?.response?.data?.message || "Не удалось добавить уровень выше")
+      }
+    } finally {
+      setInsertParentSaving(false)
+    }
+  }
 
   const handleSubmit = async () => {
     try {
@@ -4324,13 +4391,15 @@ export default function EquipmentClassifierMain() {
       width: 92,
       render: (_, row) =>
         row.primary_photo_url ? (
-          <Image
-            src={resolveAssetUrl(row.primary_photo_url)}
-            alt={row.model_name || "Фото модели"}
-            width={64}
-            height={48}
-            style={{ objectFit: "cover", borderRadius: 6 }}
-          />
+          <span onClick={(event) => event.stopPropagation()}>
+            <Image
+              src={resolveAssetUrl(row.primary_photo_url)}
+              alt={row.model_name || "Фото модели"}
+              width={64}
+              height={48}
+              style={{ objectFit: "cover", borderRadius: 6 }}
+            />
+          </span>
         ) : (
           <div
             style={{
@@ -4353,27 +4422,66 @@ export default function EquipmentClassifierMain() {
       title: "Модель оборудования",
       render: (_, row) => (
         <Space direction="vertical" size={2}>
-          <Typography.Link strong onClick={() => openModelDetails(row)}>
+          <Typography.Link
+            strong
+            onClick={(event) => {
+              event.stopPropagation()
+              openModelDetails(row)
+            }}
+          >
             {row.model_name || "—"}
           </Typography.Link>
           <Typography.Text type="secondary">
-            {[row.manufacturer_name, row.classifier_path || row.classifier_node_name].filter(Boolean).join(" / ") || "—"}
+            {row.manufacturer_name || "Производитель не указан"}
           </Typography.Text>
-          <Space size={8} wrap>
-            <Typography.Link onClick={() => openModelAttributes(row)}>Характеристики</Typography.Link>
-            <Typography.Link onClick={() => openMoveModel(row)}>Перенести</Typography.Link>
-          </Space>
         </Space>
+      ),
+    },
+    {
+      title: "",
+      key: "actions",
+      width: 48,
+      render: (_, row) => (
+        <span onClick={(event) => event.stopPropagation()}>
+          <Dropdown
+            trigger={["click"]}
+            menu={{
+              items: [
+                { key: "attributes", label: "Изменить характеристики", icon: <EditOutlined /> },
+                { key: "move", label: "Перенести в другой раздел" },
+              ],
+              onClick: ({ key, domEvent }) => {
+                domEvent.stopPropagation()
+                if (key === "attributes") openModelAttributes(row)
+                if (key === "move") openMoveModel(row)
+              },
+            }}
+          >
+            <Button
+              type="text"
+              size="small"
+              icon={<MoreOutlined />}
+              title="Действия с моделью"
+              aria-label="Действия с моделью"
+            />
+          </Dropdown>
+        </span>
       ),
     },
   ]
 
   const catalogPositionColumns = [
     {
-      title: "Карточка товара",
+      title: "Позиция",
       render: (_, row) => (
         <Space direction="vertical" size={2}>
-          <Typography.Link strong onClick={() => openCatalogPositionCard(row)}>
+          <Typography.Link
+            strong
+            onClick={(event) => {
+              event.stopPropagation()
+              openCatalogPositionCard(row)
+            }}
+          >
             {row.display_name || "—"}
           </Typography.Link>
           <Typography.Text type="secondary">
@@ -4387,14 +4495,6 @@ export default function EquipmentClassifierMain() {
       dataIndex: "uom",
       width: 90,
       render: (value) => formatMeasurementUnit(value) || value || "—",
-    },
-    {
-      title: "Характеристики",
-      width: 180,
-      render: (_, row) => {
-        const count = Array.isArray(row.attribute_values) ? row.attribute_values.length : 0
-        return count ? <Tag color="purple">{count}</Tag> : <Typography.Text type="secondary">не заполнены</Typography.Text>
-      },
     },
   ]
 
@@ -4465,7 +4565,7 @@ export default function EquipmentClassifierMain() {
       title: "Раздел классификатора",
       dataIndex: "classifier_node_name",
       width: 220,
-      render: (value) => (value ? <Tag color="blue">{value}</Tag> : "—"),
+      render: (value) => value || "—",
     },
     {
       title: "Детали",
@@ -5134,25 +5234,25 @@ export default function EquipmentClassifierMain() {
           const stat = branchChildStats.get(Number(child.id))
           const modelCount = stat?.modelCount || 0
           const catalogPositionCount = stat?.catalogPositionCount || 0
-          const manufacturerCount = stat?.manufacturerIds?.size || 0
+          const childKind = getEffectiveCardKindInfo(child).kind
+          const summary = [
+            child.children?.length ? `Подразделы: ${child.children.length}` : null,
+            childKind === "equipment_model" && modelCount ? `Модели: ${modelCount}` : null,
+            childKind === "catalog_position" && catalogPositionCount ? `Позиции: ${catalogPositionCount}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")
           return (
             <Col key={child.id} xs={24} sm={12} lg={6}>
               <Card
                 hoverable
                 size="small"
                 onClick={() => selectClassifierNode(child)}
-                styles={{ body: { minHeight: 104 } }}
+                styles={{ body: { minHeight: 72 } }}
               >
                 <Space direction="vertical" size={6} style={{ width: "100%" }}>
-                  <Space size={4} wrap>
-                    <Typography.Text strong>{child.name || "Раздел"}</Typography.Text>
-                    {renderCardKindTag(child, { compact: true })}
-                  </Space>
-                  <Space size={4} wrap>
-                    <Tag color={modelCount ? "blue" : "default"}>{modelCount} моделей</Tag>
-                    <Tag color={catalogPositionCount ? "purple" : "default"}>{catalogPositionCount} товаров</Tag>
-                    <Tag>{manufacturerCount} производителей</Tag>
-                  </Space>
+                  <Typography.Text strong>{child.name || "Раздел"}</Typography.Text>
+                  {summary ? <Typography.Text type="secondary">{summary}</Typography.Text> : null}
                   {child.notes ? (
                     <Typography.Paragraph
                       type="secondary"
@@ -5162,14 +5262,6 @@ export default function EquipmentClassifierMain() {
                       {child.notes}
                     </Typography.Paragraph>
                   ) : null}
-                  <Typography.Link
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      openEditNode(child)
-                    }}
-                  >
-                    Настроить
-                  </Typography.Link>
                 </Space>
               </Card>
             </Col>
@@ -5180,51 +5272,27 @@ export default function EquipmentClassifierMain() {
   }
 
   const renderBranchOverview = () => {
-    const manufacturerIds = new Set(branchModelsRaw.map((model) => Number(model.manufacturer_id)).filter(Boolean))
     return (
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
-        <Row gutter={[8, 8]}>
-          <Col xs={24} sm={12} lg={6}>
-            <Card size="small">
-              <Typography.Text type="secondary">Подразделы</Typography.Text>
-              <Typography.Title level={4} style={{ margin: 0 }}>
-                {selectedNodeChildren.length}
-              </Typography.Title>
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card size="small">
-              <Typography.Text type="secondary">Модели в ветке</Typography.Text>
-              <Typography.Title level={4} style={{ margin: 0 }}>
-                {branchModelsRaw.length}
-              </Typography.Title>
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card size="small">
-              <Typography.Text type="secondary">Карточки товара</Typography.Text>
-              <Typography.Title level={4} style={{ margin: 0 }}>
-                {branchCatalogPositionsRaw.length}
-              </Typography.Title>
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card size="small">
-              <Typography.Text type="secondary">Производители</Typography.Text>
-              <Typography.Title level={4} style={{ margin: 0 }}>
-                {manufacturerIds.size}
-              </Typography.Title>
-            </Card>
-          </Col>
-        </Row>
+        <Card
+          size="small"
+          title={`Подразделы (${selectedNodeChildren.length})`}
+          extra={
+            <Button type="link" size="small" onClick={() => setBranchSubsectionsOpen((value) => !value)}>
+              {branchSubsectionsOpen ? "Скрыть" : "Показать"}
+            </Button>
+          }
+        >
+          {branchSubsectionsOpen ? renderChildSectionCards() : null}
+        </Card>
 
         <Card
           size="small"
-          title={
-            <Space wrap>
-              <Typography.Text strong>Модели в выбранной ветке</Typography.Text>
-              <Tag>{branchModels.length} из {branchModelsRaw.length}</Tag>
-            </Space>
+          title={`Модели во всех подразделах (${branchModelsRaw.length})`}
+          extra={
+            branchModels.length !== branchModelsRaw.length ? (
+              <Typography.Text type="secondary">Показано: {branchModels.length}</Typography.Text>
+            ) : null
           }
         >
           <Table
@@ -5236,23 +5304,10 @@ export default function EquipmentClassifierMain() {
             pagination={{ pageSize: 12, showSizeChanger: false }}
             locale={{ emptyText: "В этой ветке пока нет моделей" }}
             onRow={(row) => ({
-              onDoubleClick: () => openModelDetails(row),
+              onClick: () => openModelDetails(row),
+              style: { cursor: "pointer" },
             })}
           />
-        </Card>
-
-        <Card
-          size="small"
-          title={
-            <Button type="link" style={{ padding: 0 }} onClick={() => setBranchSubsectionsOpen((value) => !value)}>
-              Подразделы ({selectedNodeChildren.length})
-            </Button>
-          }
-        >
-          {branchSubsectionsOpen ? renderChildSectionCards() : null}
-          {branchSubsectionsOpen && !selectedNodeChildren.length ? (
-            <Empty description="В этом разделе пока нет подразделов" />
-          ) : null}
         </Card>
       </Space>
     )
@@ -5260,20 +5315,18 @@ export default function EquipmentClassifierMain() {
 
   const renderNodeBreadcrumbs = () => {
     if (selectedNodePath.length < 2) return null
-    const parentNode = selectedNodePath.length > 1 ? selectedNodePath[selectedNodePath.length - 2] : null
-    const ancestors = selectedNodePath.slice(0, -1)
     return (
-      <Space wrap size={8}>
-        {parentNode ? (
-          <Button size="small" onClick={() => selectClassifierNode(parentNode)}>
-            Назад
-          </Button>
-        ) : null}
-        {ancestors.map((node, index) => {
+      <Space wrap size={6}>
+        {selectedNodePath.map((node, index) => {
+          const isCurrent = index === selectedNodePath.length - 1
           return (
             <React.Fragment key={node.id}>
               {index > 0 ? <Typography.Text type="secondary">/</Typography.Text> : null}
-              <Typography.Link onClick={() => selectClassifierNode(node)}>{node.name}</Typography.Link>
+              {isCurrent ? (
+                <Typography.Text type="secondary">{node.name}</Typography.Text>
+              ) : (
+                <Typography.Link onClick={() => selectClassifierNode(node)}>{node.name}</Typography.Link>
+              )}
             </React.Fragment>
           )
         })}
@@ -5294,9 +5347,9 @@ export default function EquipmentClassifierMain() {
             size="small"
             title={
               <Space>
-                <Tag color={SEARCH_TYPE_COLORS[group.type] || "default"}>
+                <Typography.Text strong>
                   {SEARCH_TYPE_LABELS[group.type] || group.type}
-                </Tag>
+                </Typography.Text>
                 <Typography.Text type="secondary">{group.rows.length}</Typography.Text>
               </Space>
             }
@@ -5324,72 +5377,43 @@ export default function EquipmentClassifierMain() {
   const renderNodeContent = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       {renderNodeBreadcrumbs()}
-      <Card size="small">
-        <Row gutter={[12, 12]} align="middle">
-          <Col xs={24} lg={16}>
-            <Space direction="vertical" size={4}>
-              <Space wrap>
-                <Typography.Text strong>Тип ветки</Typography.Text>
-                {renderCardKindTag(selectedNode)}
-                {selectedCardKindInfo.isInherited && selectedCardKindInfo.sourceNode ? (
-                  <Tag>наследуется от {selectedCardKindInfo.sourceNode.name}</Tag>
-                ) : selectedEffectiveCardKind === "auto" ? (
-                  <Tag>папка / не задан</Tag>
-                ) : (
-                  <Tag>задан здесь</Tag>
-                )}
-              </Space>
-              <Space wrap>
-                <Typography.Text strong>Основная карточка</Typography.Text>
-                <Tag color={CARD_KIND_COLORS[selectedEffectiveCardKind] || "default"}>
-                  {PRIMARY_CARD_LABELS[selectedEffectiveCardKind] || PRIMARY_CARD_LABELS.auto}
-                </Tag>
-              </Space>
-              <Typography.Text type="secondary">
-                {getCardKindDescription(selectedEffectiveCardKind)}
-              </Typography.Text>
-            </Space>
-          </Col>
-          <Col xs={24} lg={8}>
-            <Space wrap style={{ width: "100%", justifyContent: "flex-end" }}>
-              <Tag color={workspaceModels.length || branchModelsRaw.length ? "blue" : "default"}>
-                Модели: {selectedNodeIsLeaf ? workspaceModels.length : branchModelsRaw.length}
-              </Tag>
-              <Tag color={workspaceCatalogPositions.length || branchCatalogPositionsRaw.length ? "purple" : "default"}>
-                Товары: {selectedNodeIsLeaf ? workspaceCatalogPositions.length : branchCatalogPositionsRaw.length}
-              </Tag>
-              {canEditSelectedNode ? (
-                <Button size="small" onClick={openEdit}>
-                  Настроить
-                </Button>
-              ) : null}
-            </Space>
-          </Col>
-        </Row>
-      </Card>
-      <Space wrap>
+      <Space wrap style={{ width: "100%", justifyContent: "flex-end" }}>
         {!selectedNodeIsLeaf ? (
           <Button type="primary" onClick={openCreateChild}>
             Добавить подраздел
           </Button>
         ) : null}
+        {selectedNodeIsLeaf && selectedEffectiveCardKind === "equipment_model" ? (
+          <Button type="primary" onClick={openCreateModel}>
+            Добавить модель
+          </Button>
+        ) : null}
         {canEditSelectedNode ? (
-          <>
-            <Button onClick={openEdit}>
-              Изменить раздел
-            </Button>
-            <Popconfirm
-              title="Удалить раздел классификатора?"
-              description={selectedNode?.name || ""}
-              okText="Удалить"
-              cancelText="Отмена"
-              onConfirm={handleDelete}
-            >
-              <Button danger>
-                Удалить раздел
-              </Button>
-            </Popconfirm>
-          </>
+          <Dropdown
+            trigger={["click"]}
+            menu={{
+              items: [
+                { key: "settings", label: "Настройки раздела", icon: <EditOutlined /> },
+                { key: "move", label: "Перенести раздел" },
+                {
+                  key: "insert-parent",
+                  label: "Добавить уровень выше",
+                  icon: <PlusOutlined />,
+                  disabled: !selectedNode?.parent_id,
+                },
+                { type: "divider" },
+                { key: "delete", label: "Удалить раздел", danger: true, icon: <DeleteOutlined /> },
+              ],
+              onClick: ({ key }) => {
+                if (key === "settings") openEdit()
+                if (key === "move") openMoveNode()
+                if (key === "insert-parent") openInsertParent()
+                if (key === "delete") handleDelete()
+              },
+            }}
+          >
+            <Button icon={<MoreOutlined />}>Действия</Button>
+          </Dropdown>
         ) : null}
       </Space>
 
@@ -5406,13 +5430,14 @@ export default function EquipmentClassifierMain() {
                 pagination={{ pageSize: 8, showSizeChanger: false }}
                 locale={{ emptyText: "В этом разделе пока нет моделей оборудования" }}
                 onRow={(row) => ({
-                  onDoubleClick: () => openModelDetails(row),
+                  onClick: () => openModelDetails(row),
+                  style: { cursor: "pointer" },
                 })}
               />
             </Card>
           ) : null}
           {shouldShowCatalogPositionSection ? (
-            <Card size="small" title={`Карточки товара (${workspaceCatalogPositions.length})`}>
+            <Card size="small" title={`Позиции (${workspaceCatalogPositions.length})`}>
               <Table
                 size="small"
                 rowKey="id"
@@ -5420,9 +5445,10 @@ export default function EquipmentClassifierMain() {
                 dataSource={workspaceCatalogPositions}
                 loading={workspaceLoading}
                 pagination={{ pageSize: 8, showSizeChanger: false }}
-                locale={{ emptyText: "В этом разделе пока нет товарных карточек" }}
+                locale={{ emptyText: "В этом разделе пока нет позиций" }}
                 onRow={(row) => ({
-                  onDoubleClick: () => openCatalogPositionCard(row),
+                  onClick: () => openCatalogPositionCard(row),
+                  style: { cursor: "pointer" },
                 })}
               />
             </Card>
@@ -5449,6 +5475,10 @@ export default function EquipmentClassifierMain() {
         loading={workspaceLoading}
         pagination={false}
         locale={{ emptyText: "У производителя пока нет моделей в этом разделе" }}
+        onRow={(row) => ({
+          onClick: () => openModelDetails(row),
+          style: { cursor: "pointer" },
+        })}
         scroll={{ x: 860 }}
       />
     </Space>
@@ -6212,7 +6242,7 @@ export default function EquipmentClassifierMain() {
           {manufacturerFilterControl}
         </Space>
       ) : (
-        <Empty description="Характеристики для фильтров не настроены" />
+        <Empty description="Для этого раздела нет дополнительных фильтров" />
       )
     }
     return (
@@ -6244,7 +6274,7 @@ export default function EquipmentClassifierMain() {
         <Input.Search
           allowClear
           enterButton="Найти"
-          placeholder="Номер детали производителя, модель, клиент, серийный номер, чертеж или название детали"
+          placeholder="Найти модель, позицию или машину клиента"
           value={nsiSearchQuery}
           onChange={(event) => {
             const value = event.target.value
@@ -6269,7 +6299,7 @@ export default function EquipmentClassifierMain() {
       <div style={{ display: "flex", gap: 10, alignItems: "flex-start", width: "100%" }}>
         <div style={{ width: classifierTreeWidth, flex: `0 0 ${classifierTreeWidth}px`, position: "relative" }}>
           <Card
-            title="Дерево классификатора"
+            title="Разделы"
             loading={loading}
             extra={
               <Dropdown
@@ -6283,7 +6313,7 @@ export default function EquipmentClassifierMain() {
                 }}
                 trigger={["click"]}
               >
-                <Button type="primary" size="small">+ Добавить</Button>
+                <Button type="primary" size="small">Добавить</Button>
               </Dropdown>
             }
             size="small"
@@ -6368,7 +6398,7 @@ export default function EquipmentClassifierMain() {
                 ) : null}
                 {!isModelBomContext && selectedNodeIsLeaf ? (
                   <Button size="small" onClick={openManageAttributes}>
-                    Настроить
+                    Настроить поля
                   </Button>
                 ) : null}
               </Space>
@@ -8460,6 +8490,91 @@ export default function EquipmentClassifierMain() {
             </Space>
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        open={moveNodeOpen}
+        title={selectedNode ? `Перенести раздел «${selectedNode.name}»` : "Перенести раздел"}
+        onCancel={() => setMoveNodeOpen(false)}
+        onOk={handleMoveNode}
+        confirmLoading={moveNodeSaving}
+        okText="Перенести"
+        cancelText="Отмена"
+        okButtonProps={{
+          disabled:
+            !moveNodeTargetId ||
+            Number(moveNodeTargetId) === Number(selectedNode?.parent_id || 0),
+        }}
+        width={620}
+        destroyOnHidden
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Typography.Text type="secondary">
+            Выберите раздел, внутри которого должен находиться «{selectedNode?.name || "текущий раздел"}».
+            Все вложенные разделы и связанные карточки останутся на месте.
+          </Typography.Text>
+          {moveNodeOptions.length ? (
+            <Select
+              showSearch
+              value={moveNodeTargetId || undefined}
+              options={moveNodeOptions}
+              optionFilterProp="label"
+              placeholder="Найдите новое расположение по названию"
+              onChange={(value) => setMoveNodeTargetId(Number(value) || null)}
+              style={{ width: "100%" }}
+            />
+          ) : (
+            <Empty description="Нет доступных разделов" />
+          )}
+          {moveNodeTargetId ? (
+            <Alert
+              type="info"
+              showIcon
+              message="Новое расположение"
+              description={`${getNodePathLabel(moveNodeTargetId)} / ${selectedNode?.name || ""}`}
+            />
+          ) : null}
+        </Space>
+      </Modal>
+
+      <Modal
+        open={insertParentOpen}
+        title="Добавить уровень выше"
+        onCancel={() => setInsertParentOpen(false)}
+        onOk={handleInsertParent}
+        confirmLoading={insertParentSaving}
+        okText="Добавить"
+        cancelText="Отмена"
+        okButtonProps={{ disabled: !insertParentName.trim() }}
+        destroyOnHidden
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Typography.Text type="secondary">
+            Новый раздел появится непосредственно над «{selectedNode?.name || "текущим разделом"}».
+            Текущий раздел, его содержимое и связи будут перенесены внутрь автоматически.
+          </Typography.Text>
+          <div>
+            <Typography.Text strong>Название нового раздела</Typography.Text>
+            <Input
+              value={insertParentName}
+              onChange={(event) => setInsertParentName(event.target.value)}
+              onPressEnter={() => {
+                if (insertParentName.trim() && !insertParentSaving) handleInsertParent()
+              }}
+              placeholder="Например, Грохочение"
+              autoFocus
+              style={{ marginTop: 6 }}
+            />
+          </div>
+          {insertParentName.trim() && selectedNode?.parent_id ? (
+            <Alert
+              type="info"
+              showIcon
+              message="Получится путь"
+              description={`${getNodePathLabel(selectedNode.parent_id)} / ${insertParentName.trim()} / ${selectedNode.name}`}
+            />
+          ) : null}
+        </Space>
       </Modal>
 
       <Modal
