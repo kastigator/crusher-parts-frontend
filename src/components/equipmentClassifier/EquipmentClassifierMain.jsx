@@ -256,6 +256,15 @@ const buildBomTree = (rows) => {
   return roots
 }
 
+const buildBomCompositionRows = (rows) =>
+  (rows || []).map((row) => {
+    const children = buildBomCompositionRows(Array.isArray(row.children) ? row.children : [])
+    if (children.length > 0) return { ...row, children }
+
+    const { children: _children, ...leafRow } = row
+    return leafRow
+  })
+
 const getBomItemLabel = (row) =>
   row?.manufacturer_part_number ||
   row?.part_number ||
@@ -2677,7 +2686,7 @@ export default function EquipmentClassifierMain() {
     return currentModelBomRows.find((row) => Number(row.id) === Number(selectedBomItem.parent_item_id)) || null
   }, [currentModelBomRows, selectedBomItem])
   const selectedBomChildren = useMemo(
-    () => (Array.isArray(selectedBomItem?.children) ? selectedBomItem.children : []),
+    () => buildBomCompositionRows(Array.isArray(selectedBomItem?.children) ? selectedBomItem.children : []),
     [selectedBomItem],
   )
   const selectedBomDescendantIds = useMemo(() => {
@@ -7180,6 +7189,12 @@ export default function EquipmentClassifierMain() {
                         rowKey="id"
                         pagination={false}
                         dataSource={selectedBomChildren}
+                        expandable={{
+                          rowExpandable: (row) =>
+                            getBomEffectiveRowKind(row) === "assembly" &&
+                            Array.isArray(row.children) &&
+                            row.children.length > 0,
+                        }}
                         onRow={(row) => ({
                           onClick: () => setSelectedBomItem(row),
                           style: { cursor: "pointer" },
