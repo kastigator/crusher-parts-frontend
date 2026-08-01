@@ -193,6 +193,25 @@ const treeKey = {
 
 const CLASSIFIER_UI_SCOPE = "equipment_classifier"
 const CLASSIFIER_FAVORITES_KEY = "tree_favorites_v1"
+const CLASSIFIER_EXPANDED_STORAGE_KEY = "equipmentClassifier.expandedNodes"
+const CLASSIFIER_SELECTED_NODE_STORAGE_KEY = "equipmentClassifier.selectedNode"
+const CLASSIFIER_SCROLL_STORAGE_KEY = "equipmentClassifier.treeScrollTop"
+
+const readStoredExpandedKeys = () => {
+  if (typeof window === "undefined") return []
+  try {
+    const value = JSON.parse(window.localStorage.getItem(CLASSIFIER_EXPANDED_STORAGE_KEY) || "[]")
+    return Array.isArray(value) ? value.filter((key) => String(key).startsWith("node:")) : []
+  } catch {
+    return []
+  }
+}
+
+const readStoredSelectedNodeId = () => {
+  if (typeof window === "undefined") return null
+  const value = Number(window.localStorage.getItem(CLASSIFIER_SELECTED_NODE_STORAGE_KEY))
+  return Number.isInteger(value) && value > 0 ? String(value) : null
+}
 
 const compareClassifierNames = (a, b) =>
   String(a || "").localeCompare(String(b || ""), "ru", {
@@ -215,6 +234,27 @@ const flattenTree = (nodes, map = new Map()) => {
     flattenTree(node.children || [], map)
   })
   return map
+}
+
+const findClassifierNodePath = (nodes, targetId, path = []) => {
+  const normalizedTargetId = Number(targetId)
+  for (const node of nodes || []) {
+    const nextPath = [...path, node]
+    if (Number(node.id) === normalizedTargetId) return nextPath
+    const nestedPath = findClassifierNodePath(node.children || [], normalizedTargetId, nextPath)
+    if (nestedPath.length) return nestedPath
+  }
+  return []
+}
+
+const getSubdivisionBlockedReason = ({ modelCount = 0, positionCount = 0, attributeCount = 0 }) => {
+  const content = [
+    modelCount ? `моделей: ${modelCount}` : null,
+    positionCount ? `позиций: ${positionCount}` : null,
+    attributeCount ? `характеристик: ${attributeCount}` : null,
+  ].filter(Boolean)
+  if (!content.length) return ""
+  return `В разделе уже есть содержимое (${content.join(", ")}). Сначала перенесите его в нижний раздел.`
 }
 
 const buildBomTree = (rows) => {
@@ -677,11 +717,12 @@ export default function EquipmentClassifierMain() {
   const [allUnits, setAllUnits] = useState([])
   const [clients, setClients] = useState([])
   const [classifierFavoriteKeys, setClassifierFavoriteKeys] = useState([])
-  const [classifierExpandedKeys, setClassifierExpandedKeys] = useState([])
+  const [classifierExpandedKeys, setClassifierExpandedKeys] = useState(readStoredExpandedKeys)
   const [loading, setLoading] = useState(false)
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
   const [workspace, setWorkspace] = useState(null)
   const workspaceRequestIdRef = useRef(0)
+  const classifierTreePanelRef = useRef(null)
   const [attributes, setAttributes] = useState([])
   const [attributeFilters, setAttributeFilters] = useState({})
   const [attributesLoading, setAttributesLoading] = useState(false)
@@ -798,9 +839,15 @@ export default function EquipmentClassifierMain() {
   const [moveTargetNodeId, setMoveTargetNodeId] = useState(null)
   const [editingNode, setEditingNode] = useState(null)
   const [parentForCreate, setParentForCreate] = useState(null)
-  const [selectedId, setSelectedId] = useState(null)
-  const [selectedTreeKey, setSelectedTreeKey] = useState(null)
-  const [selectedTreeEntity, setSelectedTreeEntity] = useState({ type: "node", id: null })
+  const [selectedId, setSelectedId] = useState(readStoredSelectedNodeId)
+  const [selectedTreeKey, setSelectedTreeKey] = useState(() => {
+    const nodeId = readStoredSelectedNodeId()
+    return nodeId ? treeKey.node(nodeId) : null
+  })
+  const [selectedTreeEntity, setSelectedTreeEntity] = useState(() => {
+    const nodeId = readStoredSelectedNodeId()
+    return { type: "node", id: nodeId ? Number(nodeId) : null }
+  })
   const [form] = Form.useForm()
   const nodeCardKind = Form.useWatch("card_kind", form)
   const [modelForm] = Form.useForm()
@@ -889,6 +936,27 @@ export default function EquipmentClassifierMain() {
     if (typeof window === "undefined") return false
     return window.localStorage.getItem("equipmentClassifier.filtersOpen") === "1"
   })
+
+  const updateClassifierExpandedKeys = useCallback((valueOrUpdater) => {
+    setClassifierExpandedKeys((current) => {
+      const resolved = typeof valueOrUpdater === "function" ? valueOrUpdater(current) : valueOrUpdater
+      const next = [...new Set((resolved || []).map(String))]
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(CLASSIFIER_EXPANDED_STORAGE_KEY, JSON.stringify(next))
+      }
+      return next
+    })
+  }, [])
+
+  const revealClassifierNode = useCallback(
+    (nodeId) => {
+      const path = findClassifierNodePath(treeRows, nodeId)
+      if (!path.length) return
+      const ancestorKeys = path.slice(0, -1).map((node) => treeKey.node(node.id))
+      updateClassifierExpandedKeys((current) => [...current, ...ancestorKeys])
+    },
+    [treeRows, updateClassifierExpandedKeys],
+  )
 
   const loadTree = useCallback(async () => {
     setLoading(true)
@@ -1172,6 +1240,7 @@ export default function EquipmentClassifierMain() {
     }
     if (row.entity_type === "equipment_model" && row.classifier_node_id && row.entity_id) {
       const nodeId = String(row.classifier_node_id)
+      revealClassifierNode(nodeId)
       setSelectedId(nodeId)
       setSelectedTreeKey(treeKey.node(nodeId))
       setSelectedTreeEntity({ type: "model", id: Number(row.entity_id) })
@@ -1180,14 +1249,16 @@ export default function EquipmentClassifierMain() {
     }
     if (row.entity_type === "catalog_position" && row.classifier_node_id && row.entity_id) {
       const nodeId = String(row.classifier_node_id)
+      revealClassifierNode(nodeId)
       setSelectedId(nodeId)
-      setSelectedTreeKey(treeKey.catalogPosition(row.entity_id))
+      setSelectedTreeKey(treeKey.node(nodeId))
       setSelectedTreeEntity({ type: "catalog_position", id: Number(row.entity_id) })
       await loadWorkspace(nodeId)
       return
     }
     if (row.entity_type === "client_equipment_unit" && row.classifier_node_id && row.entity_id) {
       const nodeId = String(row.classifier_node_id)
+      revealClassifierNode(nodeId)
       setSelectedId(nodeId)
       setSelectedTreeKey(treeKey.node(nodeId))
       setSelectedTreeEntity({ type: "unit", id: Number(row.entity_id) })
@@ -1200,6 +1271,7 @@ export default function EquipmentClassifierMain() {
     }
     if (row.classifier_node_id) {
       const nodeId = String(row.classifier_node_id)
+      revealClassifierNode(nodeId)
       setSelectedId(nodeId)
       setSelectedTreeKey(treeKey.node(nodeId))
       setSelectedTreeEntity({ type: "node", id: Number(nodeId) })
@@ -1208,12 +1280,13 @@ export default function EquipmentClassifierMain() {
     }
     if (row.entity_type === "classifier_node" && row.entity_id) {
       const nodeId = String(row.entity_id)
+      revealClassifierNode(nodeId)
       setSelectedId(nodeId)
       setSelectedTreeKey(treeKey.node(nodeId))
       setSelectedTreeEntity({ type: "node", id: Number(nodeId) })
       await loadWorkspace(nodeId)
     }
-  }, [loadWorkspace, navigate])
+  }, [loadWorkspace, navigate, revealClassifierNode])
 
   useEffect(() => {
     if (selectedId) {
@@ -1226,6 +1299,15 @@ export default function EquipmentClassifierMain() {
   }, [selectedId, loadAttributes, loadWorkspace])
 
   useEffect(() => {
+    if (typeof window === "undefined") return
+    if (selectedId) {
+      window.localStorage.setItem(CLASSIFIER_SELECTED_NODE_STORAGE_KEY, String(selectedId))
+    } else {
+      window.localStorage.removeItem(CLASSIFIER_SELECTED_NODE_STORAGE_KEY)
+    }
+  }, [selectedId])
+
+  useEffect(() => {
     setAttributeFilters({})
     setManufacturerFilter(null)
     setBranchSectionFilter(null)
@@ -1233,6 +1315,13 @@ export default function EquipmentClassifierMain() {
 
   const nodeMap = useMemo(() => flattenTree(treeRows), [treeRows])
   const selectedNode = selectedId ? nodeMap.get(Number(selectedId)) || null : null
+
+  useEffect(() => {
+    if (!treeRows.length || !selectedId || selectedNode) return
+    setSelectedId(null)
+    setSelectedTreeKey(null)
+    setSelectedTreeEntity({ type: "node", id: null })
+  }, [selectedId, selectedNode, treeRows.length])
   const selectedNodeChildren = Array.isArray(selectedNode?.children) ? selectedNode.children : []
   const selectedNodeIsLeaf = !!selectedNode && selectedNodeChildren.length === 0
   const selectedBranchNodeIds = useMemo(() => {
@@ -1432,12 +1521,7 @@ export default function EquipmentClassifierMain() {
     const favoriteSet = new Set(classifierFavoriteKeys)
     const build = (nodes) =>
       [...(nodes || [])]
-        .sort((a, b) => {
-          const aFavorite = favoriteSet.has(treeKey.node(a?.id))
-          const bFavorite = favoriteSet.has(treeKey.node(b?.id))
-          if (aFavorite !== bFavorite) return aFavorite ? -1 : 1
-          return compareClassifierNames(a?.name, b?.name)
-        })
+        .sort((a, b) => compareClassifierNames(a?.name, b?.name))
         .map((node) => {
           const key = treeKey.node(node.id)
           const isFavorite = favoriteSet.has(key)
@@ -1445,6 +1529,7 @@ export default function EquipmentClassifierMain() {
             key,
             title: (
               <div
+                className="classifier-tree-row"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -1455,6 +1540,7 @@ export default function EquipmentClassifierMain() {
               >
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{node.name}</span>
                 <Button
+                  className={`classifier-favorite-button${isFavorite ? " is-favorite" : ""}`}
                   type="text"
                   size="small"
                   icon={isFavorite ? <StarFilled style={{ color: "#faad14" }} /> : <StarOutlined />}
@@ -1474,6 +1560,35 @@ export default function EquipmentClassifierMain() {
 
     return build(treeRows)
   }, [classifierFavoriteKeys, toggleClassifierFavorite, treeRows])
+
+  useEffect(() => {
+    if (selectedId) revealClassifierNode(selectedId)
+  }, [revealClassifierNode, selectedId])
+
+  useEffect(() => {
+    const panel = classifierTreePanelRef.current
+    const body = panel?.querySelector?.(".ant-card-body")
+    if (!body || typeof window === "undefined") return undefined
+
+    const savedScrollTop = Number(window.localStorage.getItem(CLASSIFIER_SCROLL_STORAGE_KEY))
+    if (Number.isFinite(savedScrollTop) && savedScrollTop >= 0) body.scrollTop = savedScrollTop
+
+    const handleScroll = () => {
+      window.localStorage.setItem(CLASSIFIER_SCROLL_STORAGE_KEY, String(body.scrollTop))
+    }
+    body.addEventListener("scroll", handleScroll, { passive: true })
+    return () => body.removeEventListener("scroll", handleScroll)
+  }, [treeRows.length])
+
+  useEffect(() => {
+    if (!selectedTreeKey) return
+    const frameId = window.requestAnimationFrame(() => {
+      classifierTreePanelRef.current
+        ?.querySelector?.(".ant-tree-node-selected")
+        ?.scrollIntoView({ block: "nearest" })
+    })
+    return () => window.cancelAnimationFrame(frameId)
+  }, [classifierExpandedKeys, selectedTreeKey])
 
   const plainTreeData = useMemo(() => {
     const build = (nodes) =>
@@ -1518,6 +1633,17 @@ export default function EquipmentClassifierMain() {
   const openCreateChild = () => {
     if (!selectedNode) {
       message.warning("Сначала выберите родительский раздел")
+      return
+    }
+    const blockedReason = getSubdivisionBlockedReason({
+      modelCount: rawWorkspaceModels.length,
+      positionCount: rawWorkspaceCatalogPositions.filter(
+        (row) => Number(row.classifier_node_id) === Number(selectedNode.id),
+      ).length,
+      attributeCount: attributes.length,
+    })
+    if (selectedNodeIsLeaf && blockedReason) {
+      message.warning(blockedReason)
       return
     }
     setEditingNode(null)
@@ -1571,7 +1697,7 @@ export default function EquipmentClassifierMain() {
       })
       message.success(`Раздел «${selectedNode.name}» перенесён`)
       setMoveNodeOpen(false)
-      setClassifierExpandedKeys((current) => [
+      updateClassifierExpandedKeys((current) => [
         ...new Set([...current, treeKey.node(moveNodeTargetId), treeKey.node(selectedNode.id)]),
       ])
       await loadTree()
@@ -1604,7 +1730,7 @@ export default function EquipmentClassifierMain() {
       message.success(`Добавлен уровень «${name}»`)
       setInsertParentOpen(false)
       if (newParentId) {
-        setClassifierExpandedKeys((current) => [
+        updateClassifierExpandedKeys((current) => [
           ...new Set([...current, treeKey.node(newParentId), treeKey.node(selectedNode.id)]),
         ])
       }
@@ -4140,6 +4266,22 @@ export default function EquipmentClassifierMain() {
     selectedEffectiveCardKind === "catalog_position" ||
     (selectedEffectiveCardKind === "auto" && workspaceCatalogPositions.length > 0)
 
+  const selectedNodePurpose = useMemo(() => {
+    if (!selectedNode) return ""
+    if (!selectedNodeIsLeaf) {
+      return "Промежуточный раздел: внутри находятся подразделы классификатора."
+    }
+    if (selectedEffectiveCardKind === "equipment_model") {
+      return "Здесь находятся модели оборудования и их BOM производителя."
+    }
+    if (selectedEffectiveCardKind === "catalog_position") {
+      return "Здесь находятся карточки номенклатуры, используемые в BOM, предложениях поставщиков и на складе."
+    }
+    if (selectedEffectiveCardKind === "service") return "Здесь находятся услуги этой категории."
+    if (selectedEffectiveCardKind === "material") return "Здесь находятся материалы этой категории."
+    return "Нижний раздел классификатора, готовый для наполнения."
+  }, [selectedEffectiveCardKind, selectedNode, selectedNodeIsLeaf])
+
   const branchModelsRaw = useMemo(() => {
     if (!selectedNode || selectedNodeIsLeaf) return []
     return allModels
@@ -5302,7 +5444,15 @@ export default function EquipmentClassifierMain() {
             dataSource={branchModels}
             loading={workspaceLoading}
             pagination={{ pageSize: 12, showSizeChanger: false }}
-            locale={{ emptyText: "В этой ветке пока нет моделей" }}
+            locale={{
+              emptyText: (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="В подразделах пока нет моделей оборудования">
+                  {!branchSubsectionsOpen ? (
+                    <Button type="link" onClick={() => setBranchSubsectionsOpen(true)}>Показать подразделы</Button>
+                  ) : null}
+                </Empty>
+              ),
+            }}
             onRow={(row) => ({
               onClick: () => openModelDetails(row),
               style: { cursor: "pointer" },
@@ -5377,6 +5527,7 @@ export default function EquipmentClassifierMain() {
   const renderNodeContent = () => (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       {renderNodeBreadcrumbs()}
+      {selectedNodePurpose ? <Typography.Text type="secondary">{selectedNodePurpose}</Typography.Text> : null}
       <Space wrap style={{ width: "100%", justifyContent: "flex-end" }}>
         {!selectedNodeIsLeaf ? (
           <Button type="primary" onClick={openCreateChild}>
@@ -5428,7 +5579,13 @@ export default function EquipmentClassifierMain() {
                 dataSource={workspaceModels}
                 loading={workspaceLoading}
                 pagination={{ pageSize: 8, showSizeChanger: false }}
-                locale={{ emptyText: "В этом разделе пока нет моделей оборудования" }}
+                locale={{
+                  emptyText: (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Здесь пока нет моделей оборудования">
+                      <Button type="link" onClick={openCreateModel}>Добавить первую модель</Button>
+                    </Empty>
+                  ),
+                }}
                 onRow={(row) => ({
                   onClick: () => openModelDetails(row),
                   style: { cursor: "pointer" },
@@ -5445,7 +5602,14 @@ export default function EquipmentClassifierMain() {
                 dataSource={workspaceCatalogPositions}
                 loading={workspaceLoading}
                 pagination={{ pageSize: 8, showSizeChanger: false }}
-                locale={{ emptyText: "В этом разделе пока нет позиций" }}
+                locale={{
+                  emptyText: (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="Позиции появятся здесь после создания карточек из BOM модели производителя"
+                    />
+                  ),
+                }}
                 onRow={(row) => ({
                   onClick: () => openCatalogPositionCard(row),
                   style: { cursor: "pointer" },
@@ -6003,7 +6167,7 @@ export default function EquipmentClassifierMain() {
 
   const renderContextContent = () => {
     if (nsiSearchActive) return renderSearchResults()
-    if (!selectedNode) return <Empty description="Выберите раздел слева" />
+    if (!selectedNode) return <Empty description="Выберите раздел слева, чтобы увидеть его содержимое" />
     if (selectedTreeEntity.type === "manufacturer") return renderManufacturerContent()
     if (selectedTreeEntity.type === "model") return renderModelContent()
     if (selectedTreeEntity.type === "catalog_position") return renderCatalogPositionContent()
@@ -6026,6 +6190,19 @@ export default function EquipmentClassifierMain() {
 
   const canEditSelectedNode = selectedTreeEntity.type === "node" && selectedNode
   const nodeCardKindOption = CARD_KIND_OPTIONS.find((option) => option.value === nodeCardKind) || CARD_KIND_OPTIONS[0]
+  const subdivisionBlockedReason = selectedNodeIsLeaf
+    ? getSubdivisionBlockedReason({
+        modelCount: rawWorkspaceModels.length,
+        positionCount: rawWorkspaceCatalogPositions.filter(
+          (row) => Number(row.classifier_node_id) === Number(selectedNode?.id),
+        ).length,
+        attributeCount: attributes.length,
+      })
+    : ""
+  const canCreateModelHere =
+    !!selectedNode &&
+    selectedNodeIsLeaf &&
+    (selectedEffectiveCardKind === "equipment_model" || selectedEffectiveCardKind === "auto")
   const addMenuItems = [
     {
       key: "root-section",
@@ -6033,13 +6210,17 @@ export default function EquipmentClassifierMain() {
     },
     {
       key: "child-section",
-      label: selectedNode ? `Подраздел в "${selectedNode.name}"` : "Подраздел",
-      disabled: !canEditSelectedNode,
+      label: (
+        <span title={subdivisionBlockedReason || undefined}>
+          {selectedNode ? `Подраздел в "${selectedNode.name}"` : "Подраздел"}
+        </span>
+      ),
+      disabled: !canEditSelectedNode || !!subdivisionBlockedReason,
     },
     {
       key: "model",
       label: selectedNode ? `Модель в "${selectedNode.name}"` : "Модель",
-      disabled: !selectedNode || !selectedNodeIsLeaf,
+      disabled: !canCreateModelHere,
     },
   ]
 
@@ -6274,7 +6455,7 @@ export default function EquipmentClassifierMain() {
         <Input.Search
           allowClear
           enterButton="Найти"
-          placeholder="Найти модель, позицию или машину клиента"
+          placeholder="Найти раздел, модель, позицию или машину клиента"
           value={nsiSearchQuery}
           onChange={(event) => {
             const value = event.target.value
@@ -6299,6 +6480,7 @@ export default function EquipmentClassifierMain() {
       <div style={{ display: "flex", gap: 10, alignItems: "flex-start", width: "100%" }}>
         <div style={{ width: classifierTreeWidth, flex: `0 0 ${classifierTreeWidth}px`, position: "relative" }}>
           <Card
+            ref={classifierTreePanelRef}
             title="Разделы"
             loading={loading}
             extra={
@@ -6323,7 +6505,7 @@ export default function EquipmentClassifierMain() {
             {treeData.length ? (
               <Tree
                 expandedKeys={classifierExpandedKeys}
-                onExpand={(keys) => setClassifierExpandedKeys(keys)}
+                onExpand={updateClassifierExpandedKeys}
                 selectedKeys={selectedTreeKey ? [selectedTreeKey] : []}
                 onSelect={handleTreeSelect}
                 treeData={treeData}

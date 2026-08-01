@@ -659,6 +659,21 @@ body,
   background: #eff6ff !important;
 }
 
+.classifier-tree-row {
+  width: 100%;
+}
+
+.classifier-favorite-button {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.classifier-favorite-button.is-favorite,
+.ant-tree-treenode:hover .classifier-favorite-button,
+.classifier-favorite-button:focus-visible {
+  opacity: 1;
+}
+
 @media (max-width: 1280px) {
   .workspace-shell {
     grid-template-columns: 1fr;
