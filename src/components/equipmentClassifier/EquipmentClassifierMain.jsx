@@ -6691,42 +6691,48 @@ export default function EquipmentClassifierMain() {
                   <Form form={bomRowForm} layout="vertical">
                     <Space direction="vertical" size={16} style={{ width: "100%" }}>
                       <Card size="small" title="Карточка позиции">
-                        <div style={{ display: "grid", gridTemplateColumns: "132px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "180px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
                           <div
                             style={{
                               border: "1px solid #f0f0f0",
                               borderRadius: 6,
                               background: "#fafafa",
-                              padding: 8,
+                              overflow: "hidden",
                             }}
                           >
-                            {bomPrimaryPhoto?.file_url ? (
-                              <Image
-                                src={bomPrimaryPhoto.file_url}
-                                alt={bomPrimaryPhoto.caption || getBomItemName(selectedBomItem) || "Фото позиции"}
-                                width="100%"
-                                height={104}
-                                style={{ objectFit: "cover", borderRadius: 4 }}
-                              />
-                            ) : (
-                              <div style={{ height: 104, display: "flex", alignItems: "center", justifyContent: "center", color: "#999" }}>
-                                Фото пока нет
-                              </div>
-                            )}
-                            <Upload accept="image/*" showUploadList={false} customRequest={handleUploadBomCardPhoto}>
-                              <Button
-                                size="small"
-                                icon={<UploadOutlined />}
-                                loading={bomCardPhotoUploading}
-                                block
-                                style={{ marginTop: 8 }}
+                            <div style={{ padding: 8 }}>
+                              {bomPrimaryPhoto?.file_url ? (
+                                <Image
+                                  src={bomPrimaryPhoto.file_url}
+                                  alt={bomPrimaryPhoto.caption || getBomItemName(selectedBomItem) || "Фото позиции"}
+                                  width="100%"
+                                  height={116}
+                                  style={{ objectFit: "cover", borderRadius: 4 }}
+                                />
+                              ) : (
+                                <div style={{ height: 116, display: "flex", alignItems: "center", justifyContent: "center", color: "#999" }}>
+                                  Фото пока нет
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ padding: 8, borderTop: "1px solid #f0f0f0", background: "#fff" }}>
+                              <Upload
+                                accept="image/*"
+                                showUploadList={false}
+                                customRequest={handleUploadBomCardPhoto}
+                                style={{ display: "block", width: "100%" }}
                               >
-                                {bomPrimaryPhoto?.file_url ? "Заменить фото" : "Загрузить фото"}
-                              </Button>
-                            </Upload>
-                            <Typography.Text type="secondary" style={{ display: "block", marginTop: 6, fontSize: 11 }}>
-                              Фото сохраняется сразу
-                            </Typography.Text>
+                                <Button size="small" icon={<UploadOutlined />} loading={bomCardPhotoUploading} block>
+                                  {bomPrimaryPhoto?.file_url ? "Заменить фото" : "Загрузить фото"}
+                                </Button>
+                              </Upload>
+                              <Typography.Text
+                                type="secondary"
+                                style={{ display: "block", marginTop: 6, fontSize: 11, textAlign: "center" }}
+                              >
+                                Сохраняется сразу
+                              </Typography.Text>
+                            </div>
                           </div>
                           <div>
                             <Descriptions size="small" column={1} style={{ marginBottom: 12 }}>
@@ -7065,7 +7071,9 @@ export default function EquipmentClassifierMain() {
                       <Card size="small" title="Характеристики позиции" loading={bomPositionDetailsLoading}>
                         <Descriptions size="small" bordered column={1}>
                           <Descriptions.Item label="Масса">{bomCardWeightText}</Descriptions.Item>
-                          <Descriptions.Item label="Габариты (Д × Ш × В)">{bomCardDimensionsText}</Descriptions.Item>
+                          <Descriptions.Item label={<span style={{ whiteSpace: "nowrap" }}>Габариты (Д × Ш × В)</span>}>
+                            {bomCardDimensionsText}
+                          </Descriptions.Item>
                           <Descriptions.Item label="Код ТН ВЭД">{bomCardTnvedText}</Descriptions.Item>
                           <Descriptions.Item label="Описание">{bomCardPosition?.description || "—"}</Descriptions.Item>
                         </Descriptions>
