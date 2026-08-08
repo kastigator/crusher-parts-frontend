@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { releaseManifestPlugin } from './build/releaseManifest.js'
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url))
 
@@ -11,7 +12,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base,
-    plugins: [react()].filter(Boolean),
+    plugins: [react(), releaseManifestPlugin()].filter(Boolean),
     build: {
       chunkSizeWarningLimit: 1200,
     },

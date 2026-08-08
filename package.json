@@ -8,7 +8,10 @@
     "build": "vite build",
     "deploy:cloud": "bash ./scripts/deploy-cloud.sh",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test test/*.test.js",
+    "test:characterization": "node --test test/*.test.js",
+    "verify:release": "node scripts/verify-release.mjs dist"
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
