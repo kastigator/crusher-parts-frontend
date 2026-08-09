@@ -6,8 +6,6 @@ export default function NewRequestCard({
   createForm,
   handleCreate,
   clientSelectOptions,
-  clients,
-  setCreateClientOpen,
   loadContacts,
   handleClientChange,
   userOptions,

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "apiBaseUrl": "${APP_API_BASE_URL}",
+  "integrations": {
+    "dadata": {
+      "mode": "${APP_DADATA_MODE}",
+      "apiKey": "${APP_DADATA_BROWSER_API_KEY}"
+    },
+    "yandexMaps": {
+      "mode": "${APP_YANDEX_MAPS_MODE}",
+      "apiKey": "${APP_YANDEX_MAPS_BROWSER_API_KEY}"
+    }
+  }
+}

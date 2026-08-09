@@ -37,10 +37,10 @@ export default function TabAccessRoute({
   })
   const catalogRootTab = (tabs || []).find((item) => item.path === "/catalogs")
   const clientWorkspaceTab = (tabs || []).find((item) => item.path === "/client-request-workspace")
-  const rfqWorkspaceTab = (tabs || []).find((item) => item.path === "/rfq-workspace")
+  const sourcingTab = (tabs || []).find((item) => item.path === "/sourcing")
   const hasCatalogRootAccess = !!catalogRootTab && permissions.includes(catalogRootTab.id)
   const hasClientWorkspaceAccess = !!clientWorkspaceTab && permissions.includes(clientWorkspaceTab.id)
-  const hasRfqWorkspaceAccess = !!rfqWorkspaceTab && permissions.includes(rfqWorkspaceTab.id)
+  const hasSourcingAccess = !!sourcingTab && permissions.includes(sourcingTab.id)
 
   const canAccessByBundle = (() => {
     if (!path) return false
@@ -48,10 +48,10 @@ export default function TabAccessRoute({
       return hasCatalogRootAccess || hasClientWorkspaceAccess
     }
     if (SUPPLIER_LOOKUP_PATHS.has(path)) {
-      return hasCatalogRootAccess || hasRfqWorkspaceAccess
+      return hasCatalogRootAccess || hasSourcingAccess
     }
     if (MASTER_DATA_LOOKUP_PATHS.has(path)) {
-      return hasCatalogRootAccess || hasClientWorkspaceAccess || hasRfqWorkspaceAccess
+      return hasCatalogRootAccess || hasClientWorkspaceAccess || hasSourcingAccess
     }
     return false
   })()

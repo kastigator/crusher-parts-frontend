@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from "react-router-dom"
 import { useTabs } from "@/context/TabsContext"
 import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons"
 import { buildIconPath, resolveIconUrl } from "@/constants/sidebarIcons"
+import useCapabilities from "@/hooks/useCapabilities"
 
 const { Sider } = Layout
 
@@ -22,8 +23,8 @@ const HIDDEN_LEGACY_PATHS = new Set([
   "/economics",
   "/selection",
   "/sales-quotes",
-  "/contracts",
-  "/purchase-orders",
+  "/rfq-workspace",
+  "/rfq",
 ])
 const CATALOG_CHILD_PATHS = new Set([
   "/supplier-parts",
@@ -45,8 +46,28 @@ const WORKSPACE_NAV_GROUPS = [
     label: "Клиенты",
   },
   {
-    paths: ["/rfq-workspace", "/rfq"],
-    label: "RFQ закупка",
+    paths: ["/sourcing"],
+    label: "Закупочная проработка",
+  },
+  {
+    paths: ["/pricing"],
+    label: "Расчёт цены",
+  },
+  {
+    paths: ["/commercial-offers"],
+    label: "Коммерческие предложения",
+  },
+  {
+    paths: ["/contracts"],
+    label: "Договоры",
+  },
+  {
+    paths: ["/purchase-orders"],
+    label: "Исполнение закупки",
+  },
+  {
+    paths: ["/financial-operations"],
+    label: "Финансовые операции",
   },
   {
     paths: ["/suppliers"],
@@ -55,6 +76,18 @@ const WORKSPACE_NAV_GROUPS = [
   {
     paths: ["/warehouse"],
     label: "Склад",
+  },
+  {
+    paths: ["/dispatch-delivery"],
+    label: "Отгрузка и доставка",
+  },
+  {
+    paths: ["/completion-lifecycle"],
+    label: "Завершение заказа",
+  },
+  {
+    paths: ["/after-sales"],
+    label: "Рекламации",
   },
 ]
 const MASTER_DATA_NAV_PATHS = ["/equipment-classifier"]
@@ -71,8 +104,13 @@ const SETTINGS_NAV_PATHS = ["/users", "/measurement-units"]
 const ICON_BY_PATH = {
   "/client-request-workspace": "client-request-workspace",
   "/client-requests": "client-requests",
-  "/rfq-workspace": "rfq-workspace",
   "/rfq": "rfq",
+  "/sourcing": "rfq-workspace",
+  "/pricing": "economics",
+  "/commercial-offers": "sales-quotes",
+  "/contracts": "contracts",
+  "/purchase-orders": "purchase-orders",
+  "/financial-operations": "economics",
   "/kpi": "kpi",
   "/catalogs": "catalog-health",
   "/clients": "clients",
@@ -83,6 +121,9 @@ const ICON_BY_PATH = {
   "/materials": "materials",
   "/tnved-codes": "tnved-codes",
   "/warehouse": "warehouse",
+  "/dispatch-delivery": "warehouse",
+  "/completion-lifecycle": "contracts",
+  "/after-sales": "contracts",
   "/logistics-route-templates": "logistics-route-templates",
   "/users": "users",
   "/measurement-units": "measurement-units",
@@ -92,8 +133,16 @@ const ICON_BY_PATH = {
 const LABEL_BY_PATH = {
   "/client-request-workspace": "Заявки клиентов",
   "/client-requests": "Заявки клиентов",
-  "/rfq-workspace": "RFQ закупка",
   "/rfq": "RFQ закупка",
+  "/sourcing": "Закупочная проработка",
+  "/pricing": "Расчёт цены",
+  "/commercial-offers": "Коммерческие предложения",
+  "/contracts": "Договоры",
+  "/purchase-orders": "Исполнение закупки",
+  "/financial-operations": "Финансовые операции",
+  "/dispatch-delivery": "Отгрузка и доставка",
+  "/after-sales": "Рекламации",
+  "/completion-lifecycle": "Завершение заказа",
   "/kpi": "Показатели",
   "/equipment-classifier": "Классификатор",
   "/warehouse": "Склад",
@@ -173,10 +222,133 @@ export default function Sidebar() {
   const location = useLocation()
   const navigate = useNavigate()
   const { tabs, loading } = useTabs()
+  const { can } = useCapabilities()
   const [collapsed, setCollapsed] = useState(false)
 
   const { menuItems, parentByKey } = useMemo(() => {
-    const sorted = (tabs || [])
+    const navigationTabs = [...(tabs || [])]
+    if (can("administration.access") && !navigationTabs.some((tab) => tab?.path === "/users")) {
+      navigationTabs.push({
+        id: "capability-administration",
+        tab_name: "users",
+        path: "/users",
+        name: "Администрирование",
+        icon: "users",
+        sort_order: 10000,
+      })
+    }
+    if (can("client_requests.access") && !navigationTabs.some((tab) => ["/client-requests", "/client-request-workspace"].includes(tab?.path))) {
+      navigationTabs.push({
+        id: "capability-client-requests",
+        tab_name: "client_requests",
+        path: "/client-requests",
+        name: "Заявки клиентов",
+        icon: "client-requests",
+        sort_order: 100,
+      })
+    }
+    if (can("sourcing.access") && !navigationTabs.some((tab) => tab?.path === "/sourcing")) {
+      navigationTabs.push({
+        id: "capability-sourcing",
+        tab_name: "sourcing",
+        path: "/sourcing",
+        name: "Закупочная проработка",
+        icon: "rfq-workspace",
+        sort_order: 110,
+      })
+    }
+    if (can("pricing.access") && !navigationTabs.some((tab) => tab?.path === "/pricing")) {
+      navigationTabs.push({
+        id: "capability-pricing",
+        tab_name: "pricing",
+        path: "/pricing",
+        name: "Расчёт цены",
+        icon: "economics",
+        sort_order: 120,
+      })
+    }
+    if (can("commercial_offers.access") && !navigationTabs.some((tab) => tab?.path === "/commercial-offers")) {
+      navigationTabs.push({
+        id: "capability-commercial-offers",
+        tab_name: "commercial_offers",
+        path: "/commercial-offers",
+        name: "Коммерческие предложения",
+        icon: "sales-quotes",
+        sort_order: 130,
+      })
+    }
+    if (can("contracts.access") && !navigationTabs.some((tab) => tab?.path === "/contracts")) {
+      navigationTabs.push({
+        id: "capability-contracts",
+        tab_name: "contracts",
+        path: "/contracts",
+        name: "Договоры",
+        icon: "contracts",
+        sort_order: 140,
+      })
+    }
+    if (can("procurement_execution.access") && !navigationTabs.some((tab) => tab?.path === "/purchase-orders")) {
+      navigationTabs.push({
+        id: "capability-procurement-execution",
+        tab_name: "procurement_execution",
+        path: "/purchase-orders",
+        name: "Исполнение закупки",
+        icon: "purchase-orders",
+        sort_order: 150,
+      })
+    }
+    if (can("financial_operations.access") && !navigationTabs.some((tab) => tab?.path === "/financial-operations")) {
+      navigationTabs.push({
+        id: "capability-financial-operations",
+        tab_name: "financial_operations",
+        path: "/financial-operations",
+        name: "Финансовые операции",
+        icon: "economics",
+        sort_order: 160,
+      })
+    }
+    if (can("warehouse_inventory.access") && !navigationTabs.some((tab) => tab?.path === "/warehouse")) {
+      navigationTabs.push({
+        id: "capability-warehouse-inventory",
+        tab_name: "warehouse_inventory",
+        path: "/warehouse",
+        name: "Склад",
+        icon: "warehouse",
+        sort_order: 170,
+      })
+    }
+    if (can("dispatch_delivery.access") && !navigationTabs.some((tab) => tab?.path === "/dispatch-delivery")) {
+      navigationTabs.push({
+        id: "capability-dispatch-delivery",
+        tab_name: "dispatch_delivery",
+        path: "/dispatch-delivery",
+        name: "Отгрузка и доставка",
+        icon: "warehouse",
+        sort_order: 180,
+      })
+    }
+    if (can("completion.access") && !navigationTabs.some((tab) => tab?.path === "/completion-lifecycle")) {
+      navigationTabs.push({
+        id: "capability-completion-lifecycle",
+        tab_name: "completion_lifecycle",
+        path: "/completion-lifecycle",
+        name: "Завершение заказа",
+        icon: "contracts",
+        sort_order: 190,
+      })
+    }
+    if (can("after_sales.access") && !navigationTabs.some((tab) => tab?.path === "/after-sales")) {
+      navigationTabs.push({
+        id: "capability-after-sales",
+        tab_name: "after_sales",
+        path: "/after-sales",
+        name: "Рекламации",
+        icon: "contracts",
+        sort_order: 200,
+      })
+    }
+
+    const sorted = navigationTabs
       .slice()
       .filter((tab) => tab?.path && !HIDDEN_LEGACY_PATHS.has(tab.path))
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
@@ -298,7 +470,7 @@ export default function Sidebar() {
     ].filter(Boolean)
 
     return { menuItems: items, parentByKey: parentMap }
-  }, [tabs])
+  }, [tabs, can])
 
   const routeKeys = useMemo(() => {
     const keys = []

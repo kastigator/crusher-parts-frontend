@@ -8,8 +8,10 @@ import TabsProvider from "./context/TabsProvider"
 import { Toaster } from "react-hot-toast"
 import loadYandexMaps from "@/utils/loadYandexMaps"
 import { ConfigProvider, App as AntdApp } from "antd"
+import ruRU from "antd/locale/ru_RU"
 import { antdTheme } from "@/theme/antdTheme"
 import AntdAppBridge from "@/components/common/AntdAppBridge"
+import { loadRuntimeConfig } from "@/config/runtimeConfig"
 
 import "@fontsource/inter/300.css"
 import "@fontsource/inter/400.css"
@@ -25,16 +27,18 @@ const useHashRouter =
   window.location &&
   window.location.host === "storage.googleapis.com"
 
-loadYandexMaps()
-  .then(() => {
-    const root = document.getElementById("root")
-    if (root) {
-      ReactDOM.createRoot(root).render(
-        useHashRouter ? (
+const bootstrap = async () => {
+  await loadRuntimeConfig()
+  await loadYandexMaps()
+
+  const root = document.getElementById("root")
+  if (root) {
+    ReactDOM.createRoot(root).render(
+      useHashRouter ? (
           <HashRouter>
             <AuthProvider>
               <TabsProvider>
-                <ConfigProvider theme={antdTheme}>
+                <ConfigProvider theme={antdTheme} locale={ruRU}>
                   <AntdApp>
                     <AntdAppBridge />
                     <App />
@@ -44,11 +48,11 @@ loadYandexMaps()
               </TabsProvider>
             </AuthProvider>
           </HashRouter>
-        ) : (
+      ) : (
           <BrowserRouter basename={routerBase}>
             <AuthProvider>
               <TabsProvider>
-                <ConfigProvider theme={antdTheme}>
+                <ConfigProvider theme={antdTheme} locale={ruRU}>
                   <AntdApp>
                     <AntdAppBridge />
                     <App />
@@ -58,15 +62,17 @@ loadYandexMaps()
               </TabsProvider>
             </AuthProvider>
           </BrowserRouter>
-        )
       )
-    } else {
-      console.error("❌ Не найден элемент root в index.html")
-    }
-  })
-  .catch((error) => {
-    console.error("❌ Не удалось загрузить Yandex Maps:", error)
-    alert(
-      "Не удалось загрузить Яндекс.Карты. Проверьте API ключ, ограничения и домен."
     )
-  })
+  } else {
+    console.error("❌ Не найден элемент root в index.html")
+  }
+}
+
+bootstrap().catch((error) => {
+  console.error("❌ Не удалось запустить приложение:", error)
+  const root = document.getElementById("root")
+  if (root) {
+    root.textContent = "Приложение не запущено: некорректная runtime-конфигурация."
+  }
+})

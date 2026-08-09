@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react"
 import { Input, Button, Space, message, AutoComplete, Segmented } from "antd"
+import { getBrowserIntegration } from "@/config/runtimeConfig"
 
 const GEO_LANG_STORAGE_KEY = "address_geocoder_lang_v1"
 const DEFAULT_GEO_LANG = "ru_RU"
@@ -12,6 +13,8 @@ export default function PlaceAddressInput({
   const mapRef = useRef(null)
   const mapInstance = useRef(null)
   const placemarkRef = useRef(null)
+  const yandexIntegration = getBrowserIntegration("yandexMaps")
+  const yandexEnabled = yandexIntegration.mode === "live"
 
   const [query, setQuery] = useState(value?.address_line || "")
   const [loading, setLoading] = useState(false)
@@ -87,7 +90,7 @@ export default function PlaceAddressInput({
   }, [getAddressComponent])
 
   const geocodeByHttp = useCallback(async ({ queryValue, coords = null, lang = "ru_RU" }) => {
-    const apiKey = import.meta.env.VITE_YANDEX_MAPS_API_KEY
+    const apiKey = yandexIntegration.apiKey
     if (!apiKey) return []
 
     const geocodeParam =
@@ -139,7 +142,7 @@ export default function PlaceAddressInput({
         }
       })
       .filter(Boolean)
-  }, [getAddressComponent])
+  }, [getAddressComponent, yandexIntegration.apiKey])
 
   useEffect(() => {
     valueRef.current = value
@@ -165,7 +168,7 @@ export default function PlaceAddressInput({
   }, [resetTrigger, geocodeByHttp, normalizeGeoObject])
 
   useEffect(() => {
-    if (!mapRef.current) return
+    if (!yandexEnabled || !mapRef.current) return
     const mapNode = mapRef.current
     if (typeof window.ymaps === "undefined") {
       console.error("❌ Yandex Maps API не загружен")
@@ -250,9 +253,10 @@ export default function PlaceAddressInput({
       placemarkRef.current = null
       if (mapNode) mapNode.innerHTML = ""
     }
-  }, [resetTrigger, geocodeByHttp, normalizeGeoObject])
+  }, [resetTrigger, geocodeByHttp, normalizeGeoObject, yandexEnabled])
 
   const handleSearch = () => {
+    if (!yandexEnabled) return
     const ymaps = window.ymaps
     if (!query || !ymaps || !mapInstance.current) return
 
@@ -335,6 +339,7 @@ export default function PlaceAddressInput({
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <Segmented
+          disabled={!yandexEnabled}
           size="small"
           value={geoLang}
           options={[
@@ -357,7 +362,7 @@ export default function PlaceAddressInput({
           }}
           onPressEnter={handleSearch}
         />
-        <Button type="primary" onClick={handleSearch} loading={loading}>
+        <Button type="primary" onClick={handleSearch} loading={loading} disabled={!yandexEnabled}>
           Найти
         </Button>
       </Space.Compact>
@@ -375,15 +380,17 @@ export default function PlaceAddressInput({
         </AutoComplete>
       )}
 
-      <div
-        ref={mapRef}
-        style={{
-          width: "100%",
-          height: 300,
-          borderRadius: 4,
-          border: "1px solid #ccc",
-        }}
-      />
+      {yandexEnabled && (
+        <div
+          ref={mapRef}
+          style={{
+            width: "100%",
+            height: 300,
+            borderRadius: 4,
+            border: "1px solid #ccc",
+          }}
+        />
+      )}
     </div>
   )
 }

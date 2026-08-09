@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { Alert, Button, Card, Checkbox, Col, Row, Space, Tooltip, Typography, message } from "antd"
+import { Alert, Button, Card, Checkbox, Col, Row, Space, Tag, Tooltip, Typography, message } from "antd"
 import axios from "@/api/axiosInstance"
 import useCapabilities from "@/hooks/useCapabilities"
 
@@ -21,7 +21,7 @@ export default function CapabilityMatrix({ revision = 0, onChanged, selectedRole
   const [presets, setPresets] = useState({})
   const [loading, setLoading] = useState(false)
   const [applyingPreset, setApplyingPreset] = useState("")
-  const canManageUsersRoles = isAdmin || can("admin.users_roles.manage")
+  const canManageUsersRoles = isAdmin || can("administration.roles.manage")
 
   useEffect(() => {
     const load = async () => {
@@ -64,15 +64,8 @@ export default function CapabilityMatrix({ revision = 0, onChanged, selectedRole
   const visibleGroups = useMemo(() => {
     if (!selectedRole) return []
 
-    const allowAdministrationSection =
-      selectedRole.slug === "admin" || selectedRole.slug === "nachalnik-otdela-zakupok"
-
-    return grouped.filter(([section, items]) => {
-      if (section !== "administration") return true
-      if (allowAdministrationSection) return true
-      return items.some((capability) => !!assignments[`${selectedRole.id}__${capability.id}`])
-    })
-  }, [assignments, grouped, selectedRole])
+    return grouped
+  }, [grouped, selectedRole])
 
   const toggleAssignment = async (roleId, capabilityId) => {
     const key = `${roleId}__${capabilityId}`
@@ -146,7 +139,10 @@ export default function CapabilityMatrix({ revision = 0, onChanged, selectedRole
                         <Space align="start" style={{ width: "100%", justifyContent: "space-between" }}>
                           <Space direction="vertical" size={2}>
                             <Tooltip title={capability.description}>
-                              <Text strong>{capability.name}</Text>
+                              <Space size={6}>
+                                <Text strong>{capability.name}</Text>
+                                {capability.is_legacy ? <Tag color="orange">Адаптер устаревшего контура</Tag> : null}
+                              </Space>
                             </Tooltip>
                             <Text type="secondary">{capability.description}</Text>
                           </Space>

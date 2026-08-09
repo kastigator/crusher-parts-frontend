@@ -3,6 +3,7 @@ import { Alert, Button, Card, Col, Row, Space, Table, Tag, Typography } from "an
 import { ReloadOutlined } from "@ant-design/icons"
 import dayjs from "dayjs"
 import axios from "@/api/axiosInstance"
+import useCapabilities from "@/hooks/useCapabilities"
 
 const { Text } = Typography
 
@@ -53,6 +54,7 @@ const normalizeRow = (row) => {
   const role =
     row.role ||
     row.role_name ||
+    row.role_names ||
     row.user?.role ||
     row.user?.role_name ||
     row.user?.role_slug ||
@@ -79,6 +81,7 @@ const normalizeRow = (row) => {
 
   return {
     id: id || `${name}-${ip}-${lastActive || "na"}`,
+    sessionId: row.session_id || row.sessionId || null,
     name,
     role,
     roleLabel: ROLE_LABELS[String(role || "").toLowerCase()] || row.role_name || role || "—",
@@ -90,6 +93,7 @@ const normalizeRow = (row) => {
 }
 
 export default function ActiveUsersPanel() {
+  const { can } = useCapabilities()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -123,6 +127,16 @@ export default function ActiveUsersPanel() {
     fetchOnline()
   }, [fetchOnline])
 
+  const terminateSession = useCallback(async (sessionId) => {
+    if (!sessionId) return
+    try {
+      await axios.delete(`/sessions/${encodeURIComponent(sessionId)}`)
+      await fetchOnline()
+    } catch (error) {
+      setError(error?.response?.data?.message || "Не удалось завершить сессию")
+    }
+  }, [fetchOnline])
+
   const columns = useMemo(
     () => [
       {
@@ -148,8 +162,22 @@ export default function ActiveUsersPanel() {
         width: 200,
         render: (v) => formatTime(v),
       },
+      {
+        title: "",
+        width: 120,
+        render: (_, row) => (
+          <Button
+            size="small"
+            danger
+            disabled={!row.sessionId || !can("administration.sessions.manage")}
+            onClick={() => terminateSession(row.sessionId)}
+          >
+            Завершить
+          </Button>
+        ),
+      },
     ],
-    [],
+    [can, terminateSession],
   )
 
   const summary = useMemo(() => {

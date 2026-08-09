@@ -222,8 +222,7 @@ export default function SalesKpiDashboard({
   const [editForm] = Form.useForm()
 
   const isAdmin = useMemo(() => {
-    const role = String(user?.role || "").toLowerCase()
-    return !!(user && (role === "admin" || user.role_id === 1 || user.is_admin))
+    return user?.is_super_admin === true
   }, [user])
 
   const effectiveSellerId = lockedSellerId || sellerId || null

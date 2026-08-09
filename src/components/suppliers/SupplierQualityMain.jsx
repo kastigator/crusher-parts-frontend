@@ -54,13 +54,6 @@ const renderSeverity = (value) => {
   return <Tag color={color}>{v}</Tag>
 }
 
-const renderPoStatus = (value) =>
-  ({
-    draft: "Черновик",
-    sent: "Отправлен",
-    confirmed: "Подтвержден",
-  }[String(value || "").trim().toLowerCase()] || value || "Черновик")
-
 export default function SupplierQualityMain({ supplierId }) {
   const [summary, setSummary] = useState(null)
   const [events, setEvents] = useState([])
@@ -69,11 +62,6 @@ export default function SupplierQualityMain({ supplierId }) {
   const [modalOpen, setModalOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [editingEvent, setEditingEvent] = useState(null)
-  const [purchaseOrders, setPurchaseOrders] = useState([])
-  const [purchaseOrdersLoading, setPurchaseOrdersLoading] = useState(false)
-  const [purchaseOrderLines, setPurchaseOrderLines] = useState([])
-  const [purchaseOrderLinesLoading, setPurchaseOrderLinesLoading] = useState(false)
-  const [selectedLineMeta, setSelectedLineMeta] = useState(null)
 
   const [form] = Form.useForm()
   const eventType = Form.useWatch("event_type", form)
@@ -107,23 +95,6 @@ export default function SupplierQualityMain({ supplierId }) {
     loadSummary()
     loadEvents()
   }, [supplierId, loadSummary, loadEvents])
-
-  useEffect(() => {
-    if (!modalOpen || !supplierId) return
-    const fetchPos = async () => {
-      setPurchaseOrdersLoading(true)
-      try {
-        const { data } = await axios.get(`/suppliers/${supplierId}/purchase-orders`)
-        setPurchaseOrders(Array.isArray(data) ? data : [])
-      } catch (e) {
-        console.error(e)
-        message.error("Не удалось загрузить заказы поставщика")
-      } finally {
-        setPurchaseOrdersLoading(false)
-      }
-    }
-    fetchPos()
-  }, [modalOpen, supplierId])
 
   const summaryStats = useMemo(() => {
     if (!summary) return []
@@ -186,14 +157,6 @@ export default function SupplierQualityMain({ supplierId }) {
         delay_days: values.delay_days ?? null,
         rating: values.rating ?? null,
         note: values.note || null,
-        supplier_purchase_order_id: values.supplier_purchase_order_id ?? null,
-        supplier_purchase_order_line_id: values.supplier_purchase_order_line_id ?? null,
-        rfq_response_line_id: values.rfq_response_line_id ?? null,
-        selection_id: values.selection_id ?? null,
-        selection_line_id: values.selection_line_id ?? null,
-        sales_quote_id: values.sales_quote_id ?? null,
-        sales_quote_line_id: values.sales_quote_line_id ?? null,
-        original_part_id: values.original_part_id ?? null,
         qty_affected: values.qty_affected ?? null,
       }
       if (editingEvent?.id) {
@@ -206,7 +169,6 @@ export default function SupplierQualityMain({ supplierId }) {
       form.resetFields()
       setModalOpen(false)
       setEditingEvent(null)
-      setSelectedLineMeta(null)
       await loadSummary()
       await loadEvents()
     } catch (e) {
@@ -243,38 +205,6 @@ export default function SupplierQualityMain({ supplierId }) {
       render: renderStatus,
     },
     {
-      title: "Деталь",
-      dataIndex: "original_cat_number",
-      width: 160,
-      render: (value, record) => value || record.original_part_id || "-",
-    },
-    {
-      title: "PO",
-      dataIndex: "supplier_reference",
-      width: 140,
-      render: (value, record) => value || record.po_id || "-",
-    },
-    {
-      title: "Выбор",
-      dataIndex: "selection_id",
-      width: 100,
-      render: (value) => (value ? `#${value}` : "-"),
-    },
-    {
-      title: "КП",
-      width: 110,
-      render: (_, record) =>
-        record.sales_quote_id
-          ? `#${record.sales_quote_id}${record.sales_quote_revision_number ? ` / Ревизия ${record.sales_quote_revision_number}` : ""}`
-          : "-",
-    },
-    {
-      title: "Строка PO",
-      dataIndex: "supplier_purchase_order_line_id",
-      width: 110,
-      render: (value) => value || "-",
-    },
-    {
       title: "Задержка",
       dataIndex: "delay_days",
       width: 110,
@@ -300,7 +230,6 @@ export default function SupplierQualityMain({ supplierId }) {
             size="small"
             onClick={() => {
               setEditingEvent(record)
-              setSelectedLineMeta(record)
               form.setFieldsValue({
                 event_type: record.event_type,
                 severity: record.severity,
@@ -311,14 +240,6 @@ export default function SupplierQualityMain({ supplierId }) {
                 delay_days: record.delay_days,
                 rating: record.rating,
                 note: record.note || null,
-                supplier_purchase_order_id: record.supplier_purchase_order_id || null,
-                supplier_purchase_order_line_id: record.supplier_purchase_order_line_id || null,
-                rfq_response_line_id: record.rfq_response_line_id || null,
-                selection_id: record.selection_id || null,
-                selection_line_id: record.selection_line_id || null,
-                sales_quote_id: record.sales_quote_id || null,
-                sales_quote_line_id: record.sales_quote_line_id || null,
-                original_part_id: record.oem_part_id || null,
                 qty_affected: record.qty_affected ?? null,
               })
               setModalOpen(true)
@@ -354,10 +275,8 @@ export default function SupplierQualityMain({ supplierId }) {
     <Space direction="vertical" style={{ width: "100%" }} size={12}>
       <Card size="small">
         <Typography.Paragraph style={{ marginBottom: 0 }}>
-          Здесь фиксируются рекламации, задержки и оценки по поставщику. Правильная точка входа:
-          выбирать строку <Text strong>PO</Text>, чтобы событие автоматически привязывалось к закупочному
-          выбору, коммерческому КП и детали. Эти события автоматически пересчитывают рейтинг надежности
-          и уровень риска поставщика.
+          Здесь сохраняется историческая supplier-quality оценка без чтения legacy PO/RFQ/Quote truth.
+          Новые претензии с полной прослеживаемостью создаются в разделе <Text strong>Послепродажное обслуживание</Text>.
         </Typography.Paragraph>
       </Card>
 
@@ -415,7 +334,6 @@ export default function SupplierQualityMain({ supplierId }) {
         onCancel={() => {
           setModalOpen(false)
           setEditingEvent(null)
-          setSelectedLineMeta(null)
         }}
         onOk={() => form.submit()}
         okText="Сохранить"
@@ -444,85 +362,6 @@ export default function SupplierQualityMain({ supplierId }) {
           </Space>
 
           <Space wrap align="start">
-            <Form.Item label="PO" name="supplier_purchase_order_id">
-              <Select
-                style={{ width: 260 }}
-                showSearch
-                allowClear
-                loading={purchaseOrdersLoading}
-                optionFilterProp="label"
-                options={purchaseOrders.map((po) => ({
-                  value: po.id,
-                  label: `PO #${po.id}${po.supplier_reference ? ` · ${po.supplier_reference}` : ""} · ${renderPoStatus(po.status)} · ${formatDate(po.created_at)}`.trim(),
-                }))}
-                onChange={async (value) => {
-                  form.setFieldsValue({
-                    supplier_purchase_order_line_id: null,
-                    rfq_response_line_id: null,
-                    selection_id: null,
-                    selection_line_id: null,
-                    sales_quote_id: null,
-                    sales_quote_line_id: null,
-                    original_part_id: null,
-                  })
-                  setSelectedLineMeta(null)
-                  if (!value) {
-                    setPurchaseOrderLines([])
-                    return
-                  }
-                  setPurchaseOrderLinesLoading(true)
-                  try {
-                    const { data } = await axios.get(
-                      `/suppliers/${supplierId}/purchase-orders/${value}/lines`
-                    )
-                    setPurchaseOrderLines(Array.isArray(data) ? data : [])
-                  } catch (e) {
-                    console.error(e)
-                    message.error("Не удалось загрузить строки PO")
-                    setPurchaseOrderLines([])
-                  } finally {
-                    setPurchaseOrderLinesLoading(false)
-                  }
-                }}
-              />
-            </Form.Item>
-            <Form.Item label="Строка PO" name="supplier_purchase_order_line_id">
-              <Select
-                style={{ width: 260 }}
-                showSearch
-                allowClear
-                loading={purchaseOrderLinesLoading}
-                optionFilterProp="label"
-                options={purchaseOrderLines.map((line) => ({
-                  value: line.id,
-                  label: `Строка #${line.id} · ${line.original_cat_number || "без номера"} · ${line.qty || 0} ${line.currency || ""}`.trim(),
-                }))}
-                onChange={(value) => {
-                  const line = purchaseOrderLines.find((item) => item.id === value) || null
-                  setSelectedLineMeta(line)
-                  form.setFieldsValue({
-                    rfq_response_line_id: line?.rfq_response_line_id || null,
-                    selection_id: line?.selection_id || null,
-                    selection_line_id: line?.selection_line_id || null,
-                    sales_quote_id: line?.sales_quote_id || null,
-                    sales_quote_line_id: line?.sales_quote_line_id || null,
-                    original_part_id: line?.original_part_id || null,
-                  })
-                }}
-              />
-            </Form.Item>
-            <Form.Item label="Деталь">
-              <Input
-                style={{ width: 260 }}
-                value={
-                  selectedLineMeta
-                    ? `${selectedLineMeta.original_cat_number || "без номера"} ${selectedLineMeta.original_description_ru || selectedLineMeta.original_description_en || ""}`.trim()
-                    : ""
-                }
-                placeholder="Выберите строку PO"
-                disabled
-              />
-            </Form.Item>
             <Form.Item label="Кол-во" name="qty_affected">
               <InputNumber style={{ width: 140 }} min={0} />
             </Form.Item>
@@ -548,25 +387,6 @@ export default function SupplierQualityMain({ supplierId }) {
               </Form.Item>
             ) : null}
           </Space>
-
-          <Form.Item name="rfq_response_line_id" hidden>
-            <InputNumber />
-          </Form.Item>
-          <Form.Item name="selection_id" hidden>
-            <InputNumber />
-          </Form.Item>
-          <Form.Item name="selection_line_id" hidden>
-            <InputNumber />
-          </Form.Item>
-          <Form.Item name="sales_quote_id" hidden>
-            <InputNumber />
-          </Form.Item>
-          <Form.Item name="sales_quote_line_id" hidden>
-            <InputNumber />
-          </Form.Item>
-          <Form.Item name="original_part_id" hidden>
-            <InputNumber />
-          </Form.Item>
 
           <Form.Item label="Комментарий" name="note">
             <Input.TextArea rows={3} />

@@ -3,6 +3,7 @@ import React, { Suspense, lazy } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import PrivateRoute from '../auth/PrivateRoute'
 import TabAccessRoute from '../auth/TabAccessRoute'
+import CapabilityAccessRoute from '../auth/CapabilityAccessRoute'
 import MainLayout from '../layout/MainLayout'
 
 const LoginPage = lazy(() => import('../pages/LoginPage'))
@@ -11,16 +12,12 @@ const UsersPage = lazy(() => import('../pages/UsersPage'))
 const AdminPage = lazy(() => import('../pages/AdminPage'))
 const CatalogsPage = lazy(() => import('../pages/CatalogsPage'))
 const ClientRequestsPage = lazy(() => import('../pages/ClientRequestsPage'))
-const RfqPage = lazy(() => import('../pages/RfqPage'))
-const RfqWorkspacePage = lazy(() => import('../pages/RfqWorkspacePage'))
-const SupplierResponsesPage = lazy(() => import('../pages/SupplierResponsesPage'))
-const CoveragePage = lazy(() => import('../pages/CoveragePage'))
-const ScorecardPage = lazy(() => import('../pages/ScorecardPage'))
-const EconomicsPage = lazy(() => import('../pages/EconomicsPage'))
-const SelectionPage = lazy(() => import('../pages/SelectionPage'))
-const SalesQuotesPage = lazy(() => import('../pages/SalesQuotesPage'))
-const ContractsPage = lazy(() => import('../pages/ContractsPage'))
-const PurchaseOrdersPage = lazy(() => import('../pages/PurchaseOrdersPage'))
+const SourcingWorkspacePage = lazy(() => import('../pages/SourcingWorkspacePage'))
+const PricingWorkspacePage = lazy(() => import('../pages/PricingWorkspacePage'))
+const CommercialOfferWorkspacePage = lazy(() => import('../pages/CommercialOfferWorkspacePage'))
+const ContractWorkspacePage = lazy(() => import('../pages/ContractWorkspacePage'))
+const ProcurementExecutionWorkspacePage = lazy(() => import('../pages/ProcurementExecutionWorkspacePage'))
+const FinancialOperationsWorkspacePage = lazy(() => import('../pages/FinancialOperationsWorkspacePage'))
 const TnvedCodesPage = lazy(() => import('../pages/TnvedCodesPage'))
 const ClientsPage = lazy(() => import('../pages/ClientsPage'))
 const ClientDetailPage = lazy(() => import('../pages/ClientDetailPage'))
@@ -34,10 +31,11 @@ const LogisticsRouteTemplatesPage = lazy(() => import('@/pages/LogisticsRouteTem
 const KpiPage = lazy(() => import('@/pages/KpiPage'))
 const EquipmentClassifierPage = lazy(() => import('@/pages/EquipmentClassifierPage'))
 const GlossaryPage = lazy(() => import('@/pages/GlossaryPage'))
-const ContractPreviewPage = lazy(() => import('@/pages/ContractPreviewPage'))
-const PurchaseOrderPreviewPage = lazy(() => import('@/pages/PurchaseOrderPreviewPage'))
 const TrashPage = lazy(() => import('@/pages/TrashPage'))
-const WarehousePage = lazy(() => import('@/pages/WarehousePage'))
+const WarehouseInventoryWorkspacePage = lazy(() => import('@/pages/WarehouseInventoryWorkspacePage'))
+const DispatchDeliveryWorkspacePage = lazy(() => import('@/pages/DispatchDeliveryWorkspacePage'))
+const CompletionLifecycleWorkspacePage = lazy(() => import('@/pages/CompletionLifecycleWorkspacePage'))
+const AfterSalesWorkspacePage = lazy(() => import('@/pages/AfterSalesWorkspacePage'))
 
 const AppRouter = () => (
   <Suspense fallback={<div>Загрузка...</div>}>
@@ -52,25 +50,22 @@ const AppRouter = () => (
         }
       >
         <Route index element={<HomePage />} />
-        <Route path="client-requests" element={<TabAccessRoute path="/client-request-workspace" title="Workspace по заявкам"><ClientRequestsPage /></TabAccessRoute>} />
-        <Route path="client-request-workspace" element={<TabAccessRoute path="/client-request-workspace" title="Workspace по заявкам"><ClientRequestsPage /></TabAccessRoute>} />
-        <Route path="rfq" element={<TabAccessRoute path="/rfq-workspace" title="RFQ Workspace"><RfqPage /></TabAccessRoute>} />
-        <Route path="rfq-workspace" element={<TabAccessRoute path="/rfq-workspace" title="RFQ Workspace"><RfqWorkspacePage /></TabAccessRoute>} />
-        <Route path="supplier-responses" element={<TabAccessRoute path="/rfq-workspace" title="RFQ Workspace"><SupplierResponsesPage /></TabAccessRoute>} />
-        <Route path="coverage" element={<TabAccessRoute path="/rfq-workspace" title="RFQ Workspace"><CoveragePage /></TabAccessRoute>} />
-        <Route path="scorecard" element={<TabAccessRoute path="/rfq-workspace" title="RFQ Workspace"><ScorecardPage /></TabAccessRoute>} />
-        <Route path="economics" element={<TabAccessRoute path="/rfq-workspace" title="RFQ Workspace"><EconomicsPage /></TabAccessRoute>} />
-        <Route path="selection" element={<TabAccessRoute path="/rfq-workspace" title="RFQ Workspace"><SelectionPage /></TabAccessRoute>} />
-        <Route path="sales-quotes" element={<TabAccessRoute path="/client-request-workspace" title="Workspace по заявкам"><SalesQuotesPage /></TabAccessRoute>} />
-        <Route path="contracts" element={<TabAccessRoute path="/client-request-workspace" title="Workspace по заявкам"><ContractsPage /></TabAccessRoute>} />
-        <Route path="contracts/:id/preview" element={<TabAccessRoute path="/client-request-workspace" title="Workspace по заявкам"><ContractPreviewPage /></TabAccessRoute>} />
-        <Route path="purchase-orders" element={<TabAccessRoute path="/rfq-workspace" title="RFQ Workspace"><PurchaseOrdersPage /></TabAccessRoute>} />
-        <Route path="purchase-orders/:id/preview" element={<TabAccessRoute path="/rfq-workspace" title="RFQ Workspace"><PurchaseOrderPreviewPage /></TabAccessRoute>} />
-        <Route path="warehouse" element={<TabAccessRoute path="/warehouse" title="Склад"><WarehousePage /></TabAccessRoute>} />
+        <Route path="client-requests" element={<CapabilityAccessRoute capability="client_requests.access" title="Заявки клиентов"><ClientRequestsPage /></CapabilityAccessRoute>} />
+        <Route path="client-request-workspace" element={<CapabilityAccessRoute capability="client_requests.access" title="Заявки клиентов"><ClientRequestsPage /></CapabilityAccessRoute>} />
+        <Route path="sourcing" element={<CapabilityAccessRoute capability="sourcing.access" title="Закупочная проработка"><SourcingWorkspacePage /></CapabilityAccessRoute>} />
+        <Route path="pricing" element={<CapabilityAccessRoute capability="pricing.access" title="Расчёт цены"><PricingWorkspacePage /></CapabilityAccessRoute>} />
+        <Route path="commercial-offers" element={<CapabilityAccessRoute capability="commercial_offers.access" title="Коммерческие предложения"><CommercialOfferWorkspacePage /></CapabilityAccessRoute>} />
+        <Route path="contracts" element={<CapabilityAccessRoute capability="contracts.access" title="Договоры"><ContractWorkspacePage /></CapabilityAccessRoute>} />
+        <Route path="purchase-orders" element={<CapabilityAccessRoute capability="procurement_execution.access" title="Исполнение закупки"><ProcurementExecutionWorkspacePage /></CapabilityAccessRoute>} />
+        <Route path="financial-operations" element={<CapabilityAccessRoute capability="financial_operations.access" title="Финансовые операции"><FinancialOperationsWorkspacePage /></CapabilityAccessRoute>} />
+        <Route path="warehouse" element={<CapabilityAccessRoute capability="warehouse_inventory.access" title="Склад"><WarehouseInventoryWorkspacePage /></CapabilityAccessRoute>} />
+        <Route path="dispatch-delivery" element={<CapabilityAccessRoute capability="dispatch_delivery.access" title="Отгрузка и доставка"><DispatchDeliveryWorkspacePage /></CapabilityAccessRoute>} />
+        <Route path="completion-lifecycle" element={<CapabilityAccessRoute capability="completion.access" title="Завершение заказа"><CompletionLifecycleWorkspacePage /></CapabilityAccessRoute>} />
+        <Route path="after-sales" element={<CapabilityAccessRoute capability="after_sales.access" title="Рекламации"><AfterSalesWorkspacePage /></CapabilityAccessRoute>} />
         <Route path="kpi" element={<TabAccessRoute path="/kpi" title="Показатели"><KpiPage /></TabAccessRoute>} />
         <Route path="catalogs" element={<TabAccessRoute path="/catalogs" title="Каталоги"><CatalogsPage /></TabAccessRoute>} />
-        <Route path="admin" element={<TabAccessRoute path="/admin" title="Администрирование"><AdminPage /></TabAccessRoute>} />
-        <Route path="users" element={<UsersPage />} />
+        <Route path="admin" element={<CapabilityAccessRoute capability="administration.access" title="Администрирование"><AdminPage /></CapabilityAccessRoute>} />
+        <Route path="users" element={<CapabilityAccessRoute capability="administration.access" title="Администрирование"><UsersPage /></CapabilityAccessRoute>} />
         <Route path="tnved-codes" element={<TabAccessRoute path="/tnved-codes" title="Коды ТН ВЭД"><TnvedCodesPage /></TabAccessRoute>} />
         <Route path="clients" element={<TabAccessRoute path="/clients" title="Клиенты"><ClientsPage /></TabAccessRoute>} />
         <Route path="clients/:id" element={<TabAccessRoute path="/clients" title="Клиенты"><ClientDetailPage /></TabAccessRoute>} />

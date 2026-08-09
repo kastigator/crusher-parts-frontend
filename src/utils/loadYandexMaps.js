@@ -1,31 +1,39 @@
-export default function loadYandexMaps() {
+import { getBrowserIntegration } from '../config/runtimeConfig.js'
+
+export default function loadYandexMaps({ windowRef = globalThis.window, documentRef = globalThis.document } = {}) {
   return new Promise((resolve, reject) => {
-    const ymapsIsAvailable = typeof window.ymaps !== 'undefined'
+    const integration = getBrowserIntegration('yandexMaps')
+    if (integration.mode === 'disabled') {
+      resolve(null)
+      return
+    }
+
+    const ymapsIsAvailable = typeof windowRef?.ymaps !== 'undefined'
 
     if (ymapsIsAvailable) {
       console.log('ℹ️ Yandex Maps API уже загружен')
-      window.ymaps.ready(() => {
+      windowRef.ymaps.ready(() => {
         console.log('✅ Yandex Maps API готов к использованию')
-        resolve(window.ymaps)
+        resolve(windowRef.ymaps)
       })
       return
     }
 
-    const apiKey = import.meta.env.VITE_YANDEX_MAPS_API_KEY
-    if (!apiKey) {
-      reject(new Error('❌ VITE_YANDEX_MAPS_API_KEY не задан в .env'))
+    const apiKey = integration.apiKey
+    if (!documentRef?.head) {
+      reject(new Error('Yandex Maps requires a browser document'))
       return
     }
 
-    const script = document.createElement('script')
+    const script = documentRef.createElement('script')
     script.src = `https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=ru_RU`
     script.type = 'text/javascript'
 
     script.onload = () => {
-      if (typeof window.ymaps !== 'undefined') {
-        window.ymaps.ready(() => {
+      if (typeof windowRef?.ymaps !== 'undefined') {
+        windowRef.ymaps.ready(() => {
           console.log('✅ Yandex Maps API загружен и готов к использованию')
-          resolve(window.ymaps)
+          resolve(windowRef.ymaps)
         })
       } else {
         reject(new Error('❌ Скрипт загружен, но объект ymaps не определён'))
@@ -36,6 +44,6 @@ export default function loadYandexMaps() {
       reject(new Error('❌ Ошибка загрузки скрипта Yandex Maps'))
     }
 
-    document.head.appendChild(script)
+    documentRef.head.appendChild(script)
   })
 }

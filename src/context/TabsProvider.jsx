@@ -10,12 +10,7 @@ export default function TabsProvider({ children }) {
 
   const { token, user } = useAuth()
 
-  const isAdmin = !!(
-    user &&
-    (String(user.role || "").toLowerCase() === "admin" ||
-      Number(user.role_id) === 1 ||
-      user.is_admin === true)
-  )
+  const isAdmin = user?.is_super_admin === true
 
   const fetchTabs = useCallback(async () => {
     if (!token) {

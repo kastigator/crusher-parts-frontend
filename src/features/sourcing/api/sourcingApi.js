@@ -1,0 +1,18 @@
+import axios from "@/api/axiosInstance"
+
+export const listSourcingCases = (params = {}) => axios.get("/sourcing/cases", { params }).then(({ data }) => data)
+export const listSourcingReleaseIntake = () => axios.get("/sourcing/intake/procurement-releases").then(({ data }) => data)
+export const listSourcingSuppliers = () => axios.get("/sourcing/reference/suppliers").then(({ data }) => data)
+export const getSourcingWorkspace = (caseId) => axios.get(`/sourcing/cases/${caseId}`).then(({ data }) => data)
+export const createSourcingCase = (payload) => axios.post("/sourcing/cases/from-release", payload).then(({ data }) => data)
+export const acceptSourcingCase = (caseId) => axios.post(`/sourcing/cases/${caseId}/accept`).then(({ data }) => data)
+export const archiveSourcingCase = (caseId, payload) => axios.post(`/sourcing/cases/${caseId}/archive`, payload).then(({ data }) => data)
+export const createSupplierInquiry = (caseId, payload) => axios.post(`/sourcing/cases/${caseId}/inquiries`, payload).then(({ data }) => data)
+export const finalizeSupplierInquiry = (inquiryId) => axios.post(`/sourcing/inquiries/${inquiryId}/finalize`).then(({ data }) => data)
+export const dispatchSupplierInquiry = (inquiryId, payload) => axios.post(`/sourcing/inquiries/${inquiryId}/dispatches`, payload).then(({ data }) => data)
+export const createSupplierOffer = (caseId, payload) => axios.post(`/sourcing/cases/${caseId}/offers`, payload).then(({ data }) => data)
+export const finalizeSupplierOffer = (offerId) => axios.post(`/sourcing/offers/${offerId}/finalize`).then(({ data }) => data)
+export const createCoverageOption = (caseId, payload) => axios.post(`/sourcing/cases/${caseId}/coverage-options`, payload).then(({ data }) => data)
+export const validateSourcingDecision = (caseId, optionIds) => axios.post(`/sourcing/cases/${caseId}/decisions/validate`, { option_ids: optionIds }).then(({ data }) => data)
+export const finalizeSourcingDecision = (caseId, payload) => axios.post(`/sourcing/cases/${caseId}/decisions/finalize`, payload).then(({ data }) => data)
+export const requestMasterDataPromotion = (offerLineId, payload) => axios.post(`/sourcing/offer-lines/${offerLineId}/master-data-promotion-requests`, payload).then(({ data }) => data)

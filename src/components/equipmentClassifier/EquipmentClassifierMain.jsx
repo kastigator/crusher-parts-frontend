@@ -50,6 +50,7 @@ import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 import { runTrashDeleteFlow } from "@/utils/trashUi"
 import TnvedPicker from "@/components/fields/TnvedPicker"
 import ClassifierExcelImportModal from "./ClassifierExcelImportModal"
+import { getApiBaseUrl } from "@/config/runtimeConfig"
 
 const CLIENT_PART_TYPE_LABELS = {
   client_drawing: "По чертежу клиента",
@@ -193,12 +194,10 @@ const formatFileSize = (bytes) => {
   return `${(n / 1024 ** idx).toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`
 }
 
-const API_ORIGIN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
-
 const resolveAssetUrl = (url) => {
   if (!url) return ""
   if (/^(https?:)?\/\//i.test(url) || url.startsWith("data:") || url.startsWith("blob:")) return url
-  if (url.startsWith("/")) return `${API_ORIGIN}${url}`
+  if (url.startsWith("/")) return `${getApiBaseUrl()}${url}`
   return url
 }
 
@@ -815,8 +814,6 @@ export default function EquipmentClassifierMain() {
   const [bomPositionDetailsLoading, setBomPositionDetailsLoading] = useState(false)
   const [bomWarehouseDetails, setBomWarehouseDetails] = useState(null)
   const [bomWarehouseDetailsLoading, setBomWarehouseDetailsLoading] = useState(false)
-  const [bomWarehouseAction, setBomWarehouseAction] = useState(null)
-  const [bomWarehouseActionSaving, setBomWarehouseActionSaving] = useState(false)
   const [bomCardActiveTab, setBomCardActiveTab] = useState("main")
   const [bomRowEditing, setBomRowEditing] = useState(false)
   const [bomRowSaving, setBomRowSaving] = useState(false)
@@ -886,7 +883,6 @@ export default function EquipmentClassifierMain() {
   const [bomCrossModelForm] = Form.useForm()
   const [bomRowForm] = Form.useForm()
   const [bomMaterialForm] = Form.useForm()
-  const [bomWarehouseActionForm] = Form.useForm()
   const bomLinkClassifier = Form.useWatch("link_classifier", bomItemForm)
   const bomLinkedCatalogPositionId = Form.useWatch("catalog_position_id", bomItemForm)
   const bomCrossModelTargetId = Form.useWatch("target_model_id", bomCrossModelForm)
@@ -3137,15 +3133,15 @@ export default function EquipmentClassifierMain() {
     Boolean(crossModelBomSource?.catalog_position_id && selectedBomItem?.catalog_position_id) &&
     Number(crossModelBomSource.catalog_position_id) === Number(selectedBomItem.catalog_position_id)
   const bomWarehouseStock = useMemo(
-    () => (Array.isArray(bomWarehouseDetails?.stock) ? bomWarehouseDetails.stock : []),
+    () => (Array.isArray(bomWarehouseDetails?.stock_units) ? bomWarehouseDetails.stock_units : []),
     [bomWarehouseDetails],
   )
   const bomWarehouseReservations = useMemo(
-    () => (Array.isArray(bomWarehouseDetails?.reservations) ? bomWarehouseDetails.reservations : []),
+    () => [],
     [bomWarehouseDetails],
   )
   const bomWarehouseMovements = useMemo(
-    () => (Array.isArray(bomWarehouseDetails?.movements) ? bomWarehouseDetails.movements : []),
+    () => [],
     [bomWarehouseDetails],
   )
 
@@ -3157,10 +3153,10 @@ export default function EquipmentClassifierMain() {
     }
     setBomWarehouseDetailsLoading(true)
     try {
-      const { data } = await axios.get(`/warehouse/positions/${selectedBomItem.catalog_position_id}`)
+      const { data } = await axios.get(`/warehouse-inventory/availability/catalog-positions/${selectedBomItem.catalog_position_id}`)
       setBomWarehouseDetails(data || null)
     } catch (err) {
-      console.error("GET /warehouse/positions/:id error:", err)
+      console.error("GET target warehouse availability error:", err)
       setBomWarehouseDetails(null)
     } finally {
       setBomWarehouseDetailsLoading(false)
@@ -3195,11 +3191,11 @@ export default function EquipmentClassifierMain() {
       }
       setBomWarehouseDetailsLoading(true)
       try {
-        const { data } = await axios.get(`/warehouse/positions/${selectedBomItem.catalog_position_id}`)
+        const { data } = await axios.get(`/warehouse-inventory/availability/catalog-positions/${selectedBomItem.catalog_position_id}`)
         if (!cancelled) setBomWarehouseDetails(data || null)
       } catch (err) {
         if (cancelled) return
-        console.error("GET /warehouse/positions/:id error:", err)
+        console.error("GET target warehouse availability error:", err)
         setBomWarehouseDetails(null)
       } finally {
         if (!cancelled) setBomWarehouseDetailsLoading(false)
@@ -3284,27 +3280,6 @@ export default function EquipmentClassifierMain() {
     }
   }
 
-  const openBomWarehouseAction = (type, row) => {
-    if (!selectedBomItem?.catalog_position_id || !row?.warehouse_id || !row?.supplier_part_id) return
-    const maxQty = type === "reserve" ? Number(row.free_qty || 0) : Number(row.reserved_qty || 0)
-    if (maxQty <= 0) {
-      message.warning(type === "reserve" ? "Свободного остатка для резерва нет" : "Активного резерва для снятия нет")
-      return
-    }
-    setBomWarehouseAction({ type, row, maxQty })
-    bomWarehouseActionForm.resetFields()
-    bomWarehouseActionForm.setFieldsValue({
-      quantity: maxQty,
-      source_label:
-        type === "unreserve"
-          ? row.source_label || ""
-          : `Резерв из карточки ${getBomManufacturerNumber(selectedBomItem)}`,
-      source_type: row.source_type || "manual",
-      source_id: row.source_id || "",
-      source_line_id: row.source_line_id || "",
-    })
-  }
-
   const openBomWarehousePage = (action = null) => {
     if (!selectedBomItem?.catalog_position_id) {
       navigate("/warehouse")
@@ -3326,47 +3301,7 @@ export default function EquipmentClassifierMain() {
       position_subtitle: subtitle,
       uom: selectedBomItem.uom || selectedBomItem.catalog_position_uom || "шт",
     })
-    if (action) params.set("action", action)
     navigate(`/warehouse?${params.toString()}`)
-  }
-
-  const handleSubmitBomWarehouseAction = async () => {
-    if (!selectedBomItem?.catalog_position_id || !bomWarehouseAction?.row) return
-    try {
-      const values = await bomWarehouseActionForm.validateFields()
-      const row = bomWarehouseAction.row
-      const type = bomWarehouseAction.type
-      setBomWarehouseActionSaving(true)
-      await axios.post("/warehouse/documents", {
-        doc_type: type,
-        document_date: new Date().toISOString(),
-        warehouse_id: row.warehouse_id,
-        basis_document: `Карточка позиции ${getBomManufacturerNumber(selectedBomItem)}`,
-        source_type: values.source_type || "manual",
-        source_id: values.source_id || null,
-        source_line_id: values.source_line_id || null,
-        source_label: values.source_label || null,
-        post: true,
-        lines: [
-          {
-            supplier_part_id: row.supplier_part_id,
-            catalog_position_id: selectedBomItem.catalog_position_id,
-            storage_place_id: row.storage_place_id,
-            quantity: values.quantity,
-          },
-        ],
-      })
-      message.success(type === "reserve" ? "Резерв создан" : "Резерв снят")
-      setBomWarehouseAction(null)
-      bomWarehouseActionForm.resetFields()
-      await reloadBomWarehouseDetails()
-    } catch (err) {
-      if (err?.errorFields) return
-      console.error("POST /warehouse/documents reserve action error:", err)
-      message.error(err?.response?.data?.message || "Не удалось выполнить складское действие")
-    } finally {
-      setBomWarehouseActionSaving(false)
-    }
   }
 
   const fetchBomMaterialOptions = async (q = "") => {
@@ -7803,9 +7738,6 @@ export default function EquipmentClassifierMain() {
                           <Button size="small" icon={<ReloadOutlined />} onClick={reloadBomWarehouseDetails}>
                             Обновить
                           </Button>
-                          <Button size="small" icon={<InboxOutlined />} onClick={() => openBomWarehousePage("receipt")}>
-                            Оприходовать
-                          </Button>
                           <Button size="small" onClick={() => openBomWarehousePage()}>
                             Открыть склад
                           </Button>
@@ -7817,7 +7749,7 @@ export default function EquipmentClassifierMain() {
                           <Statistic
                             title="Факт"
                             value={formatWarehouseQuantity(
-                              bomWarehouseDetails?.stats?.actual_qty,
+                              bomWarehouseDetails?.totals?.physical_quantity,
                               selectedBomItem.uom || selectedBomItem.catalog_position_uom || "шт",
                             )}
                           />
@@ -7826,7 +7758,7 @@ export default function EquipmentClassifierMain() {
                           <Statistic
                             title="Свободно"
                             value={formatWarehouseQuantity(
-                              bomWarehouseDetails?.stats?.free_qty,
+                              bomWarehouseDetails?.totals?.available_quantity,
                               selectedBomItem.uom || selectedBomItem.catalog_position_uom || "шт",
                             )}
                           />
@@ -7835,7 +7767,7 @@ export default function EquipmentClassifierMain() {
                           <Statistic
                             title="В резерве"
                             value={formatWarehouseQuantity(
-                              bomWarehouseDetails?.stats?.reserved_qty,
+                              bomWarehouseDetails?.totals?.reserved_quantity,
                               selectedBomItem.uom || selectedBomItem.catalog_position_uom || "шт",
                             )}
                           />
@@ -7878,21 +7810,21 @@ export default function EquipmentClassifierMain() {
                               title: "Факт",
                               width: 110,
                               align: "right",
-                              render: (_, row) => formatWarehouseQuantity(row.actual_qty, row.uom),
+                              render: (_, row) => formatWarehouseQuantity(row.physical_quantity, row.uom),
                             },
                             {
                               title: "Свободно",
                               width: 110,
                               align: "right",
                               render: (_, row) => (
-                                <Typography.Text strong>{formatWarehouseQuantity(row.free_qty, row.uom)}</Typography.Text>
+                                <Typography.Text strong>{formatWarehouseQuantity(row.available_quantity, row.uom)}</Typography.Text>
                               ),
                             },
                             {
                               title: "Резерв",
                               width: 110,
                               align: "right",
-                              render: (_, row) => formatWarehouseQuantity(row.reserved_qty, row.uom),
+                              render: (_, row) => formatWarehouseQuantity(row.reserved_quantity, row.uom),
                             },
                             {
                               title: "Действие",
@@ -7900,11 +7832,10 @@ export default function EquipmentClassifierMain() {
                               render: (_, row) => (
                                 <Button
                                   size="small"
-                                  icon={<LockOutlined />}
-                                  disabled={!row.supplier_part_id || Number(row.free_qty || 0) <= 0}
-                                  onClick={() => openBomWarehouseAction("reserve", row)}
+                                  disabled={!row.supplier_part_id}
+                                  onClick={() => openBomWarehousePage()}
                                 >
-                                  Резерв
+                                  Открыть
                                 </Button>
                               ),
                             },
@@ -7912,8 +7843,8 @@ export default function EquipmentClassifierMain() {
                         />
                       ) : (
                         <Empty description="Остатков по этой позиции пока нет">
-                          <Button size="small" icon={<InboxOutlined />} onClick={() => openBomWarehousePage("receipt")}>
-                            Оприходовать поставку
+                          <Button size="small" onClick={() => openBomWarehousePage()}>
+                            Открыть Warehouse & Inventory
                           </Button>
                         </Empty>
                       )}
@@ -8104,93 +8035,6 @@ export default function EquipmentClassifierMain() {
           <Empty description="Строка BOM не выбрана" />
         )}
       </Drawer>
-
-      <Modal
-        open={Boolean(bomWarehouseAction)}
-        title={bomWarehouseAction?.type === "unreserve" ? "Снять резерв" : "Зарезервировать поставку"}
-        okText={bomWarehouseAction?.type === "unreserve" ? "Снять" : "Зарезервировать"}
-        cancelText="Отмена"
-        confirmLoading={bomWarehouseActionSaving}
-        onCancel={() => {
-          setBomWarehouseAction(null)
-          bomWarehouseActionForm.resetFields()
-        }}
-        onOk={handleSubmitBomWarehouseAction}
-        destroyOnHidden
-      >
-        <Form form={bomWarehouseActionForm} layout="vertical">
-          <Descriptions size="small" bordered column={1} style={{ marginBottom: 12 }}>
-            <Descriptions.Item label="Позиция">
-              {selectedBomItem ? getBomManufacturerNumber(selectedBomItem) : "—"}
-            </Descriptions.Item>
-            <Descriptions.Item label="Деталь поставщика">
-              {[
-                bomWarehouseAction?.row?.supplier_name,
-                bomWarehouseAction?.row?.supplier_part_number || bomWarehouseAction?.row?.canonical_part_number,
-              ]
-                .filter(Boolean)
-                .join(" / ") || "—"}
-            </Descriptions.Item>
-            <Descriptions.Item label="Склад">
-              {[bomWarehouseAction?.row?.warehouse_name, bomWarehouseAction?.row?.storage_place_code]
-                .filter(Boolean)
-                .join(" / ") || "—"}
-            </Descriptions.Item>
-            <Descriptions.Item label="Доступно для операции">
-              {formatWarehouseQuantity(
-                bomWarehouseAction?.maxQty,
-                selectedBomItem?.uom || selectedBomItem?.catalog_position_uom || "шт",
-              )}
-            </Descriptions.Item>
-          </Descriptions>
-          <Form.Item
-            name="quantity"
-            label="Количество"
-            rules={[
-              { required: true, message: "Укажите количество" },
-              {
-                validator: (_, value) => {
-                  const number = Number(value)
-                  if (!Number.isFinite(number) || number <= 0) return Promise.reject(new Error("Количество должно быть больше 0"))
-                  if (number > Number(bomWarehouseAction?.maxQty || 0)) {
-                    return Promise.reject(new Error("Количество больше доступного"))
-                  }
-                  return Promise.resolve()
-                },
-              },
-            ]}
-          >
-            <InputNumber min={0.001} precision={3} style={{ width: "100%" }} />
-          </Form.Item>
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="source_type" label="Источник">
-                <Select
-                  options={[
-                    { value: "manual", label: "Ручной резерв" },
-                    { value: "client_request", label: "Заявка клиента" },
-                    { value: "sales_quote", label: "Коммерческое предложение" },
-                    { value: "contract", label: "Контракт" },
-                    { value: "rfq", label: "RFQ" },
-                    { value: "purchase_order", label: "Заказ поставщику" },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="source_id" label="ID источника">
-                <Input placeholder="опционально" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item name="source_line_id" label="ID строки источника">
-            <Input placeholder="опционально" />
-          </Form.Item>
-          <Form.Item name="source_label" label="Название резерва">
-            <Input placeholder="Для кого или для чего держим позицию" />
-          </Form.Item>
-        </Form>
-      </Modal>
 
       <Modal
         open={bomMaterialModalOpen}

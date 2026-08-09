@@ -57,7 +57,7 @@ export default function CompanyLegalSummary({ profile: profileProp = null, title
           <div>{profile.short_name_ru}</div>
           <div style={{ color: "#666" }}>{profile.full_name_ru}</div>
         </Descriptions.Item>
-        <Descriptions.Item label="English name">
+        <Descriptions.Item label="Наименование на английском">
           {profile.full_name_en || "—"}
         </Descriptions.Item>
         <Descriptions.Item label="ИНН / КПП / ОГРН">

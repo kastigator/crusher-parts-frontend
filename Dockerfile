@@ -24,6 +24,12 @@ RUN npm run build
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 
+# Runtime config is rendered by the standard nginx entrypoint. Browser API keys
+# are intentionally non-secret; server-side credentials must never be placed here.
+ENV NGINX_ENVSUBST_TEMPLATE_DIR=/etc/nginx/templates
+ENV NGINX_ENVSUBST_OUTPUT_DIR=/usr/share/nginx/html
+COPY deploy/config.json.template /etc/nginx/templates/config.json.template
+
 # --- Конфиг для history mode (SPA) ---
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 

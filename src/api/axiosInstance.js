@@ -4,16 +4,17 @@ import axios from 'axios'
 import { appMessage as message } from '@/utils/uiFeedback'
 import { logout } from '../auth/authService' // ✅ добавлено
 import { readPresenceSessionId } from '@/utils/presenceSession'
+import { getApiBaseUrl } from '@/config/runtimeConfig'
 
-const API_BASE = `${import.meta.env.VITE_API_URL}/api`
+const getApiUrl = (path = '') => `${getApiBaseUrl()}/api${path}`
 
 const instance = axios.create({
-  baseURL: API_BASE,
   withCredentials: true,
 })
 
 // ✅ Добавляем access-token в каждый запрос
 instance.interceptors.request.use((config) => {
+  config.baseURL = getApiUrl()
   const token = localStorage.getItem('token')
   let userId = null
   try {
@@ -97,7 +98,7 @@ instance.interceptors.response.use(
 
       try {
         const { data: refreshData } = await axios.post(
-          `${import.meta.env.VITE_API_URL}/api/auth/refresh`,
+          getApiUrl('/auth/refresh'),
           { refreshToken },
           { withCredentials: true }
         )

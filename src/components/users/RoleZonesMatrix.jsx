@@ -9,7 +9,7 @@ const { Paragraph, Text } = Typography
 
 const PRIMARY_PATHS = [
   "/client-request-workspace",
-  "/rfq-workspace",
+  "/sourcing",
   "/kpi",
   "/catalogs",
   "/users",
@@ -17,7 +17,7 @@ const PRIMARY_PATHS = [
 
 const PATH_LABELS = {
   "/client-request-workspace": "Заявки клиентов",
-  "/rfq-workspace": "RFQ и закупка",
+  "/sourcing": "Закупочная проработка",
   "/kpi": "Показатели",
   "/catalogs": "Каталоги в меню",
   "/users": "Пользователи и роли",
@@ -32,7 +32,7 @@ export default function RoleZonesMatrix({ revision = 0, onRolesChanged, onPermis
   const [newRole, setNewRole] = useState("")
   const [loading, setLoading] = useState(false)
   const [applyingPreset, setApplyingPreset] = useState("")
-  const canManageUsersRoles = isAdmin || can("admin.users_roles.manage")
+  const canManageUsersRoles = isAdmin || can("administration.roles.manage")
 
   useEffect(() => {
     fetchData()
@@ -221,7 +221,7 @@ export default function RoleZonesMatrix({ revision = 0, onRolesChanged, onPermis
                           <Text strong>{PATH_LABELS[path]}</Text>
                           <Text type="secondary">
                             {path === "/client-request-workspace" && "Работа с заявками клиента, КП и контрактом."}
-                            {path === "/rfq-workspace" && "Работа с RFQ, поставщиками, логистикой и закупкой."}
+                            {path === "/sourcing" && "Закупочные проработки, запросы поставщикам, предложения, покрытие и решения."}
                             {path === "/kpi" && "Отчеты, показатели и обзорные метрики."}
                             {path === "/catalogs" && "Отдельный раздел каталогов в меню."}
                             {path === "/users" && "Управление пользователями, ролями и доступом."}

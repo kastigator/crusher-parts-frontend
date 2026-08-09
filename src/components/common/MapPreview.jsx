@@ -1,12 +1,14 @@
 import React, { useEffect, useRef } from "react"
+import { getBrowserIntegration } from "@/config/runtimeConfig"
 
 export default function MapPreview({ address, onSelect, height = 240 }) {
   const mapRef = useRef(null)
   const mapInstance = useRef(null)
   const markerRef = useRef(null)
+  const yandexEnabled = getBrowserIntegration("yandexMaps").mode === "live"
 
   useEffect(() => {
-    if (!window.ymaps || !mapRef.current) return
+    if (!yandexEnabled || !window.ymaps || !mapRef.current) return
 
     window.ymaps.ready(() => {
       mapInstance.current = new window.ymaps.Map(mapRef.current, {
@@ -42,7 +44,9 @@ export default function MapPreview({ address, onSelect, height = 240 }) {
         })
       }
     })
-  }, [address, onSelect])
+  }, [address, onSelect, yandexEnabled])
+
+  if (!yandexEnabled) return null
 
   return (
     <div

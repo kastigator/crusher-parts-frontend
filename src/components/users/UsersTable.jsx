@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react"
-import { Button, Form, Input, Modal, Select, Space, Table, Tag, message } from "antd"
-import { KeyOutlined, PlusOutlined, UserOutlined } from "@ant-design/icons"
+import React, { useCallback, useEffect, useState } from "react"
+import { Alert, Button, Descriptions, Form, Input, Modal, Select, Space, Table, Tag, message } from "antd"
+import { KeyOutlined, PlusOutlined, SafetyCertificateOutlined, UserOutlined } from "@ant-design/icons"
 import axios from "@/api/axiosInstance"
 import ValueDisplay from "@/components/common/ValueDisplay"
 import ActionButtons from "@/components/common/ActionButtons"
@@ -28,7 +28,7 @@ function UserFormModal({
       full_name: initialValues?.full_name || "",
       email: initialValues?.email || "",
       phone: initialValues?.phone || "",
-      role_id: initialValues?.role_id || undefined,
+      role_ids: initialValues?.role_ids || (initialValues?.role_id ? [initialValues.role_id] : []),
     })
   }, [form, initialValues, open])
 
@@ -87,13 +87,14 @@ function UserFormModal({
           <Input.Password placeholder={requirePassword ? "" : "Оставьте пустым, если менять не нужно"} />
         </Form.Item>
         <Form.Item
-          label="Роль"
-          name="role_id"
-          rules={[{ required: true, message: "Выберите роль" }]}
+          label="Роли"
+          name="role_ids"
+          rules={[{ required: true, message: "Выберите хотя бы одну роль" }]}
         >
           <Select
+            mode="multiple"
             options={roles.map((role) => ({ value: role.id, label: role.name }))}
-            placeholder="Выберите роль"
+            placeholder="Выберите роли"
           />
         </Form.Item>
       </Form>
@@ -109,13 +110,11 @@ export default function UsersTable({ rolesRevision = 0, onUsersLoaded = null }) 
   const [loading, setLoading] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
-  const canManageUsersRoles = isAdmin || can("admin.users_roles.manage")
+  const [effectiveAccess, setEffectiveAccess] = useState(null)
+  const [effectiveAccessLoading, setEffectiveAccessLoading] = useState(false)
+  const canManageUsersRoles = isAdmin || can("administration.users.manage")
 
-  useEffect(() => {
-    fetchData()
-  }, [rolesRevision])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     try {
       const [usersRes, rolesRes] = await Promise.all([
@@ -133,20 +132,17 @@ export default function UsersTable({ rolesRevision = 0, onUsersLoaded = null }) 
     } finally {
       setLoading(false)
     }
-  }
+  }, [onUsersLoaded])
 
-  const rolesById = useMemo(() => {
-    const map = new Map()
-    for (const role of roles) map.set(role.id, role)
-    return map
-  }, [roles])
+  useEffect(() => {
+    fetchData()
+  }, [fetchData, rolesRevision])
 
   const handleCreate = async (values) => {
     try {
-      const role = rolesById.get(values.role_id)
       await axios.post("/users", {
         ...values,
-        role_slug: role?.slug,
+        primary_role_id: values.role_ids?.[0],
       })
       setCreateOpen(false)
       await fetchData()
@@ -160,14 +156,13 @@ export default function UsersTable({ rolesRevision = 0, onUsersLoaded = null }) 
   const handleEditSave = async (values) => {
     if (!editingUser) return
     try {
-      const role = rolesById.get(values.role_id)
       const payload = {
         username: values.username,
         full_name: values.full_name,
         email: values.email,
         phone: values.phone,
-        role_id: values.role_id,
-        role_slug: role?.slug,
+        role_ids: values.role_ids,
+        primary_role_id: values.role_ids?.[0],
       }
       if (values.password) payload.password = values.password
 
@@ -201,9 +196,35 @@ export default function UsersTable({ rolesRevision = 0, onUsersLoaded = null }) 
   const handlePasswordReset = async (id) => {
     try {
       const res = await axios.post(`/users/${id}/reset-password`)
-      message.success(`Новый пароль: ${res.data.newPassword}`)
+      Modal.info({
+        title: "Временный пароль",
+        content: res.data.temporary_password,
+        okText: "Закрыть",
+      })
     } catch (_err) {
       message.error("Ошибка при сбросе пароля")
+    }
+  }
+
+  const showEffectiveAccess = async (user) => {
+    setEffectiveAccessLoading(true)
+    try {
+      const { data } = await axios.get(`/users/${user.id}/effective-access`)
+      setEffectiveAccess(data)
+    } catch (_error) {
+      message.error("Не удалось рассчитать эффективный доступ")
+    } finally {
+      setEffectiveAccessLoading(false)
+    }
+  }
+
+  const toggleUserStatus = async (user) => {
+    try {
+      await axios.patch(`/users/${user.id}/status`, { is_active: !user.is_active })
+      await fetchData()
+      message.success(user.is_active ? "Учетная запись отключена" : "Учетная запись включена")
+    } catch (error) {
+      message.error(error?.response?.data?.message || "Не удалось изменить статус")
     }
   }
 
@@ -251,28 +272,54 @@ export default function UsersTable({ rolesRevision = 0, onUsersLoaded = null }) 
       ),
     },
     {
-      title: "Роль",
-      dataIndex: "role_id",
-      width: 220,
-      render: (value) => {
-        const roleName = rolesById.get(value)?.name || "Не выбрана"
-        return (
-          <Tag icon={<UserOutlined />} style={{ paddingInline: 10, lineHeight: "28px" }}>
-            {roleName}
-          </Tag>
-        )
-      },
+      title: "Роли",
+      dataIndex: "roles",
+      width: 280,
+      render: (assignedRoles = []) => (
+        <Space size={[4, 4]} wrap>
+          {assignedRoles.map((role) => (
+            <Tag key={role.id} icon={<UserOutlined />} color={role.is_super_admin ? "red" : undefined}>
+              {role.name}
+            </Tag>
+          ))}
+        </Space>
+      ),
+    },
+    {
+      title: "Статус",
+      dataIndex: "is_active",
+      width: 130,
+      render: (active, record) => (
+        <Button
+          size="small"
+          danger={active}
+          disabled={!canManageUsersRoles || record.id === currentUser?.id}
+          onClick={() => toggleUserStatus(record)}
+        >
+          {active ? "Отключить" : "Включить"}
+        </Button>
+      ),
     },
     {
       title: "",
       key: "actions",
-      width: 90,
+      width: 190,
       render: (_, record) => (
-        <ActionButtons
-          onEdit={canManageUsersRoles ? () => setEditingUser(record) : null}
-          onDelete={canManageUsersRoles ? () => deleteUser(record) : null}
-          size="small"
-        />
+        <Space>
+          <Button
+            size="small"
+            icon={<SafetyCertificateOutlined />}
+            loading={effectiveAccessLoading}
+            onClick={() => showEffectiveAccess(record)}
+          >
+            Доступ
+          </Button>
+          <ActionButtons
+            onEdit={canManageUsersRoles ? () => setEditingUser(record) : null}
+            onDelete={canManageUsersRoles ? () => deleteUser(record) : null}
+            size="small"
+          />
+        </Space>
       ),
     },
   ]
@@ -293,7 +340,7 @@ export default function UsersTable({ rolesRevision = 0, onUsersLoaded = null }) 
         pagination={false}
         loading={loading}
         size="middle"
-        scroll={{ x: 1120 }}
+        scroll={{ x: 1360 }}
       />
 
       <UserFormModal
@@ -306,6 +353,34 @@ export default function UsersTable({ rolesRevision = 0, onUsersLoaded = null }) 
         onCancel={() => setCreateOpen(false)}
         onSubmit={handleCreate}
       />
+
+      <Modal
+        open={!!effectiveAccess}
+        title={effectiveAccess ? `Эффективный доступ: ${effectiveAccess.username}` : "Эффективный доступ"}
+        onCancel={() => setEffectiveAccess(null)}
+        footer={null}
+        width={760}
+      >
+        {effectiveAccess ? (
+          <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            {effectiveAccess.is_super_admin ? (
+              <Alert type="warning" showIcon message="Суперадминистратор — глобальное системное исключение" />
+            ) : null}
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="Источник">{effectiveAccess.authorization_source}</Descriptions.Item>
+              <Descriptions.Item label="Роли">
+                <Space wrap>{effectiveAccess.roles.map((role) => <Tag key={role.id}>{role.name}</Tag>)}</Space>
+              </Descriptions.Item>
+              <Descriptions.Item label="Полномочия">
+                <Space wrap>{effectiveAccess.capabilities.map((key) => <Tag key={key} color="blue">{key}</Tag>)}</Space>
+              </Descriptions.Item>
+              <Descriptions.Item label="Идентификаторы вкладок устаревшего контура">
+                {effectiveAccess.permissions.length ? effectiveAccess.permissions.join(", ") : "Не используются / глобальный доступ"}
+              </Descriptions.Item>
+            </Descriptions>
+          </Space>
+        ) : null}
+      </Modal>
 
       <UserFormModal
         open={!!editingUser}

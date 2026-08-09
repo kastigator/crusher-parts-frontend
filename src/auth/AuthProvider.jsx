@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react"
 import { setLogoutHandler } from "./authService"
 import { clearPresenceSessionId, readPresenceSessionId } from "@/utils/presenceSession"
 import { AuthContext } from "./AuthContext"
+import { getApiBaseUrl } from "@/config/runtimeConfig"
 
 export default function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem("token"))
@@ -50,9 +51,27 @@ export default function AuthProvider({ children }) {
     setRefreshToken(newRefreshToken || null)
   }
 
+  const refreshAccess = useCallback(async () => {
+    const tokenValue = localStorage.getItem("token")
+    const baseUrl = getApiBaseUrl()
+    if (!tokenValue || !baseUrl) return null
+    const response = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${tokenValue}` },
+      credentials: "include",
+    })
+    if (!response.ok) return null
+    const payload = await response.json()
+    if (payload?.user) setUser(payload.user)
+    return payload?.user || null
+  }, [])
+
+  useEffect(() => {
+    if (token) refreshAccess().catch(() => {})
+  }, [token, refreshAccess])
+
   const notifySessionLogout = useCallback(async (sessionId) => {
     if (!sessionId) return
-    const baseUrl = import.meta.env.VITE_API_URL
+    const baseUrl = getApiBaseUrl()
     if (!baseUrl) return
     const tokenValue = localStorage.getItem("token")
 
@@ -88,5 +107,5 @@ export default function AuthProvider({ children }) {
     setLogoutHandler(logout)
   }, [logout])
 
-  return <AuthContext.Provider value={{ token, refreshToken, user, login, logout }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ token, refreshToken, user, login, logout, refreshAccess }}>{children}</AuthContext.Provider>
 }

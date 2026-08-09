@@ -1,28 +1,24 @@
-import React, { useMemo } from "react"
+import React from "react"
 import { Tabs } from "antd"
 import TabRendererPage from "@/components/common/TabRendererPage"
 import SalesKpiDashboard from "@/components/kpi/SalesKpiDashboard"
 import ProcurementKpiDashboard from "@/components/kpi/ProcurementKpiDashboard"
 import { useAuth } from "@/auth/AuthContext"
+import useCapabilities from "@/hooks/useCapabilities"
 
 export default function KpiPage() {
   const { user } = useAuth()
+  const { can } = useCapabilities()
+  const canSeeSales = can("commercial_offers.access")
+  const canSeeProcurement = can("sourcing.access")
+  const canManageSalesScope = can("commercial_offers.approvals.decide")
+  const canManageProcurementScope = can("sourcing.cases.manage")
+  const effectiveSalesUserId = canSeeSales && !canManageSalesScope ? user?.id || null : null
+  const effectiveBuyerUserId = canSeeProcurement && !canManageProcurementScope ? user?.id || null : null
 
-  const roleSlug = useMemo(
-    () => String(user?.role_slug || user?.role || "").trim().toLowerCase(),
-    [user],
-  )
-
-  const isSeller = roleSlug === "prodavec"
-  const isBuyer = roleSlug === "zakupshchik"
-  const canSeeBoth = !isSeller && !isBuyer
-
-  const effectiveSalesUserId = isSeller ? user?.id || null : null
-  const effectiveBuyerUserId = isBuyer ? user?.id || null : null
-
-  const defaultActiveKey = isBuyer ? "procurement" : "sales"
+  const defaultActiveKey = canSeeSales ? "sales" : "procurement"
   const items = [
-    ...(isBuyer
+    ...(!canSeeSales
       ? []
       : [
           {
@@ -31,12 +27,12 @@ export default function KpiPage() {
             children: (
               <SalesKpiDashboard
                 lockedSellerId={effectiveSalesUserId}
-                canSelectAnySeller={canSeeBoth}
+                canSelectAnySeller={canManageSalesScope}
               />
             ),
           },
         ]),
-    ...(isSeller
+    ...(!canSeeProcurement
       ? []
       : [
           {
@@ -45,7 +41,7 @@ export default function KpiPage() {
             children: (
               <ProcurementKpiDashboard
                 lockedBuyerId={effectiveBuyerUserId}
-                canSelectAnyBuyer={canSeeBoth}
+                canSelectAnyBuyer={canManageProcurementScope}
               />
             ),
           },

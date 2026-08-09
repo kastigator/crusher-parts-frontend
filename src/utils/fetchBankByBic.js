@@ -1,8 +1,12 @@
 // src/utils/fetchBankByBic.js
-export default async function fetchBankByBic(bic) {
-  const token = import.meta.env.VITE_DADATA_API_KEY
+import { getBrowserIntegration } from '../config/runtimeConfig.js'
 
-  const res = await fetch(
+export default async function fetchBankByBic(bic, { fetchImpl = globalThis.fetch } = {}) {
+  const integration = getBrowserIntegration('dadata')
+  if (integration.mode === 'disabled') return null
+  const token = integration.apiKey
+
+  const res = await fetchImpl(
     "https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/bank",
     {
       method: "POST",

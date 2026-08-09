@@ -21,21 +21,13 @@ import {
 } from "antd"
 import { CloseOutlined, DeleteOutlined, EditOutlined, SaveOutlined } from "@ant-design/icons"
 import dayjs from "dayjs"
-import RequestCommercialFlowTabContent from "@/components/clientRequests/RequestCommercialFlowTabContent"
-import RequestExecutionTabContent from "@/components/clientRequests/RequestExecutionTabContent"
-import RequestProcurementTabContent from "@/components/clientRequests/RequestProcurementTabContent"
-import RequestSummaryTabContent from "@/components/clientRequests/RequestSummaryTabContent"
+import ClientRequestOverview from "@/features/clientRequests/components/ClientRequestOverview"
+import ClientRequestIdentificationPanel from "@/features/clientRequests/components/ClientRequestIdentificationPanel"
+import ClientRequestReleasePanel from "@/features/clientRequests/components/ClientRequestReleasePanel"
 import EntityHeader from "@/components/common/EntityHeader"
 import WorkspaceProgress from "@/components/common/WorkspaceProgress"
-import { useNavigate } from "react-router-dom"
 
 const { Text } = Typography
-
-const commercialStageByLegacyWorkspaceTab = {
-  margin: "pricing",
-  quote: "quote",
-  contract: "contract",
-}
 
 const requestStageByWorkspaceTab = {
   items: "positions",
@@ -48,22 +40,20 @@ const workspaceTopTabByLegacyKey = {
   details: "request",
   request: "request",
   rfq: "procurement",
-  procurement: "procurement",
-  ...Object.fromEntries(Object.keys(commercialStageByLegacyWorkspaceTab).map((key) => [key, "commercial"])),
+  procurement: "release",
+  margin: "downstream",
+  quote: "downstream",
+  contract: "downstream",
+  commercial: "downstream",
+  execution: "downstream",
 }
-
-const hasReached = (status, keys) => keys.includes(String(status || ""))
 
 export default function ClientRequestWorkspaceCard({
   activeRequest,
   statusColors,
   statusOptions,
-  canRelease,
   isReleasedLocked,
   isSentToProcurement,
-  rfqSyncStatus,
-  handleReleaseRequest,
-  handleSyncRfq,
   getStatusStepIndex,
   statusSteps,
   workspaceTabKey,
@@ -128,8 +118,6 @@ export default function ClientRequestWorkspaceCard({
   handleDeleteRequest,
   cardless = false,
 }) {
-  const navigate = useNavigate()
-
   if (!activeRequest) {
     const emptyState = cardless ? (
       <Text type="secondary">Выберите заявку в списке, чтобы открыть workspace.</Text>
@@ -147,27 +135,6 @@ export default function ClientRequestWorkspaceCard({
     statusOptions.find((opt) => opt.value === activeRequest?.status)?.label ||
     activeRequest?.status ||
     "—"
-  const rfqReady = !!activeRequest?.rfq_id && rfqSyncStatus !== "needs_sync"
-  const rfqStatusColor = rfqReady ? "green" : activeRequest?.rfq_id ? "orange" : "default"
-  const rfqStatusLabel = rfqReady
-    ? "RFQ синхронизирован"
-    : activeRequest?.rfq_id
-      ? "RFQ требует синхронизации"
-      : "RFQ ещё нет"
-  const responsesReady = hasReached(activeRequest?.status, [
-    "responses_received",
-    "selection_done",
-    "quote_prepared",
-    "contracted",
-  ])
-  const selectionReady = hasReached(activeRequest?.status, [
-    "selection_done",
-    "quote_prepared",
-    "contracted",
-  ])
-  const quoteReady = hasReached(activeRequest?.status, ["quote_prepared", "contracted"])
-  const contractReady = activeRequest?.status === "contracted"
-  const openWorkspaceTab = (key) => setWorkspaceTabKey(key)
   const setWorkspaceTopTab = (key) => {
     if (key === "request") {
       setWorkspaceTabKey(requestStageByWorkspaceTab[workspaceTabKey] ? workspaceTabKey : "items")
@@ -182,53 +149,21 @@ export default function ClientRequestWorkspaceCard({
     if (!isLatestRevision) {
       return {
         label: "Открыть текущую ревизию",
-        description: "Сейчас открыта архивная ревизия: правки, RFQ, КП и исполнение ведутся по текущей ревизии.",
+        description: "Сейчас открыта архивная ревизия; изменение состава выполняется только через новую ревизию.",
         disabled: true,
-      }
-    }
-    if (rfqSyncStatus === "needs_sync") {
-      return {
-        label: "Синхронизировать RFQ",
-        description: "Сначала обновляем RFQ под текущий состав заявки, потом закупка продолжает ответы и выбор.",
-        onClick: handleSyncRfq,
       }
     }
     if (!isSentToProcurement) {
       return {
-        label: "Отправить заявку",
-        description: "Проверьте позиции и передайте заявку в закупку, чтобы появился закупочный RFQ.",
-        onClick: canRelease && !isReleasedLocked ? handleReleaseRequest : undefined,
-        disabled: !canRelease || isReleasedLocked,
-      }
-    }
-    if (!selectionReady) {
-      return {
-        label: "Открыть RFQ",
-        description: responsesReady
-          ? "Ответы есть, следующий рабочий шаг — собрать и утвердить выбор закупки."
-          : "Закупка собирает поставщиков, ответы, покрытие и экономику до утвержденного выбора.",
-        onClick: () => navigate(`/rfq-workspace?rfq=${activeRequest.rfq_id || ""}`),
-        disabled: !activeRequest?.rfq_id,
-      }
-    }
-    if (!quoteReady) {
-      return {
-        label: "Рассчитать КП",
-        description: "Закупочная база утверждена, теперь продавец считает продажную цену и готовит КП клиенту.",
-        onClick: () => openWorkspaceTab("commercial"),
-      }
-    }
-    if (!contractReady) {
-      return {
-        label: "Оформить контракт",
-        description: "КП подготовлено или согласовано, следующий шаг — зафиксировать коммерческий контур контрактом.",
-        onClick: () => openWorkspaceTab("contract"),
+        label: "Проверить готовность",
+        description: "Подтвердите идентификацию и требования, зафиксируйте ревизию и создайте релиз в закупку.",
+        onClick: () => setWorkspaceTabKey("release"),
       }
     }
     return {
-      label: "Открыть исполнение",
-      description: "Контракт зафиксирован: работаем с PO, резервами, приемками и складским покрытием.",
-      onClick: () => openWorkspaceTab("execution"),
+      label: "Последующие этапы",
+      description: "Потребность выпущена. Дальнейшее состояние ведётся в закупочной проработке и коммерческих разделах.",
+      onClick: () => setWorkspaceTabKey("downstream"),
     }
   })()
 
@@ -250,29 +185,23 @@ export default function ClientRequestWorkspaceCard({
             selectedEquipmentUnitLabel ? `Оборудование: ${selectedEquipmentUnitLabel}` : null,
             `${activeRevisionLabel} (${activeRevisionDate})`,
             isSentToProcurement ? "Заявка отправлена в закупку" : null,
-            rfqSyncStatus === "needs_sync" ? "RFQ требует синхронизации" : null,
             isReleasedLocked ? "Редактирование временно ограничено" : null,
           ]}
           primaryActions={
-            canRelease && !isReleasedLocked && !isSentToProcurement ? (
-              <Button type="primary" onClick={handleReleaseRequest}>
-                Отправить заявку
+            !isReleasedLocked && !isSentToProcurement ? (
+              <Button type="primary" onClick={() => setWorkspaceTabKey("release")}>
+                Проверить готовность
               </Button>
             ) : null
           }
           secondaryActions={
-            <Space>
-              {rfqSyncStatus === "needs_sync" ? (
-                <Button onClick={handleSyncRfq}>Синхронизировать RFQ</Button>
-              ) : null}
-              <Button
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => handleDeleteRequest?.(activeRequest?.id)}
-              >
-                Удалить заявку
-              </Button>
-            </Space>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleDeleteRequest?.(activeRequest?.id)}
+            >
+              Удалить заявку
+            </Button>
           }
         />
 
@@ -299,11 +228,7 @@ export default function ClientRequestWorkspaceCard({
               <Tag color={isSentToProcurement ? "green" : "default"}>
                 {isSentToProcurement ? "В закупке" : "До закупки"}
               </Tag>
-              <Tag color={rfqStatusColor}>{rfqStatusLabel}</Tag>
-              <Tag color={responsesReady ? "green" : "default"}>Ответы</Tag>
-              <Tag color={selectionReady ? "green" : "default"}>Выбор</Tag>
-              <Tag color={quoteReady ? "green" : "default"}>КП</Tag>
-              <Tag color={contractReady ? "green" : "default"}>Контракт</Tag>
+              <Tag color={activeRequest?.rfq_id ? "blue" : "default"}>Последующие этапы — только чтение</Tag>
             </Space>
           </div>
           <div className="workspace-next-panel__action">
@@ -327,10 +252,7 @@ export default function ClientRequestWorkspaceCard({
               key: "summary",
               label: "Сводка",
               children: (
-                <RequestSummaryTabContent
-                  requestId={activeRequest?.id}
-                  onOpenTab={setWorkspaceTabKey}
-                />
+                <ClientRequestOverview requestId={activeRequest?.id} />
               ),
             },
             {
@@ -431,6 +353,7 @@ export default function ClientRequestWorkspaceCard({
                     <AutoComplete
                       style={{ minWidth: 420, maxWidth: "100%" }}
                       options={quickResults.map((part) => ({
+                        key: String(part.catalog_position_id || part.id),
                         value:
                           part.cat_number || part.description_ru || part.description_en || "",
                         label: formatPartLabel(part),
@@ -768,74 +691,19 @@ export default function ClientRequestWorkspaceCard({
               ),
             },
             {
-              key: "procurement",
-              label: "Закупка/RFQ",
-              children: (
-                <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                  <div className="workspace-next-panel">
-                    <div className="workspace-next-panel__body">
-                      <Text type="secondary">Закупочный контур</Text>
-                      <div className="workspace-next-panel__title">
-                        {isSentToProcurement ? "Заявка в закупке" : "Заявка ещё не передана в закупку"}
-                      </div>
-                      <Text type="secondary">
-                        {activeRequest?.rfq_id
-                          ? "Поставщики, ответы, покрытие и выбор ведутся в связанном RFQ."
-                          : "После передачи заявки будет создан закупочный RFQ по текущей ревизии."}
-                      </Text>
-                      <Space wrap size={[8, 8]} style={{ marginTop: 10 }}>
-                        <Tag color={isLatestRevision ? "green" : "orange"}>
-                          {isLatestRevision ? "Текущая ревизия" : "Архивная ревизия"}
-                        </Tag>
-                        <Tag color={isSentToProcurement ? "green" : "default"}>
-                          {isSentToProcurement ? "Передана в закупку" : "До закупки"}
-                        </Tag>
-                        <Tag color={rfqStatusColor}>{rfqStatusLabel}</Tag>
-                        <Tag>Позиции: {items.length}</Tag>
-                        <Tag>Ревизия: {activeRevisionLabel}</Tag>
-                      </Space>
-                    </div>
-                    <div className="workspace-next-panel__action">
-                      <Text type="secondary">Действия</Text>
-                      {!isSentToProcurement ? (
-                        <Button
-                          type="primary"
-                          disabled={!isLatestRevision || !canRelease || isReleasedLocked}
-                          onClick={handleReleaseRequest}
-                        >
-                          Отправить в закупку
-                        </Button>
-                      ) : null}
-                      {rfqSyncStatus === "needs_sync" ? (
-                        <Button onClick={handleSyncRfq}>Синхронизировать RFQ</Button>
-                      ) : null}
-                      <Button
-                        disabled={!activeRequest?.rfq_id}
-                        onClick={() => navigate(`/rfq-workspace?rfq=${activeRequest.rfq_id || ""}`)}
-                      >
-                        Открыть RFQ
-                      </Button>
-                    </div>
-                  </div>
-                  <RequestProcurementTabContent requestId={activeRequest?.id} />
-                </Space>
-              ),
+              key: "identification",
+              label: "Идентификация",
+              children: <ClientRequestIdentificationPanel revisionId={activeRevisionId} />,
             },
             {
-              key: "commercial",
-              label: "Расчет и КП",
-              children: (
-                <RequestCommercialFlowTabContent
-                  requestId={activeRequest?.id}
-                  activeRevisionId={activeRevisionId}
-                  initialStage={commercialStageByLegacyWorkspaceTab[workspaceTabKey] || "pricing"}
-                />
-              ),
+              key: "release",
+              label: "Готовность и Release",
+              children: <ClientRequestReleasePanel revisionId={activeRevisionId} />,
             },
             {
-              key: "execution",
-              label: "Исполнение",
-              children: <RequestExecutionTabContent requestId={activeRequest?.id} />,
+              key: "downstream",
+              label: "Последующие этапы",
+              children: <ClientRequestOverview requestId={activeRequest?.id} />,
             },
           ]}
         />

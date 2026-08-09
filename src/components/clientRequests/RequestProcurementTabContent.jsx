@@ -240,15 +240,6 @@ export default function RequestProcurementTabContent({ requestId }) {
         title="Цепочка закупки по строкам заявки"
         extra={
           <Space wrap>
-            {summary.rfq?.id ? (
-              <Button
-                size="small"
-                icon={<SelectOutlined />}
-                onClick={() => navigate(`/rfq-workspace?rfq=${summary.rfq.id}`)}
-              >
-                Открыть RFQ
-              </Button>
-            ) : null}
             <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={loadSummary}>
               Обновить
             </Button>

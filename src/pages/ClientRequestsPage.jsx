@@ -43,10 +43,10 @@ import axios from "@/api/axiosInstance"
 import dayjs from "dayjs"
 import confirmAction from "@/utils/confirmAction"
 import { formatQtyWithUomLabel, formatUomLabel } from "@/utils/uom"
-import { useAuth } from "@/auth/AuthContext"
 import { useSearchParams } from "react-router-dom"
 import useCapabilities from "@/hooks/useCapabilities"
 import useMeasurementUnits from "@/hooks/useMeasurementUnits"
+import { saveIdentification } from "@/features/clientRequests/api/clientRequestsApi"
 
 const CLIENT_WORKSPACE_TABS = new Set([
   "summary",
@@ -60,6 +60,9 @@ const CLIENT_WORKSPACE_TABS = new Set([
   "quote",
   "contract",
   "execution",
+  "identification",
+  "release",
+  "downstream",
 ])
 const CLIENT_WORKSPACE_TAB_ALIASES = {
   positions: "items",
@@ -76,8 +79,8 @@ const STATUS_OPTIONS = [
   { value: "draft", label: "Черновик" },
   { value: "in_progress", label: "В работе" },
   { value: "released_to_procurement", label: "Отправлена в закупку" },
-  { value: "rfq_created", label: "RFQ создан" },
-  { value: "rfq_sent", label: "RFQ отправлен" },
+  { value: "rfq_created", label: "Закупочная проработка создана" },
+  { value: "rfq_sent", label: "Запросы поставщикам отправлены" },
   { value: "responses_received", label: "Ответы получены" },
   { value: "selection_done", label: "Выбор сделан" },
   { value: "quote_prepared", label: "КП подготовлено" },
@@ -107,6 +110,18 @@ const getCatalogPartNumber = (part) =>
   part?.part_number ||
   null
 
+const searchCatalogPositions = async (query, filters = {}) => {
+  const { data } = await axios.get("/catalog-positions", {
+    params: {
+      q: String(query || "").trim() || undefined,
+      manufacturer_id: filters.manufacturerId || undefined,
+      equipment_model_id: filters.modelId || undefined,
+      limit: 50,
+    },
+  })
+  return (Array.isArray(data) ? data : []).map((part) => normalizeCatalogPart(part))
+}
+
 const normalizeCatalogPart = (part) => {
   if (!part) return null
   const catalogPositionId = getCatalogPositionId(part)
@@ -114,9 +129,8 @@ const normalizeCatalogPart = (part) => {
     ...part,
     catalog_position_id: catalogPositionId,
     cat_number: getCatalogPartNumber(part),
-    original_part_id: catalogPositionId,
-    description_ru: part.description_ru || part.catalog_position_name_ru || part.catalog_position_name || null,
-    description_en: part.description_en || part.catalog_position_name_en || part.catalog_position_name || null,
+    description_ru: part.description_ru || part.display_name_ru || part.display_name || part.catalog_position_name_ru || part.catalog_position_name || null,
+    description_en: part.description_en || part.display_name_en || part.display_name || part.catalog_position_name_en || part.catalog_position_name || null,
     uom: part.uom || "шт",
   }
 }
@@ -177,8 +191,8 @@ const STATUS_STEPS = [
   { key: "draft", title: "Черновик" },
   { key: "in_progress", title: "В работе" },
   { key: "released_to_procurement", title: "Отправлена в закупку" },
-  { key: "rfq_created", title: "RFQ создан" },
-  { key: "rfq_sent", title: "RFQ отправлен" },
+  { key: "rfq_created", title: "Закупочная проработка" },
+  { key: "rfq_sent", title: "Запросы поставщикам" },
   { key: "responses_received", title: "Ответы" },
   { key: "selection_done", title: "Выбор" },
   { key: "quote_prepared", title: "КП" },
@@ -208,7 +222,6 @@ const getInitialClientPartNumber = (part, overrides = {}) =>
   null
 
 export default function ClientRequestsPage() {
-  const { user } = useAuth()
   const { can } = useCapabilities()
   const { options: uomOptions } = useMeasurementUnits()
   const canWriteClientMasterData = can("workflow.client.master_data.write", "catalogs.edit")
@@ -571,7 +584,9 @@ export default function ClientRequestsPage() {
     const timer = setTimeout(async () => {
       setOriginalLoading(true)
       try {
-        setOriginalResults([])
+        setOriginalResults(await searchCatalogPositions(originalSearch, {
+          modelId: selectedActiveEquipmentUnit?.equipment_model_id,
+        }))
       } catch (e) {
         console.error(e)
       } finally {
@@ -590,7 +605,10 @@ export default function ClientRequestsPage() {
     const timer = setTimeout(async () => {
       setQuickLoading(true)
       try {
-        setQuickResults([])
+        setQuickResults(await searchCatalogPositions(quickSearch, {
+          manufacturerId,
+          modelId: selectedActiveEquipmentUnit?.equipment_model_id || modelId,
+        }))
       } catch (e) {
         console.error(e)
       } finally {
@@ -633,7 +651,10 @@ export default function ClientRequestsPage() {
     const timer = setTimeout(async () => {
       setCatalogLoading(true)
       try {
-        setCatalogResults([])
+        setCatalogResults(await searchCatalogPositions(catalogSearch, {
+          manufacturerId,
+          modelId,
+        }))
       } catch (e) {
         console.error(e)
       } finally {
@@ -671,7 +692,10 @@ export default function ClientRequestsPage() {
     const timer = setTimeout(async () => {
       setModalLoading(true)
       try {
-        setModalResults([])
+        setModalResults(await searchCatalogPositions(modalSearch, {
+          manufacturerId,
+          modelId,
+        }))
       } catch (e) {
         console.error(e)
       } finally {
@@ -705,8 +729,7 @@ export default function ClientRequestsPage() {
     return parsed.isValid() ? parsed.format("YYYY-MM-DD") : null
   }
 
-  const role = String(user?.role || "").toLowerCase()
-  const canRelease = ["admin", "prodavec", "nachalnik-otdela-zakupok"].includes(role)
+  const canRelease = can("client_requests.release_to_procurement")
 
   const handleCreate = async (values) => {
     try {
@@ -924,31 +947,8 @@ export default function ClientRequestsPage() {
         setWorkspaceTabKey("items")
         startChangeDraft({ force: true, itemsSnapshot: revisionItems })
       }
-      const refreshedRequest = await refreshActiveRequest(activeRequest.id)
+      await refreshActiveRequest(activeRequest.id)
       message.success("Ревизия создана. Режим редактирования включен")
-      const syncStatus = String(refreshedRequest?.rfq_sync_status || "").toLowerCase()
-      if (refreshedRequest?.rfq_id && syncStatus === "needs_sync") {
-        const currentRev = revisionsList.find((r) => Number(r.id) === Number(revisionId))
-        const previousRev = currentRev
-          ? revisionsList.find((r) => Number(r.rev_number) === Number(currentRev.rev_number) - 1)
-          : null
-        const previousItems = previousRev?.id ? await fetchRevisionItems(previousRev.id) : []
-        const currentItems = revisionId ? await fetchRevisionItems(revisionId) : []
-        const delta = calcRevisionDelta(previousItems, currentItems)
-        const { confirmed } = await confirmAction(
-          {
-            title: "Найдены несинхронизированные изменения RFQ",
-            text: `Добавлено: +${delta.added} · Удалено: -${delta.removed} · Изменено: ~${delta.changed}. Синхронизировать сейчас?`,
-          }
-        )
-        if (confirmed) {
-          await handleSyncRfq({
-            requestId: refreshedRequest.id,
-            skipConfirm: true,
-            successMessagePrefix: "RFQ синхронизирован после создания ревизии",
-          })
-        }
-      }
       return revisionId
     } catch (e) {
       console.error(e)
@@ -1002,8 +1002,7 @@ export default function ClientRequestsPage() {
 
   const createStagedRow = (data = {}) => ({
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    catalog_position_id: data.catalog_position_id || data.original_part_id || null,
-    original_part_id: data.catalog_position_id || data.original_part_id || null,
+    catalog_position_id: data.catalog_position_id || null,
     manufacturer: data.manufacturer || null,
     model: data.model || null,
     cat_number: data.cat_number || "",
@@ -1324,10 +1323,9 @@ export default function ClientRequestsPage() {
     try {
       setCatalogAddLoading(true)
       await Promise.all(
-        itemsToAdd.map((item) =>
-          axios.post(`/client-requests/revisions/${revisionId}/items`, {
-            catalog_position_id: item.catalog_position_id || item.original_part_id || null,
-            original_part_id: item.original_part_id || item.catalog_position_id || null,
+        itemsToAdd.map(async (item) => {
+          const { data: created } = await axios.post(`/client-requests/revisions/${revisionId}/items`, {
+            catalog_position_id: item.catalog_position_id || null,
             equipment_model_id:
               item.equipment_model_id ||
               selectedActiveEquipmentUnit?.equipment_model_id ||
@@ -1343,8 +1341,16 @@ export default function ClientRequestsPage() {
             requested_qty: item.requested_qty ?? null,
             uom: item.uom || "шт",
             oem_only: item.oem_only ? 1 : 0,
-          }),
-        ),
+          })
+          if (created?.id && item.catalog_position_id) {
+            await saveIdentification(created.id, {
+              catalog_position_id: item.catalog_position_id,
+              identification_status: "suggested",
+              match_method: "exact_number",
+              basis_note: "Catalog Position выбран пользователем в Client Request",
+            })
+          }
+        }),
       )
       await loadItems(revisionId)
       message.success(`Позиции добавлены: ${itemsToAdd.length}`)
@@ -1565,8 +1571,7 @@ export default function ClientRequestsPage() {
       id: tempId,
       temp_id: tempId,
       line_number: null,
-      catalog_position_id: payload.catalog_position_id || payload.original_part_id || null,
-      original_part_id: payload.original_part_id || payload.catalog_position_id || null,
+      catalog_position_id: payload.catalog_position_id || null,
       original_cat_number: payload.original_cat_number || null,
       original_description_ru: payload.original_description_ru || null,
       original_description_en: payload.original_description_en || null,
@@ -1628,8 +1633,7 @@ export default function ClientRequestsPage() {
         const target = itemsByLine.get(Number(lineNumber))
         if (!target) continue
         const payload = {
-          catalog_position_id: target.catalog_position_id || target.original_part_id || null,
-          original_part_id: target.original_part_id || target.catalog_position_id || null,
+          catalog_position_id: target.catalog_position_id || null,
           equipment_model_id:
             target.equipment_model_id ||
             selectedActiveEquipmentUnit?.equipment_model_id ||
@@ -1660,8 +1664,7 @@ export default function ClientRequestsPage() {
 
       for (const row of pendingChanges.adds || []) {
         const payload = {
-          catalog_position_id: row.catalog_position_id || row.original_part_id || null,
-          original_part_id: row.original_part_id || row.catalog_position_id || null,
+          catalog_position_id: row.catalog_position_id || null,
           equipment_model_id:
             row.equipment_model_id ||
             selectedActiveEquipmentUnit?.equipment_model_id ||
@@ -1679,27 +1682,7 @@ export default function ClientRequestsPage() {
         )
       }
 
-      if (activeRequest?.id) {
-        try {
-          await axios.post(`/client-requests/${activeRequest.id}/sync-rfq`)
-          message.success("RFQ синхронизирован")
-        } catch (e) {
-          const errMsg =
-            e?.response?.data?.message ||
-            (e?.response?.status === 409
-              ? "Синхронизация недоступна (не отправлено в закупку?)"
-              : "Не удалось синхронизировать RFQ автоматически")
-          message.warning(errMsg)
-          // fallback: помечаем needs_sync, чтобы пользователь мог синхронизировать вручную
-          try {
-            await axios.post(`/client-requests/${activeRequest.id}/mark-rfq-needs-sync`)
-          } catch {
-            /* ignore */
-          }
-        } finally {
-          await refreshActiveRequest(activeRequest.id)
-        }
-      }
+      if (activeRequest?.id) await refreshActiveRequest(activeRequest.id)
 
       const refreshed = await fetchRevisionItems(revisionId)
       setActiveRevisionId(revisionId)
@@ -1723,8 +1706,7 @@ export default function ClientRequestsPage() {
     try {
       if (changeDraftActive) {
         stageUpdate(itemEditRecord.line_number, {
-          catalog_position_id: values.catalog_position_id || values.original_part_id || null,
-          original_part_id: values.original_part_id || values.catalog_position_id || null,
+          catalog_position_id: values.catalog_position_id || null,
           equipment_model_id:
             itemEditRecord?.equipment_model_id ||
             selectedActiveEquipmentUnit?.equipment_model_id ||
@@ -1767,11 +1749,14 @@ export default function ClientRequestsPage() {
       message.warning("Введите каталожный номер или выберите деталь")
       return
     }
+    if (!quickSelectedPart) {
+      message.warning("Выберите существующую позицию каталога из результатов поиска")
+      return
+    }
     if (changeDraftActive) {
       const normalizedPart = normalizeCatalogPart(quickSelectedPart)
       stageAdd({
         catalog_position_id: normalizedPart?.catalog_position_id || null,
-        original_part_id: normalizedPart?.original_part_id || null,
         original_cat_number: normalizedPart?.cat_number || null,
         original_description_ru: normalizedPart?.description_ru || null,
         original_description_en: normalizedPart?.description_en || null,
@@ -1799,7 +1784,6 @@ export default function ClientRequestsPage() {
     const normalizedPart = normalizeCatalogPart(quickSelectedPart)
     const payload = {
       catalog_position_id: normalizedPart?.catalog_position_id || null,
-      original_part_id: normalizedPart?.original_part_id || null,
       equipment_model_id: selectedActiveEquipmentUnit?.equipment_model_id || modelId || null,
       client_part_number: normalizedPart?.cat_number || quickSearch.trim(),
       client_description:
@@ -1811,10 +1795,18 @@ export default function ClientRequestsPage() {
       oem_only: quickOemOnly ? 1 : 0,
     }
     try {
-      await axios.post(
+      const { data: created } = await axios.post(
         `/client-requests/revisions/${revisionId}/items`,
         payload,
       )
+      if (created?.id && payload.catalog_position_id) {
+        await saveIdentification(created.id, {
+          catalog_position_id: payload.catalog_position_id,
+          identification_status: "suggested",
+          match_method: "exact_number",
+          basis_note: "Catalog Position выбран пользователем в Client Request",
+        })
+      }
       message.success("Позиция добавлена")
       setQuickSearch("")
       setQuickSelectedPart(null)
@@ -1833,17 +1825,11 @@ export default function ClientRequestsPage() {
       return
     }
     const part = modalSelectedPart
-    const item = part
-      ? buildItemFromPart(part, { qty: modalQty, oem_only: modalOemOnly })
-      : {
-          original_part_id: null,
-          original_cat_number: modalSearch.trim(),
-          client_part_number: modalSearch.trim(),
-          client_description: "",
-          requested_qty: modalQty || 1,
-          uom: "шт",
-          oem_only: modalOemOnly ? 1 : 0,
-        }
+    if (!part) {
+      message.warning("Выберите существующую позицию каталога из результатов поиска")
+      return
+    }
+    const item = buildItemFromPart(part, { qty: modalQty, oem_only: modalOemOnly })
     await addItemsToRequest([item])
     setModalSearch("")
     setModalResults([])
@@ -1953,34 +1939,6 @@ export default function ClientRequestsPage() {
     } catch (e) {
       console.error(e)
       message.error(e?.response?.data?.message || "Не удалось отправить заявку в закупку")
-    }
-  }
-
-  const handleSyncRfq = async (options = {}) => {
-    const requestId = Number(options.requestId || activeRequest?.id || 0)
-    if (!requestId) return
-    if (!options.skipConfirm) {
-      const { confirmed } = await confirmAction(
-        "Синхронизировать текущую ревизию заявки с уже созданным RFQ?"
-      )
-      if (!confirmed) return
-    }
-    try {
-      const { data } = await axios.post(`/client-requests/${requestId}/sync-rfq`)
-      if (data?.request) {
-        setActiveRequest(data.request)
-      } else {
-        await refreshActiveRequest(requestId)
-      }
-      await loadRequests()
-      message.success(
-        `${options.successMessagePrefix || "RFQ синхронизирован"}${
-          Number(data?.added_items || 0) > 0 ? `: добавлено строк ${data.added_items}` : ""
-        }`
-      )
-    } catch (e) {
-      console.error(e)
-      message.error(e?.response?.data?.message || "Не удалось синхронизировать RFQ")
     }
   }
 
@@ -2119,7 +2077,6 @@ export default function ClientRequestsPage() {
   const isLatestRevision = !latestRevisionId || activeRevisionId === latestRevisionId
   const isReleasedLocked = !!activeRequest?.is_locked_after_release
   const isSentToProcurement = !!activeRequest?.released_to_procurement_at
-  const rfqSyncStatus = String(activeRequest?.rfq_sync_status || "").toLowerCase()
   const activeRevisionLabel = activeRevision?.rev_number
     ? `Ревизия ${activeRevision.rev_number}`
     : "Ревизий нет"
@@ -2529,8 +2486,8 @@ export default function ClientRequestsPage() {
   return (
     <PageWrapper
       title="Заявки клиентов"
-      subtitle="Рабочее место продажи: от клиентской потребности до закупочной базы, КП, контракта и исполнения."
-      helpSummary="Статусы: Черновик → В работе → Релиз в закупку → RFQ создан → RFQ отправлен → Ответы → Выбор → КП → Контракт → Исполнение."
+      subtitle="Рабочее место заявки клиента: идентификация потребности, ревизии и неизменяемый релиз в закупку."
+      helpSummary="После релиза дальнейшая работа выполняется в закупочной проработке, расчёте цены, коммерческом предложении, договоре и последующих разделах."
       primaryActions={(
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateRequestOpen(true)}>
           Новая заявка
@@ -2575,9 +2532,7 @@ export default function ClientRequestsPage() {
                 canRelease={canRelease}
                 isReleasedLocked={isReleasedLocked}
                 isSentToProcurement={isSentToProcurement}
-                rfqSyncStatus={rfqSyncStatus}
                 handleReleaseRequest={handleReleaseRequest}
-                handleSyncRfq={handleSyncRfq}
                 getStatusStepIndex={getStatusStepIndex}
                 statusSteps={STATUS_STEPS}
                 workspaceTabKey={workspaceTabKey}

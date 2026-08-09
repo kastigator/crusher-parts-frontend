@@ -90,13 +90,9 @@ export default function KpiDetailsDrawer({
       navigate(`/client-request-workspace?${params.toString()}`)
       return
     }
-    if (row.workspace === "rfq" && row.rfq_id) {
-      const params = new URLSearchParams({
-        rfq_id: String(row.rfq_id),
-      })
-      if (row.workspace_tab) params.set("tab", row.workspace_tab)
+    if (row.workspace === "rfq" && row.sourcing_case_id) {
       onClose?.()
-      navigate(`/rfq-workspace?${params.toString()}`)
+      navigate(`/sourcing?case=${row.sourcing_case_id}`)
     }
   }
 
@@ -112,7 +108,7 @@ export default function KpiDetailsDrawer({
       dataIndex: "title",
       render: (_, row) => (
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {row.workspace ? (
+          {row.workspace && (row.workspace !== "rfq" || row.sourcing_case_id) ? (
             <button
               type="button"
               onClick={() => openWorkspaceObject(row)}

@@ -5,8 +5,7 @@ export default function useCapabilities() {
   const { user } = useAuth()
 
   return useMemo(() => {
-    const role = String(user?.role || "").toLowerCase()
-    const isAdmin = !!(user && (role === "admin" || Number(user?.role_id) === 1 || user?.is_admin === true))
+    const isSuperAdmin = user?.is_super_admin === true
     const allowed = new Set(
       (Array.isArray(user?.capabilities) ? user.capabilities : [])
         .map((item) => String(item || "").trim().toLowerCase())
@@ -14,7 +13,7 @@ export default function useCapabilities() {
     )
 
     const can = (...keys) => {
-      if (isAdmin) return true
+      if (isSuperAdmin) return true
       return keys
         .flat()
         .map((key) => String(key || "").trim().toLowerCase())
@@ -23,7 +22,8 @@ export default function useCapabilities() {
     }
 
     return {
-      isAdmin,
+      isAdmin: isSuperAdmin,
+      isSuperAdmin,
       capabilities: Array.from(allowed),
       can,
     }

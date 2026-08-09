@@ -1,0 +1,11 @@
+import axios from '@/api/axiosInstance'
+export const getDispatchOverview=()=>axios.get('/dispatch-delivery/overview').then(({data})=>data)
+export const getDispatchOrder=(orderId)=>axios.get(`/dispatch-delivery/orders/${orderId}`).then(({data})=>data)
+export const createDispatchOrder=(payload)=>axios.post('/dispatch-delivery/orders',payload).then(({data})=>data)
+export const requestPicking=(orderId,payload)=>axios.post(`/dispatch-delivery/orders/${orderId}/picking-requests`,payload).then(({data})=>data)
+export const confirmPicking=(requestId,payload)=>axios.post(`/dispatch-delivery/picking-requests/${requestId}/confirm`,payload).then(({data})=>data)
+export const createPackage=(payload)=>axios.post('/dispatch-delivery/packages',payload).then(({data})=>data)
+export const packPackage=(packageId,payload)=>axios.post(`/dispatch-delivery/packages/${packageId}/pack`,payload).then(({data})=>data)
+export const createShipment=(payload)=>axios.post('/dispatch-delivery/shipments',payload).then(({data})=>data)
+export const dispatchShipment=(shipmentId,payload)=>axios.post(`/dispatch-delivery/shipments/${shipmentId}/dispatch`,payload).then(({data})=>data)
+export const confirmDelivery=(shipmentId,payload)=>axios.post(`/dispatch-delivery/shipments/${shipmentId}/delivery-confirmations`,payload).then(({data})=>data)
