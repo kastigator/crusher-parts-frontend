@@ -7,6 +7,7 @@ import {
 } from "@/features/clientRequests/api/clientRequestsApi"
 import MassIntakeGrid from "./MassIntakeGrid"
 import { createEmptyRow } from "./intakeRows"
+import useMeasurementUnits from "@/hooks/useMeasurementUnits"
 
 const { Paragraph, Text, Title } = Typography
 
@@ -28,26 +29,36 @@ export default function ClientRequestIntakeWizard({ open, clients, users, onClos
   const [preview, setPreview] = useState(null)
   const [checking, setChecking] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [confirmExact, setConfirmExact] = useState(true)
+  const [confirmExact, setConfirmExact] = useState(false)
+  const [exactConfirmationKey, setExactConfirmationKey] = useState(null)
   const [createTasks, setCreateTasks] = useState(true)
   const [taskPriority, setTaskPriority] = useState("normal")
   const [taskAssignee, setTaskAssignee] = useState(null)
+  const { units: measurementUnits, options: uomOptions, loading: uomLoading, error: uomError } = useMeasurementUnits({ active: true })
+  const defaultUom = useMemo(() => measurementUnits.find((unit) => String(unit.code).toLowerCase() === "шт")?.code || null, [measurementUnits])
 
   useEffect(() => {
     if (!open) return
-    setStep(0); setRows([createEmptyRow()]); setHeader(null); setPreview(null); setConfirmExact(true); setCreateTasks(true); setTaskPriority("normal"); setTaskAssignee(null)
+    setStep(0); setRows([createEmptyRow()]); setHeader(null); setPreview(null); setConfirmExact(false); setExactConfirmationKey(null); setCreateTasks(true); setTaskPriority("normal"); setTaskAssignee(null)
     form.resetFields()
     form.setFieldsValue({ received_at: dayjs(), source_type: "manual" })
   }, [open, form])
 
+  useEffect(() => {
+    if (!open || !defaultUom) return
+    setRows((current) => current.map((row) => row.uom ? row : { ...row, uom: defaultUom }))
+  }, [open, defaultUom])
+
   const options = useMemo(() => ({
     confirm_exact_matches: confirmExact,
+    exact_confirmation: confirmExact ? { action: "bulk_confirm_exact_unique", confirmation_key: exactConfirmationKey } : null,
     create_tasks_for_unresolved: createTasks,
     task_defaults: { priority: taskPriority, assigned_to_user_id: taskAssignee },
-  }), [confirmExact, createTasks, taskPriority, taskAssignee])
+  }), [confirmExact, exactConfirmationKey, createTasks, taskPriority, taskAssignee])
 
   const check = async () => {
     const currentHeader = header || await form.validateFields()
+    if (!defaultUom || uomError) return message.error("Не удалось загрузить активный справочник единиц измерения")
     setChecking(true)
     try {
       const result = await validateClientRequestIntake(buildPayload(currentHeader, rows, options))
@@ -105,32 +116,34 @@ export default function ClientRequestIntakeWizard({ open, clients, users, onClos
     </Form>
     {step === 1 && <div className="cr-intake-step">
       <Alert showIcon type="info" message="Вводите строки подряд или загрузите таблицу" description="Заявка, ревизия, все строки, результаты сопоставления и задачи идентификации будут созданы одной атомарной операцией."/>
-      <MassIntakeGrid rows={rows} onChange={(next) => { setRows(next); setPreview(null) }} />
+      {uomError && <Alert showIcon type="error" message="Справочник единиц измерения недоступен" description="Создание заявки заблокировано: единицы должны выбираться только из measurement_units."/>}
+      <MassIntakeGrid rows={rows} onChange={(next) => { setRows(next); setPreview(null) }} uomOptions={uomOptions} uomLoading={uomLoading} defaultUom={defaultUom} />
     </div>}
     {step === 2 && <Space direction="vertical" size={16} style={{width:"100%"}}>
       <div className="cr-preview-metrics">
         <Card size="small"><Statistic title="Всего строк" value={summary.total||0}/></Card>
         <Card size="small"><Statistic title="Точные совпадения" value={summary.exact_unique||0}/></Card>
         <Card size="small"><Statistic title="Нужна проверка" value={summary.probable||0}/></Card>
+        <Card size="small"><Statistic title="Неоднозначно" value={summary.ambiguous||0}/></Card>
         <Card size="small"><Statistic title="Без совпадения" value={summary.no_match||0}/></Card>
         <Card size="small"><Statistic title="Ошибки" value={summary.errors||0} valueStyle={{color:summary.errors?"#cf1322":undefined}}/></Card>
       </div>
       {!!preview?.errors?.length && <Alert type="error" showIcon message="Заявку пока нельзя создать" description={preview.errors.map((error)=><div key={error.code}>{error.message}</div>)}/>} 
       <Card size="small" title="Правила подтверждения">
         <Space wrap size={20}>
-          <Checkbox checked={confirmExact} onChange={(event)=>setConfirmExact(event.target.checked)}>Подтвердить все единственные точные совпадения</Checkbox>
+          <Checkbox checked={confirmExact} onChange={(event)=>{const checked=event.target.checked;setConfirmExact(checked);setExactConfirmationKey(checked?(globalThis.crypto?.randomUUID?.()||`exact-${Date.now()}`):null);setPreview(null)}}>Подтвердить все единственные точные совпадения явным групповым действием</Checkbox>
           <Checkbox checked={createTasks} onChange={(event)=>setCreateTasks(event.target.checked)}>Создать задачи для непроверенных совпадений и строк без совпадения</Checkbox>
           <Select value={taskPriority} onChange={setTaskPriority} options={[{value:"low",label:"Низкий приоритет"},{value:"normal",label:"Обычный приоритет"},{value:"high",label:"Высокий приоритет"},{value:"urgent",label:"Срочно"}]}/>
           <Select allowClear style={{minWidth:220}} value={taskAssignee} onChange={setTaskAssignee} placeholder="Исполнитель задач" options={users.map((user)=>({value:user.id,label:user.full_name||user.username}))}/>
         </Space>
       </Card>
-      <MassIntakeGrid rows={rows} onChange={(next)=>{setRows(next);setPreview(null);setStep(1)}} previewRows={preview?.rows||[]} onSelectCandidate={selectCandidate}/>
+      <MassIntakeGrid rows={rows} onChange={(next)=>{setRows(next);setPreview(null);setStep(1)}} previewRows={preview?.rows||[]} onSelectCandidate={selectCandidate} uomOptions={uomOptions} uomLoading={uomLoading} defaultUom={defaultUom} exactConfirmed={confirmExact}/>
       <Card className="cr-review-card"><Title level={5}>Что произойдёт после подтверждения</Title><Paragraph>Все {rows.length} строк сохранятся в исходном порядке. Неоднозначный результат никогда не выбирается автоматически. Для нерешённых строк создаются задачи в очереди «Требует идентификации»; решение задачи автоматически вернётся в заявку.</Paragraph><Text type={preview?.can_commit?"success":"danger"}>{preview?.can_commit?"Данные готовы к созданию":"Исправьте ошибки и повторите проверку"}</Text></Card>
     </Space>}
     <div className="cr-modal-actions">
       <Button disabled={step===0} onClick={()=>setStep(step-1)}>Назад</Button>
       <Space>
-        {step===0&&<Button type="primary" onClick={async()=>{try{const values=await form.validateFields();setHeader(values);setStep(1)}catch{/* form highlights */}}}>К позициям</Button>}
+        {step===0&&<Button type="primary" loading={uomLoading} disabled={!defaultUom||!!uomError} onClick={async()=>{try{const values=await form.validateFields();setHeader(values);setStep(1)}catch{/* form highlights */}}}>К позициям</Button>}
         {step===1&&<Button type="primary" loading={checking} onClick={check}>Проверить все строки</Button>}
         {step===2&&<><Button loading={checking} onClick={check}>Повторить проверку</Button><Button type="primary" loading={saving} disabled={!preview?.can_commit} onClick={commit}>Создать заявку одной операцией</Button></>}
       </Space>

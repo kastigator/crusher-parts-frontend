@@ -1,13 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
-import { Alert, Badge, Button, Card, Descriptions, Drawer, Empty, Input, Modal, Segmented, Select, Space, Table, Tag, Timeline, Typography, message } from "antd"
+import { Alert, Badge, Button, Card, DatePicker, Descriptions, Drawer, Empty, Input, Modal, Segmented, Select, Space, Table, Tag, Timeline, Typography, message } from "antd"
 import { LinkOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons"
+import dayjs from "dayjs"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import useCapabilities from "@/hooks/useCapabilities"
 import { searchCatalogPositions } from "@/features/clientRequests/api/clientRequestsApi"
 import {
   claimTechnicalIdentificationTask,
+  assignTechnicalIdentificationTask,
+  closeTechnicalIdentificationTask,
   getTechnicalIdentificationTask,
+  listTechnicalIdentificationAssignees,
   listTechnicalIdentificationTasks,
+  reopenTechnicalIdentificationTask,
   resolveTechnicalIdentificationTask,
   resumeTechnicalIdentificationTask,
   waitTechnicalIdentificationTask,
@@ -24,6 +29,7 @@ const STATUS = {
   resolved: ["success", "Идентифицирована"],
   cancelled: ["default", "Отменена"],
   superseded: ["default", "Заменена новой"],
+  closed: ["default", "Закрыта без позиции"],
 }
 const PRIORITY = { low: "Низкий", normal: "Обычный", high: "Высокий", urgent: "Срочно" }
 const VIEWS = [
@@ -42,6 +48,8 @@ function TaskDrawer({ taskId, open, onClose, onChanged }) {
   const [resolutionType, setResolutionType] = useState("reused_existing")
   const [note, setNote] = useState("")
   const [working, setWorking] = useState(false)
+  const [assignees, setAssignees] = useState([])
+  const [assignment, setAssignment] = useState({ assigned_to_user_id: null, priority: "normal", due_at: null })
   const load = useCallback(async () => {
     if (!taskId) return
     setLoading(true)
@@ -50,18 +58,24 @@ function TaskDrawer({ taskId, open, onClose, onChanged }) {
       setTask(result)
       setCandidates(result.candidates || [])
       setSelected(result.candidates?.length === 1 ? result.candidates[0].catalog_position_id : null)
+      setAssignment({ assigned_to_user_id: result.assigned_to_user_id || null, priority: result.priority || "normal", due_at: result.due_at ? dayjs(result.due_at) : null })
     } catch (error) {
       message.error(error?.response?.data?.message || "Не удалось открыть задачу")
     } finally { setLoading(false) }
   }, [taskId])
   useEffect(() => { if (open) load() }, [open, load])
+  useEffect(() => {
+    if (!open || !can("technical_identification.assign")) return
+    listTechnicalIdentificationAssignees().then(setAssignees).catch(() => message.error("Не удалось загрузить исполнителей"))
+  }, [open, can])
   const run = async (fn, payload = {}) => {
     setWorking(true)
     try {
-      await fn(task.id, { ...payload, row_version: task.row_version, idempotency_key: key() })
+      const result = await fn(task.id, { ...payload, row_version: task.row_version, idempotency_key: key() })
       message.success("Задача обновлена")
       await load()
       await onChanged()
+      return result
     } catch (error) {
       message.error(error?.response?.data?.message || "Не удалось выполнить действие")
     } finally { setWorking(false) }
@@ -94,9 +108,32 @@ function TaskDrawer({ taskId, open, onClose, onChanged }) {
     })
   }
   const resolve = () => run(resolveTechnicalIdentificationTask, { catalog_position_id: selected, resolution_type: resolutionType, resolution_note: note })
+  const closeWithoutPosition = () => {
+    let reason = ""
+    Modal.confirm({
+      title: "Закрыть без Catalog Position?",
+      content: <Input.TextArea autoFocus onChange={(event)=>{reason=event.target.value}} placeholder="Обязательное основание терминального результата"/>,
+      okText: "Закрыть без позиции",
+      cancelText: "Отмена",
+      onOk: () => run(closeTechnicalIdentificationTask, { resolution_type: "not_catalog_item", resolution_note: reason }),
+    })
+  }
+  const reopen = () => {
+    let reason = ""
+    Modal.confirm({
+      title: "Создать новое поколение задачи?",
+      content: <Input.TextArea autoFocus onChange={(event)=>{reason=event.target.value}} placeholder="Почему требуется повторная идентификация"/>,
+      okText: "Открыть повторно",
+      cancelText: "Отмена",
+      onOk: async () => {
+        const result = await run(reopenTechnicalIdentificationTask, { reason })
+        if (result?.task?.id) navigate(`/equipment-classifier?task=${result.task.id}`)
+      },
+    })
+  }
   if(!task)return <Drawer width={900} open={open} onClose={onClose} loading={loading}/>
   const [statusColor,statusLabel]=taskStatus(task.status)
-  const terminal=["resolved","cancelled","superseded"].includes(task.status)
+  const terminal=["resolved","closed","cancelled","superseded"].includes(task.status)
   return <Drawer className="ti-task-drawer" width="min(1120px, 96vw)" open={open} onClose={onClose} title={<Space><span>{task.task_number}</span><Badge status={statusColor} text={statusLabel}/><Tag>{PRIORITY[task.priority]||task.priority}</Tag></Space>}>
     <div className="ti-detail-grid">
       <Space direction="vertical" size={16}>
@@ -107,12 +144,18 @@ function TaskDrawer({ taskId, open, onClose, onChanged }) {
           <Descriptions.Item label="Оборудование / модель">{task.client_equipment_model_text||"—"}</Descriptions.Item><Descriptions.Item label="Количество">{task.requested_qty} {task.uom}</Descriptions.Item>
           <Descriptions.Item label="Требуемая дата">{task.required_date||"—"}</Descriptions.Item><Descriptions.Item label="Комментарий">{task.client_comment||"—"}</Descriptions.Item>
         </Descriptions><Space wrap><Button icon={<LinkOutlined/>} onClick={()=>navigate(`/client-requests?request=${task.client_request_id}&revision=${task.client_request_revision_id}`)}>Открыть заявку</Button><Button icon={<LinkOutlined/>} onClick={()=>navigate(`/equipment-classifier?position=${selected||task.result_catalog_position_id||""}`)}>Открыть классификатор</Button></Space></Card>
+        {!terminal&&can("technical_identification.assign")&&<Card size="small" title="Назначение и срок"><Space wrap>
+          <Select allowClear showSearch optionFilterProp="label" style={{minWidth:240}} value={assignment.assigned_to_user_id} onChange={(value)=>setAssignment((current)=>({...current,assigned_to_user_id:value||null}))} placeholder="Исполнитель" options={assignees.map((user)=>({value:user.id,label:user.full_name||user.username}))}/>
+          <Select value={assignment.priority} onChange={(value)=>setAssignment((current)=>({...current,priority:value}))} options={Object.entries(PRIORITY).map(([value,label])=>({value,label}))}/>
+          <DatePicker value={assignment.due_at} onChange={(value)=>setAssignment((current)=>({...current,due_at:value}))} format="DD.MM.YYYY" placeholder="Срок"/>
+          <Button loading={working} onClick={()=>run(assignTechnicalIdentificationTask,{assigned_to_user_id:assignment.assigned_to_user_id,priority:assignment.priority,due_at:assignment.due_at?.format("YYYY-MM-DD")||null})}>Сохранить назначение</Button>
+        </Space></Card>}
         {!terminal&&<Card size="small" title="Найти и подтвердить Catalog Position">
           <Space.Compact style={{width:"100%"}}><Input value={query} onChange={(event)=>setQuery(event.target.value)} onPressEnter={search} placeholder="Номер, производитель или описание"/><Button icon={<SearchOutlined/>} loading={working} onClick={search}>Найти</Button></Space.Compact>
           <div className="ti-candidates">{candidates.length?candidates.map((candidate)=><button type="button" key={candidate.catalog_position_id} className={Number(selected)===Number(candidate.catalog_position_id)?"is-selected":""} onClick={()=>setSelected(candidate.catalog_position_id)}><strong>{[candidate.manufacturer_name,candidate.manufacturer_part_number||candidate.position_code,candidate.name].filter(Boolean).join(" · ")}</strong><span>{candidate.classifier_node_name||"Раздел не указан"}</span><small>{(candidate.reasons||[]).join("; ")}</small></button>):<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Совпадений пока нет"/>}</div>
-          <Space direction="vertical" style={{width:"100%"}}><Select value={resolutionType} onChange={setResolutionType} options={[{value:"reused_existing",label:"Использована существующая Catalog Position"},{value:"created_new",label:"Создана новая Catalog Position"}]}/><Input.TextArea value={note} onChange={(event)=>setNote(event.target.value)} placeholder="Основание решения или примечание"/><Space wrap>{task.status==="new"&&can("technical_identification.manage")&&<Button loading={working} onClick={()=>run(claimTechnicalIdentificationTask)}>Взять в работу</Button>}{task.status==="waiting_client"&&can("technical_identification.manage")&&<Button loading={working} onClick={()=>run(resumeTechnicalIdentificationTask)}>Продолжить после уточнения</Button>}{can("technical_identification.manage")&&<Button onClick={waitForClient}>Запросить уточнение</Button>}{can("technical_identification.resolve")&&<Button type="primary" disabled={!selected} loading={working} onClick={resolve}>Подтвердить позицию и вернуть в заявку</Button>}</Space></Space>
+          <Space direction="vertical" style={{width:"100%"}}><Select value={resolutionType} onChange={setResolutionType} options={[{value:"reused_existing",label:"Использована существующая Catalog Position"},{value:"created_new",label:"Catalog Position ранее создана через Classifier"}]}/><Input.TextArea value={note} onChange={(event)=>setNote(event.target.value)} placeholder="Основание решения или примечание"/><Space wrap>{task.status==="new"&&can("technical_identification.manage")&&<Button loading={working} onClick={()=>run(claimTechnicalIdentificationTask)}>Взять в работу</Button>}{task.status==="waiting_client"&&can("technical_identification.manage")&&<Button loading={working} onClick={()=>run(resumeTechnicalIdentificationTask)}>Продолжить после уточнения</Button>}{task.status==="in_progress"&&can("technical_identification.manage")&&<Button onClick={waitForClient}>Запросить уточнение</Button>}{can("technical_identification.resolve")&&<Button type="primary" disabled={!selected||task.status!=="in_progress"} loading={working} onClick={resolve}>Подтвердить позицию и вернуть в заявку</Button>}{can("technical_identification.resolve")&&["in_progress","waiting_client"].includes(task.status)&&<Button danger onClick={closeWithoutPosition}>Закрыть без позиции</Button>}</Space></Space>
         </Card>}
-        {terminal&&<Alert type={task.status==="resolved"?"success":"info"} showIcon message={task.status==="resolved"?"Идентификация завершена":"Задача закрыта"} description={task.result_position_name?[task.result_manufacturer_part_number||task.result_position_code,task.result_position_name].filter(Boolean).join(" · "):task.resolution_note}/>} 
+        {terminal&&<><Alert type={task.status==="resolved"?"success":"info"} showIcon message={task.status==="resolved"?"Идентификация завершена":"Задача закрыта"} description={task.result_position_name?[task.result_manufacturer_part_number||task.result_position_code,task.result_position_name].filter(Boolean).join(" · "):task.resolution_note}/>{can("technical_identification.resolve")&&<Button style={{marginTop:12}} onClick={reopen}>Открыть новое поколение задачи</Button>}</>} 
       </Space>
       <Card size="small" title="История задачи"><Timeline items={(task.events||[]).map((event)=>({children:<div><strong>{event.event_type}</strong><div>{event.actor_name||event.actor_username} · {new Date(event.occurred_at).toLocaleString("ru-RU")}</div>{event.payload?.blocker_note&&<Text type="secondary">{event.payload.blocker_note}</Text>}</div>}))}/></Card>
     </div>
