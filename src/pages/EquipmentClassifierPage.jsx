@@ -9,7 +9,7 @@ import useCapabilities from "@/hooks/useCapabilities"
 export default function EquipmentClassifierPage() {
   const { can } = useCapabilities()
   const [searchParams, setSearchParams] = useSearchParams()
-  const mode = searchParams.get("mode") === "identification" && can("technical_identification.access")
+  const mode = (searchParams.get("mode") === "identification" || searchParams.has("task")) && can("technical_identification.access")
     ? "identification"
     : "classifier"
   const setMode = (value) => {

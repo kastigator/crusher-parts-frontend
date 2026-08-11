@@ -84,7 +84,15 @@ function BulkImportModal({ open, onClose, onApply, defaultUom }) {
     onApply(rows)
     onClose()
   }
-  return <Modal width={940} open={open} onCancel={onClose} onOk={apply} okText={`Добавить ${sourceRows.length || 0} строк`} title="Импорт из Excel, CSV или буфера">
+  return <Modal
+    width={940}
+    open={open}
+    onCancel={onClose}
+    onOk={apply}
+    okText={`Добавить ${sourceRows.length || 0} строк`}
+    title="Импорт из Excel, CSV или буфера"
+    styles={{ body: { maxHeight: "calc(100vh - 230px)", overflowY: "auto" } }}
+  >
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Text type="secondary">Вставьте таблицу с заголовками или выберите Excel/CSV. Проверьте соответствие колонок до добавления.</Text>
       <Input.TextArea rows={5} value={paste} onChange={(event) => setPaste(event.target.value)} placeholder={"Описание\tКаталожный номер\tПроизводитель\tКоличество\tЕдиница"} />

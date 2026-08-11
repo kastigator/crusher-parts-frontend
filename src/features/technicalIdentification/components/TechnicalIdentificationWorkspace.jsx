@@ -127,7 +127,7 @@ function TaskDrawer({ taskId, open, onClose, onChanged }) {
       cancelText: "Отмена",
       onOk: async () => {
         const result = await run(reopenTechnicalIdentificationTask, { reason })
-        if (result?.task?.id) navigate(`/equipment-classifier?task=${result.task.id}`)
+        if (result?.task?.id) navigate(`/equipment-classifier?mode=identification&task=${result.task.id}`)
       },
     })
   }

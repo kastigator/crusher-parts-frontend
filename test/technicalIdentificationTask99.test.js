@@ -74,6 +74,8 @@ test("Technical Identification workbench supports assignment, due date, waiting/
   assert.match(workspace, /task\.status!=="in_progress"/)
   assert.match(workspace, /Подтвердить позицию и вернуть в заявку/)
   assert.match(workspace, /Открыть новое поколение задачи/)
+  assert.match(workspace, /equipment-classifier\?mode=identification&task=/)
+  assert.match(read("src", "pages", "EquipmentClassifierPage.jsx"), /searchParams\.has\("task"\)/)
 })
 
 test("10/50/100 workflows remain one-grid and one atomic commit without add-row loops", () => {
@@ -83,5 +85,6 @@ test("10/50/100 workflows remain one-grid and one atomic commit without add-row 
   assert.match(wizard, /Создать заявку одной операцией/)
   assert.match(grid, /sourceRows\.map/)
   assert.match(grid, /scroll=\{\{ x: 1700, y: 410 \}\}/)
+  assert.match(grid, /maxHeight: "calc\(100vh - 230px\)"/)
   assert.doesNotMatch(wizard, /for\s*\([^)]*rows[^)]*\)[\s\S]*axios\.post/)
 })
