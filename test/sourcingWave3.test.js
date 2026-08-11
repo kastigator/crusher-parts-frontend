@@ -39,8 +39,8 @@ test("Supplier master data promotion is an explicit review request", () => {
 })
 
 test("Client Request receives only a navigation link into Sourcing", () => {
-  const overview = read("src", "features", "clientRequests", "components", "ClientRequestOverview.jsx")
-  assert.match(overview, /downstream\.sourcing_cases/)
+  const overview = read("src", "pages", "ClientRequestsPage.jsx")
+  assert.match(overview, /downstream\?\.sourcing_cases/)
   assert.match(overview, /\/sourcing\?case=/)
-  assert.match(overview, /только как архивная трассировка/)
+  assert.match(overview, /Закупочная проработка, расчёт цены, КП и договор ведутся в своих разделах/)
 })
