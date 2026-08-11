@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  Alert, Badge, Button, Card, DatePicker, Descriptions, Divider, Drawer,
-  Empty, Form, Input, InputNumber, Modal, Progress, Segmented, Select, Skeleton,
-  Space, Steps, Table, Tag, Tooltip, Typography, message,
+  Alert, Badge, Button, Card, Descriptions, Divider, Drawer,
+  Empty, Form, Input, Modal, Progress, Segmented, Select, Skeleton,
+  Space, Table, Tag, Tooltip, Typography, message,
 } from "antd"
 import {
   ArrowLeftOutlined, CheckCircleOutlined, ExclamationCircleOutlined,
@@ -11,11 +11,12 @@ import {
 import dayjs from "dayjs"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import PageWrapper from "@/components/common/PageWrapper"
+import ClientRequestIntakeWizard from "@/features/clientRequests/components/ClientRequestIntakeWizard"
 import useCapabilities from "@/hooks/useCapabilities"
 import {
-  addClientRequestItem, createClientRequest, createClientRequestRevision,
+  createClientRequestRevision,
   createProcurementRelease, finalizeRevision, getClientRequestWorkspace, getIdentification,
-  listClientRequests, listClients, listUsers, saveIdentification, saveRequirements,
+  getClientRequestRegistry, listClients, listUsers, saveIdentification, saveRequirements,
   searchCatalogPositions,
 } from "@/features/clientRequests/api/clientRequestsApi"
 import "./clientRequestsV2.css"
@@ -51,6 +52,7 @@ const BLOCKER_LABELS = {
 }
 
 const POLICY_OPTIONS = [
+  { value: "unspecified", label: "Уточнить позже" },
   { value: "exact_only", label: "Только точное соответствие" },
   { value: "equivalent_requires_approval", label: "Аналог после согласования" },
   { value: "equivalent_allowed", label: "Аналоги разрешены" },
@@ -67,105 +69,6 @@ const catalogLabel = (row) => [
   row.manufacturer_name, row.manufacturer_part_number || row.position_code,
   row.display_name_ru || row.display_name || row.display_name_en,
 ].filter(Boolean).join(" · ")
-
-function RequestCreateWizard({ open, clients, users, onClose, onCreated }) {
-  const [step, setStep] = useState(0)
-  const [saving, setSaving] = useState(false)
-  const [form] = Form.useForm()
-
-  useEffect(() => {
-    if (open) {
-      setStep(0)
-      form.resetFields()
-      form.setFieldsValue({ received_at: dayjs(), lines: [{ requested_qty: 1, uom: "шт" }] })
-    }
-  }, [open, form])
-
-  const submit = async () => {
-    await form.validateFields()
-    const values = form.getFieldsValue(true)
-    setSaving(true)
-    try {
-      const request = await createClientRequest({
-        client_id: values.client_id,
-        assigned_to_user_id: values.owner_user_id || null,
-        internal_number: values.internal_number,
-        client_reference: values.title || null,
-        received_at: values.received_at?.format("YYYY-MM-DD HH:mm:ss") || null,
-        processing_deadline: values.response_due_at?.format("YYYY-MM-DD") || null,
-        source_type: values.source_type || "manual",
-        contact_name: values.contact_name || null,
-        initial_note: values.note || null,
-      })
-      const revisionId = request.current_revision?.id || request.current_revision_id
-      for (const line of values.lines || []) {
-        if (!String(line?.client_description || "").trim()) continue
-        await addClientRequestItem(revisionId, {
-          client_part_number: line.client_catalog_number || null,
-          client_description: line.client_description,
-          client_line_text: [line.client_manufacturer_text, line.client_equipment_model_text, line.client_description].filter(Boolean).join(" · "),
-          requested_qty: line.requested_qty,
-          uom: line.uom || "шт",
-          required_date: line.required_date?.format("YYYY-MM-DD") || null,
-          client_comment: line.client_comment || null,
-        })
-      }
-      message.success("Заявка и первая ревизия созданы")
-      onCreated(request)
-    } catch (error) {
-      message.error(error?.response?.data?.message || "Не удалось создать заявку")
-    } finally { setSaving(false) }
-  }
-
-  return (
-    <Modal width={900} open={open} onCancel={onClose} title="Новая заявка клиента" footer={null} destroyOnHidden>
-      <Steps current={step} size="small" items={[{ title: "Реквизиты" }, { title: "Состав" }, { title: "Проверка" }]} />
-      <Form form={form} layout="vertical" className="cr-create-form">
-        {step === 0 && <div className="cr-form-grid">
-          <Form.Item name="client_id" label="Клиент" rules={[{ required: true, message: "Выберите клиента" }]}>
-            <Select showSearch optionFilterProp="label" options={clients.map((x) => ({ value: x.id, label: x.company_name }))} />
-          </Form.Item>
-          <Form.Item name="internal_number" label="Номер заявки" rules={[{ required: true, message: "Укажите номер" }]}><Input placeholder="Например, CR-2026-014" /></Form.Item>
-          <Form.Item name="title" label="Тема или номер клиента"><Input placeholder="Кратко: что запросил клиент" /></Form.Item>
-          <Form.Item name="owner_user_id" label="Ответственный"><Select allowClear showSearch optionFilterProp="label" options={users.map((x) => ({ value: x.id, label: x.full_name || x.username }))} /></Form.Item>
-          <Form.Item name="received_at" label="Дата получения"><DatePicker format="DD.MM.YYYY" /></Form.Item>
-          <Form.Item name="response_due_at" label="Срок ответа"><DatePicker format="DD.MM.YYYY" /></Form.Item>
-          <Form.Item name="contact_name" label="Контакт клиента"><Input /></Form.Item>
-          <Form.Item name="source_type" label="Источник"><Select options={[{value:"email",label:"Электронная почта"},{value:"phone",label:"Телефон"},{value:"portal",label:"Портал"},{value:"manual",label:"Вручную"}]} /></Form.Item>
-          <Form.Item className="cr-form-span" name="note" label="Комментарий"><Input.TextArea rows={2} /></Form.Item>
-        </div>}
-        {step === 1 && <Form.List name="lines">
-          {(fields, { add, remove }) => <Space direction="vertical" size={12} style={{ width: "100%" }}>
-            <Alert showIcon type="info" message="Сохраните исходную формулировку клиента" description="Привязка к позиции каталога выполняется после создания заявки — исходный текст останется неизменным." />
-            {fields.map(({ key, name }) => <Card key={key} size="small" title={`Позиция ${name + 1}`} extra={fields.length > 1 && <Button type="link" danger onClick={() => remove(name)}>Убрать</Button>}>
-              <div className="cr-line-grid">
-                <Form.Item name={[name,"client_description"]} label="Описание клиента" rules={[{required:true,message:"Введите описание"}]}><Input /></Form.Item>
-                <Form.Item name={[name,"client_catalog_number"]} label="Каталожный номер"><Input /></Form.Item>
-                <Form.Item name={[name,"client_manufacturer_text"]} label="Производитель"><Input /></Form.Item>
-                <Form.Item name={[name,"client_equipment_model_text"]} label="Оборудование или модель"><Input /></Form.Item>
-                <Form.Item name={[name,"requested_qty"]} label="Количество" rules={[{required:true}]}><InputNumber min={0.001} /></Form.Item>
-                <Form.Item name={[name,"uom"]} label="Единица"><Input /></Form.Item>
-                <Form.Item name={[name,"required_date"]} label="Требуемая дата"><DatePicker format="DD.MM.YYYY" /></Form.Item>
-                <Form.Item name={[name,"client_comment"]} label="Комментарий клиента"><Input /></Form.Item>
-              </div>
-            </Card>)}
-            <Button icon={<PlusOutlined />} onClick={() => add({ requested_qty: 1, uom: "шт" })}>Добавить позицию</Button>
-          </Space>}
-        </Form.List>}
-        {step === 2 && <Card className="cr-review-card">
-          <Title level={5}>Проверьте заявку перед созданием</Title>
-          <Paragraph>Будут созданы заявка, ревизия №1 и {(form.getFieldValue("lines") || []).length} исходных позиций. Каталожные связи и закупочные процессы автоматически не создаются.</Paragraph>
-        </Card>}
-      </Form>
-      <div className="cr-modal-actions">
-        {step > 0 && <Button onClick={() => setStep(step - 1)}>Назад</Button>}
-        <div />
-        {step < 2 ? <Button type="primary" onClick={async () => { try { await form.validateFields(step === 0 ? ["client_id","internal_number"] : ["lines"]); setStep(step + 1) } catch { /* form highlights */ } }}>Продолжить</Button>
-          : <Button type="primary" loading={saving} onClick={submit}>Создать заявку</Button>}
-      </div>
-    </Modal>
-  )
-}
 
 function ItemDrawer({ item, open, readOnly, onClose, onSaved, requestId }) {
   const navigate = useNavigate()
@@ -244,7 +147,7 @@ function ItemDrawer({ item, open, readOnly, onClose, onSaved, requestId }) {
         </Form>
         <Space wrap>
           {!readOnly && <Button type="primary" loading={saving} onClick={save} disabled={!can("client_requests.identify_items", "client_requests.manage_requirements")}>Подтвердить позицию</Button>}
-          <Button icon={<LinkOutlined />} onClick={() => navigate(`/equipment-classifier?client_request=${requestId}&item=${item.id}`)}>Открыть классификатор</Button>
+          <Button icon={<LinkOutlined />} onClick={() => navigate(`/equipment-classifier?mode=identification${item.active_identification_task_id ? `&task=${item.active_identification_task_id}` : `&client_request=${requestId}&item=${item.id}`}`)}>Открыть очередь идентификации</Button>
         </Space>
         {!item.identification_catalog_position_id && <Alert className="cr-inline-note" type="info" showIcon message="Если подходящей позиции нет" description="Откройте классификатор с контекстом этой строки. Создание позиции выполняется только в Classifier & Engineering." />}
       </section>
@@ -400,7 +303,6 @@ export default function ClientRequestsPage() {
   const [requests, setRequests] = useState([])
   const [clients, setClients] = useState([])
   const [users, setUsers] = useState([])
-  const [summaries, setSummaries] = useState({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [view, setView] = useState("all")
@@ -410,30 +312,18 @@ export default function ClientRequestsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [requestRows, clientRows, userRows] = await Promise.all([listClientRequests({ include_archived: 1 }), listClients(), listUsers()])
-      setRequests(requestRows); setClients(clientRows); setUsers(userRows)
-      const settled = await Promise.allSettled(requestRows.slice(0, 80).map((row) => getClientRequestWorkspace(row.id)))
-      const next = {}
-      settled.forEach((result, index) => { if (result.status === "fulfilled") next[requestRows[index].id] = result.value })
-      setSummaries(next)
+      const [registryResult, clientRows, userRows] = await Promise.all([
+        getClientRequestRegistry({ view, q: search || undefined, page: 1, page_size: 100 }),
+        listClients(),
+        listUsers(),
+      ])
+      setRequests(registryResult.items || []); setClients(clientRows); setUsers(userRows)
     } catch (error) { message.error(error?.response?.data?.message || "Не удалось загрузить реестр заявок") }
     finally { setLoading(false) }
-  }, [])
-  useEffect(() => { load() }, [load])
+  }, [search, view])
+  useEffect(() => { const timer = setTimeout(load, 300); return () => clearTimeout(timer) }, [load])
 
-  const filtered = useMemo(() => requests.filter((row) => {
-    const model = summaries[row.id]
-    const haystack = [row.internal_number, row.client_name, row.client_reference, row.contact_name].join(" ").toLowerCase()
-    if (search && !haystack.includes(search.toLowerCase())) return false
-    const archived = row.status === "archived" || row.lifecycle_stage === "archived"
-    if (view === "archive") return archived
-    if (archived) return false
-    if (view === "attention") return Number(model?.readiness?.blocked_count || 0) > 0
-    if (view === "identification") return (model?.items || []).some((x) => !x.identification_catalog_position_id)
-    if (view === "client") return (model?.items || []).some((x) => x.identification_status === "needs_client_clarification")
-    if (view === "ready") return Number(model?.readiness?.available_for_release_count || 0) > 0
-    return true
-  }), [requests, summaries, search, view])
+  const filtered = useMemo(() => requests, [requests])
 
   const openRequest = (id) => { const next = new URLSearchParams(); next.set("request", id); setSearchParams(next) }
   const closeRequest = () => setSearchParams(new URLSearchParams())
@@ -447,14 +337,14 @@ export default function ClientRequestsPage() {
         <Table rowKey="id" loading={loading} dataSource={filtered} pagination={{ pageSize: 15, showSizeChanger: false }} onRow={(row) => ({ onClick: () => openRequest(row.id) })} columns={[
           { title: "Заявка", width: 150, render: (_, row) => <div className="cr-source-cell"><strong>{row.internal_number}</strong><span>{formatDate(row.received_at || row.created_at)}</span></div> },
           { title: "Клиент и тема", render: (_, row) => <div className="cr-source-cell"><strong>{row.client_name}</strong><span>{row.client_reference || "Без темы"}</span></div> },
-          { title: "Позиции", width: 150, render: (_, row) => { const m = summaries[row.id]; const total = m?.readiness?.total_active || 0; const linked = (m?.items || []).filter((x) => x.identification_catalog_position_id).length; return <span>{linked} из {total} определены</span> } },
+          { title: "Позиции", width: 150, render: (_, row) => <span>{row.confirmed_lines} из {row.total_lines} определены</span> },
           { title: "Рабочее состояние", width: 180, render: (_, row) => <Tag color={row.lifecycle_stage === "released" ? "blue" : "default"}>{statusLabel(row.lifecycle_stage || row.status)}</Tag> },
           { title: "Ответственный", width: 170, render: (_, row) => row.owner_name || row.assigned_to_name || users.find((x) => Number(x.id) === Number(row.assigned_to_user_id))?.full_name || "Не назначен" },
           { title: "Срок ответа", width: 125, render: (_, row) => formatDate(row.processing_deadline) },
-          { title: "Сейчас", width: 230, render: (_, row) => { const m = summaries[row.id]; const blocked = Number(m?.readiness?.blocked_count || 0); const ready = Number(m?.readiness?.available_for_release_count || 0); return blocked ? <Badge status="warning" text={`${blocked} поз. требуют действия`} /> : ready ? <Badge status="success" text={`${ready} поз. готовы к закупке`} /> : <Badge status="default" text="Откройте заявку" /> } },
+          { title: "Сейчас", width: 230, render: (_, row) => row.waiting_client_lines ? <Badge status="warning" text={`${row.waiting_client_lines} поз. ждут уточнения`} /> : row.open_task_lines ? <Badge status="processing" text={`${row.open_task_lines} поз. в идентификации`} /> : row.ready_for_release_lines ? <Badge status="success" text={`${row.ready_for_release_lines} поз. готовы к закупке`} /> : <Badge status="default" text="Откройте заявку" /> },
         ]} />
       </Card>
     </div>
-    <RequestCreateWizard open={createOpen} clients={clients} users={users} onClose={() => setCreateOpen(false)} onCreated={async (request) => { setCreateOpen(false); await load(); openRequest(request.id) }} />
+    <ClientRequestIntakeWizard open={createOpen} clients={clients} users={users} onClose={() => setCreateOpen(false)} onCreated={async (result) => { setCreateOpen(false); await load(); openRequest(result.request_id) }} />
   </PageWrapper>
 }

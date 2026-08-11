@@ -3,6 +3,9 @@ import axios from "@/api/axiosInstance"
 export const listClientRequests = (params = {}) =>
   axios.get("/client-requests", { params }).then(({ data }) => Array.isArray(data) ? data : [])
 
+export const getClientRequestRegistry = (params = {}) =>
+  axios.get("/client-requests/registry", { params }).then(({ data }) => data)
+
 export const listClients = () =>
   axios.get("/clients", { params: { limit: 500, offset: 0 } }).then(({ data }) => Array.isArray(data) ? data : [])
 
@@ -11,6 +14,12 @@ export const listUsers = () =>
 
 export const createClientRequest = (payload) =>
   axios.post("/client-requests", payload).then(({ data }) => data)
+
+export const validateClientRequestIntake = (payload) =>
+  axios.post("/client-requests/intake/validate", payload).then(({ data }) => data)
+
+export const commitClientRequestIntake = (payload) =>
+  axios.post("/client-requests/intake/commit", payload).then(({ data }) => data)
 
 export const createClientRequestRevision = (requestId, payload) =>
   axios.post(`/client-requests/${requestId}/revisions`, payload).then(({ data }) => data)
