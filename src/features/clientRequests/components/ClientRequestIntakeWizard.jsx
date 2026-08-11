@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Alert, Button, Card, Checkbox, DatePicker, Form, Input, Modal, Select, Space, Statistic, Steps, Typography, message } from "antd"
 import dayjs from "dayjs"
 import {
@@ -34,12 +34,13 @@ export default function ClientRequestIntakeWizard({ open, clients, users, onClos
   const [createTasks, setCreateTasks] = useState(true)
   const [taskPriority, setTaskPriority] = useState("normal")
   const [taskAssignee, setTaskAssignee] = useState(null)
+  const commitAttemptRef = useRef(null)
   const { units: measurementUnits, options: uomOptions, loading: uomLoading, error: uomError } = useMeasurementUnits({ active: true })
   const defaultUom = useMemo(() => measurementUnits.find((unit) => String(unit.code).toLowerCase() === "шт")?.code || null, [measurementUnits])
 
   useEffect(() => {
     if (!open) return
-    setStep(0); setRows([createEmptyRow()]); setHeader(null); setPreview(null); setConfirmExact(false); setExactConfirmationKey(null); setCreateTasks(true); setTaskPriority("normal"); setTaskAssignee(null)
+    setStep(0); setRows([createEmptyRow()]); setHeader(null); setPreview(null); setConfirmExact(false); setExactConfirmationKey(null); setCreateTasks(true); setTaskPriority("normal"); setTaskAssignee(null); commitAttemptRef.current = null
     form.resetFields()
     form.setFieldsValue({ received_at: dayjs(), source_type: "manual" })
   }, [open, form])
@@ -82,12 +83,18 @@ export default function ClientRequestIntakeWizard({ open, clients, users, onClos
 
   const commit = async () => {
     if (!preview?.can_commit) return message.warning("Сначала устраните ошибки проверки")
+    if (commitAttemptRef.current?.payloadHash !== preview.payload_hash) {
+      commitAttemptRef.current = {
+        payloadHash: preview.payload_hash,
+        idempotencyKey: globalThis.crypto?.randomUUID?.() || `intake-${Date.now()}`,
+      }
+    }
     setSaving(true)
     try {
       const result = await commitClientRequestIntake({
         ...buildPayload(header || form.getFieldsValue(true), rows, options),
         payload_hash: preview.payload_hash,
-        idempotency_key: globalThis.crypto?.randomUUID?.() || `intake-${Date.now()}`,
+        idempotency_key: commitAttemptRef.current.idempotencyKey,
       })
       message.success(`Заявка ${result.internal_number} создана одной операцией`)
       onCreated(result)

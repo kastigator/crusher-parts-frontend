@@ -315,12 +315,12 @@ export default function ClientRequestsPage() {
       const [registryResult, clientRows, userRows] = await Promise.all([
         getClientRequestRegistry({ view, q: search || undefined, page: 1, page_size: 100 }),
         listClients(),
-        listUsers(),
+        can("administration.access") ? listUsers().catch(() => []) : Promise.resolve([]),
       ])
       setRequests(registryResult.items || []); setClients(clientRows); setUsers(userRows)
     } catch (error) { message.error(error?.response?.data?.message || "Не удалось загрузить реестр заявок") }
     finally { setLoading(false) }
-  }, [search, view])
+  }, [search, view, can])
   useEffect(() => { const timer = setTimeout(load, 300); return () => clearTimeout(timer) }, [load])
 
   const filtered = useMemo(() => requests, [requests])

@@ -88,3 +88,12 @@ test("10/50/100 workflows remain one-grid and one atomic commit without add-row 
   assert.match(grid, /maxHeight: "calc\(100vh - 230px\)"/)
   assert.doesNotMatch(wizard, /for\s*\([^)]*rows[^)]*\)[\s\S]*axios\.post/)
 })
+
+test("Client Request retries reuse one idempotency key and optional admin lookup cannot block the registry", () => {
+  const wizard = read("src", "features", "clientRequests", "components", "ClientRequestIntakeWizard.jsx")
+  const page = read("src", "pages", "ClientRequestsPage.jsx")
+  assert.match(wizard, /commitAttemptRef/)
+  assert.match(wizard, /payloadHash: preview\.payload_hash/)
+  assert.match(wizard, /idempotency_key: commitAttemptRef\.current\.idempotencyKey/)
+  assert.match(page, /can\("administration\.access"\) \? listUsers\(\)\.catch\(\(\) => \[\]\) : Promise\.resolve\(\[\]\)/)
+})
